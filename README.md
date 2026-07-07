@@ -101,8 +101,8 @@ Full setup options (local development, migrations, GPU validation) are in
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS, served by nginx |
 | Backend | FastAPI, SQLAlchemy (async), Alembic, PostgreSQL 16 |
 | AI providers | Google Gemini (Live + Flash), OpenAI (GPT-5, Realtime) |
-| Local inference | Silero VAD, ECAPA-TDNN, Whisper/Parakeet via ONNX Runtime |
+| Local inference | Silero VAD, WeSpeaker ResNet152, Whisper/Parakeet via ONNX Runtime |
 
 ## License
 
-Internal project -- not licensed for external distribution.
+[MIT](LICENSE)
