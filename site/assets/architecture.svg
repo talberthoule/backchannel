@@ -208,6 +208,6 @@
   <text x="805" y="695" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="10" fill="#64748b">WAV Segments</text>
 
   <!-- Pipeline flow -->
-  <path d="M 610 260 L 610 280" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrowhead)" />
-  <path d="M 610 380 L 610 410" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrowhead)" />
+  <path d="M 610 302 L 610 328" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrowhead)" />
+  <path d="M 610 432 L 610 458" stroke="#94a3b8" stroke-width="1" marker-end="url(#arrowhead)" />
 </svg>
