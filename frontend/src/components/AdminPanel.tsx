@@ -57,6 +57,31 @@ interface AdminPanelProps {
   onBack: () => void;
 }
 
+// Compact filter-chip toggle used for multi-select groups (knowledge sources,
+// analyst lenses). Selected chips fill teal with a check; unselected chips stay
+// muted outlines so large collections read as a quiet tag cloud.
+function TogglePill({ label, selected, onToggle }: { label: string; selected: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={selected}
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-body text-xs transition-colors ${
+        selected
+          ? "border-brand-teal/40 bg-brand-teal/10 font-medium text-brand-teal"
+          : "border-brand-light-gray-1 bg-white text-brand-mid-gray hover:border-brand-mid-gray hover:text-brand-dark-gray"
+      }`}
+    >
+      {selected && (
+        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3} aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      )}
+      {label}
+    </button>
+  );
+}
+
 function AgentCard({
   agent,
   models,
@@ -188,26 +213,34 @@ function AgentCard({
       {/* Knowledge sources (for db-backed agents) */}
       {agent.agent_type === "db" && (
         <div className="border-t border-brand-light-gray-1/70 px-5 py-4">
-          <label className="mb-1.5 block font-body text-xs font-medium text-brand-gray">Knowledge Sources</label>
-          <div className="flex flex-wrap gap-3">
+          <div className="mb-1.5 flex items-baseline justify-between">
+            <label className="block font-body text-xs font-medium text-brand-gray">Knowledge Sources</label>
+            {agent.knowledge_source_ids.split(",").some((s) => s.trim()) && (
+              <button
+                type="button"
+                onClick={() => onUpdate(agent.slug, "knowledge_source_ids", "")}
+                className="font-body text-[10px] text-brand-mid-gray transition-colors hover:text-brand-teal"
+              >
+                Clear selection
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
             {knowledgeSources
               .filter((k) => k.active)
               .map((k) => {
                 const selected = agent.knowledge_source_ids.split(",").map((s) => s.trim()).includes(k.id);
                 return (
-                  <label key={k.id} className="flex cursor-pointer items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={() => {
-                        const current = new Set(agent.knowledge_source_ids.split(",").map((s) => s.trim()).filter(Boolean));
-                        if (selected) current.delete(k.id); else current.add(k.id);
-                        onUpdate(agent.slug, "knowledge_source_ids", [...current].join(","));
-                      }}
-                      className="h-3.5 w-3.5 rounded border-brand-light-gray-1 text-brand-teal"
-                    />
-                    <span className="font-body text-xs text-brand-dark-gray">{k.name}</span>
-                  </label>
+                  <TogglePill
+                    key={k.id}
+                    label={k.name}
+                    selected={selected}
+                    onToggle={() => {
+                      const current = new Set(agent.knowledge_source_ids.split(",").map((s) => s.trim()).filter(Boolean));
+                      if (selected) current.delete(k.id); else current.add(k.id);
+                      onUpdate(agent.slug, "knowledge_source_ids", [...current].join(","));
+                    }}
+                  />
                 );
               })}
           </div>
@@ -221,24 +254,21 @@ function AgentCard({
       {agent.slug === "consolidated_analyst" && (
         <div className="border-t border-brand-light-gray-1/70 px-5 py-4">
           <label className="mb-1.5 block font-body text-xs font-medium text-brand-gray">Active Lenses</label>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-1.5">
             {["question", "observation", "opportunity", "action_item"].map((t) => {
               const active = agent.sub_types.split(",").map((s) => s.trim()).includes(t);
               const labels: Record<string, string> = { question: "Questions", observation: "Observations", opportunity: "Opportunities", action_item: "Action Items" };
               return (
-                <label key={t} className="flex cursor-pointer items-center gap-1.5">
-                  <input
-                    type="checkbox"
-                    checked={active}
-                    onChange={() => {
-                      const current = new Set(agent.sub_types.split(",").map((s) => s.trim()).filter(Boolean));
-                      if (active) current.delete(t); else current.add(t);
-                      onUpdate(agent.slug, "sub_types", [...current].join(","));
-                    }}
-                    className="h-3.5 w-3.5 rounded border-brand-light-gray-1 text-brand-teal"
-                  />
-                  <span className="font-body text-xs text-brand-dark-gray">{labels[t]}</span>
-                </label>
+                <TogglePill
+                  key={t}
+                  label={labels[t]}
+                  selected={active}
+                  onToggle={() => {
+                    const current = new Set(agent.sub_types.split(",").map((s) => s.trim()).filter(Boolean));
+                    if (active) current.delete(t); else current.add(t);
+                    onUpdate(agent.slug, "sub_types", [...current].join(","));
+                  }}
+                />
               );
             })}
           </div>
