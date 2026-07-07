@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AgentConfig, KnowledgeSource, ModelInfo, PrivacyConfig } from "../types";
+import type { AgentConfig, AnalystLens, KnowledgeSource, ModelInfo, PrivacyConfig } from "../types";
 import * as api from "../services/api";
 import DiarizationCapabilityCard from "./DiarizationCapabilityCard";
 import BatchTranscriptionCard from "./BatchTranscriptionCard";
@@ -82,6 +82,183 @@ function TogglePill({ label, selected, onToggle }: { label: string; selected: bo
   );
 }
 
+const LENS_TYPE_OPTIONS: { value: AnalystLens["item_type"]; label: string }[] = [
+  { value: "question", label: "Question" },
+  { value: "observation", label: "Observation" },
+  { value: "opportunity", label: "Opportunity" },
+  { value: "action_item", label: "Action Item" },
+];
+
+function parseLenses(raw: string): AnalystLens[] {
+  try {
+    const data = JSON.parse(raw);
+    return Array.isArray(data) ? data.filter((l): l is AnalystLens => !!l && typeof l === "object") : [];
+  } catch {
+    return [];
+  }
+}
+
+// Editor for the Consolidated Analyst's configurable lenses. Each lens owns a
+// prompt section that is concatenated into the system prompt's {lens_sections}
+// placeholder when the lens is enabled; item_type picks the insight bucket its
+// findings surface as.
+function LensEditor({
+  agent,
+  onUpdate,
+  onDraftChange,
+}: {
+  agent: AgentConfig;
+  onUpdate: (slug: string, field: string, value: string | boolean | number | null) => void;
+  onDraftChange: (slug: string, field: "prompt" | "interval_seconds" | "lenses", value: string | number) => void;
+}) {
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const lenses = parseLenses(agent.lenses);
+  const missingPlaceholder = !agent.prompt.includes("{lens_sections}");
+
+  const save = (next: AnalystLens[]) => onUpdate(agent.slug, "lenses", JSON.stringify(next));
+  const draft = (next: AnalystLens[]) => onDraftChange(agent.slug, "lenses", JSON.stringify(next));
+  const patched = (key: string, patch: Partial<AnalystLens>) =>
+    lenses.map((l) => (l.key === key ? { ...l, ...patch } : l));
+
+  const addLens = () => {
+    let n = lenses.length + 1;
+    while (lenses.some((l) => l.key === `lens-${n}`)) n += 1;
+    const key = `lens-${n}`;
+    save([...lenses, { key, label: "New Lens", item_type: "observation", enabled: true, prompt: "" }]);
+    setExpandedKey(key);
+  };
+
+  const deleteLens = (lens: AnalystLens) => {
+    if (!window.confirm(`Delete the "${lens.label}" lens and its prompt section?`)) return;
+    if (expandedKey === lens.key) setExpandedKey(null);
+    save(lenses.filter((l) => l.key !== lens.key));
+  };
+
+  return (
+    <div className="border-t border-brand-light-gray-1/70 px-5 py-4">
+      <div className="mb-2 flex items-center justify-between">
+        <label className="block font-body text-xs font-medium text-brand-gray">Analysis Lenses</label>
+        <button
+          type="button"
+          onClick={addLens}
+          className="rounded-full border border-brand-light-gray-1 px-2.5 py-1 font-body text-[11px] font-medium text-brand-gray transition-colors hover:border-brand-teal hover:text-brand-teal"
+        >
+          + Add Lens
+        </button>
+      </div>
+
+      <div className="space-y-1.5">
+        {lenses.map((lens) => {
+          const expanded = expandedKey === lens.key;
+          const typeLabel = LENS_TYPE_OPTIONS.find((o) => o.value === lens.item_type)?.label ?? lens.item_type;
+          const emptyPrompt = !lens.prompt.trim();
+          return (
+            <div key={lens.key} className={`rounded-lg border ${expanded ? "border-brand-teal/40" : "border-brand-light-gray-1"} bg-white`}>
+              <div className="flex items-center gap-2.5 px-3 py-2">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={lens.enabled}
+                  title={lens.enabled ? "Lens is included in the prompt" : "Lens is excluded from the prompt"}
+                  onClick={() => save(patched(lens.key, { enabled: !lens.enabled }))}
+                  className={`h-4 w-7 shrink-0 rounded-full transition-colors ${lens.enabled ? "bg-brand-teal" : "bg-brand-light-gray-1"}`}
+                >
+                  <span className={`block h-3 w-3 rounded-full bg-white shadow transition-transform ${lens.enabled ? "translate-x-3.5" : "translate-x-0.5"}`} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpandedKey(expanded ? null : lens.key)}
+                  aria-expanded={expanded}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                >
+                  <span className={`truncate font-body text-xs font-medium ${lens.enabled ? "text-brand-dark-gray" : "text-brand-mid-gray"}`}>
+                    {lens.label}
+                  </span>
+                  <span className="shrink-0 rounded-full bg-brand-light-gray-2 px-2 py-0.5 font-body text-[10px] text-brand-gray">
+                    {typeLabel}
+                  </span>
+                  {emptyPrompt && (
+                    <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 font-body text-[10px] text-amber-800" title="Lenses without a prompt section are skipped">
+                      No prompt
+                    </span>
+                  )}
+                  <svg className={`ml-auto h-3 w-3 shrink-0 text-brand-mid-gray transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteLens(lens)}
+                  title="Delete lens"
+                  className="shrink-0 rounded p-1 text-brand-mid-gray transition-colors hover:bg-red-50 hover:text-red-600"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                  </svg>
+                </button>
+              </div>
+
+              {expanded && (
+                <div className="space-y-3 border-t border-brand-light-gray-1/70 px-3 py-3">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block font-body text-[10px] font-medium text-brand-gray">Lens Name</label>
+                      <input
+                        type="text"
+                        value={lens.label}
+                        onChange={(e) => draft(patched(lens.key, { label: e.target.value }))}
+                        onBlur={(e) => save(patched(lens.key, { label: e.target.value.trim() || "Untitled Lens" }))}
+                        className="w-full rounded border border-brand-light-gray-1 bg-white px-2.5 py-1.5 font-body text-xs text-brand-dark-gray outline-none focus:border-brand-teal"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block font-body text-[10px] font-medium text-brand-gray">Findings Surface As</label>
+                      <select
+                        value={lens.item_type}
+                        onChange={(e) => save(patched(lens.key, { item_type: e.target.value as AnalystLens["item_type"] }))}
+                        className="w-full rounded border border-brand-light-gray-1 bg-white px-2.5 py-1.5 font-body text-xs text-brand-dark-gray outline-none focus:border-brand-teal"
+                      >
+                        {LENS_TYPE_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block font-body text-[10px] font-medium text-brand-gray">Lens Prompt Section</label>
+                    <textarea
+                      value={lens.prompt}
+                      onChange={(e) => draft(patched(lens.key, { prompt: e.target.value }))}
+                      onBlur={(e) => save(patched(lens.key, { prompt: e.target.value }))}
+                      rows={8}
+                      placeholder="Describe what this lens should look for and how it should think..."
+                      className="w-full resize-y rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-2 font-mono text-xs leading-relaxed text-brand-dark-gray outline-none focus:border-brand-teal"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {lenses.length === 0 && (
+          <p className="rounded-lg border border-dashed border-brand-light-gray-1 px-3 py-4 text-center font-body text-xs text-brand-mid-gray">
+            No lenses configured — the analyst will not produce insights. Add a lens to get started.
+          </p>
+        )}
+      </div>
+
+      <p className="mt-2 font-body text-[10px] text-brand-mid-gray">
+        Each enabled lens adds its own numbered section to the system prompt (via the {"{lens_sections}"} placeholder) and tags its findings with the selected insight type. Toggling a lens off removes its section from the next call.
+      </p>
+      {missingPlaceholder && (
+        <p className="mt-1 font-body text-[10px] text-amber-700">
+          The system prompt below has no {"{lens_sections}"} placeholder, so lens sections are not inserted. Reset the prompt to default or add the placeholder where the lenses belong.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AgentCard({
   agent,
   models,
@@ -99,7 +276,7 @@ function AgentCard({
   localOnly: boolean;
   onUpdate: (slug: string, field: string, value: string | boolean | number | null) => void;
   onResetPrompt: (slug: string) => void;
-  onDraftChange: (slug: string, field: "prompt" | "interval_seconds", value: string | number) => void;
+  onDraftChange: (slug: string, field: "prompt" | "interval_seconds" | "lenses", value: string | number) => void;
 }) {
   const [promptOpen, setPromptOpen] = useState(false);
   const badge = TYPE_BADGES[agent.agent_type] || TYPE_BADGES.text;
@@ -250,29 +427,9 @@ function AgentCard({
         </div>
       )}
 
-      {/* Sub-types (for consolidated analyst) */}
+      {/* Configurable analysis lenses (for consolidated analyst) */}
       {agent.slug === "consolidated_analyst" && (
-        <div className="border-t border-brand-light-gray-1/70 px-5 py-4">
-          <label className="mb-1.5 block font-body text-xs font-medium text-brand-gray">Active Lenses</label>
-          <div className="flex flex-wrap gap-1.5">
-            {["question", "observation", "opportunity", "action_item"].map((t) => {
-              const active = agent.sub_types.split(",").map((s) => s.trim()).includes(t);
-              const labels: Record<string, string> = { question: "Questions", observation: "Observations", opportunity: "Opportunities", action_item: "Action Items" };
-              return (
-                <TogglePill
-                  key={t}
-                  label={labels[t]}
-                  selected={active}
-                  onToggle={() => {
-                    const current = new Set(agent.sub_types.split(",").map((s) => s.trim()).filter(Boolean));
-                    if (active) current.delete(t); else current.add(t);
-                    onUpdate(agent.slug, "sub_types", [...current].join(","));
-                  }}
-                />
-              );
-            })}
-          </div>
-        </div>
+        <LensEditor agent={agent} onUpdate={onUpdate} onDraftChange={onDraftChange} />
       )}
 
       {/* Prompt editor — collapsed by default to keep the page scannable */}
@@ -389,7 +546,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
   };
 
-  const handleDraftChange = (slug: string, field: "prompt" | "interval_seconds", value: string | number) => {
+  const handleDraftChange = (slug: string, field: "prompt" | "interval_seconds" | "lenses", value: string | number) => {
     setAgents((prev) => prev.map((a) => (a.slug === slug ? { ...a, [field]: value } : a)));
   };
 

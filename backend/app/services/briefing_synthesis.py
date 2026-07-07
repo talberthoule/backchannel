@@ -119,6 +119,7 @@ def _agent_config_snapshot(agent: AgentConfig):
         prompt=agent.prompt,
         enabled=agent.enabled,
         sub_types=agent.sub_types,
+        lenses=getattr(agent, "lenses", ""),
         interval_seconds=agent.interval_seconds,
         display_order=agent.display_order,
     )

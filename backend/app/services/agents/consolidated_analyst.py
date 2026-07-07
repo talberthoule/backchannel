@@ -11,7 +11,7 @@ import logging
 import uuid
 
 from app.config import settings
-from app.services.agents.prompts import CONSOLIDATED_ANALYST_PROMPT
+from app.services.agents.prompts import CONSOLIDATED_ANALYST_BASE_PROMPT, DEFAULT_ANALYST_LENSES
 from app.services.llm import generate_text
 from app.services.agents.speaker_context import format_speakers_list
 from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
@@ -27,6 +27,42 @@ AGENT_SOURCE_BY_TYPE = {
 }
 
 VALID_TYPES = {"question", "observation", "opportunity", "action_item"}
+TYPE_ORDER = ["question", "observation", "opportunity", "action_item"]
+
+LENS_SECTIONS_PLACEHOLDER = "{lens_sections}"
+
+
+def _lens_item_type(lens: dict) -> str:
+    """The insight bucket a lens's findings flow into; defaults to observation."""
+    itype = lens.get("item_type")
+    return itype if itype in VALID_TYPES else "observation"
+
+
+def active_lenses(lenses: list) -> list[dict]:
+    """Filter a lens config list down to enabled lenses with usable prompts."""
+    result = []
+    for lens in lenses or []:
+        if not isinstance(lens, dict):
+            continue
+        if not lens.get("enabled", True):
+            continue
+        if not str(lens.get("prompt") or "").strip():
+            continue
+        result.append(lens)
+    return result
+
+
+def compose_lens_sections(lenses: list[dict]) -> str:
+    """Render lens configs into numbered prompt sections."""
+    sections = []
+    for idx, lens in enumerate(lenses, 1):
+        label = str(lens.get("label") or f"Lens {idx}").strip()
+        body = str(lens.get("prompt") or "").strip()
+        itype = _lens_item_type(lens)
+        sections.append(
+            f'## Lens {idx}: {label}\n{body}\n\nTag every finding from this lens with "item_type": "{itype}".'
+        )
+    return "\n\n".join(sections)
 
 SPEAKER_ATTRIBUTION_APPENDIX = """
 
@@ -62,10 +98,35 @@ class ConsolidatedAnalystAgent:
         model_override: str | None = None,
         prompt_override: str | None = None,
         meeting_context_text: str | None = None,
+        lenses: list[dict] | None = None,
     ):
-        self.enabled_types = enabled_types or VALID_TYPES
         self._model = model_override or settings.REFINEMENT_MODEL
-        prompt_template = prompt_override or CONSOLIDATED_ANALYST_PROMPT
+        prompt_template = prompt_override or CONSOLIDATED_ANALYST_BASE_PROMPT
+
+        self._lens_sections = ""
+        self._item_type_values = "|".join(TYPE_ORDER)
+        if LENS_SECTIONS_PLACEHOLDER in prompt_template:
+            if lenses is None:
+                # No lens config stored yet: fall back to the defaults, honoring
+                # the legacy sub_types selection when one was provided.
+                lenses = [dict(l) for l in DEFAULT_ANALYST_LENSES]
+                if enabled_types:
+                    lenses = [l for l in lenses if l["item_type"] in enabled_types]
+            lens_list = active_lenses(lenses)
+            self._lens_sections = compose_lens_sections(lens_list)
+            lens_types = []
+            for lens in lens_list:
+                itype = _lens_item_type(lens)
+                if itype not in lens_types:
+                    lens_types.append(itype)
+            self.enabled_types = set(lens_types)
+            self._item_type_values = "|".join(lens_types) or "observation"
+        else:
+            # Legacy monolithic prompt (custom prompt from before configurable
+            # lenses): run it as-is and filter output by the sub_types config.
+            self.enabled_types = enabled_types or VALID_TYPES
+            self._item_type_values = "|".join(t for t in TYPE_ORDER if t in self.enabled_types)
+
         if "## Speaker Attribution Requirements" not in prompt_template:
             prompt_template = f"{prompt_template.rstrip()}{SPEAKER_ATTRIBUTION_APPENDIX}"
         self._prompt_template = prompt_template
@@ -96,6 +157,8 @@ class ConsolidatedAnalystAgent:
             document_summaries=doc_summaries or "(No documents uploaded)",
             speakers_text=speakers_text,
             active_questions=aq_text,
+            lens_sections=self._lens_sections,
+            item_type_values=self._item_type_values,
         )
 
         try:

@@ -10,6 +10,7 @@ Architecture:
 """
 
 import asyncio
+import json
 import logging
 import time
 import uuid
@@ -168,12 +169,25 @@ class AgentOrchestrator:
             if settings.AGENT_ACTION_TRACKER_ENABLED:
                 enabled_types.add("action_item")
 
+        # Configurable lens definitions (JSON column); None falls back to the
+        # defaults filtered by the legacy sub_types selection above.
+        ca_lenses: list | None = None
+        raw_lenses = (getattr(ca_cfg, "lenses", "") or "") if ca_cfg else ""
+        if raw_lenses.strip():
+            try:
+                parsed = json.loads(raw_lenses)
+                if isinstance(parsed, list):
+                    ca_lenses = parsed
+            except json.JSONDecodeError:
+                logger.warning("[orchestrator] invalid lenses JSON on consolidated_analyst; using defaults")
+
         ca_model = _get_model("consolidated_analyst", settings.REFINEMENT_MODEL)
         self.consolidated_agent = ConsolidatedAnalystAgent(
             enabled_types=enabled_types or None,
             model_override=ca_model,
             prompt_override=_get_prompt("consolidated_analyst") or None,
             meeting_context_text=self.meeting_context_text,
+            lenses=ca_lenses,
         )
 
         # Objection handler (fast scan loop over the freshest transcript)

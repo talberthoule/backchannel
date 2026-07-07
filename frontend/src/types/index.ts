@@ -38,11 +38,23 @@ export interface AgentConfig {
   prompt: string;
   enabled: boolean;
   sub_types: string;
+  lenses: string; // JSON array of AnalystLens
   interval_seconds: number | null;
   knowledge_source_ids: string;
   display_order: number;
   created_at: string;
   updated_at: string | null;
+}
+
+// One configurable analysis lens of the Consolidated Analyst. Each enabled
+// lens contributes its own section to the composed system prompt; item_type
+// picks which insight bucket the lens's findings surface as.
+export interface AnalystLens {
+  key: string;
+  label: string;
+  item_type: "question" | "observation" | "opportunity" | "action_item";
+  enabled: boolean;
+  prompt: string;
 }
 
 export interface SessionAgent {

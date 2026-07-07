@@ -238,7 +238,8 @@ class AgentConfig(Base):
     model_id: Mapped[str] = mapped_column(String(100))
     prompt: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    sub_types: Mapped[str] = mapped_column(String(200), default="")  # comma-separated item_types
+    sub_types: Mapped[str] = mapped_column(String(200), default="")  # comma-separated item_types (legacy; superseded by lenses where present)
+    lenses: Mapped[str] = mapped_column(Text, default="")  # JSON array of {key,label,item_type,enabled,prompt} lens configs
     interval_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)  # cycle interval for periodic agents
     knowledge_source_ids: Mapped[str] = mapped_column(
         Text, default=""

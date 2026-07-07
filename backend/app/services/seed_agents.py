@@ -1,5 +1,7 @@
 """Seed default agent configurations into the database."""
 
+import json
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +11,8 @@ from app.services.agents.prompts import (
     BRIEF_ARBITER_PROMPT,
     BRIEF_DISCOVERY_LENS_PROMPT,
     BRIEF_MEETING_LENS_PROMPT,
-    CONSOLIDATED_ANALYST_PROMPT,
+    CONSOLIDATED_ANALYST_BASE_PROMPT,
+    DEFAULT_ANALYST_LENSES,
     OBJECTION_HANDLER_PROMPT,
     OPPORTUNITY_SPECIALIST_PROMPT,
     PRINCIPAL_AGENT_PROMPT,
@@ -18,7 +21,7 @@ from app.services.agents.prompts import (
 # Default prompt lookup by slug (used for reset endpoint)
 DEFAULT_PROMPTS = {
     "audio_gateway": AUDIO_BRIDGE_PROMPT,
-    "consolidated_analyst": CONSOLIDATED_ANALYST_PROMPT,
+    "consolidated_analyst": CONSOLIDATED_ANALYST_BASE_PROMPT,
     "objection_handler": OBJECTION_HANDLER_PROMPT,
     "synthesizer": PRINCIPAL_AGENT_PROMPT,
     "opportunity_specialist": OPPORTUNITY_SPECIALIST_PROMPT,
@@ -26,6 +29,16 @@ DEFAULT_PROMPTS = {
     "brief_discovery_lens": BRIEF_DISCOVERY_LENS_PROMPT,
     "brief_arbiter": BRIEF_ARBITER_PROMPT,
 }
+
+# Default lens configs by slug (used for seeding and the reset endpoint)
+DEFAULT_LENSES_BY_SLUG = {
+    "consolidated_analyst": DEFAULT_ANALYST_LENSES,
+}
+
+# The old monolithic consolidated-analyst prompt hardcoded its lens sections;
+# this heading identifies stale copies that should migrate to the new base
+# prompt whose {lens_sections} placeholder is filled from the lenses config.
+LEGACY_LENS_HEADING_MARKER = "## Lens 1: Strategic Follow-Up Questions"
 
 OBSOLETE_MODEL_IDS = {
     "gemini-2.0-flash",
@@ -73,12 +86,13 @@ SEED_CONFIGS = [
     {
         "slug": "consolidated_analyst",
         "name": "Consolidated Analyst",
-        "description": "Analyzes transcript through four lenses in a single call: strategic follow-up questions, observations, product & service opportunities, and action items.",
+        "description": "Analyzes transcript through configurable lenses in a single call. Default lenses: strategic follow-up questions, observations, product & service opportunities, and action items.",
         "agent_type": "text",
         "model_id": "gemini-3.5-flash",
-        "prompt": CONSOLIDATED_ANALYST_PROMPT,
+        "prompt": CONSOLIDATED_ANALYST_BASE_PROMPT,
         "enabled": True,
         "sub_types": "question,observation,opportunity,action_item",
+        "lenses": json.dumps(DEFAULT_ANALYST_LENSES),
         "interval_seconds": 15,
         "display_order": 2,
     },
@@ -167,7 +181,25 @@ async def seed_agent_configs(db: AsyncSession):
             existing.model_id = cfg["model_id"]
         if existing is not None and _should_refresh_seeded_prompt(existing, cfg):
             existing.prompt = cfg["prompt"]
+        if existing is not None:
+            _seed_missing_lenses(existing)
     await db.commit()
+
+
+def _seed_missing_lenses(existing: AgentConfig):
+    """Populate the lenses column for pre-lens rows, honoring the old sub_types
+    selection so previously deselected lenses stay off."""
+    if (getattr(existing, "lenses", "") or "").strip():
+        return
+    defaults = DEFAULT_LENSES_BY_SLUG.get(existing.slug)
+    if not defaults:
+        return
+    selected = {t.strip() for t in (existing.sub_types or "").split(",") if t.strip()}
+    lenses = [dict(lens) for lens in defaults]
+    if selected:
+        for lens in lenses:
+            lens["enabled"] = lens["item_type"] in selected
+    existing.lenses = json.dumps(lenses)
 
 
 def _should_refresh_seeded_model(existing: AgentConfig, cfg: dict) -> bool:
@@ -183,6 +215,14 @@ def _should_refresh_seeded_prompt(existing: AgentConfig, cfg: dict) -> bool:
     if stale_marker and stale_marker in (existing.prompt or ""):
         return True
     if LEGACY_BRAND_MARKER in (existing.prompt or ""):
+        return True
+    if (
+        "{lens_sections}" in (cfg.get("prompt") or "")
+        and "{lens_sections}" not in (existing.prompt or "")
+        and LEGACY_LENS_HEADING_MARKER in (existing.prompt or "")
+    ):
+        # Old default monolithic prompt with hardcoded lens sections: replace
+        # with the new base prompt (lens bodies now live in the lenses column).
         return True
     if "{meeting_context_text}" in (existing.prompt or ""):
         return False
