@@ -36,7 +36,7 @@ launcher (PyInstaller exe, tray icon)
 - `backend/app/models.py`: replace `sqlalchemy.dialects.postgresql.UUID`
   with SQLAlchemy 2.0 portable `Uuid` type. Drop-in on Postgres.
 - `backend/app/main.py`: mount `StaticFiles` serving the built frontend
-  (`frontend/dist`) when a `SERVE_STATIC` setting is set. Docker keeps nginx;
+  (`frontend/dist`) when a `FRONTEND_DIST` setting is set. Docker keeps nginx;
   the setting is unset there.
 - No other app changes: the DB engine is still Postgres, so queries,
   `create_all()`, `_add_missing_columns()`, and the dialect-guarded advisory
