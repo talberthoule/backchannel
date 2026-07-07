@@ -46,11 +46,15 @@ function EditableCell({
   onSave,
   multiline = false,
   placeholder = "",
+  clamp = false,
+  renderValue,
 }: {
   value: string;
   onSave: (val: string) => void;
   multiline?: boolean;
   placeholder?: string;
+  clamp?: boolean;
+  renderValue?: (value: string) => React.ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -77,13 +81,13 @@ function EditableCell({
   if (!editing) {
     return (
       <span
-        className={`block cursor-pointer rounded px-1 py-0.5 transition-colors hover:bg-brand-light-gray-2 ${
-          !value ? "italic text-brand-mid-gray" : ""
-        }`}
+        className={`cursor-pointer rounded px-1 py-0.5 transition-colors hover:bg-brand-light-gray-2 ${
+          clamp ? "line-clamp-3" : "block"
+        } ${!value ? "italic text-brand-mid-gray" : ""}`}
         onClick={() => setEditing(true)}
-        title="Click to edit"
+        title={clamp && value ? value : "Click to edit"}
       >
-        {value || placeholder || "—"}
+        {renderValue ? renderValue(value) : value || placeholder || "—"}
       </span>
     );
   }
@@ -590,24 +594,35 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
                         <EditableCell value={o.product_name} onSave={(v) => handleUpdate(o.id, "product_name", v)} />
                       </td>
                       <td className="px-3 py-2 align-top">
-                        <span
-                          className="inline-flex w-fit items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium"
-                          style={{ backgroundColor: `${categoryColor(o.category)}15`, color: categoryColor(o.category) }}
-                        >
-                          {o.category || "—"}
-                        </span>
+                        <EditableCell
+                          value={o.category}
+                          onSave={(v) => handleUpdate(o.id, "category", v)}
+                          placeholder="Add category..."
+                          renderValue={(v) =>
+                            v ? (
+                              <span
+                                className="inline-flex w-fit items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                                style={{ backgroundColor: `${categoryColor(v)}15`, color: categoryColor(v) }}
+                              >
+                                {v}
+                              </span>
+                            ) : (
+                              "Add category..."
+                            )
+                          }
+                        />
                       </td>
                       <td className="px-3 py-2 align-top">
                         <EditableCell value={o.subcategory || ""} onSave={(v) => handleUpdate(o.id, "subcategory", v)} placeholder="Add sub-category..." />
                       </td>
                       <td className="px-3 py-2 align-top max-w-[200px]">
-                        <EditableCell value={o.description} onSave={(v) => handleUpdate(o.id, "description", v)} multiline placeholder="Add description..." />
+                        <EditableCell value={o.description} onSave={(v) => handleUpdate(o.id, "description", v)} multiline clamp placeholder="Add description..." />
                       </td>
                       <td className="px-3 py-2 align-top max-w-[180px]">
-                        <EditableCell value={o.use_cases} onSave={(v) => handleUpdate(o.id, "use_cases", v)} multiline placeholder="Add use cases..." />
+                        <EditableCell value={o.use_cases} onSave={(v) => handleUpdate(o.id, "use_cases", v)} multiline clamp placeholder="Add use cases..." />
                       </td>
                       <td className="px-3 py-2 align-top max-w-[160px]">
-                        <EditableCell value={o.note} onSave={(v) => handleUpdate(o.id, "note", v)} multiline placeholder="Add note..." />
+                        <EditableCell value={o.note} onSave={(v) => handleUpdate(o.id, "note", v)} multiline clamp placeholder="Add note..." />
                       </td>
                       <td className="px-3 py-2 align-top">
                         <TagChips
