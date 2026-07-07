@@ -68,7 +68,15 @@ export const uploadDocument = async (sessionId: string, file: File): Promise<Doc
     method: "POST",
     body: form,
   });
-  if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      detail = (await res.json()).detail ?? "";
+    } catch {
+      // non-JSON error body
+    }
+    throw new Error(detail || `Upload failed: ${res.status}`);
+  }
   return res.json();
 };
 

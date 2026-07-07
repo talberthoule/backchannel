@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Document } from "../../types";
 import * as api from "../../services/api";
 
@@ -12,10 +12,22 @@ export default function DocumentUpload({ sessionId, documents, onRefresh }: Prop
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [localOnly, setLocalOnly] = useState(false);
+
+  // Document upload sends files to the Gemini Files API, which Privacy First
+  // blocks server-side; check the flag so the UI can say so up front.
+  useEffect(() => {
+    api
+      .getPrivacyConfig()
+      .then((p) => setLocalOnly(p.local_only))
+      .catch(() => setLocalOnly(false));
+  }, []);
 
   const handleFiles = useCallback(
     async (files: FileList | File[]) => {
       setUploading(true);
+      setError(null);
       try {
         for (const file of Array.from(files)) {
           await api.uploadDocument(sessionId, file);
@@ -23,6 +35,7 @@ export default function DocumentUpload({ sessionId, documents, onRefresh }: Prop
         onRefresh();
       } catch (err) {
         console.error("Upload failed:", err);
+        setError(err instanceof Error ? err.message : "Upload failed.");
       } finally {
         setUploading(false);
       }
@@ -47,6 +60,37 @@ export default function DocumentUpload({ sessionId, documents, onRefresh }: Prop
       console.error("Delete failed:", err);
     }
   };
+
+  if (localOnly) {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-lg border-2 border-dashed border-brand-light-gray-1 bg-brand-light-gray-2 p-6 text-center">
+          {/* Shield icon */}
+          <svg
+            className="mx-auto h-8 w-8 text-brand-mid-gray"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"
+            />
+          </svg>
+          <p className="font-display text-sm font-semibold text-brand-dark-gray mt-2">
+            Document upload is off in Privacy First mode
+          </p>
+          <p className="font-body text-sm text-brand-gray mt-1 leading-relaxed">
+            Uploaded documents are sent to the Gemini Files API for analysis, which
+            Privacy First blocks. Turn off Privacy First in Admin to upload documents.
+          </p>
+        </div>
+        {renderDocumentList()}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -112,10 +156,22 @@ export default function DocumentUpload({ sessionId, documents, onRefresh }: Prop
         </div>
       </div>
 
-      {/* Uploaded documents list */}
-      {documents.length > 0 && (
-        <ul className="space-y-2">
-          {documents.map((doc) => (
+      {/* Upload error */}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-body text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {renderDocumentList()}
+    </div>
+  );
+
+  function renderDocumentList() {
+    if (documents.length === 0) return null;
+    return (
+      <ul className="space-y-2">
+        {documents.map((doc) => (
             <li
               key={doc.id}
               className="flex items-center justify-between rounded-lg bg-white px-4 py-3
@@ -161,9 +217,8 @@ export default function DocumentUpload({ sessionId, documents, onRefresh }: Prop
                 </svg>
               </button>
             </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+        ))}
+      </ul>
+    );
+  }
 }

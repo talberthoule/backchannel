@@ -99,6 +99,7 @@ export default function PreCallView({
               "Uploaded files are sent to Gemini for analysis alongside the live transcript",
               "Supports PDFs, Word docs, spreadsheets, and text files",
               "Documents persist with the session and can be removed at any time",
+              "Unavailable in Privacy First mode, since files would leave this machine",
             ]}
           />
         </h2>
