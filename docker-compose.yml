@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-callhelper}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-callhelper}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-callhelper}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        INSTALL_SORTFORMER: ${INSTALL_SORTFORMER:-true}
+        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-auto}
+    ports:
+      - "8001:8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-callhelper}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-callhelper}
+      INSTALL_SORTFORMER: ${INSTALL_SORTFORMER:-true}
+      PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-auto}
+      BACKEND_RELOAD: ${BACKEND_RELOAD:-true}
+    volumes:
+      - ./backend/app:/app/app
+      - backend_data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python scripts/start_backend.py
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  backend_data:

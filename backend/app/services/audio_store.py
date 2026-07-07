@@ -1,0 +1,53 @@
+"""Per-call-segment WAV persistence for raw PCM16 16kHz mono call audio.
+
+Enables playback and re-transcription after the call. The WAV header is
+written up front with placeholder sizes and patched on close, so a crashed
+call leaves a file readable by tools that tolerate oversized declared sizes.
+"""
+
+import logging
+import struct
+import uuid
+from pathlib import Path
+
+from app.services.audio_utils import make_wav_header
+from app.services.secrets import data_dir
+
+logger = logging.getLogger(__name__)
+
+SAMPLE_RATE = 16000
+
+
+def audio_file_path(session_id: uuid.UUID | str, segment_number: int, track: str = "mic") -> Path:
+    suffix = "" if track == "mic" else f"_{track}"
+    return data_dir() / "audio" / str(session_id) / f"segment_{segment_number}{suffix}.wav"
+
+
+class SegmentAudioWriter:
+    def __init__(self, session_id: uuid.UUID | str, segment_number: int, track: str = "mic"):
+        self._path = audio_file_path(session_id, segment_number, track)
+        self._file = None
+        self._bytes_written = 0
+
+    def append(self, pcm_bytes: bytes):
+        if self._file is None:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            self._file = open(self._path, "wb")
+            self._file.write(make_wav_header(b"", SAMPLE_RATE))
+        self._file.write(pcm_bytes)
+        self._bytes_written += len(pcm_bytes)
+
+    def close(self) -> str | None:
+        """Finalize sizes in the header. Returns the path relative to DATA_DIR, or None if no audio."""
+        if self._file is None:
+            return None
+        # RIFF chunk size at offset 4, data chunk size at offset 40
+        self._file.seek(4)
+        self._file.write(struct.pack("<I", 36 + self._bytes_written))
+        self._file.seek(40)
+        self._file.write(struct.pack("<I", self._bytes_written))
+        self._file.close()
+        self._file = None
+        rel = self._path.relative_to(data_dir())
+        logger.info(f"Saved segment audio: {rel} ({self._bytes_written} bytes)")
+        return str(rel)

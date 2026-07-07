@@ -1,0 +1,224 @@
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from app.database import engine
+from app.models import Base
+from app.routers import agents, analyze, artifacts, chat, credentials, retranscribe, diagnostics, directives, documents, groups, imports, knowledge, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts
+from app.services.privacy import LocalOnlyModeError
+from app.ws import audio_handler
+
+logging.basicConfig(level=logging.INFO)
+
+
+async def _add_missing_columns(conn):
+    """Add columns that create_all won't add to existing tables."""
+    from sqlalchemy import text, inspect
+
+    def _check_and_add(connection):
+        inspector = inspect(connection)
+        tables = inspector.get_table_names()
+
+        if "questions" in tables:
+            columns = {c["name"] for c in inspector.get_columns("questions")}
+            if "agent_source" not in columns:
+                connection.execute(
+                    text("ALTER TABLE questions ADD COLUMN agent_source VARCHAR(30) NOT NULL DEFAULT 'general'")
+                )
+            if "offering_match" not in columns:
+                connection.execute(
+                    text("ALTER TABLE questions ADD COLUMN offering_match TEXT NOT NULL DEFAULT ''")
+                )
+            if "vote" not in columns:
+                connection.execute(
+                    text("ALTER TABLE questions ADD COLUMN vote INTEGER NOT NULL DEFAULT 0")
+                )
+            if "speaker_id" not in columns:
+                connection.execute(
+                    text("ALTER TABLE questions ADD COLUMN speaker_id UUID REFERENCES speakers(id)")
+                )
+            if "enhanced" not in columns:
+                connection.execute(
+                    text("ALTER TABLE questions ADD COLUMN enhanced BOOLEAN NOT NULL DEFAULT false")
+                )
+
+        if "speakers" in tables:
+            columns = {c["name"] for c in inspector.get_columns("speakers")}
+            if "display_name" not in columns:
+                connection.execute(
+                    text("ALTER TABLE speakers ADD COLUMN display_name VARCHAR(255) NOT NULL DEFAULT ''")
+                )
+            if "display_name_enabled" not in columns:
+                connection.execute(
+                    text("ALTER TABLE speakers ADD COLUMN display_name_enabled BOOLEAN NOT NULL DEFAULT false")
+                )
+            if "speaker_type" not in columns:
+                connection.execute(
+                    text("ALTER TABLE speakers ADD COLUMN speaker_type VARCHAR(20) NOT NULL DEFAULT 'external'")
+                )
+                connection.execute(
+                    text("UPDATE speakers SET speaker_type = 'team' WHERE is_user = true")
+                )
+
+        if "offerings" in tables:
+            columns = {c["name"] for c in inspector.get_columns("offerings")}
+            if "tags" not in columns:
+                if "practice" in columns:
+                    connection.execute(
+                        text("ALTER TABLE offerings RENAME COLUMN practice TO tags")
+                    )
+                else:
+                    connection.execute(
+                        text("ALTER TABLE offerings ADD COLUMN tags VARCHAR(255) NOT NULL DEFAULT ''")
+                    )
+            if "note" not in columns:
+                if "delivery_model" in columns:
+                    connection.execute(
+                        text("ALTER TABLE offerings RENAME COLUMN delivery_model TO note")
+                    )
+                    connection.execute(
+                        text("ALTER TABLE offerings ALTER COLUMN note TYPE VARCHAR(255)")
+                    )
+                else:
+                    connection.execute(
+                        text("ALTER TABLE offerings ADD COLUMN note VARCHAR(255) NOT NULL DEFAULT ''")
+                    )
+            if "discipline" in columns:
+                # Merge the legacy discipline column into subcategory, then drop it.
+                connection.execute(
+                    text("ALTER TABLE offerings ALTER COLUMN subcategory TYPE VARCHAR(255)")
+                )
+                connection.execute(
+                    text(
+                        "UPDATE offerings SET subcategory = discipline "
+                        "WHERE subcategory = '' AND discipline <> ''"
+                    )
+                )
+                connection.execute(text("ALTER TABLE offerings DROP COLUMN discipline"))
+
+        if "agent_configs" in tables:
+            columns = {c["name"] for c in inspector.get_columns("agent_configs")}
+            if "interval_seconds" not in columns:
+                connection.execute(
+                    text("ALTER TABLE agent_configs ADD COLUMN interval_seconds INTEGER")
+                )
+            if "knowledge_source_ids" not in columns:
+                connection.execute(
+                    text("ALTER TABLE agent_configs ADD COLUMN knowledge_source_ids TEXT NOT NULL DEFAULT ''")
+                )
+            if "knowledge_source_id" in columns:
+                # Migrate and drop the legacy single-source column (its FK would
+                # otherwise block deleting knowledge sources).
+                connection.execute(
+                    text(
+                        "UPDATE agent_configs SET knowledge_source_ids = knowledge_source_id::text "
+                        "WHERE knowledge_source_id IS NOT NULL AND knowledge_source_ids = ''"
+                    )
+                )
+                connection.execute(
+                    text("ALTER TABLE agent_configs DROP COLUMN knowledge_source_id")
+                )
+
+        if "sessions" in tables:
+            columns = {c["name"] for c in inspector.get_columns("sessions")}
+            if "meeting_type" not in columns:
+                connection.execute(
+                    text("ALTER TABLE sessions ADD COLUMN meeting_type VARCHAR(50) NOT NULL DEFAULT 'general'")
+                )
+            if "meeting_context" not in columns:
+                connection.execute(
+                    text("ALTER TABLE sessions ADD COLUMN meeting_context TEXT NOT NULL DEFAULT ''")
+                )
+            if "group_id" not in columns:
+                connection.execute(
+                    text("ALTER TABLE sessions ADD COLUMN group_id UUID REFERENCES session_groups(id)")
+                )
+            if "speaker_context_dirty" not in columns:
+                connection.execute(
+                    text("ALTER TABLE sessions ADD COLUMN speaker_context_dirty BOOLEAN NOT NULL DEFAULT false")
+                )
+            if "speaker_context_enhanced_at" not in columns:
+                connection.execute(
+                    text("ALTER TABLE sessions ADD COLUMN speaker_context_enhanced_at TIMESTAMP WITH TIME ZONE")
+                )
+
+        if "call_segments" in tables:
+            columns = {c["name"] for c in inspector.get_columns("call_segments")}
+            if "audio_path" not in columns:
+                connection.execute(
+                    text("ALTER TABLE call_segments ADD COLUMN audio_path VARCHAR(500)")
+                )
+
+    await conn.run_sync(_check_and_add)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        await _add_missing_columns(conn)
+
+    # Seed agent configs and knowledge sources
+    from app.database import async_session
+    from app.services.seed_agents import seed_agent_configs
+    from app.services.seed_knowledge import seed_knowledge_sources
+    async with async_session() as db:
+        await seed_agent_configs(db)
+        await seed_knowledge_sources(db)
+
+    # Verify untested provider API keys in the background so model
+    # availability reflects real connection status, not just key presence.
+    import asyncio
+
+    from app.services.provider_health import verify_untested_provider_keys
+    verify_task = asyncio.create_task(verify_untested_provider_keys())
+
+    yield
+    verify_task.cancel()
+    await engine.dispose()
+
+
+app = FastAPI(title="Backchannel", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(sessions.router)
+app.include_router(agents.router)
+app.include_router(groups.router)
+app.include_router(directives.router)
+app.include_router(documents.router)
+app.include_router(questions.router)
+app.include_router(transcripts.router)
+app.include_router(speakers.router)
+app.include_router(synthesis.router)
+app.include_router(offerings.router)
+app.include_router(knowledge.router)
+app.include_router(artifacts.router)
+app.include_router(imports.router)
+app.include_router(analyze.router)
+app.include_router(models.router)
+app.include_router(credentials.router)
+app.include_router(retranscribe.router)
+app.include_router(chat.router)
+app.include_router(diagnostics.router)
+app.include_router(privacy.router)
+app.include_router(audio_handler.router)
+
+
+@app.exception_handler(LocalOnlyModeError)
+async def local_only_mode_handler(request: Request, exc: LocalOnlyModeError):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.get("/api/health")
+async def health():
+    return {"status": "ok"}

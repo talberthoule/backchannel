@@ -1,0 +1,165 @@
+"""Consolidated Analyst agent — single API call producing observations,
+opportunities, and action items from one read of the transcript.
+
+Replaces the three separate text agents (Observer, Opportunity Scout,
+Action Tracker) with one structured call for ~60% cost reduction
+and better cross-cutting insight quality.
+"""
+
+import json
+import logging
+import uuid
+
+from app.config import settings
+from app.services.agents.prompts import CONSOLIDATED_ANALYST_PROMPT
+from app.services.llm import generate_text
+from app.services.agents.speaker_context import format_speakers_list
+from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
+
+logger = logging.getLogger(__name__)
+
+# Map item_type to the agent_source name for backward-compatible exports
+AGENT_SOURCE_BY_TYPE = {
+    "question": "question_hunter",
+    "observation": "observer",
+    "opportunity": "opportunity_scout",
+    "action_item": "action_tracker",
+}
+
+VALID_TYPES = {"question", "observation", "opportunity", "action_item"}
+
+SPEAKER_ATTRIBUTION_APPENDIX = """
+
+## Speaker Attribution Requirements
+- Transcript lines may include `speaker_id=<uuid>`. Use those UUIDs for attribution.
+- Transcript lines and Participants may include `speaker_type=team` or `speaker_type=external`.
+- Treat `team` speakers as internal voices from the user's organization.
+- Treat `external` speakers as outside the internal team. Use Meeting Context to decide whether they are a client, vendor, partner, candidate, or other participant.
+- Do not treat external speaker statements as client evidence unless the Meeting Context or transcript supports that interpretation.
+- Return a `speaker_id` field on each JSON item. Use a UUID shown in Participants or Recent Transcript, or null if unclear.
+- Do not invent Speaker numbers, real names, or combined labels like "Speaker 1/Mark" in the insight text.
+"""
+
+
+def _normalize_speaker_id(raw: object, valid_speaker_ids: set[str]) -> str | None:
+    """Return a known speaker UUID string, or None for invalid model output."""
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    candidate = raw.strip()
+    try:
+        normalized = str(uuid.UUID(candidate))
+    except ValueError:
+        return None
+    return normalized if normalized in valid_speaker_ids else None
+
+
+class ConsolidatedAnalystAgent:
+    """Single-call analyst that produces all three insight types."""
+
+    def __init__(
+        self,
+        enabled_types: set[str] | None = None,
+        model_override: str | None = None,
+        prompt_override: str | None = None,
+        meeting_context_text: str | None = None,
+    ):
+        self.enabled_types = enabled_types or VALID_TYPES
+        self._model = model_override or settings.REFINEMENT_MODEL
+        prompt_template = prompt_override or CONSOLIDATED_ANALYST_PROMPT
+        if "## Speaker Attribution Requirements" not in prompt_template:
+            prompt_template = f"{prompt_template.rstrip()}{SPEAKER_ATTRIBUTION_APPENDIX}"
+        self._prompt_template = prompt_template
+        self.meeting_context_text = meeting_context_text or build_meeting_context_text()
+
+    async def run_cycle(
+        self,
+        transcript_window: str,
+        directives: list[str],
+        doc_summaries: str,
+        speakers: list[dict],
+        active_questions: list[dict] | None = None,
+    ) -> list[dict]:
+        """Execute one analysis cycle. Returns list of insight dicts with item_type and agent_source."""
+        directives_text = "\n".join(f"- {d}" for d in directives) if directives else "(No directives set)"
+        speakers_text = format_speakers_list(speakers)
+        valid_speaker_ids = {str(s["id"]) for s in speakers if s.get("id")}
+        if active_questions:
+            aq_text = "\n".join(f'- "{q["question"]}"' for q in active_questions)
+        else:
+            aq_text = "(No questions suggested yet)"
+
+        prompt = format_prompt_with_meeting_context(
+            self._prompt_template,
+            self.meeting_context_text,
+            transcript_window=transcript_window,
+            directives_text=directives_text,
+            document_summaries=doc_summaries or "(No documents uploaded)",
+            speakers_text=speakers_text,
+            active_questions=aq_text,
+        )
+
+        try:
+            raw_text = await generate_text(self._model, prompt)
+        except Exception as e:
+            logger.error(f"[consolidated_analyst] API call failed: {e}")
+            return []
+
+        logger.info(f"[consolidated_analyst] raw response length={len(raw_text)}, first 200 chars: {raw_text[:200]}")
+        items = self._parse_response(raw_text, valid_speaker_ids)
+        logger.info(f"[consolidated_analyst] parsed {len(items)} items from response")
+
+        # Filter to enabled types and tag with correct agent_source
+        results = []
+        for item in items:
+            itype = item.get("item_type")
+            if itype not in self.enabled_types:
+                continue
+            item["agent_source"] = AGENT_SOURCE_BY_TYPE.get(itype, "consolidated_analyst")
+            results.append(item)
+
+        return results
+
+    def _parse_response(self, raw: str, valid_speaker_ids: set[str] | None = None) -> list[dict]:
+        """Parse JSON array from model response."""
+        valid_speaker_ids = valid_speaker_ids or set()
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+        if raw.endswith("```"):
+            raw = raw[:-3]
+        raw = raw.strip()
+
+        if not raw or raw == "[]":
+            return []
+
+        try:
+            items = json.loads(raw)
+        except json.JSONDecodeError:
+            start = raw.find("[")
+            end = raw.rfind("]")
+            if start != -1 and end != -1:
+                try:
+                    items = json.loads(raw[start:end + 1])
+                except json.JSONDecodeError:
+                    logger.warning(f"[consolidated_analyst] parse failed: {raw[:200]}")
+                    return []
+            else:
+                logger.warning(f"[consolidated_analyst] parse failed: {raw[:200]}")
+                return []
+
+        if not isinstance(items, list):
+            return []
+
+        valid = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if "question" not in item:
+                continue
+            itype = item.get("item_type", "")
+            if itype not in VALID_TYPES:
+                continue
+            item["speaker_id"] = _normalize_speaker_id(item.get("speaker_id"), valid_speaker_ids)
+            valid.append(item)
+
+        return valid

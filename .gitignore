@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+node_modules/
+dist/
+.vite/
+*.log
+.DS_Store
+pgdata/

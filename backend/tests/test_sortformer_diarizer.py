@@ -1,0 +1,64 @@
+import unittest
+
+import numpy as np
+
+from app.services.sortformer_diarizer import SortformerDiarizer, extract_sortformer_turns
+
+
+def _embedding_from_signal_mean(pcm_float: np.ndarray, sample_rate: int) -> np.ndarray:
+    del sample_rate
+    if float(np.mean(pcm_float)) >= 0:
+        return np.array([1.0, 0.0], dtype=np.float32)
+    return np.array([0.0, 1.0], dtype=np.float32)
+
+
+class StubSortformerDiarizer(SortformerDiarizer):
+    def __init__(self, results):
+        super().__init__(embedding_extractor=_embedding_from_signal_mean)
+        self._results = list(results)
+
+    def _run_sortformer(self, pcm_bytes: bytes):
+        del pcm_bytes
+        return self._results.pop(0)
+
+
+class SortformerDiarizerTests(unittest.TestCase):
+    def test_extracts_turns_from_rttm_lines(self):
+        result = [
+            "SPEAKER sample 1 0.50 1.25 <NA> <NA> speaker_0 <NA> <NA>",
+            "SPEAKER sample 1 2.00 0.75 <NA> <NA> speaker_1 <NA> <NA>",
+        ]
+
+        turns = extract_sortformer_turns(result)
+
+        self.assertEqual(2, len(turns))
+        self.assertEqual((0.5, 1.75, "speaker_0"), (turns[0].start_seconds, turns[0].end_seconds, turns[0].label))
+        self.assertEqual((2.0, 2.75, "speaker_1"), (turns[1].start_seconds, turns[1].end_seconds, turns[1].label))
+
+    def test_extracts_turns_from_simple_label_lines(self):
+        result = ["0.00 1.00 speaker_a", "1.50 2.25 speaker_b"]
+
+        turns = extract_sortformer_turns(result)
+
+        self.assertEqual(
+            [(0.0, 1.0, "speaker_a"), (1.5, 2.25, "speaker_b")],
+            [(turn.start_seconds, turn.end_seconds, turn.label) for turn in turns],
+        )
+
+    def test_stitches_reused_sortformer_window_labels_by_voice_embedding(self):
+        diarizer = StubSortformerDiarizer([
+            ["0.00 1.00 speaker_0"],
+            ["0.00 1.00 speaker_0"],
+        ])
+        first_voice = (np.ones(16000, dtype=np.int16) * 1000).tobytes()
+        second_voice = (np.ones(16000, dtype=np.int16) * -1000).tobytes()
+
+        first_segments = diarizer._process_pcm_window(first_voice)
+        second_segments = diarizer._process_pcm_window(second_voice)
+
+        self.assertEqual("auto_1", first_segments[0].speaker_id)
+        self.assertEqual("auto_2", second_segments[0].speaker_id)
+
+
+if __name__ == "__main__":
+    unittest.main()

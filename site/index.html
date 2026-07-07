@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Backchannel - Real-time meeting transcription and AI insights</title>
+  <meta name="description" content="Backchannel listens to your meetings, builds a live speaker-attributed transcript, and runs AI agents that surface questions, objections, opportunities, and action items as the conversation happens." />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="#top">
+      <img src="assets/favicon.svg" alt="" />
+      backchannel
+    </a>
+    <nav class="site-nav">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#agents">Agents</a>
+      <a href="#docs">Docs</a>
+      <a href="https://github.com/talberthoule/backchannel">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <section class="hero">
+    <div class="wrap">
+      <h1>Your meetings, transcribed live.<br />Your next move, <span class="accent">surfaced in real time</span>.</h1>
+      <p class="lede">
+        Backchannel captures meeting audio in the browser, builds a live
+        speaker-attributed transcript, and runs a crew of AI agents over the
+        conversation as it happens -- so questions, objections, opportunities,
+        and action items reach you while they still matter.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="#quickstart">Get started</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="alt">
+    <div class="wrap">
+      <span class="kicker">Features</span>
+      <h2>Everything a second set of ears should do</h2>
+      <p class="sub">Self-hosted, provider-flexible, and built around a transcript you can trust.</p>
+      <div class="grid">
+        <div class="card">
+          <span class="icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M7 8v8M17 8v8M2 11v2M22 11v2" /></svg>
+          </span>
+          <h3>Live diarized transcription</h3>
+          <p>Silero VAD and ECAPA-TDNN speaker embeddings attribute every line to a speaker, with interim text streaming seconds ahead of the final transcript.</p>
+        </div>
+        <div class="card">
+          <span class="icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.2 2.2M16.9 16.9l2.2 2.2M19.1 4.9l-2.2 2.2M7.1 16.9l-2.2 2.2" /></svg>
+          </span>
+          <h3>Agent-based analysis</h3>
+          <p>An analyst, a fast objection handler, a synthesizer, and an opportunity specialist each run on their own trigger and push insights mid-call.</p>
+        </div>
+        <div class="card">
+          <span class="icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M21 3l-7 7M8 21H3v-5M3 21l7-7M21 16v5h-5M14 14l7 7M3 8V3h5M10 10L3 3" /></svg>
+          </span>
+          <h3>Provider-routed models</h3>
+          <p>Mix Google Gemini and OpenAI models per agent, or transcribe fully offline with local ONNX Whisper and Parakeet -- no API key required.</p>
+        </div>
+        <div class="card">
+          <span class="icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="9" height="7" rx="2" /><rect x="13" y="13" width="9" height="7" rx="2" /><path d="M6.5 11v4a2 2 0 0 0 2 2H13" /></svg>
+          </span>
+          <h3>Dual-track audio</h3>
+          <p>Microphone and tab/system audio are captured as separate tracks, so remote participants get their own speaker identities.</p>
+        </div>
+        <div class="card">
+          <span class="icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M12 15l-4-4M12 15l4-4" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></svg>
+          </span>
+          <h3>Import and re-transcribe</h3>
+          <p>Bring in existing transcripts or audio files, and replay any recorded call through a different transcription model later.</p>
+        </div>
+        <div class="card">
+          <span class="icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+          </span>
+          <h3>Exports and chat</h3>
+          <p>Transcript, insight, and summary exports -- plus cross-session chat that answers questions over your past meetings.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how-it-works">
+    <div class="wrap">
+      <span class="kicker">How it works</span>
+      <h2>From spoken word to actionable insight</h2>
+      <p class="sub">The live call path, end to end.</p>
+      <ol class="steps">
+        <li><span><strong>Capture.</strong> The browser records mic (and optionally tab) audio and streams PCM16 16 kHz chunks over a WebSocket.</span></li>
+        <li><span><strong>Diarize.</strong> Voice activity detection cuts speech into segments; speaker embeddings assign each segment to a voice.</span></li>
+        <li><span><strong>Transcribe.</strong> Each segment is transcribed by Gemini Flash or a local ONNX model, filtered, and saved in speaking order.</span></li>
+        <li><span><strong>Analyze.</strong> Text agents read the growing transcript on their own schedules and propose questions, objections, opportunities, and action items.</span></li>
+        <li><span><strong>Deliver.</strong> Deduplicated insights stream back to the call view instantly and are refined by a synthesizer as the conversation evolves.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="architecture" class="alt">
+    <div class="wrap">
+      <span class="kicker">Architecture</span>
+      <h2>Three services, two AI paths, one transcript</h2>
+      <p class="sub">
+        A React SPA, a FastAPI backend, and PostgreSQL -- with a low-latency
+        interim path for feedback and a durable batch path for the record.
+      </p>
+      <div class="diagram">
+        <img src="assets/architecture.svg" alt="Backchannel architecture diagram: client layer, backend layer, AI layer, and persistence" />
+      </div>
+    </div>
+  </section>
+
+  <section id="agents">
+    <div class="wrap">
+      <span class="kicker">Agents</span>
+      <h2>A crew, not a monolith</h2>
+      <p class="sub">Each agent has one job, its own trigger, and a configurable model and prompt.</p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Agent</th><th>Trigger</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>audio_gateway</code></td>
+              <td>Continuous audio stream</td>
+              <td>Silent live listener (Gemini Live or OpenAI Realtime) producing interim transcription</td>
+            </tr>
+            <tr>
+              <td><code>consolidated_analyst</code></td>
+              <td>Every 15s</td>
+              <td>One LLM pass producing questions, observations, opportunities, and action items</td>
+            </tr>
+            <tr>
+              <td><code>objection_handler</code></td>
+              <td>Every 5s over the last ~90s</td>
+              <td>Low-latency objection scan pairing an immediate response with the strategic angle</td>
+            </tr>
+            <tr>
+              <td><code>synthesizer</code></td>
+              <td>New-insight events</td>
+              <td>Reconciles and enriches insights, detects answered questions, elevates item types</td>
+            </tr>
+            <tr>
+              <td><code>opportunity_specialist</code></td>
+              <td>New-opportunity events</td>
+              <td>Matches opportunities against your offerings and knowledge catalog</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="quickstart" class="alt">
+    <div class="wrap">
+      <span class="kicker">Quickstart</span>
+      <h2>Running in two commands</h2>
+      <p class="sub">Requires Docker and a Gemini API key.</p>
+      <pre><code><span class="cmt"># set GEMINI_API_KEY (or add keys later in Admin -&gt; API Keys)</span>
+cp .env.example .env
+
+docker compose up --build
+
+<span class="cmt"># app at http://localhost:3000, API at http://localhost:8001</span></code></pre>
+      <p class="quickstart-note">
+        Have an NVIDIA GPU? Add the override for GPU diarization:
+        <code>docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build</code>
+      </p>
+    </div>
+  </section>
+
+  <section id="docs">
+    <div class="wrap">
+      <span class="kicker">Documentation</span>
+      <h2>Go deeper</h2>
+      <p class="sub">Full technical documentation lives in the repository.</p>
+      <div class="doc-list">
+        <a class="doc" href="https://github.com/talberthoule/backchannel/blob/master/docs/quickstart.md">
+          <strong>Quickstart</strong>
+          <span>Docker Compose, local development, migrations, tests</span>
+        </a>
+        <a class="doc" href="https://github.com/talberthoule/backchannel/blob/master/docs/architecture.md">
+          <strong>Architecture</strong>
+          <span>The live call path end to end, frontend and backend structure</span>
+        </a>
+        <a class="doc" href="https://github.com/talberthoule/backchannel/blob/master/docs/agents.md">
+          <strong>Agent System</strong>
+          <span>Each agent's trigger and purpose, configuration and overrides</span>
+        </a>
+        <a class="doc" href="https://github.com/talberthoule/backchannel/blob/master/docs/audio-pipeline.md">
+          <strong>Audio Pipeline</strong>
+          <span>Capture format, VAD/diarization, transcription routing, storage</span>
+        </a>
+        <a class="doc" href="https://github.com/talberthoule/backchannel/blob/master/docs/websocket-protocol.md">
+          <strong>WebSocket Protocol</strong>
+          <span>Binary audio framing and every message type on /ws</span>
+        </a>
+        <a class="doc" href="https://github.com/talberthoule/backchannel/blob/master/docs/rest-api.md">
+          <strong>REST API</strong>
+          <span>Endpoint reference for every router</span>
+        </a>
+        <a class="doc" href="https://github.com/talberthoule/backchannel/blob/master/docs/configuration.md">
+          <strong>Configuration</strong>
+          <span>Settings, environment variables, credentials, model registry</span>
+        </a>
+        <a class="doc" href="https://github.com/talberthoule/backchannel/blob/master/docs/deployment.md">
+          <strong>Deployment</strong>
+          <span>Compose services, GPU support, nginx proxying, startup behavior</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <span>Backchannel -- real-time meeting transcription and AI insights.</span>
+    <span>Internal project. Not licensed for external distribution.</span>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,85 @@
+# Sentrux architectural rules for Call Helper.
+# These constraints are enforced by `sentrux check` and the Sentrux MCP tool.
+
+[constraints]
+max_cycles = 0
+# Calibrated to the current baseline. Tighten these as hotspots are refactored.
+max_cc = 50
+max_fn_lines = 325
+max_file_lines = 3000
+no_god_files = false
+
+# Sentrux treats lower-order layers as callers that may depend on higher-order
+# layers. Keep entrypoints/interfaces lower and shared foundations higher.
+
+[[layers]]
+name = "backend_core"
+paths = [
+  "backend/app/config.py",
+  "backend/app/database.py",
+  "backend/app/models.py",
+  "backend/app/schemas.py",
+]
+order = 3
+
+[[layers]]
+name = "backend_services"
+paths = [
+  "backend/app/services/*",
+  "backend/app/services/agents/*",
+]
+order = 2
+
+[[layers]]
+name = "backend_interfaces"
+paths = [
+  "backend/app/routers/*",
+  "backend/app/ws/*",
+]
+order = 1
+
+[[layers]]
+name = "backend_entrypoint"
+paths = ["backend/app/main.py"]
+order = 0
+
+[[layers]]
+name = "frontend_foundation"
+paths = [
+  "frontend/src/types/*",
+  "frontend/src/services/*",
+]
+order = 3
+
+[[layers]]
+name = "frontend_hooks"
+paths = ["frontend/src/hooks/*"]
+order = 2
+
+[[layers]]
+name = "frontend_components"
+paths = [
+  "frontend/src/components/*",
+  "frontend/src/components/ActiveCall/*",
+  "frontend/src/components/PostCall/*",
+  "frontend/src/components/PreCall/*",
+]
+order = 1
+
+[[layers]]
+name = "frontend_entrypoint"
+paths = [
+  "frontend/src/App.tsx",
+  "frontend/src/main.tsx",
+]
+order = 0
+
+[[boundaries]]
+from = "frontend/src/services/*"
+to = "frontend/src/components/*"
+reason = "API services should stay UI-agnostic."
+
+[[boundaries]]
+from = "backend/app/services/*"
+to = "backend/app/routers/*"
+reason = "Backend services should not depend on FastAPI route handlers."

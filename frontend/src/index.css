@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-white text-brand-dark-gray font-body antialiased;
+  margin: 0;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  @apply font-display;
+}
