@@ -191,7 +191,8 @@ async def seed_agent_configs(db: AsyncSession):
             existing.prompt = cfg["prompt"]
         if (
             existing is not None
-            and existing.interval_seconds == OLD_DEFAULT_INTERVALS.get(existing.slug)
+            and existing.slug in OLD_DEFAULT_INTERVALS
+            and existing.interval_seconds == OLD_DEFAULT_INTERVALS[existing.slug]
         ):
             existing.interval_seconds = cfg["interval_seconds"]
         if existing is not None:
