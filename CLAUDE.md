@@ -40,7 +40,7 @@ docker-compose down -v
 `docs-site/` is an Astro Starlight project deployed as a Cloudflare Worker
 (`backchannel-site`, same pattern as the quartermaster repo) by
 `.github/workflows/deploy-site.yml`: the `site/` landing page at
-https://backchannel-site.lavender-zebu.workers.dev/ and the docs at `/docs/`.
+https://backchannel.page/ and the docs at `/docs/`.
 `docs/*.md` stays the source of truth: do not
 edit `docs-site/src/content/docs/` (generated, gitignored). At build time
 `docs-site/sync-docs.mjs` copies the docs in, derives frontmatter titles from

@@ -29,21 +29,21 @@ Key facts:
 
 ## Docs
 
-- [Quickstart](https://backchannel-site.lavender-zebu.workers.dev/docs/quickstart/): Docker Compose setup, local development, migrations, tests
-- [Architecture](https://backchannel-site.lavender-zebu.workers.dev/docs/architecture/): the live call path end to end
-- [Agent System](https://backchannel-site.lavender-zebu.workers.dev/docs/agents/): each agent's trigger, purpose, and configuration
-- [Audio Pipeline](https://backchannel-site.lavender-zebu.workers.dev/docs/audio-pipeline/): capture format, VAD/diarization, transcription routing
-- [WebSocket Protocol](https://backchannel-site.lavender-zebu.workers.dev/docs/websocket-protocol/): binary audio framing and message types
-- [REST API](https://backchannel-site.lavender-zebu.workers.dev/docs/rest-api/): endpoint reference
-- [Configuration](https://backchannel-site.lavender-zebu.workers.dev/docs/configuration/): settings, environment variables, model registry
-- [Deployment](https://backchannel-site.lavender-zebu.workers.dev/docs/deployment/): compose services, GPU support, startup behavior
+- [Quickstart](https://backchannel.page/docs/quickstart/): Docker Compose setup, local development, migrations, tests
+- [Architecture](https://backchannel.page/docs/architecture/): the live call path end to end
+- [Agent System](https://backchannel.page/docs/agents/): each agent's trigger, purpose, and configuration
+- [Audio Pipeline](https://backchannel.page/docs/audio-pipeline/): capture format, VAD/diarization, transcription routing
+- [WebSocket Protocol](https://backchannel.page/docs/websocket-protocol/): binary audio framing and message types
+- [REST API](https://backchannel.page/docs/rest-api/): endpoint reference
+- [Configuration](https://backchannel.page/docs/configuration/): settings, environment variables, model registry
+- [Deployment](https://backchannel.page/docs/deployment/): compose services, GPU support, startup behavior
 
 ## Compare
 
-- [Open-source Otter.ai alternative](https://backchannel-site.lavender-zebu.workers.dev/otter-alternative/): self-hosted transcripts and insights without minute caps
-- [Open-source Granola alternative](https://backchannel-site.lavender-zebu.workers.dev/granola-alternative/): bot-free capture, self-hosted and real-time
-- [Fireflies.ai alternative without the bot](https://backchannel-site.lavender-zebu.workers.dev/fireflies-alternative/): live assistance on your own hardware
-- [Backchannel vs Meetily](https://backchannel-site.lavender-zebu.workers.dev/vs-meetily/): two open-source meeting assistants compared
+- [Open-source Otter.ai alternative](https://backchannel.page/otter-alternative/): self-hosted transcripts and insights without minute caps
+- [Open-source Granola alternative](https://backchannel.page/granola-alternative/): bot-free capture, self-hosted and real-time
+- [Fireflies.ai alternative without the bot](https://backchannel.page/fireflies-alternative/): live assistance on your own hardware
+- [Backchannel vs Meetily](https://backchannel.page/vs-meetily/): two open-source meeting assistants compared
 
 ## Source
 

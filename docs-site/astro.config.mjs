@@ -6,7 +6,7 @@ import starlight from '@astrojs/starlight';
 // landing page at / and these docs at /docs/. Markdown cross-links are
 // rewritten to relative URLs by sync-docs.mjs, so they work at any base.
 export default defineConfig({
-  site: 'https://backchannel-site.lavender-zebu.workers.dev',
+  site: 'https://backchannel.page',
   base: '/docs',
   integrations: [
     starlight({
@@ -24,7 +24,7 @@ export default defineConfig({
       ],
       sidebar: [
         // ponytail: absolute path escapes the /docs base back to the landing page
-        { label: '← Back to homepage', link: 'https://backchannel-site.lavender-zebu.workers.dev/' },
+        { label: '← Back to homepage', link: 'https://backchannel.page/' },
         { label: 'Overview', link: '/' },
         'quickstart',
         'architecture',

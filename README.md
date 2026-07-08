@@ -10,7 +10,7 @@
   <a href="#quickstart">Quickstart</a> -
   <a href="#features">Features</a> -
   <a href="#architecture">Architecture</a> -
-  <a href="https://backchannel-site.lavender-zebu.workers.dev/docs/">Documentation</a>
+  <a href="https://backchannel.page/docs/">Documentation</a>
 </p>
 
 ---
