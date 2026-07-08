@@ -82,12 +82,34 @@ function TogglePill({ label, selected, onToggle }: { label: string; selected: bo
   );
 }
 
-const LENS_TYPE_OPTIONS: { value: AnalystLens["item_type"]; label: string }[] = [
-  { value: "question", label: "Question" },
+// Built-in insight types with special pipeline behavior; lenses can also
+// surface findings as a custom type, which flows through the live view,
+// post-call summary, and exports as its own first-class group.
+const BUILTIN_LENS_TYPES: { value: string; label: string }[] = [
+  { value: "question", label: "Question (tracks answers)" },
   { value: "observation", label: "Observation" },
-  { value: "opportunity", label: "Opportunity" },
+  { value: "opportunity", label: "Opportunity (matches offerings)" },
   { value: "action_item", label: "Action Item" },
 ];
+const BUILTIN_LENS_TYPE_VALUES = new Set(BUILTIN_LENS_TYPES.map((o) => o.value));
+const CUSTOM_TYPE_SENTINEL = "__custom__";
+
+// Mirror of the backend's item_type slug rules (lowercase letters, digits,
+// underscores; must start with a letter; max 50 chars).
+function slugifyTypeName(raw: string): string {
+  const slug = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/^[0-9_]+/, "")
+    .slice(0, 50);
+  return slug || "custom";
+}
+
+function humanizeTypeSlug(slug: string): string {
+  return slug.split("_").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
 
 function parseLenses(raw: string): AnalystLens[] {
   try {
@@ -150,7 +172,10 @@ function LensEditor({
       <div className="space-y-1.5">
         {lenses.map((lens) => {
           const expanded = expandedKey === lens.key;
-          const typeLabel = LENS_TYPE_OPTIONS.find((o) => o.value === lens.item_type)?.label ?? lens.item_type;
+          const isBuiltinType = BUILTIN_LENS_TYPE_VALUES.has(lens.item_type);
+          const typeBadge = isBuiltinType
+            ? BUILTIN_LENS_TYPES.find((o) => o.value === lens.item_type)!.label.replace(/ \(.*\)$/, "")
+            : humanizeTypeSlug(lens.item_type);
           const emptyPrompt = !lens.prompt.trim();
           return (
             <div key={lens.key} className={`rounded-lg border ${expanded ? "border-brand-teal/40" : "border-brand-light-gray-1"} bg-white`}>
@@ -175,7 +200,7 @@ function LensEditor({
                     {lens.label}
                   </span>
                   <span className="shrink-0 rounded-full bg-brand-light-gray-2 px-2 py-0.5 font-body text-[10px] text-brand-gray">
-                    {typeLabel}
+                    {typeBadge}
                   </span>
                   {emptyPrompt && (
                     <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 font-body text-[10px] text-amber-800" title="Lenses without a prompt section are skipped">
@@ -214,14 +239,35 @@ function LensEditor({
                     <div>
                       <label className="mb-1 block font-body text-[10px] font-medium text-brand-gray">Findings Surface As</label>
                       <select
-                        value={lens.item_type}
-                        onChange={(e) => save(patched(lens.key, { item_type: e.target.value as AnalystLens["item_type"] }))}
+                        value={isBuiltinType ? lens.item_type : CUSTOM_TYPE_SENTINEL}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          save(patched(lens.key, {
+                            item_type: v === CUSTOM_TYPE_SENTINEL ? slugifyTypeName(lens.label) : v,
+                          }));
+                        }}
                         className="w-full rounded border border-brand-light-gray-1 bg-white px-2.5 py-1.5 font-body text-xs text-brand-dark-gray outline-none focus:border-brand-teal"
                       >
-                        {LENS_TYPE_OPTIONS.map((o) => (
+                        {BUILTIN_LENS_TYPES.map((o) => (
                           <option key={o.value} value={o.value}>{o.label}</option>
                         ))}
+                        <option value={CUSTOM_TYPE_SENTINEL}>Custom type...</option>
                       </select>
+                      {!isBuiltinType && (
+                        <input
+                          type="text"
+                          value={lens.item_type}
+                          onChange={(e) => draft(patched(lens.key, { item_type: e.target.value }))}
+                          onBlur={(e) => save(patched(lens.key, { item_type: slugifyTypeName(e.target.value) }))}
+                          placeholder="custom_type_name"
+                          className="mt-1.5 w-full rounded border border-brand-light-gray-1 bg-white px-2.5 py-1.5 font-mono text-xs text-brand-dark-gray outline-none focus:border-brand-teal"
+                        />
+                      )}
+                      <p className="mt-1 font-body text-[10px] text-brand-mid-gray">
+                        {isBuiltinType
+                          ? "Built-in types plug into extra behaviors: Questions get answer tracking; Opportunities get offering matching."
+                          : "Custom types get their own filter chip, summary section, and export label. Lowercase letters, digits, and underscores."}
+                      </p>
                     </div>
                   </div>
                   <div>

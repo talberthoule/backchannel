@@ -125,6 +125,7 @@ async def export_insights(
 
     headers = [
         "Type",
+        "Lens",
         "Insight",
         "Rationale",
         "Source Context",
@@ -154,7 +155,8 @@ async def export_insights(
 
     for q in questions:
         ws.append([
-            type_labels.get(q.item_type, q.item_type or "Question"),
+            type_labels.get(q.item_type, (q.item_type or "question").replace("_", " ").title()),
+            q.lens_label or "",
             _apply_speaker_names(q.question),
             _apply_speaker_names(q.rationale),
             _apply_speaker_names(q.source_context),

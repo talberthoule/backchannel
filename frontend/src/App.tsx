@@ -213,6 +213,7 @@ export default function App() {
           id: msg.data.id,
           session_id: activeSessionId || "",
           item_type: (msg.data.item_type as any) || "question",
+          lens_label: msg.data.lens_label || "",
           question: msg.data.question,
           rationale: msg.data.rationale,
           source_context: msg.data.source_context,
@@ -291,6 +292,7 @@ export default function App() {
                 ? {
                     ...q,
                     item_type: d.item_type || q.item_type,
+                    lens_label: d.lens_label ?? q.lens_label,
                     question: d.question || q.question,
                     rationale: d.rationale || q.rationale,
                     source_context: d.source_context || q.source_context,

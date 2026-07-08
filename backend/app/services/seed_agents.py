@@ -53,6 +53,14 @@ OLD_DEFAULT_MODELS = {
     "brief_discovery_lens": "gemini-3-flash-preview",
 }
 
+# Rows still on these old default intervals migrate to the new seeded value;
+# user-customized intervals are left alone.
+OLD_DEFAULT_INTERVALS = {
+    "consolidated_analyst": 15,
+    "synthesizer": 30,
+    "opportunity_specialist": 5,
+}
+
 # Stored prompts containing these placeholders are stale defaults from before
 # the knowledge-source generalization and get replaced with the new default.
 STALE_PLACEHOLDER_MARKERS = {
@@ -93,7 +101,7 @@ SEED_CONFIGS = [
         "enabled": True,
         "sub_types": "question,observation,opportunity,action_item",
         "lenses": json.dumps(DEFAULT_ANALYST_LENSES),
-        "interval_seconds": 15,
+        "interval_seconds": 45,
         "display_order": 2,
     },
     {
@@ -117,7 +125,7 @@ SEED_CONFIGS = [
         "prompt": PRINCIPAL_AGENT_PROMPT,
         "enabled": True,
         "sub_types": "",
-        "interval_seconds": 30,
+        "interval_seconds": 60,
         "display_order": 3,
     },
     {
@@ -129,7 +137,7 @@ SEED_CONFIGS = [
         "prompt": OPPORTUNITY_SPECIALIST_PROMPT,
         "enabled": True,
         "sub_types": "",
-        "interval_seconds": 5,
+        "interval_seconds": 45,
         "display_order": 4,
     },
     {
@@ -181,6 +189,11 @@ async def seed_agent_configs(db: AsyncSession):
             existing.model_id = cfg["model_id"]
         if existing is not None and _should_refresh_seeded_prompt(existing, cfg):
             existing.prompt = cfg["prompt"]
+        if (
+            existing is not None
+            and existing.interval_seconds == OLD_DEFAULT_INTERVALS.get(existing.slug)
+        ):
+            existing.interval_seconds = cfg["interval_seconds"]
         if existing is not None:
             _seed_missing_lenses(existing)
     await db.commit()

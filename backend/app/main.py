@@ -44,6 +44,14 @@ async def _add_missing_columns(conn):
                 connection.execute(
                     text("ALTER TABLE questions ADD COLUMN enhanced BOOLEAN NOT NULL DEFAULT false")
                 )
+            if "lens_label" not in columns:
+                connection.execute(
+                    text("ALTER TABLE questions ADD COLUMN lens_label VARCHAR(120) NOT NULL DEFAULT ''")
+                )
+                # Custom lens types need more room than the original enum-ish column
+                connection.execute(
+                    text("ALTER TABLE questions ALTER COLUMN item_type TYPE VARCHAR(50)")
+                )
 
         if "speakers" in tables:
             columns = {c["name"] for c in inspector.get_columns("speakers")}

@@ -12,7 +12,7 @@ from app.config import MODEL_REGISTRY
 from app.database import get_db
 from app.models import AgentConfig, KnowledgeSource
 from app.schemas import AgentConfigOut, AgentConfigUpdate
-from app.services.agents.consolidated_analyst import VALID_TYPES
+from app.services.agents.consolidated_analyst import TYPE_SLUG_RE
 from app.services.seed_agents import DEFAULT_LENSES_BY_SLUG, DEFAULT_PROMPTS
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -37,9 +37,11 @@ def _validate_lenses(value: str) -> None:
         if key in seen_keys:
             raise HTTPException(400, f"duplicate lens key: {key}")
         seen_keys.add(key)
-        if lens.get("item_type") not in VALID_TYPES:
+        item_type = lens.get("item_type")
+        if not isinstance(item_type, str) or not TYPE_SLUG_RE.match(item_type):
             raise HTTPException(
-                400, f"lens '{label}' has invalid item_type; must be one of {sorted(VALID_TYPES)}"
+                400,
+                f"lens '{label}' has invalid item_type; must be a slug of lowercase letters, digits, and underscores (max 50 chars)",
             )
         if not isinstance(lens.get("prompt", ""), str):
             raise HTTPException(400, f"lens '{label}' prompt must be a string")

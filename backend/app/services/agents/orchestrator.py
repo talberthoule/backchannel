@@ -532,6 +532,7 @@ class AgentOrchestrator:
             question = Question(
                 session_id=self.session_id,
                 item_type=q_json.get("item_type", "question"),
+                lens_label=str(q_json.get("lens_label") or "")[:120],
                 question=text,
                 rationale=q_json.get("rationale", ""),
                 source_context=q_json.get("source_context", ""),
@@ -552,6 +553,7 @@ class AgentOrchestrator:
                     "data": {
                         "id": str(question.id),
                         "item_type": question.item_type,
+                        "lens_label": question.lens_label,
                         "question": question.question,
                         "rationale": question.rationale,
                         "source_context": question.source_context,

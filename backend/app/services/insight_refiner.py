@@ -317,6 +317,7 @@ async def _apply_elevate_operation(db, session_id, op, q_map, agent_source, enha
         ]
 
     q.item_type = new_type
+    q.lens_label = ""  # lens provenance no longer matches after a type change
     _mark_revised(q, now, enhanced)
     _append_note(q, _reason_note(f"Elevated from {old_type} to {new_type}", op.get("reason", "")))
     payload = _update_payload(op, q, ws_type="insight_elevated", old_type=old_type)
@@ -441,6 +442,7 @@ def _question_ws_payload(q: Question, is_followup: bool = False) -> dict:
     return {
         "id": str(q.id),
         "item_type": q.item_type,
+        "lens_label": q.lens_label or "",
         "question": q.question,
         "rationale": q.rationale,
         "source_context": q.source_context,

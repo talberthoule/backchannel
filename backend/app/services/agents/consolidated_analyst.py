@@ -8,6 +8,7 @@ and better cross-cutting insight quality.
 
 import json
 import logging
+import re
 import uuid
 
 from app.config import settings
@@ -26,16 +27,28 @@ AGENT_SOURCE_BY_TYPE = {
     "action_item": "action_tracker",
 }
 
-VALID_TYPES = {"question", "observation", "opportunity", "action_item"}
+# Built-in item types with special pipeline behavior (question answer
+# tracking, opportunity offering-matching). Lenses may also define custom
+# item_type slugs, which flow through the pipeline as plain insights.
+BUILTIN_TYPES = {"question", "observation", "opportunity", "action_item"}
+VALID_TYPES = BUILTIN_TYPES  # legacy alias
 TYPE_ORDER = ["question", "observation", "opportunity", "action_item"]
+
+TYPE_SLUG_RE = re.compile(r"^[a-z][a-z0-9_]{0,49}$")
+_SLUG_CLEAN_RE = re.compile(r"[^a-z0-9_]+")
 
 LENS_SECTIONS_PLACEHOLDER = "{lens_sections}"
 
 
+def normalize_type_slug(raw: object) -> str:
+    """Coerce arbitrary text into an item_type slug ('' if nothing usable)."""
+    slug = _SLUG_CLEAN_RE.sub("_", str(raw or "").strip().lower()).strip("_")[:50]
+    return slug if TYPE_SLUG_RE.match(slug) else ""
+
+
 def _lens_item_type(lens: dict) -> str:
-    """The insight bucket a lens's findings flow into; defaults to observation."""
-    itype = lens.get("item_type")
-    return itype if itype in VALID_TYPES else "observation"
+    """The insight type a lens's findings surface as; defaults to observation."""
+    return normalize_type_slug(lens.get("item_type")) or "observation"
 
 
 def active_lenses(lenses: list) -> list[dict]:
@@ -59,8 +72,10 @@ def compose_lens_sections(lenses: list[dict]) -> str:
         label = str(lens.get("label") or f"Lens {idx}").strip()
         body = str(lens.get("prompt") or "").strip()
         itype = _lens_item_type(lens)
+        key = str(lens.get("key") or "").strip() or itype
         sections.append(
-            f'## Lens {idx}: {label}\n{body}\n\nTag every finding from this lens with "item_type": "{itype}".'
+            f"## Lens {idx}: {label}\n{body}\n\n"
+            f'Tag every finding from this lens with "item_type": "{itype}" and "lens": "{key}".'
         )
     return "\n\n".join(sections)
 
@@ -105,6 +120,10 @@ class ConsolidatedAnalystAgent:
 
         self._lens_sections = ""
         self._item_type_values = "|".join(TYPE_ORDER)
+        # Lens provenance lookups: key -> {label, item_type}, plus the first
+        # lens label per item_type as an attribution fallback.
+        self._lens_by_key: dict[str, dict] = {}
+        self._label_by_type: dict[str, str] = {}
         if LENS_SECTIONS_PLACEHOLDER in prompt_template:
             if lenses is None:
                 # No lens config stored yet: fall back to the defaults, honoring
@@ -117,6 +136,10 @@ class ConsolidatedAnalystAgent:
             lens_types = []
             for lens in lens_list:
                 itype = _lens_item_type(lens)
+                key = str(lens.get("key") or "").strip() or itype
+                label = str(lens.get("label") or "").strip()
+                self._lens_by_key[key] = {"label": label, "item_type": itype}
+                self._label_by_type.setdefault(itype, label)
                 if itype not in lens_types:
                     lens_types.append(itype)
             self.enabled_types = set(lens_types)
@@ -171,16 +194,26 @@ class ConsolidatedAnalystAgent:
         items = self._parse_response(raw_text, valid_speaker_ids)
         logger.info(f"[consolidated_analyst] parsed {len(items)} items from response")
 
-        # Filter to enabled types and tag with correct agent_source
+        # Filter to enabled types, tag with agent_source, and attach the
+        # producing lens's label for dynamic display downstream.
         results = []
         for item in items:
             itype = item.get("item_type")
             if itype not in self.enabled_types:
                 continue
             item["agent_source"] = AGENT_SOURCE_BY_TYPE.get(itype, "consolidated_analyst")
+            item["lens_label"] = self._resolve_lens_label(item.pop("lens", None), itype)
             results.append(item)
 
         return results
+
+    def _resolve_lens_label(self, raw_lens: object, item_type: str) -> str:
+        """Best-effort mapping of a finding back to the lens that produced it."""
+        if isinstance(raw_lens, str):
+            info = self._lens_by_key.get(raw_lens.strip())
+            if info and info["item_type"] == item_type:
+                return info["label"]
+        return self._label_by_type.get(item_type, "")
 
     def _parse_response(self, raw: str, valid_speaker_ids: set[str] | None = None) -> list[dict]:
         """Parse JSON array from model response."""
@@ -219,9 +252,10 @@ class ConsolidatedAnalystAgent:
                 continue
             if "question" not in item:
                 continue
-            itype = item.get("item_type", "")
-            if itype not in VALID_TYPES:
+            itype = normalize_type_slug(item.get("item_type", ""))
+            if not itype:
                 continue
+            item["item_type"] = itype
             item["speaker_id"] = _normalize_speaker_id(item.get("speaker_id"), valid_speaker_ids)
             valid.append(item)
 

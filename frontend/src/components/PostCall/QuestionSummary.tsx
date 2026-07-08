@@ -1,15 +1,9 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import type { Question, Speaker } from "../../types";
+import { presentTypes, typeColor, typeGroupLabel, typeLabel } from "../../utils/insightTypes";
 
-const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
-  question: { label: "Questions", color: "#0d9488" },
-  objection: { label: "Objections", color: "#f59e0b" },
-  observation: { label: "Observations", color: "#7c3aed" },
-  opportunity: { label: "Opportunities", color: "#10b981" },
-  action_item: { label: "Action Items", color: "#e2231a" },
-};
-
-type FilterType = "all" | "action_item" | "objection" | "opportunity" | "observation" | "question" | "enhanced" | "dismissed";
+// "all", an item_type slug (built-in or custom lens type), "enhanced", or "dismissed"
+type FilterType = string;
 
 interface QuestionSummaryProps {
   questions: Question[];
@@ -21,7 +15,8 @@ function speakerLabel(speaker: Speaker): string {
 }
 
 function SummaryCard({ question, speakers }: { question: Question; speakers: Speaker[] }) {
-  const typeConfig = TYPE_CONFIG[question.item_type] || TYPE_CONFIG.question;
+  const itemType = question.item_type || "question";
+  const cardColor = typeColor(itemType);
   const attributedSpeaker = question.speaker_id
     ? speakers.find((speaker) => speaker.id === question.speaker_id)
     : null;
@@ -38,7 +33,7 @@ function SummaryCard({ question, speakers }: { question: Question; speakers: Spe
   return (
     <div
       className={`rounded-lg border border-l-4 p-4 ${borderStyle}`}
-      style={{ borderLeftColor: typeConfig.color }}
+      style={{ borderLeftColor: cardColor }}
     >
       <div className="flex items-start gap-3">
         {/* Star icon */}
@@ -52,12 +47,12 @@ function SummaryCard({ question, speakers }: { question: Question; speakers: Spe
         <div className="flex-1 space-y-2">
           {/* Badges row */}
           <div className="flex items-center gap-2">
-            {question.item_type && question.item_type !== "question" && (
+            {(itemType !== "question" || (question.lens_label && question.lens_label.trim())) && (
               <span
                 className="inline-flex items-center rounded-full px-2 py-0.5 font-body text-xs font-medium"
-                style={{ backgroundColor: `${typeConfig.color}15`, color: typeConfig.color }}
+                style={{ backgroundColor: `${cardColor}15`, color: cardColor }}
               >
-                {TYPE_CONFIG[question.item_type]?.label?.replace(/s$/, "") || "Question"}
+                {typeLabel(itemType, question.lens_label)}
               </span>
             )}
             {question.is_followup && (
@@ -183,18 +178,13 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
   const active = questions.filter((q) => !q.dismissed);
   const enhanced = active.filter((q) => q.enhanced);
   const visibleActive = filter === "enhanced" ? enhanced : active;
-  const allActionItems = active.filter((q) => q.item_type === "action_item");
-  const allObjections = active.filter((q) => q.item_type === "objection");
-  const allOpportunities = active.filter((q) => q.item_type === "opportunity");
-  const allObservations = active.filter((q) => q.item_type === "observation");
-  const allQuestionItems = active.filter((q) => q.item_type === "question" || !q.item_type);
 
-  // Group by item type
-  const actionItems = visibleActive.filter((q) => q.item_type === "action_item");
-  const objections = visibleActive.filter((q) => q.item_type === "objection");
-  const opportunities = visibleActive.filter((q) => q.item_type === "opportunity");
-  const observations = visibleActive.filter((q) => q.item_type === "observation");
-  const questionItems = visibleActive.filter((q) => q.item_type === "question" || !q.item_type);
+  // Dynamic type groups: built-ins in fixed order, then custom lens types
+  const types = presentTypes(active);
+  const byType = (list: Question[], t: string) =>
+    list.filter((q) => (q.item_type || "question") === t);
+
+  const questionItems = byType(visibleActive, "question");
 
   // Sub-groups within questions
   const qNeedsFollowup = questionItems.filter((q) => q.needs_followup);
@@ -207,12 +197,14 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
   };
 
   // Determine what sections to show based on filter
-  const showActionItems = filter === "all" || filter === "action_item" || filter === "enhanced";
-  const showObjections = filter === "all" || filter === "objection" || filter === "enhanced";
-  const showOpportunities = filter === "all" || filter === "opportunity" || filter === "enhanced";
-  const showObservations = filter === "all" || filter === "observation" || filter === "enhanced";
-  const showQuestions = filter === "all" || filter === "question" || filter === "enhanced";
+  const showType = (t: string) => filter === "all" || filter === t || filter === "enhanced";
+  const sectionTypes = types.filter((t) => t !== "question");
+  const showQuestions = showType("question");
   const showDismissedSection = filter === "all" || filter === "dismissed";
+  const filteredEmpty =
+    filter !== "all" &&
+    filter !== "dismissed" &&
+    (filter === "enhanced" ? enhanced.length === 0 : byType(visibleActive, filter).length === 0);
 
   return (
     <div className="space-y-6">
@@ -225,41 +217,19 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
           isActive={filter === "all"}
           onClick={() => setFilter("all")}
         />
-        <StatCard
-          label="Action Items"
-          count={allActionItems.length}
-          color="#e2231a"
-          isActive={filter === "action_item"}
-          onClick={() => handleFilterClick("action_item")}
-        />
-        <StatCard
-          label="Objections"
-          count={allObjections.length}
-          color="#f59e0b"
-          isActive={filter === "objection"}
-          onClick={() => handleFilterClick("objection")}
-        />
-        <StatCard
-          label="Opportunities"
-          count={allOpportunities.length}
-          color="#10b981"
-          isActive={filter === "opportunity"}
-          onClick={() => handleFilterClick("opportunity")}
-        />
-        <StatCard
-          label="Observations"
-          count={allObservations.length}
-          color="#7c3aed"
-          isActive={filter === "observation"}
-          onClick={() => handleFilterClick("observation")}
-        />
-        <StatCard
-          label="Questions"
-          count={allQuestionItems.length}
-          color="#0d9488"
-          isActive={filter === "question"}
-          onClick={() => handleFilterClick("question")}
-        />
+        {types.map((t) => {
+          const items = byType(active, t);
+          return (
+            <StatCard
+              key={t}
+              label={typeGroupLabel(t, items)}
+              count={items.length}
+              color={typeColor(t)}
+              isActive={filter === t}
+              onClick={() => handleFilterClick(t)}
+            />
+          );
+        })}
         <StatCard
           label="Enhanced"
           count={enhanced.length}
@@ -269,50 +239,25 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
         />
       </div>
 
-      {/* Action Items (top priority) */}
-      {showActionItems && actionItems.length > 0 && (
-        <section className="space-y-3">
-          <SectionHeader label="Action Items" color="#e2231a" count={actionItems.length} />
-          {actionItems.map((q) => (
-            <SummaryCard key={q.id} question={q} speakers={speakers} />
-          ))}
-        </section>
-      )}
-
-      {/* Objections */}
-      {showObjections && objections.length > 0 && (
-        <section className="space-y-3">
-          <SectionHeader label="Objections" color="#f59e0b" count={objections.length} />
-          {objections.map((q) => (
-            <SummaryCard key={q.id} question={q} speakers={speakers} />
-          ))}
-        </section>
-      )}
-
-      {/* Opportunities */}
-      {showOpportunities && opportunities.length > 0 && (
-        <section className="space-y-3">
-          <SectionHeader label="Opportunities" color="#10b981" count={opportunities.length} />
-          {opportunities.map((q) => (
-            <SummaryCard key={q.id} question={q} speakers={speakers} />
-          ))}
-        </section>
-      )}
-
-      {/* Observations */}
-      {showObservations && observations.length > 0 && (
-        <section className="space-y-3">
-          <SectionHeader label="Observations" color="#7c3aed" count={observations.length} />
-          {observations.map((q) => (
-            <SummaryCard key={q.id} question={q} speakers={speakers} />
-          ))}
-        </section>
-      )}
+      {/* Typed sections (built-ins first, then custom lens types); the
+          question section renders last with its status sub-groups */}
+      {sectionTypes.map((t) => {
+        const items = byType(visibleActive, t);
+        if (!showType(t) || items.length === 0) return null;
+        return (
+          <section key={t} className="space-y-3">
+            <SectionHeader label={typeGroupLabel(t, items)} color={typeColor(t)} count={items.length} />
+            {items.map((q) => (
+              <SummaryCard key={q.id} question={q} speakers={speakers} />
+            ))}
+          </section>
+        );
+      })}
 
       {/* Questions with sub-groups */}
       {showQuestions && questionItems.length > 0 && (
         <section className="space-y-4">
-          <SectionHeader label="Questions" color="#0d9488" count={questionItems.length} />
+          <SectionHeader label={typeGroupLabel("question", questionItems)} color={typeColor("question")} count={questionItems.length} />
 
           {qNeedsFollowup.length > 0 && (
             <div className="space-y-3">
@@ -397,17 +342,10 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
       )}
 
       {/* Filtered empty state */}
-      {filter !== "all" && questions.length > 0 && (
-        (filter === "action_item" && actionItems.length === 0) ||
-        (filter === "objection" && objections.length === 0) ||
-        (filter === "opportunity" && opportunities.length === 0) ||
-        (filter === "observation" && observations.length === 0) ||
-        (filter === "question" && questionItems.length === 0) ||
-        (filter === "enhanced" && enhanced.length === 0)
-      ) && (
+      {questions.length > 0 && filteredEmpty && (
         <div className="rounded-xl bg-white p-10 text-center shadow-sm">
           <p className="text-brand-mid-gray">
-            No {TYPE_CONFIG[filter]?.label?.toLowerCase() || "items"} were captured during this session.
+            No {filter === "enhanced" ? "enhanced items" : typeGroupLabel(filter, byType(active, filter)).toLowerCase()} were captured during this session.
           </p>
         </div>
       )}

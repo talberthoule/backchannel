@@ -81,7 +81,8 @@ class Question(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"))
-    item_type: Mapped[str] = mapped_column(String(20), default="question")  # question, observation, opportunity, insight, action_item, objection
+    item_type: Mapped[str] = mapped_column(String(50), default="question")  # built-ins (question, observation, opportunity, action_item, objection) or a custom lens type slug
+    lens_label: Mapped[str] = mapped_column(String(120), default="")  # display heading of the lens that produced this insight ("" for non-lens agents)
     question: Mapped[str] = mapped_column(Text)  # the text content (question text, observation text, etc.)
     rationale: Mapped[str] = mapped_column(Text, default="")
     source_context: Mapped[str] = mapped_column(Text, default="")

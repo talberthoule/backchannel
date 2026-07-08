@@ -1,13 +1,6 @@
 import { useState } from "react";
 import type { Question, Speaker } from "../../types";
-
-const TYPE_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
-  question: { label: "Question", color: "#0d9488", bgColor: "bg-blue-50" },
-  observation: { label: "Observation", color: "#7c3aed", bgColor: "bg-purple-50" },
-  opportunity: { label: "Opportunity", color: "#10b981", bgColor: "bg-green-50" },
-  action_item: { label: "Action Item", color: "#e2231a", bgColor: "bg-red-50" },
-  objection: { label: "Objection", color: "#f59e0b", bgColor: "bg-orange-50" },
-};
+import { typeColor, typeLabel } from "../../utils/insightTypes";
 
 const AGENT_LABELS: Record<string, string> = {
   question_hunter: "Question Hunter",
@@ -45,7 +38,9 @@ export default function QuestionCard({ question, speakers, isStrategicSignal = f
     setTimeout(() => onDismiss(), 300);
   }
 
-  const typeConfig = TYPE_CONFIG[question.item_type] || TYPE_CONFIG.question;
+  const itemType = question.item_type || "question";
+  const badgeColor = typeColor(itemType);
+  const badgeLabel = typeLabel(itemType, question.lens_label);
   const isRefined = (question.revision_count ?? 0) > 0;
   const surfacedAt = formatTimestamp(question.created_at);
   const attributedSpeaker = question.speaker_id
@@ -61,7 +56,7 @@ export default function QuestionCard({ question, speakers, isStrategicSignal = f
       } ${question.dismissed ? "opacity-40" : ""} ${
         isRefined && !isStrategicSignal ? "ring-1 ring-inset ring-brand-teal-light/20" : ""
       }`}
-      style={{ borderLeftColor: typeConfig.color }}
+      style={{ borderLeftColor: badgeColor }}
     >
       {/* Top row: badges + actions */}
       <div className="mb-2 flex items-start justify-between">
@@ -131,13 +126,13 @@ export default function QuestionCard({ question, speakers, isStrategicSignal = f
             </span>
           )}
 
-          {/* Type badge */}
-          {question.item_type && question.item_type !== "question" && (
+          {/* Type badge — shows the producing lens's heading when available */}
+          {(itemType !== "question" || (question.lens_label && question.lens_label.trim())) && (
             <span
               className="inline-flex items-center rounded-full px-2 py-0.5 font-body text-xs font-medium"
-              style={{ backgroundColor: `${typeConfig.color}15`, color: typeConfig.color }}
+              style={{ backgroundColor: `${badgeColor}15`, color: badgeColor }}
             >
-              {typeConfig.label}
+              {badgeLabel}
             </span>
           )}
         </div>

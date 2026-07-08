@@ -2,8 +2,12 @@ import { useMemo, useState } from "react";
 import type { Question, Speaker } from "../../types";
 import QuestionCard from "./QuestionCard";
 import { sortQuestionsForLiveDisplay } from "./questionOrdering";
+import { BUILTIN_TYPE_META, BUILTIN_TYPE_ORDER, presentTypes, typeGroupLabel } from "../../utils/insightTypes";
 
-type Filter = "all" | "question" | "objection" | "observation" | "opportunity" | "action_item" | "starred" | "answered" | "prioritized" | "enhanced";
+// "all", an item_type slug (built-in or custom lens type), or a status key
+type Filter = string;
+
+const STATUS_KEYS = new Set(["starred", "answered", "prioritized", "enhanced"]);
 
 interface QuestionListProps {
   questions: Question[];
@@ -38,6 +42,20 @@ export default function QuestionList({ questions, speakers, strategicSignalQuest
     });
   };
 
+  // Type chips: the five built-ins always, plus any custom lens types present
+  // in the current insight list (labeled by their producing lens's heading).
+  const typeFilterDefs = useMemo(() => {
+    const present = presentTypes(questions);
+    const customs = present.filter((t) => !BUILTIN_TYPE_META[t]);
+    return [
+      ...BUILTIN_TYPE_ORDER.map((t) => ({ key: t, label: BUILTIN_TYPE_META[t].plural })),
+      ...customs.map((t) => ({
+        key: t,
+        label: typeGroupLabel(t, questions.filter((q) => (q.item_type || "question") === t)),
+      })),
+    ];
+  }, [questions]);
+
   const filtered = useMemo(() => {
     const sorted = sortQuestionsForLiveDisplay(questions, strategicSignalIdSet);
 
@@ -45,14 +63,9 @@ export default function QuestionList({ questions, speakers, strategicSignalQuest
       return sorted.filter((q) => !q.dismissed);
     }
 
-    return sorted.filter((q) => {
-      const typeFilters = new Set<string>();
-      if (activeFilters.has("question")) typeFilters.add("question");
-      if (activeFilters.has("objection")) typeFilters.add("objection");
-      if (activeFilters.has("observation")) typeFilters.add("observation");
-      if (activeFilters.has("opportunity")) typeFilters.add("opportunity");
-      if (activeFilters.has("action_item")) typeFilters.add("action_item");
+    const typeFilters = new Set([...activeFilters].filter((f) => !STATUS_KEYS.has(f)));
 
+    return sorted.filter((q) => {
       const hasStarred = activeFilters.has("starred");
       const hasAnswered = activeFilters.has("answered");
       const hasPrioritized = activeFilters.has("prioritized");
@@ -61,42 +74,24 @@ export default function QuestionList({ questions, speakers, strategicSignalQuest
       const hasTypeFilter = typeFilters.size > 0;
       const hasStatusFilter = hasStarred || hasAnswered || hasPrioritized || hasEnhanced;
 
-      if (hasTypeFilter && !hasStatusFilter) {
-        const itemType = q.item_type || "question";
-        return !q.dismissed && typeFilters.has(itemType);
-      }
+      const itemType = q.item_type || "question";
+      const matchesType = typeFilters.has(itemType);
+      const matchesStatus =
+        (hasStarred && q.starred) ||
+        (hasAnswered && q.answered) ||
+        (hasPrioritized && (q.vote ?? 0) > 0) ||
+        (hasEnhanced && q.enhanced);
 
-      if (hasStatusFilter && !hasTypeFilter) {
-        const matchesStatus =
-          (hasStarred && q.starred) ||
-          (hasAnswered && q.answered) ||
-          (hasPrioritized && (q.vote ?? 0) > 0) ||
-          (hasEnhanced && q.enhanced);
-        return !q.dismissed && matchesStatus;
-      }
-
-      if (hasTypeFilter && hasStatusFilter) {
-        const itemType = q.item_type || "question";
-        const matchesType = typeFilters.has(itemType);
-        const matchesStatus =
-          (hasStarred && q.starred) ||
-          (hasAnswered && q.answered) ||
-          (hasPrioritized && (q.vote ?? 0) > 0) ||
-          (hasEnhanced && q.enhanced);
-        return !q.dismissed && matchesType && matchesStatus;
-      }
-
+      if (hasTypeFilter && !hasStatusFilter) return !q.dismissed && matchesType;
+      if (hasStatusFilter && !hasTypeFilter) return !q.dismissed && matchesStatus;
+      if (hasTypeFilter && hasStatusFilter) return !q.dismissed && matchesType && matchesStatus;
       return !q.dismissed;
     });
   }, [questions, activeFilters, strategicSignalIdSet]);
 
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: "All" },
-    { key: "question", label: "Questions" },
-    { key: "objection", label: "Objections" },
-    { key: "observation", label: "Observations" },
-    { key: "opportunity", label: "Opportunities" },
-    { key: "action_item", label: "Action Items" },
+    ...typeFilterDefs,
     { key: "starred", label: "Starred" },
     { key: "answered", label: "Answered" },
     { key: "prioritized", label: "Prioritized" },

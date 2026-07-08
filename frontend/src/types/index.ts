@@ -52,7 +52,9 @@ export interface AgentConfig {
 export interface AnalystLens {
   key: string;
   label: string;
-  item_type: "question" | "observation" | "opportunity" | "action_item";
+  // One of the built-in types (question/observation/opportunity/action_item)
+  // for special pipeline behavior, or a custom slug for a bespoke insight type.
+  item_type: string;
   enabled: boolean;
   prompt: string;
 }
@@ -86,7 +88,12 @@ export interface Document {
 export interface Question {
   id: string;
   session_id: string;
-  item_type: "question" | "observation" | "opportunity" | "action_item" | "objection";
+  // Built-in types (question, observation, opportunity, action_item,
+  // objection) or a custom lens type slug.
+  item_type: string;
+  // Display heading of the analysis lens that produced this insight
+  // ("" / absent for non-lens agents like the objection handler).
+  lens_label?: string;
   question: string;
   rationale: string;
   source_context: string;

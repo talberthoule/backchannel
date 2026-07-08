@@ -82,6 +82,7 @@ class QuestionOut(BaseModel):
     id: uuid.UUID
     session_id: uuid.UUID
     item_type: str
+    lens_label: str = ""
     question: str
     rationale: str
     source_context: str
