@@ -10,7 +10,7 @@
   <a href="#quickstart">Quickstart</a> -
   <a href="#features">Features</a> -
   <a href="#architecture">Architecture</a> -
-  <a href="docs/README.md">Documentation</a>
+  <a href="https://talberthoule.github.io/backchannel/docs/">Documentation</a>
 </p>
 
 ---

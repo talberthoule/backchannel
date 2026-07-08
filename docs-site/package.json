@@ -1,0 +1,16 @@
+{
+  "name": "backchannel-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "node sync-docs.mjs",
+    "dev": "npm run sync && astro dev",
+    "build": "npm run sync && astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.41.3",
+    "astro": "^7.0.7",
+    "sharp": "^0.35.3"
+  }
+}

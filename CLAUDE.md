@@ -35,6 +35,16 @@ docker-compose down -v
 - Frontend nginx proxies API and WebSocket traffic from :3000 to backend :8000
 - Database: PostgreSQL 16 on host port 5432
 
+### Docs Site
+
+`docs-site/` is an Astro Starlight project deployed to GitHub Pages by
+`.github/workflows/pages.yml` (landing page from `site/` at `/backchannel/`,
+docs at `/backchannel/docs/`). `docs/*.md` stays the source of truth: do not
+edit `docs-site/src/content/docs/` (generated, gitignored). At build time
+`docs-site/sync-docs.mjs` copies the docs in, derives frontmatter titles from
+each H1, and rewrites `.md` cross-links to page URLs. Build check:
+`cd docs-site && npm run build`; local preview: `npm run dev`.
+
 ### Local Development
 
 ```bash

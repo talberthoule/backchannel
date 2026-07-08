@@ -1,0 +1,12 @@
+/* Match the landing page's teal accent (site/style.css). */
+:root {
+  --sl-color-accent-low: #113c37;
+  --sl-color-accent: #0d9488;
+  --sl-color-accent-high: #99f6e4;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #ccfbf1;
+  --sl-color-accent: #0f766e;
+  --sl-color-accent-high: #134e4a;
+}
