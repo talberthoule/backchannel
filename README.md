@@ -24,8 +24,8 @@ action items you would otherwise reconstruct from memory afterwards.
 
 ## Features
 
-- **Live diarized transcription** -- Silero VAD plus ECAPA-TDNN speaker
-  embeddings segment speech and attribute every line to a speaker, with
+- **Live diarized transcription** -- Silero VAD plus WeSpeaker ResNet152
+  speaker embeddings segment speech and attribute every line to a speaker, with
   interim text streaming in seconds ahead of the final transcript
 - **Agent-based analysis** -- a consolidated analyst, a low-latency objection
   handler, a synthesizer, and an opportunity specialist run on their own

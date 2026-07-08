@@ -18,7 +18,7 @@ local transcription.
    paths: the interim audio gateway and the diarization pipeline. Mixed
    mic+system audio is also appended to a per-segment WAV recording.
 3. **Diarize** -- `backend/app/services/speaker_diarizer.py` runs Silero VAD
-   to find speech, then ECAPA-TDNN speaker embeddings to assign an auto
+   to find speech, then WeSpeaker ResNet152 speaker embeddings to assign an auto
    speaker ID (`auto_1`, `auto_2`, ...) to each segment. Auto IDs are mapped
    to database `Speaker` rows, creating "Participant N" rows when a new voice
    appears.

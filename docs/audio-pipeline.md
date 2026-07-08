@@ -38,7 +38,7 @@ diagnostics endpoints (`/api/diagnostics/diarization`):
 
 ## Speaker identification
 
-Each closed segment gets an ECAPA-TDNN embedding, compared against the
+Each closed segment gets a WeSpeaker ResNet152 embedding, compared against the
 per-call `SpeakerRegistry`. A match reuses that auto ID; otherwise a new
 `auto_N` identity is created. The WebSocket handler maps auto IDs to
 database `Speaker` rows, auto-creating "Participant N" (or "Remote
@@ -53,8 +53,10 @@ for GPU deployments (see [Deployment](deployment.md));
 runtime configuration.
 
 Required ONNX models are expected at `backend/models/silero_vad.onnx` and
-`backend/models/ecapa_tdnn.onnx`; fetch them with
-`backend/scripts/download_models.py` (the Docker build does this for you).
+`backend/models/voxceleb_resnet152_LM.onnx` (the legacy
+`backend/models/ecapa_tdnn.onnx` is used as a fallback when the new file is
+absent); fetch them with `backend/scripts/download_models.py` (the Docker
+build does this for you).
 
 ## Batch transcription
 
