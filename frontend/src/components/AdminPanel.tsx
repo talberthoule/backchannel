@@ -265,8 +265,8 @@ function LensEditor({
                       )}
                       <p className="mt-1 font-body text-[10px] text-brand-mid-gray">
                         {isBuiltinType
-                          ? "Built-in types plug into extra behaviors: Questions get answer tracking; Opportunities get offering matching."
-                          : "Custom types get their own filter chip, summary section, and export label. Lowercase letters, digits, and underscores."}
+                          ? "Built-in types plug into extra behaviors: Questions get answer tracking; Opportunities are picked up by the Opportunity Specialist agent for knowledge-source matching."
+                          : "Custom types get their own filter chip, summary section, and export label. Lowercase letters, digits, and underscores. Not matched by the Opportunity Specialist."}
                       </p>
                     </div>
                   </div>
@@ -355,6 +355,11 @@ function AgentCard({
             )}
           </div>
           <p className="mt-1 font-body text-xs leading-relaxed text-brand-gray">{agent.description}</p>
+          {agent.slug === "opportunity_specialist" && (
+            <p className="mt-2 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/60 px-2.5 py-1.5 font-body text-[11px] leading-relaxed text-brand-gray">
+              Runs downstream of the Consolidated Analyst: it does not find opportunities itself. When a lens surfaces a finding as an Opportunity, this agent matches it against the knowledge sources below and adds the match to the existing card. Only active for Client Sales and Customer Delivery meeting types.
+            </p>
+          )}
           {blockedByPrivacy && (
             <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 font-body text-[11px] leading-relaxed text-amber-900">
               Privacy First mode is on and this agent has no local model, so it will not run.

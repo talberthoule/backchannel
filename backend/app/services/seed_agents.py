@@ -72,7 +72,7 @@ STALE_PLACEHOLDER_MARKERS = {
 LEGACY_BRAND_MARKER = "Presidio"
 
 CONTEXT_PROMPT_MARKERS = {
-    "consolidated_analyst": "supporting a live call for Presidio, a leading IT solutions provider",
+    "consolidated_analyst": "supporting a live call for leading solutions providers",
     "synthesizer": "Clusters of insights that together reveal a strategic initiative, project, or objective the client is pursuing",
     "brief_meeting_lens": "Audience: internal seller/deal team.",
     "brief_discovery_lens": "discovery and seller-insight lens",
@@ -131,7 +131,7 @@ SEED_CONFIGS = [
     {
         "slug": "opportunity_specialist",
         "name": "Opportunity Specialist",
-        "description": "Maps identified opportunities to specific products and services from the configured knowledge sources (offerings catalog by default).",
+        "description": "Enrichment agent that runs after the Consolidated Analyst: when a lens surfaces an Opportunity insight, it matches that insight against the configured knowledge sources (offerings catalog by default) and attaches the match to the card. It does not create new insights.",
         "agent_type": "db",
         "model_id": "gemini-3.5-flash",
         "prompt": OPPORTUNITY_SPECIALIST_PROMPT,
