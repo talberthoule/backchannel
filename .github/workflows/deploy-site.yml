@@ -24,7 +24,10 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: docs-site/package-lock.json
-      - run: npm ci
+      # npm install, not npm ci: the lockfile is generated on Windows, and npm
+      # omits other platforms' optional native packages (sharp, rolldown) from
+      # it, which npm ci on Linux then refuses or misses at build time.
+      - run: npm install
       - run: npm run build
       # Requires repo secrets: CLOUDFLARE_API_TOKEN (Workers Scripts:Edit) and CLOUDFLARE_ACCOUNT_ID
       - name: Deploy
