@@ -1,0 +1,39 @@
+name: Site
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "site/**"
+      - "docs/**"
+      - "docs-site/**"
+      - "architecture.svg"
+      - ".github/workflows/deploy-site.yml"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs-site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      # Requires repo secrets: CLOUDFLARE_API_TOKEN (Workers Scripts:Edit) and CLOUDFLARE_ACCOUNT_ID
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: docs-site
+          command: deploy
+          # The action's bundled default (wrangler 3.x) predates wrangler.jsonc
+          # support and dies with "Missing entry-point". Match docs-site/package.json.
+          wranglerVersion: "4.107.0"

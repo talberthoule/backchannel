@@ -37,9 +37,11 @@ docker-compose down -v
 
 ### Docs Site
 
-`docs-site/` is an Astro Starlight project deployed to GitHub Pages by
-`.github/workflows/pages.yml` (landing page from `site/` at `/backchannel/`,
-docs at `/backchannel/docs/`). `docs/*.md` stays the source of truth: do not
+`docs-site/` is an Astro Starlight project deployed as a Cloudflare Worker
+(`backchannel-site`, same pattern as the quartermaster repo) by
+`.github/workflows/deploy-site.yml`: the `site/` landing page at
+https://backchannel-site.talbert-houle.workers.dev/ and the docs at `/docs/`.
+`docs/*.md` stays the source of truth: do not
 edit `docs-site/src/content/docs/` (generated, gitignored). At build time
 `docs-site/sync-docs.mjs` copies the docs in, derives frontmatter titles from
 each H1, and rewrites `.md` cross-links to page URLs. Build check:

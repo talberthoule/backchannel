@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "backchannel-site",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "./dist-site",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash"
+  }
+}

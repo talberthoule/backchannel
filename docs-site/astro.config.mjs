@@ -2,12 +2,12 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
-// Deployed to GitHub Pages under the landing page at /backchannel/docs/.
-// Markdown cross-links are rewritten to relative URLs by sync-docs.mjs, so
-// they work at any base.
+// Deployed as a Cloudflare Worker (see wrangler.jsonc) with the site/
+// landing page at / and these docs at /docs/. Markdown cross-links are
+// rewritten to relative URLs by sync-docs.mjs, so they work at any base.
 export default defineConfig({
-  site: 'https://talberthoule.github.io',
-  base: '/backchannel/docs',
+  site: 'https://backchannel-site.talbert-houle.workers.dev',
+  base: '/docs',
   integrations: [
     starlight({
       title: 'Backchannel',
