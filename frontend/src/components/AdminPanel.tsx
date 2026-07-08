@@ -17,10 +17,10 @@ const TYPE_BADGES: Record<string, { label: string; color: string }> = {
 // Principal Agent and Opportunity Specialist are event-driven, so their value
 // is the minimum cooldown between runs.
 const INTERVAL_DEFAULTS: Record<string, number> = {
-  consolidated_analyst: 15,
-  objection_handler: 5,
-  synthesizer: 60,
-  opportunity_specialist: 45,
+  consolidated_analyst: 40,
+  objection_handler: 10,
+  synthesizer: 75,
+  opportunity_specialist: 55,
 };
 
 // Grouped by when agents run, not by their internal type: the Principal

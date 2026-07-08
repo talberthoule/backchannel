@@ -51,14 +51,16 @@ OLD_DEFAULT_MODELS = {
     "opportunity_specialist": "gemini-3-flash-preview",
     "brief_meeting_lens": "gemini-3-flash-preview",
     "brief_discovery_lens": "gemini-3-flash-preview",
+    "objection_handler": "gemini-3.1-flash-lite",
 }
 
-# Rows still on these old default intervals migrate to the new seeded value;
-# user-customized intervals are left alone.
+# Rows still on one of these old default intervals migrate to the new seeded
+# value; user-customized intervals are left alone.
 OLD_DEFAULT_INTERVALS = {
-    "consolidated_analyst": 15,
-    "synthesizer": 30,
-    "opportunity_specialist": 5,
+    "consolidated_analyst": {15, 45},
+    "objection_handler": {5},
+    "synthesizer": {30, 60},
+    "opportunity_specialist": {5, 45},
 }
 
 # Stored prompts containing these placeholders are stale defaults from before
@@ -101,7 +103,7 @@ SEED_CONFIGS = [
         "enabled": True,
         "sub_types": "question,observation,opportunity,action_item",
         "lenses": json.dumps(DEFAULT_ANALYST_LENSES),
-        "interval_seconds": 45,
+        "interval_seconds": 40,
         "display_order": 2,
     },
     {
@@ -109,11 +111,11 @@ SEED_CONFIGS = [
         "name": "Objection Handler",
         "description": "Fast-cycle scanner that flags objections the moment they surface and pairs each with an immediate suggested response plus the underlying strategic concern. Runs on a short interval over only the freshest transcript with a low-latency model.",
         "agent_type": "text",
-        "model_id": "gemini-3.1-flash-lite",
+        "model_id": "gemini-3.5-flash",
         "prompt": OBJECTION_HANDLER_PROMPT,
         "enabled": True,
         "sub_types": "",
-        "interval_seconds": 5,
+        "interval_seconds": 10,
         "display_order": 8,
     },
     {
@@ -125,7 +127,7 @@ SEED_CONFIGS = [
         "prompt": PRINCIPAL_AGENT_PROMPT,
         "enabled": True,
         "sub_types": "",
-        "interval_seconds": 60,
+        "interval_seconds": 75,
         "display_order": 3,
     },
     {
@@ -137,7 +139,7 @@ SEED_CONFIGS = [
         "prompt": OPPORTUNITY_SPECIALIST_PROMPT,
         "enabled": True,
         "sub_types": "",
-        "interval_seconds": 45,
+        "interval_seconds": 55,
         "display_order": 4,
     },
     {
@@ -189,10 +191,13 @@ async def seed_agent_configs(db: AsyncSession):
             existing.model_id = cfg["model_id"]
         if existing is not None and _should_refresh_seeded_prompt(existing, cfg):
             existing.prompt = cfg["prompt"]
+        # Descriptions are seed-owned (no UI edits them): keep rows in sync
+        if existing is not None and existing.description != cfg["description"]:
+            existing.description = cfg["description"]
         if (
             existing is not None
             and existing.slug in OLD_DEFAULT_INTERVALS
-            and existing.interval_seconds == OLD_DEFAULT_INTERVALS[existing.slug]
+            and existing.interval_seconds in OLD_DEFAULT_INTERVALS[existing.slug]
         ):
             existing.interval_seconds = cfg["interval_seconds"]
         if existing is not None:
