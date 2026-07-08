@@ -6,7 +6,7 @@ import starlight from '@astrojs/starlight';
 // landing page at / and these docs at /docs/. Markdown cross-links are
 // rewritten to relative URLs by sync-docs.mjs, so they work at any base.
 export default defineConfig({
-  site: 'https://backchannel-site.talbert-houle.workers.dev',
+  site: 'https://backchannel-site.lavender-zebu.workers.dev',
   base: '/docs',
   integrations: [
     starlight({
