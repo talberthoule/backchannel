@@ -23,9 +23,9 @@ class Settings(BaseSettings):
     TEXT_AGENT_INTERVAL_SECONDS: int = 15        # consolidated analyst cycle
     OBJECTION_HANDLER_INTERVAL_SECONDS: int = 5  # objection handler fast scan cycle
     OBJECTION_WINDOW_SECONDS: int = 90           # transcript window for objection scans
-    SYNTHESIZER_COOLDOWN_SECONDS: int = 30       # min time between synthesizer runs
+    SYNTHESIZER_COOLDOWN_SECONDS: int = 60       # min time between synthesizer runs
     SYNTHESIZER_MAX_INTERVAL_SECONDS: int = 120  # fallback max gap for synthesizer
-    OPPORTUNITY_SPECIALIST_COOLDOWN_SECONDS: int = 5  # batch window for opp specialist
+    OPPORTUNITY_SPECIALIST_COOLDOWN_SECONDS: int = 45  # batch window for opp specialist
     KNOWLEDGE_CONTEXT_CHAR_BUDGET: int = 60000  # max chars of knowledge context stuffed into a prompt
 
     # Speaker diarization settings

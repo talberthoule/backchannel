@@ -19,8 +19,8 @@ const TYPE_BADGES: Record<string, { label: string; color: string }> = {
 const INTERVAL_DEFAULTS: Record<string, number> = {
   consolidated_analyst: 15,
   objection_handler: 5,
-  synthesizer: 30,
-  opportunity_specialist: 5,
+  synthesizer: 60,
+  opportunity_specialist: 45,
 };
 
 // Grouped by when agents run, not by their internal type: the Principal
