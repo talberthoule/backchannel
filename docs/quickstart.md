@@ -50,6 +50,11 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 
 See [Deployment](deployment.md) for build arguments and GPU validation.
 
+On Windows with an AMD GPU (e.g. Radeon RX 9070 XT), Docker cannot use the
+GPU; run the backend natively instead with
+`.\backend\scripts\setup_windows_gpu.ps1` -- see
+[AMD GPU on Windows](deployment.md#amd-gpu-on-windows-native-backend).
+
 ## Local development
 
 Frontend:

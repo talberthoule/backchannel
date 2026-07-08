@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.services.audio_utils import convert_to_pcm16, make_wav_header
 from app.services.diarization_diagnostics import (
@@ -26,6 +27,20 @@ from app.services.transcription_runtime import (
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
 
 _SUPPORTED_AUDIO_FORMATS = {".m4a", ".mp3", ".wav", ".ogg", ".flac", ".webm"}
+
+# One full live Sortformer window is the minimum audio that yields a
+# live-representative RTF; audio may run 5s past that mark before we trim.
+MIN_BENCHMARK_SECONDS = settings.SORTFORMER_WINDOW_MS // 1000
+MAX_BENCHMARK_SECONDS = MIN_BENCHMARK_SECONDS + 5
+_PCM16_BYTES_PER_SECOND = 16000 * 2
+
+
+def is_benchmark_pcm_too_short(pcm_data: bytes) -> bool:
+    return len(pcm_data) < MIN_BENCHMARK_SECONDS * _PCM16_BYTES_PER_SECOND
+
+
+def trim_benchmark_pcm(pcm_data: bytes) -> bytes:
+    return pcm_data[: MAX_BENCHMARK_SECONDS * _PCM16_BYTES_PER_SECOND]
 
 
 class DiarizerSelectionUpdate(BaseModel):
@@ -103,6 +118,13 @@ async def benchmark_sortformer(file: UploadFile, db: AsyncSession = Depends(get_
         pcm_data = convert_to_pcm16(content, source_format)
     except Exception as exc:
         raise HTTPException(400, f"Audio conversion failed: {exc}") from exc
+    if is_benchmark_pcm_too_short(pcm_data):
+        raise HTTPException(
+            400,
+            f"Benchmark audio must be at least {MIN_BENCHMARK_SECONDS} seconds long "
+            "(one live diarization window).",
+        )
+    pcm_data = trim_benchmark_pcm(pcm_data)
 
     tmp_path = None
     try:

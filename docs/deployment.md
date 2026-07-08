@@ -34,7 +34,7 @@ Set via environment variables consumed in `docker-compose.yml`:
 | `PYTORCH_INDEX_URL` | `https://download.pytorch.org/whl/cu130` | PyTorch wheel index (switch to the CPU index to slim the image) |
 | `ONNX_GPU` | `false` (set `true` by the GPU override) | Install GPU ONNX Runtime |
 
-## GPU deployment
+## GPU deployment (NVIDIA, Docker)
 
 The GPU overlay reserves NVIDIA GPUs for the backend container and enables
 GPU ONNX Runtime:
@@ -53,6 +53,50 @@ The GPU is used for diarization (Sortformer and faster embedding inference).
 The Admin panel's diarization capability check
 (`GET /api/diagnostics/diarization`) reports whether CUDA is visible inside
 the container.
+
+## AMD GPU on Windows (native backend)
+
+Docker cannot pass an AMD GPU through to Linux containers on Windows (WSL2
+exposes AMD GPUs only via a DirectX bridge that the standard ROCm stack does
+not use), so `docker-compose up` always runs Sortformer on CPU on an AMD
+machine. To use an AMD GPU, run the backend natively on Windows with AMD's
+official PyTorch-on-Windows (ROCm) wheels.
+
+Requirements:
+
+- An RDNA4 (e.g. Radeon RX 9070 / 9070 XT) or other ROCm-on-Windows
+  supported GPU -- see [AMD's Windows compatibility matrix](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/windows/windows_compatibility.html)
+- AMD Adrenalin driver 26.2.2 or newer
+- Python 3.12 (AMD's wheels are cp312-only): `winget install Python.Python.3.12`
+
+One-time setup, from the repo root in PowerShell:
+
+```powershell
+.\backend\scripts\setup_windows_gpu.ps1
+```
+
+The script creates `backend/.venv` on Python 3.12, installs backend
+requirements, runs `scripts/install_sortformer.py` (which auto-detects the
+AMD GPU and installs AMD's ROCm torch wheels from repo.radeon.com instead of
+CPU wheels), downloads the ONNX models, and prints whether torch can see the
+GPU.
+
+To run the hybrid stack (Postgres in Docker, backend native, frontend via
+the Vite dev server):
+
+```powershell
+.\backend\scripts\setup_windows_gpu.ps1 -Run   # starts db + backend on :8000
+cd frontend; npm run dev                       # separate terminal
+```
+
+The compose frontend container cannot reach a native backend (its nginx
+proxies to the `backend` container by name), so use the Vite dev frontend --
+its proxy already targets a local backend on port 8000.
+
+Once running, ROCm torch builds report through the `torch.cuda` API, so the
+Admin panel's diarization card shows Device: CUDA with GPU accel:
+ROCm (AMD). Run the Sortformer benchmark from that card to unlock Enhanced
+mode.
 
 ## Frontend proxying (`frontend/nginx.conf`)
 

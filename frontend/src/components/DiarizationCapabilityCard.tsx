@@ -7,7 +7,10 @@ const RECORDING_MIME_TYPES = [
   "audio/webm",
   "audio/mp4",
 ];
-const MAX_RECORDING_SECONDS = 60;
+// Mirrors backend MIN/MAX_BENCHMARK_SECONDS: one 15s live Sortformer window
+// plus 5s of slack, after which recording stops and validation runs.
+const MIN_BENCHMARK_SECONDS = 15;
+const MAX_RECORDING_SECONDS = MIN_BENCHMARK_SECONDS + 5;
 
 export default function DiarizationCapabilityCard() {
   const [diarization, setDiarization] = useState<DiarizationDiagnostics | null>(null);
@@ -185,8 +188,13 @@ export default function DiarizationCapabilityCard() {
     }
   };
 
-  const diagnosticStatusColor = benchmark
-    ? (benchmark.status === "passed" ? "#10b981" : "#f59e0b")
+  const statusLabel = benchmark?.status
+    ?? (diarization?.sortformer_available && diarization.benchmark_status
+      ? diarization.benchmark_status
+      : diarization?.status)
+    ?? "unknown";
+  const diagnosticStatusColor = statusLabel === "passed"
+    ? "#10b981"
     : (diarization?.sortformer_available ? "#f59e0b" : "#94a3b8");
   const selectedMode = diarization?.selected_live_diarizer ?? "lightweight";
   const effectiveMode = diarization?.effective_live_diarizer ?? selectedMode;
@@ -215,7 +223,7 @@ export default function DiarizationCapabilityCard() {
               className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
               style={{ backgroundColor: diagnosticStatusColor }}
             >
-              {benchmark ? benchmark.status : diarization?.status ?? "unknown"}
+              {statusLabel}
             </span>
           </div>
           <p className="mt-1 font-body text-xs leading-relaxed text-brand-gray">
@@ -354,9 +362,13 @@ export default function DiarizationCapabilityCard() {
         >
           {recording ? `Stop Recording (${recordingSeconds}s)` : "Record Mic Benchmark"}
         </button>
-        {benchmark && (
+        {benchmark ? (
           <span className="font-body text-xs text-brand-mid-gray">
             {benchmark.audio_seconds.toFixed(1)}s audio in {benchmark.processing_seconds.toFixed(1)}s processing
+          </span>
+        ) : benchmarkFile && (
+          <span className="font-body text-[10px] text-brand-mid-gray">
+            Needs at least {MIN_BENCHMARK_SECONDS}s of audio; only the first {MAX_RECORDING_SECONDS}s is benchmarked.
           </span>
         )}
       </div>

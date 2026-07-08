@@ -52,6 +52,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 Local frontend development expects the Vite dev proxy in `frontend/vite.config.ts` for `/api` and `/ws`.
 
+AMD GPUs cannot be used from Docker on Windows. `backend/scripts/setup_windows_gpu.ps1` sets up a native Python 3.12 backend venv with AMD's ROCm torch wheels (auto-detected by `backend/scripts/install_sortformer.py`); `-Run` starts the compose db plus a native backend on :8000. See docs/deployment.md "AMD GPU on Windows".
+
 Audio file import uses `soundfile` first and falls back to `ffmpeg` for formats such as MP3 and M4A. If audio import fails locally, verify `ffmpeg` is installed and on `PATH`.
 
 ### Database Migrations
