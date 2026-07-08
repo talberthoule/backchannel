@@ -15,7 +15,11 @@
 
 ---
 
-Backchannel listens to your meetings and works quietly in the background. It
+Backchannel is a self-hosted, open-source (MIT) AI meeting assistant that
+runs on your own hardware -- no bot joins your call, and your audio never
+leaves your infrastructure except for the model API calls you configure.
+
+It listens to your meetings and works quietly in the background. It
 captures microphone and system audio in the browser, streams it to a FastAPI
 backend that builds a live speaker-attributed transcript, and runs a crew of
 AI agents over the conversation as it happens -- surfacing the questions you
@@ -61,9 +65,13 @@ Read more in [docs/architecture.md](docs/architecture.md).
 
 ## Quickstart
 
-Requires Docker and a [Gemini API key](https://ai.google.dev/).
+Requires Docker with the Compose plugin. The default pipeline uses a free
+[Gemini API key](https://ai.google.dev/) for transcription and agents;
+local ONNX Whisper/Parakeet models can transcribe with no key at all.
 
 ```bash
+git clone https://github.com/talberthoule/backchannel.git
+cd backchannel
 cp .env.example .env   # set GEMINI_API_KEY (or add keys later in Admin -> API Keys)
 docker compose up --build
 ```

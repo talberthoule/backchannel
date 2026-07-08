@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://backchannel-site.lavender-zebu.workers.dev/sitemap.xml
+Sitemap: https://backchannel-site.lavender-zebu.workers.dev/docs/sitemap-index.xml

@@ -36,7 +36,21 @@ for (const file of readdirSync(SRC).filter((f) => f.endsWith('.md'))) {
     (_, name, hash = '') => `](${prefix}${name === 'README' ? '' : name + '/'}${hash})`
   );
 
-  writeFileSync(join(OUT, `${slug}.md`), `---\ntitle: ${JSON.stringify(h1[1])}\n---\n\n${text}`);
+  // Per-page meta description: first prose block (headings/tables/images/code
+  // skipped), markdown stripped, truncated to ~155 chars at a word boundary.
+  const block = text.split(/\n\s*\n/).map((b) => b.trim()).find((b) => b && !/^[#|<!`]/.test(b));
+  const plain = (block ?? h1[1])
+    .replace(/^\s*(?:[-*]|\d+\.)\s+/gm, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[`*]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const description = plain.length > 155 ? plain.slice(0, 155).replace(/\s+\S*$/, '') : plain;
+
+  writeFileSync(
+    join(OUT, `${slug}.md`),
+    `---\ntitle: ${JSON.stringify(h1[1])}\ndescription: ${JSON.stringify(description)}\n---\n\n${text}`
+  );
 }
 
 // Referenced by architecture.md; lives at the repo root for the main README.

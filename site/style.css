@@ -457,6 +457,23 @@ pre .cmt {
   color: var(--muted);
 }
 
+/* Comparison-page prose */
+
+.prose {
+  max-width: 760px;
+}
+
+.prose h3 {
+  margin: 28px 0 8px;
+  font-size: 20px;
+  letter-spacing: -0.3px;
+}
+
+.prose p {
+  margin: 0 0 14px;
+  color: var(--ink-soft);
+}
+
 /* Footer */
 
 footer.site {
@@ -471,6 +488,14 @@ footer.site .wrap {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+footer.site .wrap.footer-compare {
+  justify-content: flex-start;
+  gap: 8px 20px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
 }
 
 /* Responsive */

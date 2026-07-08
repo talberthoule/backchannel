@@ -3,10 +3,88 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Backchannel - Real-time meeting transcription and AI insights</title>
-  <meta name="description" content="Backchannel listens to your meetings, builds a live speaker-attributed transcript, and runs AI agents that surface questions, objections, opportunities, and action items as the conversation happens." />
+  <title>Backchannel - Open-source, self-hosted AI meeting assistant</title>
+  <meta name="description" content="Backchannel is an open-source, self-hosted AI meeting assistant: live speaker-diarized transcripts and real-time insights, no bot joining your call." />
+  <link rel="canonical" href="https://backchannel-site.lavender-zebu.workers.dev/" />
+  <meta property="og:title" content="Backchannel - Open-source, self-hosted AI meeting assistant" />
+  <meta property="og:description" content="Backchannel is an open-source, self-hosted AI meeting assistant: live speaker-diarized transcripts and real-time insights, no bot joining your call." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://backchannel-site.lavender-zebu.workers.dev/" />
+  <meta name="twitter:card" content="summary" />
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
   <link rel="stylesheet" href="style.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "Backchannel",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Self-hosted (Docker Compose); any modern browser",
+        "description": "Backchannel is an open-source, self-hosted AI meeting assistant: live speaker-diarized transcripts and real-time insights, no bot joining your call.",
+        "url": "https://backchannel-site.lavender-zebu.workers.dev/",
+        "license": "https://github.com/talberthoule/backchannel/blob/master/LICENSE",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "softwareHelp": { "@type": "CreativeWork", "url": "https://backchannel-site.lavender-zebu.workers.dev/docs/" },
+        "sameAs": ["https://github.com/talberthoule/backchannel"]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Is Backchannel free?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Backchannel is open source under the MIT License, with no hosted tier, no seat pricing, and no feature paywall. Your only costs are your own hardware and any Gemini or OpenAI API usage you configure."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does my meeting audio leave my machine?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API -- you can route agents to OpenAI instead, or transcribe fully offline with local ONNX Whisper or Parakeet models. Recordings and transcripts stay on your server."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does it work with Zoom, Google Meet, and Teams?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes -- with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration to install."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How is it different from Otter.ai and other cloud note-takers?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Cloud note-takers such as Otter.ai, Fireflies.ai, and Granola send your meetings to their cloud and deliver most of their value after the call. Backchannel is self-hosted and works during the meeting: agents push questions, objection responses, opportunities, and action items while you can still act on them."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need a GPU?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. CPU-only Docker Compose is the default. An NVIDIA GPU can accelerate diarization via a compose override, and AMD GPUs on Windows are supported with a native backend setup script."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What do I need to run it?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Docker with the Compose plugin, plus a Gemini API key for the default transcription and analysis models. An OpenAI key is optional for OpenAI-routed agents, and local ONNX transcription needs no key at all."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
 
@@ -18,6 +96,7 @@
     </a>
     <nav class="site-nav">
       <a href="#features">Features</a>
+      <a href="#quickstart">Quickstart</a>
       <a href="#how-it-works">How it works</a>
       <a href="#architecture">Architecture</a>
       <a href="#agents">Agents</a>
@@ -31,17 +110,26 @@
 
   <section class="hero">
     <div class="wrap">
-      <h1>Your meetings, transcribed live.<br />Your next move, <span class="accent">surfaced in real time</span>.</h1>
+      <h1>Your meetings, transcribed live.<br />Your next move, <span class="accent">surfaced mid-call</span> -- on your own hardware.</h1>
       <p class="lede">
-        Backchannel captures meeting audio in the browser, builds a live
-        speaker-attributed transcript, and runs a crew of AI agents over the
-        conversation as it happens -- so questions, objections, opportunities,
-        and action items reach you while they still matter.
+        Backchannel is a self-hosted, open-source AI meeting assistant that
+        builds a live speaker-attributed transcript and runs AI agents that
+        surface questions, objections, opportunities, and action items in
+        real time. No bot joins the call: it captures audio in the browser,
+        works with Zoom, Google Meet, Teams, or any meeting app, and keeps
+        your recordings on your own server.
       </p>
       <div class="cta-row">
-        <a class="btn primary" href="#quickstart">Get started</a>
+        <a class="btn primary" href="#quickstart">Self-host in minutes</a>
         <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
       </div>
+      <p class="quickstart-note">MIT licensed &middot; runs with Docker Compose &middot; local diarization &middot; optional fully offline transcription</p>
+      <!--
+        PLACEHOLDER: hero product visual (marketing/cro-review.md item 6).
+        When a screenshot or short muted loop of ActiveCallView exists (live
+        transcript streaming + insights arriving), place it here, directly
+        under the CTA row. No asset exists yet -- do not reference one.
+      -->
     </div>
   </section>
 
@@ -49,7 +137,7 @@
     <div class="wrap">
       <span class="kicker">Features</span>
       <h2>Everything a second set of ears should do</h2>
-      <p class="sub">Self-hosted, provider-flexible, and built around a transcript you can trust.</p>
+      <p class="sub">Built for sales, discovery, and client calls -- provider-flexible and centered on a transcript you can trust.</p>
       <div class="grid">
         <div class="card">
           <span class="icon" aria-hidden="true">
@@ -70,7 +158,7 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M21 3l-7 7M8 21H3v-5M3 21l7-7M21 16v5h-5M14 14l7 7M3 8V3h5M10 10L3 3" /></svg>
           </span>
           <h3>Provider-routed models</h3>
-          <p>Mix Google Gemini and OpenAI models per agent, or transcribe fully offline with local ONNX Whisper and Parakeet -- no API key required.</p>
+          <p>Mix Google Gemini and OpenAI models per agent, or transcribe fully offline with local ONNX Whisper and Parakeet -- no API key needed for transcription.</p>
         </div>
         <div class="card">
           <span class="icon" aria-hidden="true">
@@ -97,7 +185,32 @@
     </div>
   </section>
 
-  <section id="how-it-works">
+  <section id="quickstart">
+    <div class="wrap">
+      <span class="kicker">Quickstart</span>
+      <h2>Running in one copy-paste</h2>
+      <p class="sub">Docker is the only hard requirement. The default transcription and analysis models use Google Gemini -- add your key in the app after it starts, or put it in <code>.env</code> first.</p>
+      <pre><code>git clone https://github.com/talberthoule/backchannel.git
+cd backchannel
+cp .env.example .env   <span class="cmt"># optionally set GEMINI_API_KEY here</span>
+docker compose up --build
+
+<span class="cmt"># app at http://localhost:3000 -- add API keys any time in Admin -&gt; API Keys</span></code></pre>
+      <p class="quickstart-note">
+        The first start builds images and downloads models, so give it a few
+        minutes. Prefer zero API keys? Switch batch transcription to a local
+        ONNX Whisper or Parakeet model: transcription and diarization run
+        fully offline, and only the insight agents still need a Gemini or
+        OpenAI key.
+      </p>
+      <p class="quickstart-note">
+        Have an NVIDIA GPU? Add the override for GPU diarization:
+        <code>docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build</code>
+      </p>
+    </div>
+  </section>
+
+  <section id="how-it-works" class="alt">
     <div class="wrap">
       <span class="kicker">How it works</span>
       <h2>From spoken word to actionable insight</h2>
@@ -107,12 +220,12 @@
         <li><span><strong>Diarize.</strong> Voice activity detection cuts speech into segments; speaker embeddings assign each segment to a voice.</span></li>
         <li><span><strong>Transcribe.</strong> Each segment is transcribed by Gemini Flash or a local ONNX model, filtered, and saved in speaking order.</span></li>
         <li><span><strong>Analyze.</strong> Text agents read the growing transcript on their own schedules and propose questions, objections, opportunities, and action items.</span></li>
-        <li><span><strong>Deliver.</strong> Deduplicated insights stream back to the call view instantly and are refined by a synthesizer as the conversation evolves.</span></li>
+        <li><span><strong>Deliver.</strong> Deduplicated insights stream to the call view instantly; a synthesizer refines them as the conversation evolves.</span></li>
       </ol>
     </div>
   </section>
 
-  <section id="architecture" class="alt">
+  <section id="architecture">
     <div class="wrap">
       <span class="kicker">Architecture</span>
       <h2>Three services, two AI paths, one transcript</h2>
@@ -126,7 +239,7 @@
     </div>
   </section>
 
-  <section id="agents">
+  <section id="agents" class="alt">
     <div class="wrap">
       <span class="kicker">Agents</span>
       <h2>A crew, not a monolith</h2>
@@ -140,17 +253,17 @@
             <tr>
               <td><code>audio_gateway</code></td>
               <td>Continuous audio stream</td>
-              <td>Silent live listener (Gemini Live or OpenAI Realtime) producing interim transcription</td>
+              <td>Listens silently via Gemini Live or OpenAI Realtime and streams interim transcription</td>
             </tr>
             <tr>
               <td><code>consolidated_analyst</code></td>
               <td>Every 15s</td>
-              <td>One LLM pass producing questions, observations, opportunities, and action items</td>
+              <td>Produces questions, observations, opportunities, and action items in one LLM pass</td>
             </tr>
             <tr>
               <td><code>objection_handler</code></td>
               <td>Every 5s over the last ~90s</td>
-              <td>Low-latency objection scan pairing an immediate response with the strategic angle</td>
+              <td>Scans for objections and pairs an immediate response with the strategic angle</td>
             </tr>
             <tr>
               <td><code>synthesizer</code></td>
@@ -168,25 +281,41 @@
     </div>
   </section>
 
-  <section id="quickstart" class="alt">
+  <section id="faq">
     <div class="wrap">
-      <span class="kicker">Quickstart</span>
-      <h2>Running in two commands</h2>
-      <p class="sub">Requires Docker and a Gemini API key.</p>
-      <pre><code><span class="cmt"># set GEMINI_API_KEY (or add keys later in Admin -&gt; API Keys)</span>
-cp .env.example .env
-
-docker compose up --build
-
-<span class="cmt"># app at http://localhost:3000, API at http://localhost:8001</span></code></pre>
-      <p class="quickstart-note">
-        Have an NVIDIA GPU? Add the override for GPU diarization:
-        <code>docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build</code>
-      </p>
+      <span class="kicker">FAQ</span>
+      <h2>Privacy, data flow, and what it takes to run</h2>
+      <p class="sub">The questions that decide whether you self-host, answered plainly.</p>
+      <div class="grid">
+        <div class="card">
+          <h3>Is Backchannel free?</h3>
+          <p>Yes. Backchannel is open source under the MIT License, with no hosted tier, no seat pricing, and no feature paywall. Your only costs are your own hardware and any Gemini or OpenAI API usage you configure.</p>
+        </div>
+        <div class="card">
+          <h3>Does my meeting audio leave my machine?</h3>
+          <p>Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API -- you can route agents to OpenAI instead, or transcribe fully offline with local ONNX Whisper or Parakeet models. Recordings and transcripts stay on your server.</p>
+        </div>
+        <div class="card">
+          <h3>Does it work with Zoom, Google Meet, and Teams?</h3>
+          <p>Yes -- with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration to install.</p>
+        </div>
+        <div class="card">
+          <h3>How is it different from Otter.ai and other cloud note-takers?</h3>
+          <p>Cloud note-takers such as Otter.ai, Fireflies.ai, and Granola send your meetings to their cloud and deliver most of their value after the call. Backchannel is self-hosted and works during the meeting: agents push questions, objection responses, opportunities, and action items while you can still act on them.</p>
+        </div>
+        <div class="card">
+          <h3>Do I need a GPU?</h3>
+          <p>No. CPU-only Docker Compose is the default. An NVIDIA GPU can accelerate diarization via a compose override, and AMD GPUs on Windows are supported with a native backend setup script.</p>
+        </div>
+        <div class="card">
+          <h3>What do I need to run it?</h3>
+          <p>Docker with the Compose plugin, plus a Gemini API key for the default transcription and analysis models. An OpenAI key is optional for OpenAI-routed agents, and local ONNX transcription needs no key at all.</p>
+        </div>
+      </div>
     </div>
   </section>
 
-  <section id="docs">
+  <section id="docs" class="alt">
     <div class="wrap">
       <span class="kicker">Documentation</span>
       <h2>Go deeper</h2>
@@ -228,14 +357,14 @@ docker compose up --build
     </div>
   </section>
 
-  <section id="get-started" class="alt cta-final">
+  <section id="get-started" class="cta-final">
     <div class="wrap">
       <span class="kicker">Get started</span>
       <h2>Hear more from your next meeting</h2>
-      <p class="sub">Self-hosted and open source. Up and running in two commands.</p>
+      <p class="sub">Self-hosted, open source, MIT licensed. If Backchannel is useful to you, a star on GitHub helps others find it.</p>
       <div class="cta-row">
-        <a class="btn primary" href="#quickstart">Get started</a>
-        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">Star on GitHub</a>
+        <a class="btn primary" href="#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
       </div>
     </div>
   </section>
@@ -243,9 +372,16 @@ docker compose up --build
 </main>
 
 <footer class="site">
+  <div class="wrap footer-compare">
+    <span>Compare:</span>
+    <a href="/otter-alternative/">Open-source Otter.ai alternative</a>
+    <a href="/granola-alternative/">Granola alternative</a>
+    <a href="/fireflies-alternative/">Fireflies.ai alternative</a>
+    <a href="/vs-meetily/">Backchannel vs Meetily</a>
+  </div>
   <div class="wrap">
-    <span>Backchannel -- real-time meeting transcription and AI insights.</span>
-    <span>Open source under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
+    <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
   </div>
 </footer>
 
