@@ -23,6 +23,8 @@ export default defineConfig({
         },
       ],
       sidebar: [
+        // ponytail: absolute path escapes the /docs base back to the landing page
+        { label: '← Back to homepage', link: 'https://backchannel-site.lavender-zebu.workers.dev/' },
         { label: 'Overview', link: '/' },
         'quickstart',
         'architecture',

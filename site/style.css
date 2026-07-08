@@ -232,6 +232,15 @@ section p.sub {
   color: var(--muted);
 }
 
+section.cta-final {
+  text-align: center;
+}
+
+section.cta-final p.sub {
+  margin-left: auto;
+  margin-right: auto;
+}
+
 /* Feature grid */
 
 .grid {
