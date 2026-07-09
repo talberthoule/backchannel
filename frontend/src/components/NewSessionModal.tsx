@@ -73,7 +73,7 @@ export default function NewSessionModal({ open, onClose, onCreate }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-session-title"
-        className="w-full max-w-lg rounded-xl bg-white shadow-2xl ring-1 ring-brand-light-gray-1 animate-slide-in-right"
+        className="w-full max-w-lg rounded-xl bg-surface shadow-2xl ring-1 ring-brand-light-gray-1 animate-slide-in-right"
       >
         <div className="flex items-start justify-between border-b border-brand-light-gray-1 px-6 py-4">
           <div>
@@ -112,7 +112,7 @@ export default function NewSessionModal({ open, onClose, onCreate }: Props) {
             placeholder={placeholder.current}
             disabled={creating}
             maxLength={120}
-            className="w-full rounded-lg border border-brand-light-gray-1 bg-white px-3 py-2.5 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray/70 outline-none transition-colors focus:border-brand-teal focus:ring-2 focus:ring-brand-teal-light/40 disabled:bg-brand-light-gray-2"
+            className="w-full rounded-lg border border-brand-light-gray-1 bg-surface px-3 py-2.5 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray/70 transition-colors focus:border-brand-teal focus:ring-2 focus:ring-brand-teal-light/40 disabled:bg-brand-light-gray-2"
           />
           <p className="mt-1.5 font-body text-[11px] text-brand-mid-gray">
             Leave blank to use the suggested name. You can rename it anytime.

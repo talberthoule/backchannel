@@ -1,25 +1,34 @@
 /** @type {import('tailwindcss').Config} */
+const channel = (v) => `rgb(var(${v}) / <alpha-value>)`;
+
 export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
+  darkMode: ["selector", '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
-        // Backchannel brand palette (matches site/style.css): teal accent on slate neutrals
+        // Semantic tokens backed by CSS variables (see index.css). These swap
+        // between light and dark; primitives never change.
+        surface: channel("--surface"),
+        canvas: channel("--surface-raised"),
+        // Backchannel brand palette. Names kept for back-compat; values now
+        // resolve through the semantic token layer so a theme swap re-skins
+        // the whole app without touching components.
         brand: {
-          teal: "#0d9488",
-          "teal-dark": "#0f766e",
-          "teal-light": "#2dd4bf",
-          amber: "#f59e0b",
-          gray: "#475569",
-          "dark-gray": "#0f172a",
-          "mid-gray": "#64748b",
-          "light-gray-1": "#e2e8f0",
-          "light-gray-2": "#f8fafc",
+          teal: channel("--accent"),
+          "teal-dark": channel("--accent-dark"),
+          "teal-light": channel("--accent-light"),
+          amber: channel("--accent-2"),
+          gray: channel("--text-secondary"),
+          "dark-gray": channel("--text-primary"),
+          "mid-gray": channel("--text-tertiary"),
+          "light-gray-1": channel("--border-subtle"),
+          "light-gray-2": channel("--surface-raised"),
         },
       },
       fontFamily: {
-        display: ["system-ui", "-apple-system", "Segoe UI", "Roboto", "Helvetica", "Arial", "sans-serif"],
-        body: ["system-ui", "-apple-system", "Segoe UI", "Roboto", "Helvetica", "Arial", "sans-serif"],
+        display: ["Inter Variable", "Inter", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Helvetica", "Arial", "sans-serif"],
+        body: ["Inter Variable", "Inter", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Helvetica", "Arial", "sans-serif"],
       },
       keyframes: {
         "slide-in-right": {

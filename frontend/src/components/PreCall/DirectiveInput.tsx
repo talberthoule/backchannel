@@ -41,9 +41,9 @@ export default function DirectiveInput({ sessionId, onAdded }: Props) {
         onKeyDown={handleKeyDown}
         placeholder="e.g., watch for unclear concepts, key decisions, open questions, risks, and follow-up actions"
         rows={2}
-        className="flex-1 rounded-lg border border-brand-light-gray-1 bg-white px-4 py-3
+        className="flex-1 rounded-lg border border-brand-light-gray-1 bg-surface px-4 py-3
                    font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray
-                   focus:outline-none focus:ring-2 focus:ring-brand-teal-light focus:border-transparent
+                   focus:ring-2 focus:ring-brand-teal-light focus:border-transparent
                    resize-none"
       />
       <button
@@ -52,7 +52,7 @@ export default function DirectiveInput({ sessionId, onAdded }: Props) {
         className="self-end shrink-0 rounded-lg px-5 py-3 font-display text-sm font-semibold
                    text-white bg-brand-teal hover:bg-brand-teal-dark transition-colors
                    disabled:opacity-40 disabled:cursor-not-allowed
-                   focus:outline-none focus:ring-2 focus:ring-brand-teal-light focus:ring-offset-2"
+                   focus:ring-2 focus:ring-brand-teal-light focus:ring-offset-2"
       >
         {submitting ? "Adding..." : "Add Directive"}
       </button>

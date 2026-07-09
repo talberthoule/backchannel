@@ -165,7 +165,7 @@ export default function PostCallView({
       )}
 
       {/* Session summary header */}
-      <div className="rounded-xl bg-white p-6 shadow-sm">
+      <div className="rounded-xl bg-surface p-6 shadow-sm">
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <EditableSessionName
@@ -246,7 +246,7 @@ export default function PostCallView({
               <button className="rounded-lg border border-brand-light-gray-1 px-4 py-2 text-sm font-medium text-brand-teal transition-colors hover:bg-brand-light-gray-2">
                 Export
               </button>
-              <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-brand-light-gray-1 bg-white shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+              <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-brand-light-gray-1 bg-surface shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
                 <a
                   href={`/api/sessions/${session.id}/artifacts/summary-export`}
                   className="block px-4 py-2.5 text-sm text-brand-dark-gray hover:bg-brand-light-gray-2 rounded-t-lg"
@@ -291,7 +291,7 @@ export default function PostCallView({
             onClick={() => setActiveTab(tab.key)}
             className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === tab.key
-                ? "bg-white text-brand-teal shadow-sm"
+                ? "bg-surface text-brand-teal shadow-sm"
                 : "text-brand-gray hover:text-brand-dark-gray"
             }`}
           >
@@ -342,7 +342,7 @@ export default function PostCallView({
       )}
 
       {activeTab === "documents" && (
-        <div className="rounded-xl bg-white p-6 shadow-sm">
+        <div className="rounded-xl bg-surface p-6 shadow-sm">
           <h2 className="font-display text-lg font-semibold text-brand-dark-gray mb-4">
             Shared Files
           </h2>
@@ -392,7 +392,7 @@ export default function PostCallView({
       )}
 
       {activeTab === "directives" && (
-        <div className="rounded-xl bg-white p-6 shadow-sm">
+        <div className="rounded-xl bg-surface p-6 shadow-sm">
           <h2 className="font-display text-lg font-semibold text-brand-dark-gray mb-4">
             Framing Context & Directives
           </h2>
@@ -405,7 +405,7 @@ export default function PostCallView({
                   key={d.id}
                   className={`rounded-lg border p-4 ${
                     d.active
-                      ? "border-brand-teal-light/30 bg-blue-50/30"
+                      ? "border-brand-teal-light/30 bg-brand-teal/5"
                       : "border-brand-light-gray-1 bg-brand-light-gray-2 opacity-60"
                   }`}
                 >

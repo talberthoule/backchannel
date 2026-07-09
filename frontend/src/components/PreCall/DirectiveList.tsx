@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Directive } from "../../types";
+import { useConfirm } from "../ConfirmProvider";
 import * as api from "../../services/api";
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function DirectiveList({ sessionId, directives, onRefresh }: Props) {
+  const { confirm, toast } = useConfirm();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
 
@@ -22,9 +24,17 @@ export default function DirectiveList({ sessionId, directives, onRefresh }: Prop
   };
 
   const handleDelete = async (id: string) => {
+    const ok = await confirm({
+      title: "Delete directive",
+      message: "Delete this directive?",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await api.deleteDirective(sessionId, id);
       onRefresh();
+      toast("Directive deleted");
     } catch (err) {
       console.error("Failed to delete directive:", err);
     }
@@ -69,7 +79,7 @@ export default function DirectiveList({ sessionId, directives, onRefresh }: Prop
         return (
           <li
             key={d.id}
-            className={`rounded-lg bg-white shadow-sm border px-4 py-3 transition-colors ${
+            className={`rounded-lg bg-surface shadow-sm border px-4 py-3 transition-colors ${
               d.active
                 ? "border-brand-teal-light/40"
                 : "border-brand-light-gray-1 opacity-60"
@@ -88,7 +98,7 @@ export default function DirectiveList({ sessionId, directives, onRefresh }: Prop
                   }`}
                 >
                   <div
-                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-surface shadow transition-transform ${
                       d.active ? "translate-x-4" : "translate-x-0.5"
                     }`}
                   />
@@ -109,7 +119,7 @@ export default function DirectiveList({ sessionId, directives, onRefresh }: Prop
                       }}
                       className="flex-1 rounded border border-brand-light-gray-1 px-2 py-1
                                  font-body text-sm text-brand-dark-gray
-                                 focus:outline-none focus:ring-1 focus:ring-brand-teal-light"
+                                 focus:ring-1 focus:ring-brand-teal-light"
                       autoFocus
                     />
                     <button

@@ -43,7 +43,7 @@ export default function CallAudioPanel({ session, segments, onRetranscribed }: C
   };
 
   return (
-    <div className="mb-4 rounded-xl bg-white p-4 shadow-sm">
+    <div className="mb-4 rounded-xl bg-surface p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-4">
           {audioSegments.map((seg) => (
@@ -58,7 +58,7 @@ export default function CallAudioPanel({ session, segments, onRetranscribed }: C
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
             disabled={busy}
-            className="rounded border border-brand-light-gray-1 bg-white px-2 py-1.5 text-xs text-brand-dark-gray outline-none focus:border-brand-teal"
+            className="rounded border border-brand-light-gray-1 bg-surface px-2 py-1.5 text-xs text-brand-dark-gray focus:border-brand-teal"
           >
             {models.map((m) => (
               <option key={m.id} value={m.id}>{m.name}</option>

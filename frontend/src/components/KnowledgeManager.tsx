@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { KnowledgeRecord, KnowledgeSource } from "../types";
+import { useConfirm } from "./ConfirmProvider";
 import * as api from "../services/api";
 
 const TYPE_BADGES: Record<string, { label: string; color: string }> = {
@@ -69,7 +70,7 @@ function EditableCell({
             setEditing(false);
           }
         }}
-        className="w-full rounded border border-brand-teal-light bg-white px-1.5 py-1 text-xs text-brand-dark-gray outline-none ring-1 ring-brand-teal-light/30"
+        className="w-full rounded border border-brand-teal-light bg-surface px-1.5 py-1 text-xs text-brand-dark-gray ring-1 ring-brand-teal-light/30"
         rows={4}
       />
     );
@@ -88,7 +89,7 @@ function EditableCell({
           setEditing(false);
         }
       }}
-      className="w-full rounded border border-brand-teal-light bg-white px-1.5 py-1 text-xs text-brand-dark-gray outline-none ring-1 ring-brand-teal-light/30"
+      className="w-full rounded border border-brand-teal-light bg-surface px-1.5 py-1 text-xs text-brand-dark-gray ring-1 ring-brand-teal-light/30"
     />
   );
 }
@@ -109,12 +110,12 @@ function AddSourceForm({ onAdd, onCancel }: { onAdd: (name: string, sourceType: 
           if (e.key === "Escape") onCancel();
         }}
         placeholder="Source name..."
-        className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm outline-none focus:border-brand-teal"
+        className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal"
       />
       <select
         value={sourceType}
         onChange={(e) => setSourceType(e.target.value)}
-        className="w-full rounded border border-brand-light-gray-1 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-teal"
+        className="w-full rounded border border-brand-light-gray-1 bg-surface px-2 py-1.5 text-sm focus:border-brand-teal"
       >
         <option value="collection">Collection (structured records)</option>
         <option value="files">Files (uploaded documents)</option>
@@ -143,6 +144,7 @@ interface KnowledgeManagerProps {
 }
 
 export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
+  const { confirm, toast } = useConfirm();
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [records, setRecords] = useState<KnowledgeRecord[]>([]);
@@ -209,11 +211,18 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
   };
 
   const handleDeleteSource = async (id: string) => {
-    if (!confirm("Delete this knowledge source and all its records?")) return;
+    const ok = await confirm({
+      title: "Delete knowledge source",
+      message: "Delete this knowledge source and all its records? This cannot be undone.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await api.deleteKnowledgeSource(id);
       setSources((prev) => prev.filter((s) => s.id !== id));
       if (selectedId === id) setSelectedId(null);
+      toast("Knowledge source deleted");
     } catch (err) {
       setBanner(err instanceof Error ? err.message : "Delete failed");
     }
@@ -238,10 +247,18 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
   };
 
   const handleDeleteRecord = async (id: string) => {
+    const ok = await confirm({
+      title: "Delete record",
+      message: "Delete this knowledge record? This cannot be undone.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await api.deleteKnowledgeRecord(id);
       setRecords((prev) => prev.filter((r) => r.id !== id));
       refreshCounts();
+      toast("Record deleted");
     } catch (err) {
       console.error("Delete record failed", err);
     }
@@ -302,7 +319,7 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
   return (
     <div className="flex h-full flex-col bg-brand-light-gray-2">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-brand-light-gray-1 bg-white px-6 py-3">
+      <header className="flex items-center justify-between border-b border-brand-light-gray-1 bg-surface px-6 py-3">
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
@@ -336,7 +353,7 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Source list */}
-        <aside className="flex w-72 flex-col border-r border-brand-light-gray-1 bg-white p-3">
+        <aside className="flex w-72 flex-col border-r border-brand-light-gray-1 bg-surface p-3">
           <div className="mb-2 flex items-center justify-between px-1">
             <span className="text-[10px] font-bold uppercase tracking-wider text-brand-mid-gray">Sources</span>
             <button
@@ -408,7 +425,7 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
               <span className="font-body text-sm text-brand-mid-gray">Select or create a knowledge source</span>
             </div>
           ) : isBuiltIn ? (
-            <div className="mx-auto max-w-lg rounded-xl bg-white p-6 text-center shadow-sm">
+            <div className="mx-auto max-w-lg rounded-xl bg-surface p-6 text-center shadow-sm">
               <h3 className="font-display text-base font-bold text-brand-dark-gray">{selected.name}</h3>
               <p className="mt-2 font-body text-sm text-brand-gray">
                 This is the built-in source backed by the offerings catalog. Manage its contents in the Offerings Catalog tool.
@@ -417,7 +434,7 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
           ) : (
             <div className="space-y-3">
               {/* Source toolbar */}
-              <div className="flex items-center justify-between rounded-xl bg-white px-4 py-3 shadow-sm">
+              <div className="flex items-center justify-between rounded-xl bg-surface px-4 py-3 shadow-sm">
                 <div className="min-w-0">
                   <EditableCell value={selected.name} onSave={(v) => v && handleUpdateSource(selected.id, "name", v)} />
                   <div className="mt-0.5">
@@ -458,7 +475,7 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                     className={`h-5 w-9 rounded-full transition-colors ${selected.active ? "bg-brand-teal" : "bg-brand-light-gray-1"}`}
                     title={selected.active ? "Active — click to deactivate" : "Inactive — click to activate"}
                   >
-                    <span className={`block h-4 w-4 rounded-full bg-white shadow transition-transform ${selected.active ? "translate-x-4" : "translate-x-0.5"}`} />
+                    <span className={`block h-4 w-4 rounded-full bg-slate-50 shadow transition-transform ${selected.active ? "translate-x-4" : "translate-x-0.5"}`} />
                   </button>
                 </div>
               </div>
@@ -471,14 +488,14 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
                     placeholder="Title..."
-                    className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm outline-none focus:border-brand-teal"
+                    className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal"
                   />
                   <textarea
                     value={newBody}
                     onChange={(e) => setNewBody(e.target.value)}
                     placeholder="Body..."
                     rows={3}
-                    className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm outline-none focus:border-brand-teal"
+                    className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal"
                   />
                   <div className="flex gap-2">
                     <button
@@ -522,8 +539,8 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                   </p>
                 </div>
               ) : (
-                <div className="overflow-hidden rounded-lg border border-brand-light-gray-1 bg-white">
-                  <table className="w-full text-left text-xs">
+                <div className="overflow-x-auto rounded-lg border border-brand-light-gray-1 bg-surface">
+                  <table className="w-full min-w-[560px] text-left text-xs">
                     <thead>
                       <tr className="border-b border-brand-light-gray-1 bg-brand-light-gray-2/50">
                         <th className="px-3 py-2 font-display font-semibold text-brand-gray w-64">Title</th>
@@ -547,7 +564,7 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                               className={`h-5 w-9 rounded-full transition-colors ${r.active ? "bg-brand-teal" : "bg-brand-light-gray-1"}`}
                               title={r.active ? "Active — click to deactivate" : "Inactive — click to activate"}
                             >
-                              <span className={`block h-4 w-4 rounded-full bg-white shadow transition-transform ${r.active ? "translate-x-4" : "translate-x-0.5"}`} />
+                              <span className={`block h-4 w-4 rounded-full bg-slate-50 shadow transition-transform ${r.active ? "translate-x-4" : "translate-x-0.5"}`} />
                             </button>
                           </td>
                           <td className="px-3 py-2 align-top">
@@ -573,7 +590,7 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
       </div>
 
       {/* Format hint */}
-      <div className="border-t border-brand-light-gray-1 bg-white px-6 py-2">
+      <div className="border-t border-brand-light-gray-1 bg-surface px-6 py-2">
         <p className="font-body text-[10px] text-brand-mid-gray">
           Collection imports expect CSV/Excel with title and body columns (extra columns are kept as metadata). File sources accept .txt, .md, .docx, .pdf, .pptx, .xlsx, .csv, and .html uploads — files are converted to Markdown on upload and only the Markdown is stored. Point an agent at a source in Administration.
         </p>

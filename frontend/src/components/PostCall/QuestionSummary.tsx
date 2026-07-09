@@ -21,20 +21,17 @@ function SummaryCard({ question, speakers }: { question: Question; speakers: Spe
     ? speakers.find((speaker) => speaker.id === question.speaker_id)
     : null;
 
-  // Determine border style based on state
+  // Subtle bg tint for state emphasis; no colored left border (AI tell).
   const borderStyle = question.needs_followup
-    ? "border-[#f59e0b]/30 bg-[#f59e0b]/5"
+    ? "border-brand-amber/30 bg-brand-amber/5"
     : question.answered
       ? "border-green-200 bg-green-50/30"
       : question.starred
-        ? "border-[#f59e0b]/30 bg-[#f59e0b]/5"
-        : "border-brand-light-gray-1 bg-white";
+        ? "border-brand-amber/30 bg-brand-amber/5"
+        : "border-brand-light-gray-1 bg-surface";
 
   return (
-    <div
-      className={`rounded-lg border border-l-4 p-4 ${borderStyle}`}
-      style={{ borderLeftColor: cardColor }}
-    >
+    <div className={`rounded-lg border p-4 ${borderStyle}`}>
       <div className="flex items-start gap-3">
         {/* Star icon */}
         {question.starred && (
@@ -110,7 +107,7 @@ function SummaryCard({ question, speakers }: { question: Question; speakers: Spe
           {question.needs_followup && question.followup_question && (
             <div className="rounded-md border border-[#f59e0b]/30 bg-[#f59e0b]/10 px-3 py-2">
               <p className="font-body text-xs font-medium text-[#f59e0b]">Follow-up question:</p>
-              <p className="mt-0.5 font-body text-sm text-[#333]">
+              <p className="mt-0.5 font-body text-sm text-brand-dark-gray">
                 {question.followup_question}
               </p>
             </div>
@@ -136,33 +133,37 @@ function SectionHeader({ label, color, count }: { label: string; color: string; 
   );
 }
 
+// One accent (teal) for the active card; every other metric stays neutral
+// slate with a small leading category dot. Numbers are tabular so counts align.
 function StatCard({
   label,
   count,
-  color,
+  dotColor,
   isActive,
   onClick,
 }: {
   label: string;
   count: number;
-  color: string;
+  dotColor?: string;
   isActive: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex-1 rounded-xl px-5 py-4 shadow-sm text-left transition-all bg-white ${
+      className={`flex-1 rounded-lg border px-5 py-4 text-left transition-colors ${
         isActive
-          ? "ring-offset-1"
-          : "hover:bg-brand-light-gray-2/50"
+          ? "border-brand-teal bg-brand-teal/5 ring-1 ring-brand-teal"
+          : "border-brand-light-gray-1 bg-surface hover:bg-brand-light-gray-2/50"
       }`}
-      style={isActive ? { boxShadow: `0 0 0 2px ${color}` } : undefined}
     >
-      <p className="text-xs font-medium uppercase tracking-wide" style={{ color }}>
+      <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-brand-mid-gray">
+        {dotColor && (
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: dotColor }} />
+        )}
         {label}
       </p>
-      <p className="mt-1 font-display text-2xl font-bold" style={{ color }}>
+      <p className={`mt-1 font-display text-2xl font-bold tabular-nums ${isActive ? "text-brand-teal" : "text-brand-dark-gray"}`}>
         {count}
       </p>
     </button>
@@ -213,7 +214,6 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
         <StatCard
           label="Total"
           count={questions.length}
-          color={filter === "all" ? "#333" : "#999"}
           isActive={filter === "all"}
           onClick={() => setFilter("all")}
         />
@@ -224,7 +224,7 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
               key={t}
               label={typeGroupLabel(t, items)}
               count={items.length}
-              color={typeColor(t)}
+              dotColor={typeColor(t)}
               isActive={filter === t}
               onClick={() => handleFilterClick(t)}
             />
@@ -233,7 +233,7 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
         <StatCard
           label="Enhanced"
           count={enhanced.length}
-          color="#2dd4bf"
+          dotColor={typeColor("question")}
           isActive={filter === "enhanced"}
           onClick={() => handleFilterClick("enhanced")}
         />
@@ -336,14 +336,14 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
 
       {/* Empty state */}
       {questions.length === 0 && (
-        <div className="rounded-xl bg-white p-10 text-center shadow-sm">
+        <div className="rounded-xl bg-surface p-10 text-center shadow-sm">
           <p className="text-brand-mid-gray">No insights were generated during this session.</p>
         </div>
       )}
 
       {/* Filtered empty state */}
       {questions.length > 0 && filteredEmpty && (
-        <div className="rounded-xl bg-white p-10 text-center shadow-sm">
+        <div className="rounded-xl bg-surface p-10 text-center shadow-sm">
           <p className="text-brand-mid-gray">
             No {filter === "enhanced" ? "enhanced items" : typeGroupLabel(filter, byType(active, filter)).toLowerCase()} were captured during this session.
           </p>

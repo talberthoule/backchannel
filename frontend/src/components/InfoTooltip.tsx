@@ -97,7 +97,7 @@ export default function InfoTooltip({ content, details, placement = "right" }: P
         onClick={() => setOpen((v) => !v)}
         onMouseEnter={show}
         onMouseLeave={hide}
-        className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-brand-light-gray-1 text-brand-mid-gray hover:border-brand-teal hover:text-brand-teal hover:bg-brand-teal/5 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-brand-teal-light/40"
+        className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-brand-light-gray-1 text-brand-mid-gray hover:border-brand-teal hover:text-brand-teal hover:bg-brand-teal/5 transition-all duration-150 focus:ring-2 focus:ring-brand-teal-light/40"
         aria-label="More info"
       >
         <svg className="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 20 20">
@@ -110,7 +110,7 @@ export default function InfoTooltip({ content, details, placement = "right" }: P
           ref={popoverRef}
           onMouseEnter={show}
           onMouseLeave={hide}
-          className={`fixed z-50 w-80 rounded-xl border border-brand-light-gray-1 bg-white shadow-xl ring-1 ring-black/5 animate-in fade-in duration-150 ${
+          className={`fixed z-50 w-80 rounded-xl border border-brand-light-gray-1 bg-surface shadow-xl ring-1 ring-black/5 animate-in fade-in duration-150 ${
             actualPlacement === "bottom" ? "origin-top" : "origin-left"
           }`}
           style={{ top: pos.top, left: pos.left }}

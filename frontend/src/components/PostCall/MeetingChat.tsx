@@ -90,7 +90,7 @@ export default function MeetingChat({ session }: MeetingChatProps) {
   };
 
   const sessionCheckbox = (s: Session, removable = false) => (
-    <label key={s.id} className="flex items-center gap-1.5 cursor-pointer rounded-full border border-brand-light-gray-1 bg-white px-2.5 py-1">
+    <label key={s.id} className="flex items-center gap-1.5 cursor-pointer rounded-full border border-brand-light-gray-1 bg-surface px-2.5 py-1">
       <input
         type="checkbox"
         checked={selectedIds.has(s.id)}
@@ -103,7 +103,7 @@ export default function MeetingChat({ session }: MeetingChatProps) {
   );
 
   return (
-    <div className="flex h-full min-h-[420px] flex-col rounded-xl bg-white shadow-sm">
+    <div className="flex h-full min-h-[420px] flex-col rounded-xl bg-surface shadow-sm">
       {/* Scope picker */}
       <div className="border-b border-brand-light-gray-1 p-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -116,12 +116,12 @@ export default function MeetingChat({ session }: MeetingChatProps) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Add other sessions..."
-            className="w-44 rounded border border-brand-light-gray-1 bg-white px-2 py-1 font-body text-xs text-brand-dark-gray outline-none focus:border-brand-teal"
+            className="w-44 rounded border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-dark-gray focus:border-brand-teal"
           />
           <select
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
-            className="ml-auto rounded border border-brand-light-gray-1 bg-white px-2 py-1 font-body text-xs text-brand-dark-gray outline-none focus:border-brand-teal"
+            className="ml-auto rounded border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-dark-gray focus:border-brand-teal"
           >
             {models.map((m) => (
               <option key={m.id} value={m.id}>{m.name}</option>
@@ -176,7 +176,7 @@ export default function MeetingChat({ session }: MeetingChatProps) {
           onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
           placeholder="Ask about these meetings..."
           disabled={busy}
-          className="flex-1 rounded-lg border border-brand-light-gray-1 bg-white px-3 py-2 font-body text-sm text-brand-dark-gray outline-none focus:border-brand-teal"
+          className="flex-1 rounded-lg border border-brand-light-gray-1 bg-surface px-3 py-2 font-body text-sm text-brand-dark-gray focus:border-brand-teal"
         />
         <button
           onClick={handleSend}

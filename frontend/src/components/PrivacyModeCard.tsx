@@ -38,7 +38,7 @@ export default function PrivacyModeCard({ config, onChanged }: PrivacyModeCardPr
   };
 
   return (
-    <div className={`rounded-xl bg-white p-5 shadow-sm transition-opacity ${saving ? "opacity-70" : ""} ${enabled ? "ring-1 ring-brand-teal" : ""}`}>
+    <div className={`rounded-xl bg-surface p-5 shadow-sm transition-opacity ${saving ? "opacity-70" : ""} ${enabled ? "ring-1 ring-brand-teal" : ""}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -59,7 +59,7 @@ export default function PrivacyModeCard({ config, onChanged }: PrivacyModeCardPr
           className={`h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed ${enabled ? "bg-brand-teal" : confirming ? "bg-amber-400" : "bg-brand-light-gray-1"}`}
           title={enabled ? "Turn off Privacy First mode" : "Turn on Privacy First mode"}
         >
-          <span className={`block h-5 w-5 rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-5" : confirming ? "translate-x-2.5" : "translate-x-0.5"}`} />
+          <span className={`block h-5 w-5 rounded-full bg-surface shadow transition-transform ${enabled ? "translate-x-5" : confirming ? "translate-x-2.5" : "translate-x-0.5"}`} />
         </button>
       </div>
 

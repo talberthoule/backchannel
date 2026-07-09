@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Speaker } from "../../types";
+import { useConfirm } from "../ConfirmProvider";
 import * as api from "../../services/api";
 
 interface Props {
@@ -18,6 +19,7 @@ const PRESET_COLORS = [
 ];
 
 export default function SpeakerSetup({ sessionId, speakers, onRefresh }: Props) {
+  const { confirm, toast } = useConfirm();
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
@@ -56,9 +58,17 @@ export default function SpeakerSetup({ sessionId, speakers, onRefresh }: Props) 
   };
 
   const handleDelete = async (id: string) => {
+    const ok = await confirm({
+      title: "Remove participant",
+      message: "Remove this participant from the session?",
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await api.deleteSpeaker(sessionId, id);
       onRefresh();
+      toast("Participant removed");
     } catch (err) {
       console.error("Failed to delete speaker", err);
     }
@@ -92,7 +102,7 @@ export default function SpeakerSetup({ sessionId, speakers, onRefresh }: Props) 
           {speakers.map((speaker) => (
             <div
               key={speaker.id}
-              className="flex items-center gap-2 rounded-lg border border-brand-light-gray-1 bg-white px-3 py-2 shadow-sm"
+              className="flex items-center gap-2 rounded-lg border border-brand-light-gray-1 bg-surface px-3 py-2 shadow-sm"
             >
               <span
                 className="inline-block h-3 w-3 rounded-full shrink-0"
@@ -136,21 +146,21 @@ export default function SpeakerSetup({ sessionId, speakers, onRefresh }: Props) 
 
       {/* Add form */}
       {showForm ? (
-        <div className="rounded-lg border border-brand-light-gray-1 bg-white p-4 space-y-3 shadow-sm">
+        <div className="rounded-lg border border-brand-light-gray-1 bg-surface p-4 space-y-3 shadow-sm">
           <div className="flex gap-3">
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Name"
-              className="flex-1 rounded-md border border-brand-light-gray-1 px-3 py-2 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray focus:border-brand-teal-light focus:outline-none focus:ring-1 focus:ring-brand-teal-light"
+              className="flex-1 rounded-md border border-brand-light-gray-1 px-3 py-2 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray focus:border-brand-teal-light focus:ring-1 focus:ring-brand-teal-light"
             />
             <input
               type="text"
               value={role}
               onChange={(e) => setRole(e.target.value)}
               placeholder="e.g., Engineer, Seller, Vendor SE"
-              className="flex-1 rounded-md border border-brand-light-gray-1 px-3 py-2 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray focus:border-brand-teal-light focus:outline-none focus:ring-1 focus:ring-brand-teal-light"
+              className="flex-1 rounded-md border border-brand-light-gray-1 px-3 py-2 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray focus:border-brand-teal-light focus:ring-1 focus:ring-brand-teal-light"
             />
           </div>
 

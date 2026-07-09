@@ -19,7 +19,7 @@ export default function SpeakerSelector({ speakers, activeSpeakerId, onSelect }:
             onClick={() => onSelect(speaker.id)}
             className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all whitespace-nowrap ${
               isActive
-                ? "bg-white shadow-sm ring-2"
+                ? "bg-surface shadow-sm ring-2"
                 : "bg-brand-light-gray-2 text-brand-gray hover:bg-brand-light-gray-1"
             }`}
             style={

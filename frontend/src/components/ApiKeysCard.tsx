@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "./ConfirmProvider";
 import * as api from "../services/api";
 import type { CredentialInfo } from "../services/api";
 
@@ -12,6 +13,7 @@ interface ApiKeysCardProps {
 }
 
 export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
+  const { confirm, toast } = useConfirm();
   const [credentials, setCredentials] = useState<CredentialInfo[]>([]);
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -62,10 +64,18 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
   };
 
   const handleRemove = async (provider: string) => {
+    const ok = await confirm({
+      title: "Remove API key",
+      message: `Remove the stored ${provider} key? Live transcription and analysis that depend on it will stop working until you add a new key.`,
+      confirmLabel: "Remove key",
+      tone: "danger",
+    });
+    if (!ok) return;
     setBusy(provider);
     try {
       await api.deleteCredential(provider);
       setResult(provider, true, "Removed");
+      toast(`${provider} key removed`);
       await load();
       onChanged?.();
     } catch (err) {
@@ -76,7 +86,7 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
   };
 
   return (
-    <div className="rounded-xl bg-white p-5 shadow-sm">
+    <div className="rounded-xl bg-surface p-5 shadow-sm">
       <h3 className="font-display text-base font-bold text-brand-dark-gray">API Keys</h3>
       <p className="mt-1 mb-4 font-body text-xs text-brand-gray leading-relaxed">
         Workspace keys are encrypted at rest and used by all agents. Environment variables remain a fallback.
@@ -121,7 +131,7 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
                   placeholder={cred.configured ? "Replace key..." : "Paste API key..."}
                   value={inputs[cred.provider] || ""}
                   onChange={(e) => setInputs((prev) => ({ ...prev, [cred.provider]: e.target.value }))}
-                  className="w-full max-w-md rounded border border-brand-light-gray-1 bg-white px-3 py-1.5 font-mono text-sm text-brand-dark-gray outline-none focus:border-brand-teal"
+                  className="w-full max-w-md rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 font-mono text-sm text-brand-dark-gray focus:border-brand-teal"
                 />
                 <button
                   onClick={() => handleSave(cred.provider)}

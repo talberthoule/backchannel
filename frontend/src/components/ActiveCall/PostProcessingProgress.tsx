@@ -44,7 +44,7 @@ export default function PostProcessingProgress({ progress }: PostProcessingProgr
   const summary = detailsText(progress.details);
 
   return (
-    <section className="border-b border-brand-light-gray-1 bg-white px-6 py-4">
+    <section className="border-b border-brand-light-gray-1 bg-surface px-6 py-4">
       <div className="mx-auto max-w-5xl">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>

@@ -2,11 +2,100 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   Token spine: primitive -> semantic (light + dark) -> Tailwind consumers.
+   Colors are stored as space-separated RGB channels so Tailwind opacity
+   utilities (bg-brand-teal/10) keep working via rgb(var(--x) / <alpha-value>).
+   Dark values are authored, not naive inversions.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Layer 1 - primitives (raw brand + slate ramp) */
+  --p-teal: 13 148 136;        /* #0d9488 */
+  --p-teal-dark: 15 118 110;   /* #0f766e */
+  --p-teal-light: 45 212 191;  /* #2dd4bf */
+  --p-amber: 245 158 11;       /* #f59e0b */
+  --p-white: 255 255 255;
+  --p-slate-900: 15 23 42;     /* #0f172a */
+  --p-slate-700: 51 65 85;     /* #334155 */
+  --p-slate-600: 71 85 105;    /* #475569 */
+  --p-slate-500: 100 116 139;  /* #64748b */
+  --p-slate-400: 148 163 184;  /* #94a3b8 */
+  --p-slate-300: 203 213 225;  /* #cbd5e1 */
+  --p-slate-200: 226 232 240;  /* #e2e8f0 */
+  --p-slate-100: 241 245 249;  /* #f1f5f9 */
+  --p-slate-50: 248 250 252;   /* #f8fafc */
+  --p-slate-800: 30 41 59;     /* #1e293b */
+
+  /* Layer 2 - semantics (what everything maps to). Light mode. */
+  --accent: var(--p-teal);
+  --accent-dark: var(--p-teal-dark);
+  --accent-light: var(--p-teal-light);
+  --accent-2: var(--p-amber);
+
+  --surface: var(--p-white);          /* cards, panels, header, sidebar */
+  --surface-raised: var(--p-slate-50); /* app canvas / hover / inset */
+  --border-subtle: var(--p-slate-200);
+
+  --text-primary: var(--p-slate-900);
+  --text-secondary: var(--p-slate-600);
+  --text-tertiary: var(--p-slate-500);
+
+  /* Focus ring token */
+  --focus: var(--p-teal);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Accent stays for brand recognition; slightly lifted for dark burn. */
+  --accent: var(--p-teal);
+  --accent-dark: var(--p-teal);
+  --accent-light: var(--p-teal-light);
+  --accent-2: var(--p-amber);
+
+  --surface: var(--p-slate-800);       /* panels sit above canvas */
+  --surface-raised: var(--p-slate-900); /* app canvas (darkest) */
+  --border-subtle: var(--p-slate-700);
+
+  --text-primary: var(--p-slate-100);
+  --text-secondary: var(--p-slate-300);
+  --text-tertiary: var(--p-slate-400);
+
+  --focus: var(--p-teal-light);
+}
+
+/* Follow the OS when the user has not made an explicit choice. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --accent-dark: var(--p-teal);
+    --surface: var(--p-slate-800);
+    --surface-raised: var(--p-slate-900);
+    --border-subtle: var(--p-slate-700);
+    --text-primary: var(--p-slate-100);
+    --text-secondary: var(--p-slate-300);
+    --text-tertiary: var(--p-slate-400);
+    --focus: var(--p-teal-light);
+  }
+}
+
 body {
-  @apply bg-white text-brand-dark-gray font-body antialiased;
+  @apply bg-canvas text-brand-dark-gray font-body antialiased;
   margin: 0;
 }
 
 h1, h2, h3, h4, h5, h6 {
   @apply font-display;
+}
+
+/* Global keyboard focus ring: every interactive element gets a visible
+   :focus-visible indicator drawn from the --focus token. Mouse clicks stay
+   quiet (no outline) because :focus-visible only fires for keyboard/AT. */
+:where(a, button, input, select, textarea, summary, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid rgb(var(--focus));
+  outline-offset: 2px;
+  border-radius: 2px;
 }
