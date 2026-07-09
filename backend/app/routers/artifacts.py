@@ -286,74 +286,259 @@ def _section_has_content(items: list | None) -> bool:
     )
 
 
+# Self-contained stylesheet for exported briefing/summary documents. No external
+# fonts or CDN assets so the file renders offline (downloaded, emailed, printed).
+# Teal accent matches the Backchannel product palette; light + dark + print.
+_DOC_STYLE = """
+:root {
+  color-scheme: light dark;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Code", "Segoe UI Mono", Menlo, Consolas, monospace;
+  --canvas: #f4f6f5;
+  --surface: #ffffff;
+  --ink: #1a1e1d;
+  --ink-soft: #556260;
+  --ink-faint: #8b9693;
+  --line: #e7ebea;
+  --line-soft: #f0f3f2;
+  --accent: #0d9488;
+  --accent-strong: #0f766e;
+  --note-bg: #fffbeb;
+  --note-border: #f59e0b;
+  --note-ink: #7c5410;
+  --shadow: 0 1px 2px rgba(16,24,23,.05), 0 14px 34px -18px rgba(16,24,23,.22);
+  --radius-sheet: 16px;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #0c0e0e;
+    --surface: #15191a;
+    --ink: #e8ecea;
+    --ink-soft: #9aa5a2;
+    --ink-faint: #6a7573;
+    --line: #262d2c;
+    --line-soft: #1d2322;
+    --accent: #2dd4bf;
+    --accent-strong: #5eead4;
+    --note-bg: #241d0c;
+    --note-border: #a16207;
+    --note-ink: #fcd34d;
+    --shadow: 0 1px 2px rgba(0,0,0,.35), 0 16px 36px -18px rgba(0,0,0,.65);
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 40px 20px;
+  background: var(--canvas); color: var(--ink);
+  font-family: var(--font-sans); font-size: 16px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+.sheet {
+  max-width: 840px; margin: 0 auto; padding: 56px 56px 40px;
+  background: var(--surface); border-radius: var(--radius-sheet); box-shadow: var(--shadow);
+}
+.kicker {
+  margin: 0 0 16px; display: flex; align-items: center; gap: 10px;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .2em;
+  text-transform: uppercase; color: var(--accent-strong);
+}
+.kicker::before { content: ""; width: 24px; height: 2px; border-radius: 2px; background: var(--accent); }
+h1 {
+  margin: 0 0 16px; font-size: clamp(28px, 4vw, 38px); line-height: 1.08;
+  letter-spacing: -.022em; font-weight: 680; text-wrap: balance;
+}
+.meta { margin: 0; color: var(--ink-soft); font-size: 13px; font-family: var(--font-mono); }
+.meta .sep { color: var(--ink-faint); margin: 0 8px; }
+.rule { height: 1px; margin: 28px 0 0; border: 0; background: var(--line); }
+.stats {
+  display: flex; flex-wrap: wrap; margin: 28px 0 0;
+  border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+}
+.stat { flex: 1 1 0; min-width: 92px; padding: 16px 20px; border-right: 1px solid var(--line-soft); }
+.stat:last-child { border-right: 0; }
+.stat-value { font-size: 26px; font-weight: 680; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1; }
+.stat-label { margin-top: 6px; font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-faint); }
+.stat.primary .stat-value { color: var(--accent-strong); }
+section { margin-top: 40px; }
+h2 {
+  display: flex; align-items: baseline; gap: 11px; margin: 0 0 18px;
+  padding-bottom: 11px; border-bottom: 1px solid var(--line);
+  font-size: 18px; letter-spacing: -.012em; font-weight: 660;
+}
+h2::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); align-self: center; flex: none; }
+h2 .count { margin-left: auto; font-family: var(--font-mono); font-size: 12px; font-weight: 400; color: var(--ink-faint); }
+.record { display: grid; grid-template-columns: 30px 1fr; gap: 0 14px; padding: 18px 0; border-top: 1px solid var(--line-soft); }
+.record:first-of-type { border-top: 0; padding-top: 6px; }
+.idx { padding-top: 3px; font-family: var(--font-mono); font-size: 12.5px; color: var(--accent-strong); font-variant-numeric: tabular-nums; }
+.title { font-weight: 640; font-size: 15.5px; line-height: 1.4; }
+.body { margin: 6px 0 0; }
+.rationale { margin: 6px 0 0; color: var(--ink-soft); font-size: 14px; }
+.rmeta { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 9px; font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-soft); }
+.chip { display: inline-flex; align-items: center; gap: 7px; }
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.empty { color: var(--ink-faint); font-style: italic; }
+.note {
+  margin-top: 4px; padding: 14px 16px; border-left: 3px solid var(--note-border);
+  border-radius: 0 var(--radius) var(--radius) 0; background: var(--note-bg);
+  color: var(--note-ink); font-size: 14.5px; line-height: 1.55;
+}
+table { width: 100%; margin: 0; border-collapse: collapse; font-size: 14px; }
+thead th { padding: 0 10px 10px; text-align: left; font-size: 11px; letter-spacing: .07em; text-transform: uppercase; font-weight: 600; color: var(--ink-faint); border-bottom: 1px solid var(--line); }
+tbody td { padding: 13px 10px; vertical-align: top; border-bottom: 1px solid var(--line-soft); }
+tbody tr:last-child td { border-bottom: 0; }
+td.star { width: 22px; }
+.starred { color: var(--accent); }
+td.rationale-cell { color: var(--ink-soft); }
+td.src em { font-style: normal; font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); }
+.dismissed { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); }
+.transcript p { margin: 0 0 11px; }
+.transcript .ts { margin-right: 9px; font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); }
+.foot { display: flex; justify-content: space-between; gap: 16px; margin-top: 46px; padding-top: 18px; border-top: 1px solid var(--line); font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); }
+@media (max-width: 640px) {
+  body { padding: 0; }
+  .sheet { padding: 32px 22px; border-radius: 0; box-shadow: none; }
+}
+@media print {
+  body { padding: 0; background: #fff; color: #111; font-size: 11.5pt; }
+  .sheet { max-width: none; padding: 0; border-radius: 0; box-shadow: none; }
+  .note { background: #fff; }
+  section, .record, tr, .transcript p { break-inside: avoid; }
+  h1, h2 { break-after: avoid; }
+}
+"""
+
+
+def _count(items) -> int:
+    return sum(
+        1 for it in (items or [])
+        if isinstance(it, dict) and (it.get("title") or it.get("summary"))
+    )
+
+
+def _document(title: str, body: str) -> str:
+    return (
+        "<!DOCTYPE html>\n"
+        '<html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        f"<title>{escape(title)}</title>"
+        f"<style>{_DOC_STYLE}</style></head>"
+        f'<body><main class="sheet">{body}</main></body></html>'
+    )
+
+
+def _masthead(kicker: str, title: str, meta_parts: list[str]) -> str:
+    meta = '<span class="sep">&middot;</span>'.join(meta_parts)
+    return (
+        f'<p class="kicker">{escape(kicker)}</p>'
+        f"<h1>{escape(title)}</h1>"
+        f'<p class="meta">{meta}</p>'
+        '<hr class="rule">'
+    )
+
+
+def _stat_strip(stats: list[tuple[str, int, bool]]) -> str:
+    cells = []
+    for label, value, primary in stats:
+        cls = "stat primary" if primary else "stat"
+        cells.append(
+            f'<div class="{cls}"><div class="stat-value">{value}</div>'
+            f'<div class="stat-label">{escape(label)}</div></div>'
+        )
+    return f'<div class="stats">{"".join(cells)}</div>'
+
+
+def _footer() -> str:
+    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    return (
+        '<footer class="foot"><span>Generated by Backchannel</span>'
+        f"<span>{generated}</span></footer>"
+    )
+
+
 def _render_section(title: str, items: list) -> str:
-    if not items:
-        return f"<h2>{escape(title)}</h2><p class='muted'>No items captured.</p>"
-    rows = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
+    valid = [
+        it for it in (items or [])
+        if isinstance(it, dict) and (it.get("title") or it.get("summary"))
+    ]
+    head = f'<h2>{escape(title)}<span class="count">{len(valid)}</span></h2>'
+    if not valid:
+        return f'<section>{head}<p class="empty">No items captured.</p></section>'
+    records = []
+    for i, item in enumerate(valid, 1):
         item_title = escape(str(item.get("title") or ""))
         summary = escape(str(item.get("summary") or ""))
         rationale = escape(str(item.get("rationale") or ""))
         owner = escape(str(item.get("owner") or ""))
         status = escape(str(item.get("status") or ""))
-        meta = " &middot; ".join(part for part in [owner, status] if part)
-        meta_html = f'<div class="meta">{meta}</div>' if meta else ""
-        rationale_html = f'<p class="muted">{rationale}</p>' if rationale else ""
-        rows.append(
-            "<li>"
-            f"<strong>{item_title}</strong>"
-            f"{meta_html}"
-            f"<p>{summary}</p>"
-            f"{rationale_html}"
-            "</li>"
+        meta_bits = []
+        if owner:
+            meta_bits.append(f'<span class="owner">{owner}</span>')
+        if status:
+            meta_bits.append(f'<span class="chip"><span class="dot"></span>{status}</span>')
+        rmeta = f'<div class="rmeta">{"".join(meta_bits)}</div>' if meta_bits else ""
+        title_html = f'<div class="title">{item_title}</div>' if item_title else ""
+        summary_html = f'<p class="body">{summary}</p>' if summary else ""
+        rationale_html = f'<p class="rationale">{rationale}</p>' if rationale else ""
+        records.append(
+            f'<div class="record"><div class="idx">{i:02d}</div><div class="rmain">'
+            f"{title_html}{rmeta}{summary_html}{rationale_html}</div></div>"
         )
-    return f"<h2>{escape(title)}</h2><ul>{''.join(rows)}</ul>"
+    return f'<section>{head}{"".join(records)}</section>'
 
 
 def _render_synthesis_html(session: Session, synthesis: SessionSynthesis) -> str:
     labels = _briefing_section_labels(getattr(session, "meeting_type", "general"))
-    sections = [
+    masthead = _masthead(
+        "Backchannel Briefing",
+        session.name,
+        [
+            f"Started {_fmt(session.started_at)}",
+            f"Ended {_fmt(session.ended_at)}",
+            f"Status: {escape(synthesis.status)}",
+        ],
+    )
+    stat_strip = _stat_strip([
+        ("Outcomes", _count(synthesis.top_outcomes), False),
+        ("Opportunities", _count(synthesis.top_opportunities), False),
+        ("Risks", _count(synthesis.risks_blockers), False),
+        ("Actions", _count(synthesis.action_plan), True),
+        ("Questions", _count(synthesis.unresolved_discovery_questions), False),
+    ])
+    sections = "".join([
         _render_section("Top Outcomes", synthesis.top_outcomes),
         _render_section(labels["objectives"], synthesis.client_objectives),
         _render_section(labels["opportunities"], synthesis.top_opportunities),
         _render_section("Risks / Blockers", synthesis.risks_blockers),
         _render_section("Action Plan", synthesis.action_plan),
         _render_section(labels["questions"], synthesis.unresolved_discovery_questions),
-    ]
+    ])
+
     clusters = ""
     if synthesis.clusters:
-        cluster_rows = []
-        for cluster in synthesis.clusters:
-            cluster_rows.append(
-                "<li>"
-                f"<strong>{escape(cluster.title)}</strong>"
-                f"<p>{escape(cluster.summary)}</p>"
-                f"<p class='muted'>Confidence: {escape(cluster.confidence)}</p>"
-                "</li>"
+        records = []
+        for i, cluster in enumerate(synthesis.clusters, 1):
+            confidence = escape(str(cluster.confidence or ""))
+            conf_html = (
+                f'<div class="rmeta"><span class="chip"><span class="dot"></span>'
+                f"Confidence: {confidence}</span></div>"
+                if confidence else ""
             )
-        clusters = f"<h2>Insight Clusters</h2><ul>{''.join(cluster_rows)}</ul>"
+            records.append(
+                f'<div class="record"><div class="idx">{i:02d}</div><div class="rmain">'
+                f'<div class="title">{escape(cluster.title)}</div>{conf_html}'
+                f'<p class="body">{escape(cluster.summary)}</p></div></div>'
+            )
+        clusters = (
+            f'<section><h2>Insight Clusters<span class="count">{len(synthesis.clusters)}</span></h2>'
+            f'{"".join(records)}</section>'
+        )
 
-    return f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Call Briefing - {escape(session.name)}</title>
-<style>
-body {{ font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #333; }}
-h1 {{ font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #0f766e; }}
-h2 {{ font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #0d9488; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; }}
-li {{ margin-bottom: 1rem; }}
-.meta, .muted {{ color: #5f6062; font-size: 0.9rem; }}
-.note {{ border-left: 4px solid #f59e0b; background: #fff7ed; padding: 0.75rem 1rem; }}
-</style></head><body>
-<h1>{escape(session.name)}</h1>
-<p class="meta">Started: {_fmt(session.started_at)} &middot; Ended: {_fmt(session.ended_at)} &middot; Briefing status: {escape(synthesis.status)}</p>
-{''.join(sections)}
-{clusters}
-<h2>Arbiter Notes</h2>
-<div class="note">{escape(synthesis.arbiter_notes or "No arbiter notes captured.")}</div>
-<hr style="margin-top:2rem;border:none;border-top:1px solid #e2e8f0">
-<p class="muted">Generated by Backchannel.</p>
-</body></html>"""
+    notes = escape(synthesis.arbiter_notes or "No arbiter notes captured.")
+    notes_section = f'<section><h2>Arbiter Notes</h2><div class="note">{notes}</div></section>'
+
+    body = masthead + stat_strip + sections + clusters + notes_section + _footer()
+    return _document(f"Call Briefing - {session.name}", body)
 
 
 def _briefing_section_labels(meeting_type: str) -> dict[str, str]:
@@ -407,51 +592,50 @@ async def _render_legacy_summary_html(session: Session, session_id: uuid.UUID, d
 
     starred = [q for q in questions if q.starred]
 
-    question_rows = ""
-    for q in questions:
-        star = "&#9733;" if q.starred else ""
-        dismissed = " (dismissed)" if q.dismissed else ""
-        question_rows += f"""<tr>
-            <td>{star}</td>
-            <td>{escape(q.question)}{escape(dismissed)}</td>
-            <td>{escape(q.rationale)}</td>
-            <td><em>{escape(q.source_context)}</em></td>
-        </tr>"""
+    masthead = _masthead(
+        "Session Summary",
+        session.name,
+        [f"Started {_fmt(session.started_at)}", f"Ended {_fmt(session.ended_at)}"],
+    )
+    stat_strip = _stat_strip([
+        ("Questions", len(questions), True),
+        ("Starred", len(starred), False),
+        ("Transcript Lines", len(transcripts), False),
+    ])
 
-    transcript_lines = ""
-    for t in transcripts:
-        ts = t.timestamp.strftime("%H:%M:%S") if t.timestamp else ""
-        transcript_lines += f"<p><span style='color:#999;font-family:monospace'>[{escape(ts)}]</span> {escape(t.text)}</p>\n"
+    if questions:
+        rows = ""
+        for q in questions:
+            star = '<span class="starred">&#9733;</span>' if q.starred else ""
+            dismissed = ' <span class="dismissed">(dismissed)</span>' if q.dismissed else ""
+            rows += (
+                "<tr>"
+                f'<td class="star">{star}</td>'
+                f"<td>{escape(q.question)}{dismissed}</td>"
+                f'<td class="rationale-cell">{escape(q.rationale)}</td>'
+                f'<td class="src"><em>{escape(q.source_context)}</em></td>'
+                "</tr>"
+            )
+        questions_section = (
+            f'<section><h2>Questions<span class="count">{len(questions)}</span></h2>'
+            '<table><thead><tr><th class="star"></th><th>Question</th>'
+            "<th>Rationale</th><th>Source Context</th></tr></thead>"
+            f"<tbody>{rows}</tbody></table></section>"
+        )
+    else:
+        questions_section = '<section><h2>Questions</h2><p class="empty">No questions captured.</p></section>'
 
-    html = f"""<!DOCTYPE html>
-    <html><head><meta charset="utf-8"><title>Call Summary - {escape(session.name)}</title>
-<style>
-body {{ font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #333; }}
-h1 {{ font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #0f766e; }}
-h2 {{ font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #0d9488; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; }}
-table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; }}
-th, td {{ text-align: left; padding: 0.5rem; border-bottom: 1px solid #e2e8f0; font-size: 0.9rem; }}
-th {{ background: #f8fafc; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 0.8rem; text-transform: uppercase; }}
-.meta {{ color: #5f6062; font-size: 0.9rem; }}
-.stats {{ display: flex; gap: 2rem; margin: 1rem 0; }}
-.stat {{ text-align: center; }}
-.stat-value {{ font-size: 1.5rem; font-weight: bold; color: #0d9488; }}
-.stat-label {{ font-size: 0.75rem; color: #999; text-transform: uppercase; }}
-</style></head><body>
-    <h1>{escape(session.name)}</h1>
-    <p class="meta">Started: {_fmt(session.started_at)} &middot; Ended: {_fmt(session.ended_at)}</p>
-<div class="stats">
-    <div class="stat"><div class="stat-value">{len(questions)}</div><div class="stat-label">Questions</div></div>
-    <div class="stat"><div class="stat-value">{len(starred)}</div><div class="stat-label">Starred</div></div>
-    <div class="stat"><div class="stat-value">{len(transcripts)}</div><div class="stat-label">Transcript Lines</div></div>
-</div>
-<h2>Questions</h2>
-<table><tr><th></th><th>Question</th><th>Rationale</th><th>Source Context</th></tr>
-{question_rows}
-</table>
-<h2>Transcript</h2>
-{transcript_lines if transcript_lines else "<p style='color:#999'>No transcript recorded.</p>"}
-<hr style="margin-top:2rem;border:none;border-top:1px solid #e2e8f0">
-    <p style="font-size:0.75rem;color:#999">Generated by Backchannel.</p>
-    </body></html>"""
-    return html
+    if transcripts:
+        lines = ""
+        for t in transcripts:
+            ts = t.timestamp.strftime("%H:%M:%S") if t.timestamp else ""
+            lines += f'<p><span class="ts">[{escape(ts)}]</span>{escape(t.text)}</p>'
+        transcript_section = (
+            f'<section><h2>Transcript<span class="count">{len(transcripts)}</span></h2>'
+            f'<div class="transcript">{lines}</div></section>'
+        )
+    else:
+        transcript_section = '<section><h2>Transcript</h2><p class="empty">No transcript recorded.</p></section>'
+
+    body = masthead + stat_strip + questions_section + transcript_section + _footer()
+    return _document(f"Call Summary - {session.name}", body)
