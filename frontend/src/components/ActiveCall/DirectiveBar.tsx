@@ -19,7 +19,7 @@ export default function DirectiveBar({ onAddDirective, disabled = false }: Direc
   }
 
   return (
-    <div className="border-t border-brand-light-gray-1 bg-white/95 backdrop-blur-sm">
+    <div className="border-t border-brand-light-gray-1 bg-surface/95 backdrop-blur-sm">
       {expanded ? (
         <form onSubmit={handleSubmit} className="flex items-center gap-3 px-4 py-3">
           <input
@@ -29,7 +29,7 @@ export default function DirectiveBar({ onAddDirective, disabled = false }: Direc
             placeholder={disabled ? "Post-processing is running..." : "e.g. Ask about their cloud migration timeline..."}
             autoFocus
             disabled={disabled}
-            className="flex-1 rounded-lg border border-brand-light-gray-1 px-3 py-2 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal"
+            className="flex-1 rounded-lg border border-brand-light-gray-1 px-3 py-2 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray focus:border-brand-teal focus:ring-1 focus:ring-brand-teal"
           />
           <button
             type="submit"

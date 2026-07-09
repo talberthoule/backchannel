@@ -10,3 +10,19 @@
   --sl-color-accent: #0f766e;
   --sl-color-accent-high: #134e4a;
 }
+
+/* Tables: scroll instead of overflow the page on mobile, and align figures.
+   display:block lets a wide table scroll horizontally within its own box. */
+.sl-markdown-content table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Branded keyboard focus ring (Starlight's default is unbranded). */
+:where(a, button, summary, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--sl-color-accent-high);
+  outline-offset: 2px;
+  border-radius: 2px;
+}

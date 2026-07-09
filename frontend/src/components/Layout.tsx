@@ -118,7 +118,7 @@ function DraggableSession({ session, isActive, onClick, groups, onMoveToGroup, o
                 if (e.key === "Escape") { setDraftName(session.name); setEditingName(false); }
               }}
               onClick={(e) => e.stopPropagation()}
-              className={`text-sm font-medium w-full bg-transparent border-b border-brand-teal outline-none ${isActive ? "text-brand-teal" : "text-brand-dark-gray"}`}
+              className={`text-sm font-medium w-full bg-transparent border-b border-brand-teal ${isActive ? "text-brand-teal" : "text-brand-dark-gray"}`}
               autoFocus
             />
           ) : (
@@ -169,7 +169,7 @@ function DraggableSession({ session, isActive, onClick, groups, onMoveToGroup, o
         return (
           <div
             ref={menuRef}
-            className="fixed z-50 w-44 rounded-lg border border-brand-light-gray-1 bg-white py-1 shadow-lg"
+            className="fixed z-50 w-44 rounded-lg border border-brand-light-gray-1 bg-surface py-1 shadow-lg"
             style={{ top, left: rect.right + 4 }}
           >
             <button
@@ -265,10 +265,40 @@ export default function Layout({
   children,
 }: LayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set(groups.map((g) => g.id)));
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [draggedId, setDraggedId] = useState<string | null>(null);
+
+  // Track the md breakpoint so the sidebar is an off-canvas drawer on mobile
+  // (full width, never the icon rail) and an in-flow collapsible rail on desktop.
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsDesktop(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  // Close the mobile drawer after any navigation.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [activeSessionId, showingOfferings, showingKnowledge, showingAdmin]);
+
+  const collapsed = isDesktop ? sidebarCollapsed : false;
+
+  // Theme: explicit user choice wins over OS preference; persisted in storage.
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const saved = typeof localStorage !== "undefined" ? localStorage.getItem("bc-theme") : null;
+    if (saved === "light" || saved === "dark") return saved;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("bc-theme", theme);
+  }, [theme]);
 
   // Keep expanded groups in sync when new groups are created
   useEffect(() => {
@@ -362,9 +392,19 @@ export default function Layout({
   const draggedSession = draggedId ? sessions.find((s) => s.id === draggedId) : null;
 
   return (
-    <div className="flex h-screen flex-col bg-brand-light-gray-2 font-body">
-      <header className="flex items-center justify-between border-b border-brand-light-gray-1 bg-white px-6 py-3 shadow-sm">
+    <div className="flex h-screen flex-col bg-canvas font-body">
+      <header className="flex items-center justify-between border-b border-brand-light-gray-1 bg-surface px-4 py-3 shadow-sm md:px-6">
         <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal md:hidden"
+            aria-label="Open menu"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
+            </svg>
+          </button>
           {/* Brand mark — matches site/assets/favicon.svg on the landing page */}
           <svg className="h-7 w-7" viewBox="0 0 64 64" fill="none" aria-hidden="true">
             <rect width="64" height="64" rx="14" fill="#0f172a" />
@@ -376,17 +416,46 @@ export default function Layout({
           </svg>
           <span className="font-display text-[19px] font-bold tracking-tight text-brand-dark-gray">backchannel</span>
         </div>
+        <button
+          type="button"
+          onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal"
+          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+        >
+          {theme === "dark" ? (
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+            </svg>
+          ) : (
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+            </svg>
+          )}
+        </button>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <aside className={`flex flex-col border-r border-brand-light-gray-1 bg-white transition-[width] duration-200 ${sidebarCollapsed ? "w-16" : "w-64"}`}>
-          {sidebarCollapsed ? (
+        {/* Mobile drawer backdrop */}
+        {mobileOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-slate-900/40 md:hidden"
+            onClick={() => setMobileOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+        <aside
+          className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-brand-light-gray-1 bg-surface transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:transition-[width] ${
+            mobileOpen ? "translate-x-0" : "-translate-x-full"
+          } ${collapsed ? "md:w-16" : "md:w-64"}`}
+        >
+          {collapsed ? (
             <>
               <div className="flex flex-col items-center gap-2 p-2">
                 <button
                   type="button"
                   onClick={() => setSidebarCollapsed(false)}
-                  className="flex h-11 w-11 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal-light"
+                  className="flex h-11 w-11 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal focus:ring-2 focus:ring-brand-teal-light"
                   aria-label="Expand sidebar"
                   aria-expanded={false}
                   title="Expand sidebar"
@@ -398,7 +467,7 @@ export default function Layout({
                 <button
                   type="button"
                   onClick={onNewSession}
-                  className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand-teal text-white shadow-sm transition-colors hover:bg-brand-teal-dark focus:outline-none focus:ring-2 focus:ring-brand-teal-light"
+                  className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand-teal text-white shadow-sm transition-colors hover:bg-brand-teal-dark focus:ring-2 focus:ring-brand-teal-light"
                   aria-label="New session"
                   title="New session"
                 >
@@ -414,7 +483,7 @@ export default function Layout({
                 <button
                   type="button"
                   onClick={onOpenOfferings}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-brand-teal-light ${showingOfferings ? "bg-brand-teal/10 text-brand-teal ring-1 ring-brand-teal/20" : "text-brand-gray hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"}`}
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors focus:ring-2 focus:ring-brand-teal-light ${showingOfferings ? "bg-brand-teal/10 text-brand-teal ring-1 ring-brand-teal/20" : "text-brand-gray hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"}`}
                   aria-label="Offerings Catalog"
                   title="Offerings Catalog"
                 >
@@ -423,7 +492,7 @@ export default function Layout({
                 <button
                   type="button"
                   onClick={onOpenKnowledge}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-brand-teal-light ${showingKnowledge ? "bg-brand-teal/10 text-brand-teal ring-1 ring-brand-teal/20" : "text-brand-gray hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"}`}
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors focus:ring-2 focus:ring-brand-teal-light ${showingKnowledge ? "bg-brand-teal/10 text-brand-teal ring-1 ring-brand-teal/20" : "text-brand-gray hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"}`}
                   aria-label="Knowledge Sources"
                   title="Knowledge Sources"
                 >
@@ -432,7 +501,7 @@ export default function Layout({
                 <button
                   type="button"
                   onClick={onOpenAdmin}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-brand-teal-light ${showingAdmin ? "bg-brand-teal/10 text-brand-teal ring-1 ring-brand-teal/20" : "text-brand-gray hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"}`}
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors focus:ring-2 focus:ring-brand-teal-light ${showingAdmin ? "bg-brand-teal/10 text-brand-teal ring-1 ring-brand-teal/20" : "text-brand-gray hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"}`}
                   aria-label="Administration"
                   title="Administration"
                 >
@@ -451,7 +520,7 @@ export default function Layout({
                       key={session.id}
                       type="button"
                       onClick={() => onSelectSession(session.id)}
-                      className={`relative flex h-11 w-11 items-center justify-center rounded-lg text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-brand-teal-light ${
+                      className={`relative flex h-11 w-11 items-center justify-center rounded-lg text-xs font-semibold transition-colors focus:ring-2 focus:ring-brand-teal-light ${
                         isActive ? "bg-brand-teal text-white shadow-sm" : "bg-brand-light-gray-2 text-brand-gray hover:bg-brand-teal/10 hover:text-brand-teal"
                       }`}
                       aria-label={`Open ${session.name}`}
@@ -475,8 +544,8 @@ export default function Layout({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSidebarCollapsed(true)}
-                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal-light"
+                  onClick={() => { setSidebarCollapsed(true); setMobileOpen(false); }}
+                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal focus:ring-2 focus:ring-brand-teal-light"
                   aria-label="Collapse sidebar"
                   aria-expanded={true}
                   title="Collapse sidebar"
@@ -588,7 +657,7 @@ export default function Layout({
                         }}
                         onBlur={() => { if (!newGroupName.trim()) setCreatingGroup(false); }}
                         placeholder="Group name..."
-                        className="w-full rounded border border-brand-teal-light bg-white px-2 py-1 text-xs outline-none ring-1 ring-brand-teal-light/30"
+                        className="w-full rounded border border-brand-teal-light bg-surface px-2 py-1 text-xs ring-1 ring-brand-teal-light/30"
                       />
                     </div>
                   ) : (
@@ -606,7 +675,7 @@ export default function Layout({
                 {/* Drag overlay */}
                 <DragOverlay>
                   {draggedSession && (
-                    <div className="rounded-lg bg-white px-3 py-2 shadow-lg ring-1 ring-brand-teal/20 opacity-90 w-56">
+                    <div className="rounded-lg bg-surface px-3 py-2 shadow-lg ring-1 ring-brand-teal/20 opacity-90 w-56">
                       <span className="text-sm font-medium text-brand-teal truncate block">{draggedSession.name}</span>
                       <div className="mt-0.5">{stateBadge(draggedSession.state)}</div>
                     </div>
@@ -617,7 +686,7 @@ export default function Layout({
           )}
         </aside>
 
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

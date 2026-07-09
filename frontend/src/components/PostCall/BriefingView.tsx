@@ -9,7 +9,7 @@ interface BriefingViewProps {
 
 function Section({ title, items }: { title: string; items: SynthesisSectionItem[] }) {
   return (
-    <section className="rounded-lg bg-white p-4 shadow-sm">
+    <section className="rounded-lg bg-surface p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-display text-sm font-semibold uppercase tracking-wide text-brand-teal">{title}</h3>
         <span className="rounded-full bg-brand-light-gray-2 px-2 py-0.5 font-body text-xs text-brand-mid-gray">
@@ -91,7 +91,7 @@ export default function BriefingView({ session, synthesis, onRefresh, refreshing
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg bg-white p-5 shadow-sm">
+      <div className="rounded-lg bg-surface p-5 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="font-display text-lg font-bold text-brand-dark-gray">Conversation Briefing</h2>
@@ -136,7 +136,7 @@ export default function BriefingView({ session, synthesis, onRefresh, refreshing
           </div>
 
           {synthesis.clusters.length > 0 && (
-            <section className="rounded-lg bg-white p-4 shadow-sm">
+            <section className="rounded-lg bg-surface p-4 shadow-sm">
               <h3 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-brand-teal">
                 Insight Clusters
               </h3>

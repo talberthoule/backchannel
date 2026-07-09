@@ -7,9 +7,12 @@ interface BatchTranscriptionCardProps {
   localOnly?: boolean;
   /** Called after the live preview model changes; it edits the Audio Gateway agent's model. */
   onLiveModelChanged?: () => void;
+  /** Audio Gateway agent's current model (same underlying setting as the live
+      preview model); changing it on the Agents tab triggers a refetch here. */
+  gatewayModelId?: string;
 }
 
-export default function BatchTranscriptionCard({ models, localOnly = false, onLiveModelChanged }: BatchTranscriptionCardProps) {
+export default function BatchTranscriptionCard({ models, localOnly = false, onLiveModelChanged, gatewayModelId }: BatchTranscriptionCardProps) {
   const [config, setConfig] = useState<TranscriptionConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -28,9 +31,10 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
     }
   }, []);
 
-  // Reload when Privacy First flips: the backend coerces the effective batch
-  // model to a local one while the mode is on.
-  useEffect(() => { void load(); }, [load, localOnly]);
+  // Reload when Privacy First flips (the backend coerces the effective batch
+  // model to a local one) or when the Audio Bridge model is edited on the
+  // Agents tab (it is the same row as the live preview model shown here).
+  useEffect(() => { void load(); }, [load, localOnly, gatewayModelId]);
 
   const batchModels = useMemo(
     () => models.filter((model) => model.supports_batch_audio),
@@ -68,7 +72,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
   };
 
   return (
-    <div className={`rounded-xl bg-white p-5 shadow-sm transition-opacity ${saving ? "opacity-70" : ""}`}>
+    <div className={`rounded-xl bg-surface p-5 shadow-sm transition-opacity ${saving ? "opacity-70" : ""}`}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -114,7 +118,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
             value={config?.batch_model_id ?? ""}
             disabled={!config || saving}
             onChange={(event) => void update({ batch_model_id: event.target.value })}
-            className="w-full rounded border border-brand-light-gray-1 bg-white px-3 py-1.5 text-sm text-brand-dark-gray outline-none transition-colors focus:border-brand-teal disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
+            className="w-full rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 text-sm text-brand-dark-gray transition-colors focus:border-brand-teal disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
           >
             {batchModels.map((model) => {
               const { locked, suffix } = optionState(model, config?.batch_model_id);
@@ -132,7 +136,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
             value={config?.live_preview_model_id ?? ""}
             disabled={!config || saving || localOnly}
             onChange={(event) => void update({ live_preview_model_id: event.target.value })}
-            className="w-full rounded border border-brand-light-gray-1 bg-white px-3 py-1.5 text-sm text-brand-dark-gray outline-none transition-colors focus:border-brand-teal disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
+            className="w-full rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 text-sm text-brand-dark-gray transition-colors focus:border-brand-teal disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
           >
             {liveModels.map((model) => {
               const { locked, suffix } = optionState(model, config?.live_preview_model_id);

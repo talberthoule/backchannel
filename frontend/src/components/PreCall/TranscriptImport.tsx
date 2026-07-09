@@ -52,7 +52,7 @@ export default function TranscriptImport({ sessionId, onImported }: Props) {
         {/* Transcript file import */}
         <div
           onClick={() => transcriptRef.current?.click()}
-          className="cursor-pointer rounded-lg border-2 border-dashed border-brand-light-gray-1 p-4 text-center hover:border-brand-teal hover:bg-blue-50/30 transition-colors"
+          className="cursor-pointer rounded-lg border-2 border-dashed border-brand-light-gray-1 p-4 text-center hover:border-brand-teal hover:bg-brand-teal/5 transition-colors"
         >
           <p className="font-display text-sm font-semibold text-brand-dark-gray">
             Import Transcript
@@ -94,7 +94,7 @@ export default function TranscriptImport({ sessionId, onImported }: Props) {
       {(loading || status) && (
         <div className={`rounded-lg px-4 py-2 text-sm font-body ${
           loading
-            ? "bg-blue-50 text-brand-teal"
+            ? "bg-brand-teal/10 text-brand-teal"
             : status.startsWith("Error")
               ? "bg-red-50 text-red-600"
               : "bg-green-50 text-green-700"

@@ -49,14 +49,13 @@ export default function QuestionCard({ question, speakers, isStrategicSignal = f
 
   return (
     <div
-      className={`animate-slide-in-right rounded-lg border-l-4 p-4 transition-all duration-300 ${
-        isStrategicSignal ? "bg-blue-50/70 shadow-md ring-2 ring-brand-teal/25" : "bg-white shadow-sm"
+      className={`animate-slide-in-right rounded-lg border border-brand-light-gray-1 p-4 transition duration-300 ${
+        isStrategicSignal ? "bg-brand-teal/5 shadow-md ring-2 ring-brand-teal/25" : "bg-surface shadow-sm"
       } ${
         dismissing ? "translate-x-4 opacity-0" : ""
       } ${question.dismissed ? "opacity-40" : ""} ${
         isRefined && !isStrategicSignal ? "ring-1 ring-inset ring-brand-teal-light/20" : ""
       }`}
-      style={{ borderLeftColor: badgeColor }}
     >
       {/* Top row: badges + actions */}
       <div className="mb-2 flex items-start justify-between">
@@ -111,7 +110,7 @@ export default function QuestionCard({ question, speakers, isStrategicSignal = f
 
           {/* Agent source badge */}
           {question.agent_source && question.agent_source !== "general" && (
-            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 font-body text-[10px] font-medium text-gray-500">
+            <span className="inline-flex items-center rounded-full bg-brand-light-gray-2 px-2 py-0.5 font-body text-[10px] font-medium text-brand-mid-gray">
               {AGENT_LABELS[question.agent_source] || question.agent_source}
             </span>
           )}
@@ -203,7 +202,7 @@ export default function QuestionCard({ question, speakers, isStrategicSignal = f
             Needs Follow-up
           </span>
           {question.followup_question && (
-            <p className="mt-1 font-body text-sm text-[#333]">
+            <p className="mt-1 font-body text-sm text-brand-dark-gray">
               {question.followup_question}
             </p>
           )}

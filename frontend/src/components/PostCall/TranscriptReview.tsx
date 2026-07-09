@@ -63,7 +63,7 @@ function InlineSpeakerLabel({
         onChange={(e) => setEditName(e.target.value)}
         onBlur={handleCommit}
         onKeyDown={handleKeyDown}
-        className="mr-1.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold text-white border-0 outline-none"
+        className="mr-1.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold text-white border-0"
         style={{ backgroundColor: speaker.color, width: `${Math.max(editName.length + 2, 4)}ch` }}
       />
     );
@@ -89,14 +89,14 @@ function InlineSpeakerLabel({
 export default function TranscriptReview({ transcripts, speakers, onRenameSpeaker }: TranscriptReviewProps) {
   if (transcripts.length === 0) {
     return (
-      <div className="rounded-xl bg-white p-10 text-center shadow-sm">
+      <div className="rounded-xl bg-surface p-10 text-center shadow-sm">
         <p className="text-brand-mid-gray">No transcript entries recorded for this session.</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl bg-white shadow-sm">
+    <div className="rounded-xl bg-surface shadow-sm">
       <div className="border-b border-brand-light-gray-1 px-6 py-4">
         <h2 className="font-display text-lg font-semibold text-brand-dark-gray">
           Full Transcript

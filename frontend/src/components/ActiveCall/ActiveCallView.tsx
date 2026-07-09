@@ -92,6 +92,7 @@ export default function ActiveCallView({
   synthesis,
 }: ActiveCallViewProps) {
   const [debugOpen, setDebugOpen] = useState(false);
+  const [contextExpanded, setContextExpanded] = useState(false);
   const autoUpvotedSignalIds = useRef<Set<string>>(new Set());
   const timerDisplay = useSessionTimer(callSegmentStart);
   const postProcessingActive = postProcessing?.active ?? false;
@@ -148,9 +149,9 @@ export default function ActiveCallView({
   );
 
   return (
-    <div className="flex h-full flex-col bg-brand-light-gray-2">
+    <div className="flex h-full flex-col bg-canvas">
       {/* Top bar */}
-      <header className="flex items-center justify-between gap-4 border-b border-brand-light-gray-1 bg-white px-6 py-3">
+      <header className="flex items-center justify-between gap-4 border-b border-brand-light-gray-1 bg-surface px-4 py-3 md:px-6">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
           <AudioIndicator isCapturing={isCapturing} audioLevel={audioLevel} />
           {systemAudioActive && (
@@ -171,7 +172,7 @@ export default function ActiveCallView({
               void onUpdateSessionContext({ meeting_type: event.target.value as MeetingType });
             }}
             disabled={postProcessingActive}
-            className="rounded-md border border-brand-light-gray-1 bg-white px-2 py-1 font-body text-xs text-brand-gray outline-none focus:border-brand-teal-light disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
+            className="rounded-md border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-gray focus:border-brand-teal-light disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
             title="Conversation type"
           >
             {MEETING_TYPE_OPTIONS.map((option) => (
@@ -180,13 +181,25 @@ export default function ActiveCallView({
               </option>
             ))}
           </select>
+          {session.meeting_context.trim() && (
+            <button
+              type="button"
+              onClick={() => setContextExpanded((open) => !open)}
+              title={contextExpanded ? "Collapse context" : session.meeting_context}
+              className={`min-w-0 rounded-md border border-brand-light-gray-1 bg-brand-light-gray-2 px-2 py-1 text-left font-body text-xs text-brand-mid-gray transition-colors hover:text-brand-gray ${
+                contextExpanded ? "w-full basis-full whitespace-pre-wrap break-words" : "max-w-xs truncate"
+              }`}
+            >
+              {session.meeting_context.trim()}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setDebugOpen((open) => !open)}
             aria-expanded={debugOpen}
             className={`rounded-md border px-2 py-1 font-body text-xs font-semibold transition-colors ${
               debugOpen
-                ? "border-brand-teal bg-blue-50 text-brand-teal"
+                ? "border-brand-teal bg-brand-teal/10 text-brand-teal"
                 : "border-brand-light-gray-1 text-brand-mid-gray hover:bg-brand-light-gray-2"
             }`}
           >
@@ -213,7 +226,7 @@ export default function ActiveCallView({
             <button
               onClick={onResumeAudio}
               disabled={postProcessingActive}
-              className="rounded-lg border border-brand-teal px-3 py-2 font-body text-sm font-semibold text-brand-teal transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg border border-brand-teal px-3 py-2 font-body text-sm font-semibold text-brand-teal transition-colors hover:bg-brand-teal/10 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Resume Audio
             </button>
@@ -250,8 +263,8 @@ export default function ActiveCallView({
       {postProcessing && postProcessingActive && <PostProcessingProgress progress={postProcessing} />}
       <SynthesisSignals session={session} synthesis={synthesis} />
 
-      {/* Two-column layout */}
-      <div className={`flex flex-1 overflow-hidden ${postProcessingActive ? "pointer-events-none opacity-60" : ""}`}>
+      {/* Two-column on desktop, stacked on mobile */}
+      <div className={`flex flex-1 flex-col overflow-hidden md:flex-row ${postProcessingActive ? "pointer-events-none opacity-60" : ""}`}>
         {/* Left column: Questions */}
         <div className="flex flex-1 flex-col overflow-hidden pt-3">
           <div className="px-4 pb-2">
@@ -271,8 +284,8 @@ export default function ActiveCallView({
           </div>
         </div>
 
-        {/* Right column: Transcript */}
-        <div className="flex min-h-0 w-80 flex-shrink-0 flex-col overflow-hidden border-l border-brand-light-gray-1 bg-white pt-3 xl:w-96">
+        {/* Right column: Transcript (below insights on mobile) */}
+        <div className="flex h-64 min-h-0 w-full flex-shrink-0 flex-col overflow-hidden border-t border-brand-light-gray-1 bg-surface pt-3 md:h-auto md:w-80 md:border-l md:border-t-0 xl:w-96">
           <TranscriptPanel transcripts={transcripts} speakers={speakers} />
         </div>
       </div>

@@ -80,7 +80,7 @@ export default function AgentSelector({ sessionId }: AgentSelectorProps) {
       {agents.map((agent) => (
         <div
           key={agent.slug}
-          className="flex items-center justify-between rounded-lg border border-brand-light-gray-1 bg-white px-3 py-2.5 shadow-sm"
+          className="flex items-center justify-between rounded-lg border border-brand-light-gray-1 bg-surface px-3 py-2.5 shadow-sm"
         >
           <div className="flex items-center gap-2.5">
             <span
@@ -101,7 +101,7 @@ export default function AgentSelector({ sessionId }: AgentSelectorProps) {
             onClick={() => handleToggle(agent.slug, !agent.enabled)}
             className={`h-5 w-9 rounded-full transition-colors shrink-0 ml-3 ${agent.enabled ? "bg-brand-teal" : "bg-brand-light-gray-1"}`}
           >
-            <span className={`block h-4 w-4 rounded-full bg-white shadow transition-transform ${agent.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
+            <span className={`block h-4 w-4 rounded-full bg-surface shadow transition-transform ${agent.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
           </button>
         </div>
       ))}

@@ -71,7 +71,7 @@ export default function MeetingContextSetup({ session, onUpdate }: Props) {
   };
 
   return (
-    <div className="rounded-lg border border-brand-light-gray-1 bg-white p-4 shadow-sm">
+    <div className="rounded-lg border border-brand-light-gray-1 bg-surface p-4 shadow-sm">
       <div className="grid gap-3 md:grid-cols-[220px,1fr]">
         <div>
           <label className="mb-1 block font-body text-xs font-semibold uppercase tracking-wide text-brand-mid-gray">
@@ -80,7 +80,7 @@ export default function MeetingContextSetup({ session, onUpdate }: Props) {
           <select
             value={meetingType}
             onChange={(event) => setMeetingType(event.target.value as MeetingType)}
-            className="w-full rounded-md border border-brand-light-gray-1 bg-white px-3 py-2 font-body text-sm text-brand-dark-gray outline-none focus:border-brand-teal-light focus:ring-1 focus:ring-brand-teal-light"
+            className="w-full rounded-md border border-brand-light-gray-1 bg-surface px-3 py-2 font-body text-sm text-brand-dark-gray focus:border-brand-teal-light focus:ring-1 focus:ring-brand-teal-light"
           >
             {MEETING_TYPES.map((type) => (
               <option key={type.value} value={type.value}>
@@ -100,7 +100,7 @@ export default function MeetingContextSetup({ session, onUpdate }: Props) {
             onChange={(event) => setMeetingContext(event.target.value)}
             rows={4}
             placeholder={selected.placeholder}
-            className="w-full resize-none rounded-md border border-brand-light-gray-1 bg-white px-3 py-2 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray outline-none focus:border-brand-teal-light focus:ring-1 focus:ring-brand-teal-light"
+            className="w-full resize-none rounded-md border border-brand-light-gray-1 bg-surface px-3 py-2 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray focus:border-brand-teal-light focus:ring-1 focus:ring-brand-teal-light"
           />
           <div className="mt-2 flex items-center justify-between gap-3">
             <p className="font-body text-xs text-brand-mid-gray">Context saved with this session.</p>

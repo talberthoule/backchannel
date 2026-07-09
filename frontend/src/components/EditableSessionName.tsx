@@ -40,7 +40,7 @@ export default function EditableSessionName({ name, onRename, className = "", co
           if (e.key === "Enter") commit();
           if (e.key === "Escape") { setDraft(name); setEditing(false); }
         }}
-        className={`bg-transparent border-b-2 border-brand-teal outline-none ${compact ? "text-sm font-medium" : "text-2xl font-bold font-display"} ${className}`}
+        className={`bg-transparent border-b-2 border-brand-teal ${compact ? "text-sm font-medium" : "text-2xl font-bold font-display"} ${className}`}
         autoFocus
       />
     );

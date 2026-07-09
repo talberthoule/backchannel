@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Document } from "../../types";
+import { useConfirm } from "../ConfirmProvider";
 import * as api from "../../services/api";
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function DocumentUpload({ sessionId, documents, onRefresh }: Props) {
+  const { confirm, toast } = useConfirm();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -53,9 +55,17 @@ export default function DocumentUpload({ sessionId, documents, onRefresh }: Prop
   );
 
   const handleDelete = async (docId: string) => {
+    const ok = await confirm({
+      title: "Delete document",
+      message: "Delete this document? This cannot be undone.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await api.deleteDocument(sessionId, docId);
       onRefresh();
+      toast("Document deleted");
     } catch (err) {
       console.error("Delete failed:", err);
     }
@@ -174,7 +184,7 @@ export default function DocumentUpload({ sessionId, documents, onRefresh }: Prop
         {documents.map((doc) => (
             <li
               key={doc.id}
-              className="flex items-center justify-between rounded-lg bg-white px-4 py-3
+              className="flex items-center justify-between rounded-lg bg-surface px-4 py-3
                          shadow-sm border border-brand-light-gray-1"
             >
               <div className="flex items-center gap-3 min-w-0">

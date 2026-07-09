@@ -69,7 +69,7 @@ function TogglePill({ label, selected, onToggle }: { label: string; selected: bo
       className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-body text-xs transition-colors ${
         selected
           ? "border-brand-teal/40 bg-brand-teal/10 font-medium text-brand-teal"
-          : "border-brand-light-gray-1 bg-white text-brand-mid-gray hover:border-brand-mid-gray hover:text-brand-dark-gray"
+          : "border-brand-light-gray-1 bg-surface text-brand-mid-gray hover:border-brand-mid-gray hover:text-brand-dark-gray"
       }`}
     >
       {selected && (
@@ -178,7 +178,7 @@ function LensEditor({
             : humanizeTypeSlug(lens.item_type);
           const emptyPrompt = !lens.prompt.trim();
           return (
-            <div key={lens.key} className={`rounded-lg border ${expanded ? "border-brand-teal/40" : "border-brand-light-gray-1"} bg-white`}>
+            <div key={lens.key} className={`rounded-lg border ${expanded ? "border-brand-teal/40" : "border-brand-light-gray-1"} bg-surface`}>
               <div className="flex items-center gap-2.5 px-3 py-2">
                 <button
                   type="button"
@@ -188,7 +188,7 @@ function LensEditor({
                   onClick={() => save(patched(lens.key, { enabled: !lens.enabled }))}
                   className={`h-4 w-7 shrink-0 rounded-full transition-colors ${lens.enabled ? "bg-brand-teal" : "bg-brand-light-gray-1"}`}
                 >
-                  <span className={`block h-3 w-3 rounded-full bg-white shadow transition-transform ${lens.enabled ? "translate-x-3.5" : "translate-x-0.5"}`} />
+                  <span className={`block h-3 w-3 rounded-full bg-surface shadow transition-transform ${lens.enabled ? "translate-x-3.5" : "translate-x-0.5"}`} />
                 </button>
                 <button
                   type="button"
@@ -233,7 +233,7 @@ function LensEditor({
                         value={lens.label}
                         onChange={(e) => draft(patched(lens.key, { label: e.target.value }))}
                         onBlur={(e) => save(patched(lens.key, { label: e.target.value.trim() || "Untitled Lens" }))}
-                        className="w-full rounded border border-brand-light-gray-1 bg-white px-2.5 py-1.5 font-body text-xs text-brand-dark-gray outline-none focus:border-brand-teal"
+                        className="w-full rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1.5 font-body text-xs text-brand-dark-gray focus:border-brand-teal"
                       />
                     </div>
                     <div>
@@ -246,7 +246,7 @@ function LensEditor({
                             item_type: v === CUSTOM_TYPE_SENTINEL ? slugifyTypeName(lens.label) : v,
                           }));
                         }}
-                        className="w-full rounded border border-brand-light-gray-1 bg-white px-2.5 py-1.5 font-body text-xs text-brand-dark-gray outline-none focus:border-brand-teal"
+                        className="w-full rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1.5 font-body text-xs text-brand-dark-gray focus:border-brand-teal"
                       >
                         {BUILTIN_LENS_TYPES.map((o) => (
                           <option key={o.value} value={o.value}>{o.label}</option>
@@ -260,7 +260,7 @@ function LensEditor({
                           onChange={(e) => draft(patched(lens.key, { item_type: e.target.value }))}
                           onBlur={(e) => save(patched(lens.key, { item_type: slugifyTypeName(e.target.value) }))}
                           placeholder="custom_type_name"
-                          className="mt-1.5 w-full rounded border border-brand-light-gray-1 bg-white px-2.5 py-1.5 font-mono text-xs text-brand-dark-gray outline-none focus:border-brand-teal"
+                          className="mt-1.5 w-full rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1.5 font-mono text-xs text-brand-dark-gray focus:border-brand-teal"
                         />
                       )}
                       <p className="mt-1 font-body text-[10px] text-brand-mid-gray">
@@ -278,7 +278,7 @@ function LensEditor({
                       onBlur={(e) => save(patched(lens.key, { prompt: e.target.value }))}
                       rows={8}
                       placeholder="Describe what this lens should look for and how it should think..."
-                      className="w-full resize-y rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-2 font-mono text-xs leading-relaxed text-brand-dark-gray outline-none focus:border-brand-teal"
+                      className="w-full resize-y rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-2 font-mono text-xs leading-relaxed text-brand-dark-gray focus:border-brand-teal"
                     />
                   </div>
                 </div>
@@ -333,7 +333,7 @@ function AgentCard({
   const blockedByPrivacy = localOnly && !modelOptions.some((m) => m.provider === "Local");
 
   return (
-    <div className={`rounded-xl bg-white shadow-sm ring-1 ring-brand-light-gray-1/60 transition-opacity ${isSaving ? "opacity-70" : ""} ${agent.enabled && !blockedByPrivacy ? "" : "opacity-80"}`}>
+    <div className={`rounded-xl bg-surface shadow-sm ring-1 ring-brand-light-gray-1/60 transition-opacity ${isSaving ? "opacity-70" : ""} ${agent.enabled && !blockedByPrivacy ? "" : "opacity-80"}`}>
       {/* Header row */}
       <div className="flex items-start justify-between gap-4 px-5 pt-5">
         <div className="min-w-0">
@@ -374,7 +374,7 @@ function AgentCard({
           aria-checked={agent.enabled}
           title={agent.enabled ? "Enabled" : "Disabled"}
         >
-          <span className={`block h-5 w-5 rounded-full bg-white shadow transition-transform ${agent.enabled ? "translate-x-5" : "translate-x-0.5"}`} />
+          <span className={`block h-5 w-5 rounded-full bg-surface shadow transition-transform ${agent.enabled ? "translate-x-5" : "translate-x-0.5"}`} />
         </button>
       </div>
 
@@ -385,7 +385,7 @@ function AgentCard({
           <select
             value={agent.model_id}
             onChange={(e) => onUpdate(agent.slug, "model_id", e.target.value)}
-            className="w-full rounded border border-brand-light-gray-1 bg-white px-3 py-1.5 text-sm text-brand-dark-gray outline-none focus:border-brand-teal"
+            className="w-full rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 text-sm text-brand-dark-gray focus:border-brand-teal"
           >
             {modelOptions.map((m) => {
               const cloudBlocked = localOnly && m.provider !== "Local";
@@ -425,7 +425,7 @@ function AgentCard({
                   const val = Math.max(5, Math.min(300, parseInt(e.target.value, 10) || intervalDefault));
                   onUpdate(agent.slug, "interval_seconds", val);
                 }}
-                className="w-20 rounded border border-brand-light-gray-1 bg-white px-2.5 py-1.5 text-center font-mono text-sm text-brand-dark-gray outline-none focus:border-brand-teal"
+                className="w-20 rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1.5 text-center font-mono text-sm text-brand-dark-gray focus:border-brand-teal"
               />
               <span className="font-body text-xs text-brand-mid-gray">seconds</span>
             </div>
@@ -514,7 +514,7 @@ function AgentCard({
               onChange={(e) => onDraftChange(agent.slug, "prompt", e.target.value)}
               onBlur={(e) => onUpdate(agent.slug, "prompt", e.target.value)}
               rows={12}
-              className="w-full resize-y rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-2 font-mono text-xs leading-relaxed text-brand-dark-gray outline-none focus:border-brand-teal"
+              className="w-full resize-y rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-2 font-mono text-xs leading-relaxed text-brand-dark-gray focus:border-brand-teal"
             />
           </div>
         )}
@@ -606,7 +606,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
   return (
     <div className="flex h-full flex-col bg-brand-light-gray-2">
-      <header className="border-b border-brand-light-gray-1 bg-white px-6 pt-3">
+      <header className="border-b border-brand-light-gray-1 bg-surface px-6 pt-3">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="rounded p-1 text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray" title="Back">
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -706,7 +706,12 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             </div>
 
             <div className={activeTab === "transcription" ? "space-y-4" : "hidden"}>
-              <BatchTranscriptionCard models={models} localOnly={privacy?.local_only ?? false} onLiveModelChanged={refreshAgents} />
+              <BatchTranscriptionCard
+                models={models}
+                localOnly={privacy?.local_only ?? false}
+                onLiveModelChanged={refreshAgents}
+                gatewayModelId={agents.find((a) => a.slug === "audio_gateway")?.model_id}
+              />
               <DiarizationCapabilityCard />
             </div>
 

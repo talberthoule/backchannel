@@ -214,7 +214,7 @@ export default function DiarizationCapabilityCard() {
         : "None (CPU)";
 
   return (
-    <div className="rounded-xl bg-white p-5 shadow-sm">
+    <div className="rounded-xl bg-surface p-5 shadow-sm">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -324,7 +324,7 @@ export default function DiarizationCapabilityCard() {
                 setThresholdDraft(Math.min(0.95, Math.max(0.5, value)));
               }
             }}
-            className="w-20 rounded border border-brand-light-gray-1 bg-white px-2 py-1 font-body text-xs text-brand-dark-gray"
+            className="w-20 rounded border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-dark-gray"
           />
         </div>
       </div>
@@ -346,7 +346,7 @@ export default function DiarizationCapabilityCard() {
           type="file"
           accept=".m4a,.mp3,.wav,.ogg,.flac,.webm,audio/*"
           onChange={(e) => setBenchmarkFile(e.target.files?.[0] ?? null)}
-          className="max-w-sm rounded border border-brand-light-gray-1 bg-white px-3 py-1.5 font-body text-xs text-brand-dark-gray"
+          className="max-w-sm rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 font-body text-xs text-brand-dark-gray"
         />
         <button
           onClick={handleUploadedBenchmark}
@@ -403,8 +403,8 @@ function DiarizerModeButton({
       title={title}
       className={`rounded-md px-3 py-1.5 font-body text-xs font-semibold transition-all active:translate-y-px disabled:cursor-not-allowed disabled:opacity-45 ${
         active
-          ? "bg-white text-brand-teal shadow-sm"
-          : "text-brand-mid-gray hover:bg-white/70 hover:text-brand-dark-gray"
+          ? "bg-surface text-brand-teal shadow-sm"
+          : "text-brand-mid-gray hover:bg-surface/70 hover:text-brand-dark-gray"
       }`}
     >
       {label}
@@ -424,12 +424,12 @@ function InfoPopover({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
         aria-label="Compare diarization modes"
         aria-expanded={open}
         onClick={() => onOpenChange(!open)}
-        className="grid h-6 w-6 place-items-center rounded-full border border-brand-light-gray-1 bg-white font-display text-[11px] font-bold text-brand-teal shadow-sm transition-colors hover:border-brand-teal"
+        className="grid h-6 w-6 place-items-center rounded-full border border-brand-light-gray-1 bg-surface font-display text-[11px] font-bold text-brand-teal shadow-sm transition-colors hover:border-brand-teal"
       >
         i
       </button>
       {open && (
-        <div className="absolute left-0 top-8 z-20 w-[min(22rem,calc(100vw-3rem))] rounded-lg border border-brand-light-gray-1 bg-white p-4 shadow-xl shadow-brand-dark-gray/10">
+        <div className="absolute left-0 top-8 z-20 w-[min(22rem,calc(100vw-3rem))] rounded-lg border border-brand-light-gray-1 bg-surface p-4 shadow-xl shadow-brand-dark-gray/10">
           <div className="space-y-3 font-body text-xs leading-relaxed text-brand-gray">
             <p>
               <span className="font-semibold text-brand-dark-gray">Fallback</span> uses the local VAD and speaker-embedding path. It streams quickly, runs on CPU, and is the safer default when hardware or model availability changes.

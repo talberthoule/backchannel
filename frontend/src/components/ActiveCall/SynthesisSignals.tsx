@@ -135,7 +135,7 @@ function SignalItem({
       type="button"
       onClick={onSelect}
       aria-expanded={isSelected}
-      className={`min-w-0 rounded-md border bg-white px-3 py-2 text-left shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand-teal-light ${
+      className={`min-w-0 rounded-md border bg-surface px-3 py-2 text-left shadow-sm transition-all duration-200 focus:ring-2 focus:ring-brand-teal-light ${
         isSelected
           ? "border-brand-teal ring-1 ring-brand-teal/20 md:col-span-2 xl:col-span-5"
           : "border-brand-light-gray-1 hover:border-brand-teal-light/60 hover:shadow"

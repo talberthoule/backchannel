@@ -37,7 +37,7 @@ export default function SpeakerNameMapper({
   };
 
   return (
-    <div className="rounded-xl bg-white p-5 shadow-sm">
+    <div className="rounded-xl bg-surface p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-4">
         <div>
           <h3 className="font-display text-sm font-semibold text-brand-dark-gray">
@@ -227,7 +227,7 @@ function SpeakerRow({
               }
             }}
             placeholder="Enter real name..."
-            className="w-full rounded border border-brand-teal-light bg-white px-2 py-1 text-sm text-brand-dark-gray outline-none ring-1 ring-brand-teal-light/30"
+            className="w-full rounded border border-brand-teal-light bg-surface px-2 py-1 text-sm text-brand-dark-gray ring-1 ring-brand-teal-light/30"
           />
         ) : (
           <span
@@ -261,7 +261,7 @@ function SpeakerRow({
         value={speaker.speaker_type}
         onChange={(e) => handleSpeakerTypeChange(e.target.value as "team" | "external")}
         disabled={disabled}
-        className="shrink-0 rounded border border-brand-light-gray-1 bg-white px-2 py-1 font-body text-xs text-brand-gray outline-none focus:border-brand-teal-light disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
+        className="shrink-0 rounded border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-gray focus:border-brand-teal-light disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
         title="Speaker type used by analysis agents"
       >
         <option value="team">Team</option>
@@ -274,7 +274,7 @@ function SpeakerRow({
             value={mergeTargetId}
             onChange={(e) => setMergeTargetId(e.target.value)}
             disabled={disabled}
-            className="max-w-36 rounded border border-brand-light-gray-1 bg-white px-2 py-1 font-body text-xs text-brand-gray outline-none focus:border-brand-teal-light disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
+            className="max-w-36 rounded border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-gray focus:border-brand-teal-light disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
             title="Merge this detected speaker into another speaker"
           >
             <option value="">Merge into...</option>
@@ -314,7 +314,7 @@ function SpeakerRow({
         }
       >
         <span
-          className={`block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+          className={`block h-4 w-4 rounded-full bg-surface shadow transition-transform ${
             hasMapping && speaker.display_name_enabled ? "translate-x-4" : "translate-x-0.5"
           }`}
         />
