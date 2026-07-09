@@ -1,6 +1,7 @@
 /* Backchannel landing/site stylesheet. Self-contained: system fonts, no CDNs. */
 
 :root {
+  color-scheme: light dark;
   --ink: #0f172a;
   --ink-soft: #334155;
   --muted: #64748b;
@@ -36,8 +37,10 @@
   box-sizing: border-box;
 }
 
-html {
-  scroll-behavior: smooth;
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 body {
@@ -74,11 +77,29 @@ a:hover {
 a:focus-visible,
 .btn:focus-visible,
 .doc:focus-visible,
+.zoomable:focus-visible,
 button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
   border-radius: 6px;
   text-decoration: none;
+}
+
+/* Skip link: visually hidden until keyboard focus */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 20;
+  padding: 8px 14px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+
+.skip-link:focus {
+  top: 8px;
 }
 
 /* Header */
@@ -200,17 +221,163 @@ nav.site-nav a.nav-cta:hover {
 .hero-shot {
   margin: 48px auto 0;
   max-width: 940px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: var(--shadow);
-  background: var(--surface);
 }
 
-.hero-shot img {
+/* Browser-frame mockup: neutral window chrome so dark-only product shots read
+   as intentional on either theme. Three dots drawn from one pseudo-element. */
+.browser-frame {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.browser-frame > .bar {
+  display: flex;
+  align-items: center;
+  padding: 11px 15px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--border);
+}
+
+.browser-frame > .bar::before {
+  content: "";
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+  box-shadow: 18px 0 color-mix(in srgb, var(--muted) 45%, transparent),
+              36px 0 color-mix(in srgb, var(--muted) 45%, transparent);
+}
+
+.browser-frame img {
   display: block;
   width: 100%;
   height: auto;
+}
+
+/* Ultrawide banner strip: bordered, rounded, no window chrome. */
+.shot-strip {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.shot-strip img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Centered product-shot figures for the story sections. */
+figure.shot {
+  margin: 8px auto 0;
+  max-width: 960px;
+}
+
+figure.shot.sm {
+  max-width: 720px;
+}
+
+figure.shot.wide {
+  max-width: none;
+}
+
+figure.shot + figure.shot {
+  margin-top: 16px;
+}
+
+figure.shot + p {
+  margin-top: 28px;
+}
+
+/* Click-to-enlarge: zoom affordance + native <dialog> lightbox.
+   Affordance class is added by JS so it only shows when the lightbox works. */
+
+.zoomable {
+  cursor: zoom-in;
+}
+
+.lightbox {
+  width: 100%;
+  height: 100%;
+  max-width: 100vw;
+  max-height: 100vh;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  overflow: hidden;
+}
+
+.lightbox[open] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lightbox::backdrop {
+  background: rgba(2, 6, 23, 0.82);
+  backdrop-filter: blur(3px);
+}
+
+.lightbox img {
+  width: auto;
+  height: auto;
+  max-width: 94vw;
+  max-height: 92vh;
+  border-radius: 12px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+  cursor: zoom-out;
+}
+
+.lightbox-close {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  line-height: 1;
+  color: #e2e8f0;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(226, 232, 240, 0.25);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.lightbox-close:hover {
+  background: rgba(15, 23, 42, 0.92);
+  color: #ffffff;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lightbox[open] {
+    animation: lightbox-in 190ms ease-out;
+  }
+
+  .lightbox[open]::backdrop {
+    animation: lightbox-fade 190ms ease-out;
+  }
+
+  @keyframes lightbox-in {
+    from {
+      opacity: 0;
+      transform: scale(0.985);
+    }
+  }
+
+  @keyframes lightbox-fade {
+    from {
+      opacity: 0;
+    }
+  }
 }
 
 .btn {
@@ -320,7 +487,8 @@ section.cta-final p.sub {
   color: var(--muted);
 }
 
-.feature-visual img {
+.feature-visual > img,
+.feature-visual > picture img {
   display: block;
   width: 100%;
   height: auto;
@@ -516,7 +684,7 @@ pre {
 }
 
 pre .cmt {
-  color: #64748b;
+  color: #94a3b8;
 }
 
 .quickstart-note {
@@ -627,7 +795,12 @@ footer.site .wrap.footer-compare {
     font-size: 16px;
   }
 
+  /* Keep the primary CTA reachable on mobile; drop only the section anchors. */
   nav.site-nav {
+    gap: 0;
+  }
+
+  nav.site-nav a:not(.nav-cta) {
     display: none;
   }
 
@@ -642,5 +815,16 @@ footer.site .wrap.footer-compare {
   .grid,
   .doc-list {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .brand {
+    font-size: 17px;
+  }
+
+  .nav-cta {
+    padding: 7px 12px;
+    font-size: 13px;
   }
 }

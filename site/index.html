@@ -10,7 +10,12 @@
   <meta property="og:description" content="Backchannel is an open-source, self-hosted AI meeting assistant: live speaker-diarized transcripts and real-time insights, no bot joining your call." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://backchannel.page/" />
-  <meta name="twitter:card" content="summary" />
+  <meta property="og:image" content="https://backchannel.page/assets/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Backchannel: live meeting transcription and real-time insight agents, self-hosted." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
   <link rel="stylesheet" href="style.css" />
   <script type="application/ld+json">
@@ -88,6 +93,8 @@
 </head>
 <body>
 
+<a class="skip-link" href="#top">Skip to content</a>
+
 <header class="site">
   <div class="wrap">
     <a class="brand" href="#top">
@@ -121,8 +128,11 @@
       </div>
       <p class="quickstart-note">MIT licensed &middot; runs with Docker Compose &middot; works with Zoom, Meet, and Teams &middot; local diarization &middot; optional fully offline transcription</p>
       <div class="hero-shot">
-        <img src="assets/shots/postcall-insights.png" width="1280" height="720"
-             alt="Backchannel insights panel: action items, opportunities, and questions surfaced from a meeting, with supporting context." />
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <img src="assets/shots/user-live-early.webp" data-full="assets/shots/user-live-early-full.webp" width="1600" height="765" fetchpriority="high"
+               alt="Backchannel live mid-call at 03:52: dual Listening indicators, five strategic-signal cards attributed to the Question Hunter, Objection Handler, and Opportunity Scout agents, beside a live speaker-attributed transcript." />
+        </div>
       </div>
     </div>
   </section>
@@ -138,8 +148,11 @@
           <p>Silero VAD and WeSpeaker ResNet152 speaker embeddings attribute every line to a speaker, with interim text streaming seconds ahead of the final transcript. Microphone and tab/system audio are captured as separate tracks, so remote participants get their own identities.</p>
         </div>
         <div class="feature-visual">
-          <img src="assets/shots/postcall-transcript.png" width="1280" height="720" loading="lazy"
-               alt="Backchannel transcript view: every line attributed to a named speaker with timestamps." />
+          <picture>
+            <source srcset="assets/shots/postcall-transcript-dark.webp" media="(prefers-color-scheme: dark)" />
+            <img src="assets/shots/postcall-transcript.webp" width="1280" height="720" loading="lazy"
+                 alt="Backchannel transcript view: every line attributed to a named speaker with timestamps." />
+          </picture>
         </div>
       </div>
 
@@ -149,8 +162,11 @@
           <p>An analyst, a fast objection handler, a synthesizer, and an opportunity specialist each run on their own trigger and push questions, objections, opportunities, and action items mid-call. A briefing arbiter reconciles them into a dual-lens summary.</p>
         </div>
         <div class="feature-visual">
-          <img src="assets/shots/postcall-briefing.png" width="1280" height="720" loading="lazy"
-               alt="Backchannel conversation briefing: top outcomes and objectives synthesized from the call." />
+          <div class="browser-frame">
+            <div class="bar" aria-hidden="true"></div>
+            <img src="assets/shots/user-live-synthesis.webp" data-full="assets/shots/user-live-synthesis-full.webp" width="1600" height="755" loading="lazy"
+                 alt="Backchannel mid-call at 09:11: a Synthesizer observation about a four-pillar statement-of-work structure, among 50 live insights." />
+          </div>
         </div>
       </div>
 
@@ -160,8 +176,11 @@
           <p>Mix Google Gemini and OpenAI per agent, flip on Privacy First to keep every byte on the machine, or transcribe fully offline with local ONNX Whisper and Parakeet -- no API key needed for transcription.</p>
         </div>
         <div class="feature-visual">
-          <img src="assets/shots/admin-agents.png" width="1280" height="720" loading="lazy"
-               alt="Backchannel administration: per-agent model selection, prompts, and a Privacy First toggle." />
+          <picture>
+            <source srcset="assets/shots/admin-agents-dark.webp" media="(prefers-color-scheme: dark)" />
+            <img src="assets/shots/admin-agents.webp" width="1280" height="720" loading="lazy"
+                 alt="Backchannel administration: per-agent model selection, prompts, and a Privacy First toggle." />
+          </picture>
         </div>
       </div>
 
@@ -188,6 +207,125 @@
           <p>Transcript, insight, and summary exports -- plus cross-session chat that answers questions over your past meetings.</p>
         </div>
       </div>
+    </div>
+  </section>
+
+  <section id="answered">
+    <div class="wrap">
+      <span class="kicker">Live</span>
+      <h2>Questions answer themselves</h2>
+      <p class="sub">The synthesizer keeps reading the room. When a question gets answered mid-call, it marks the card Answered, summarizes the answer, and spins off the follow-up you still owe -- no bookkeeping from you.</p>
+      <figure class="shot">
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <img src="assets/shots/user-live-answered.webp" data-full="assets/shots/user-live-answered-full.webp" width="1600" height="755" loading="lazy"
+               alt="A live insight card flipping to Answered and Refined with a green answer summary, above a Needs Follow-up child question, at 05:10 into a call." />
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <section id="wrap-up" class="alt">
+    <div class="wrap">
+      <span class="kicker">After the call</span>
+      <h2>When the call ends, the wrap-up runs itself</h2>
+      <p class="sub">Stop the call and Backchannel drains the last segments, runs the final analysis, and saves the session -- then rolls the whole conversation into one reviewable record.</p>
+      <figure class="shot wide">
+        <div class="shot-strip">
+          <img src="assets/shots/user-postprocessing.webp" width="1600" height="151" loading="lazy"
+               alt="End-of-call post-processing at 88 percent, with stage chips for transcription, analysis, and saving the session, beside a 27:06 timer." />
+        </div>
+      </figure>
+      <figure class="shot wide">
+        <div class="shot-strip">
+          <img src="assets/shots/user-session-header.webp" width="1600" height="183" loading="lazy"
+               alt="Post-call session header: two call segments totaling 32 minutes 27 seconds, and 158 insights." />
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <section id="results">
+    <div class="wrap">
+      <span class="kicker">Proof</span>
+      <h2>The briefing does the reading for you</h2>
+      <p class="sub">A real 32-minute call threw off 158 raw signals. You never wade through them -- Backchannel distills the whole conversation into one briefing of outcomes and objectives, so you start from the point instead of the pile.</p>
+      <figure class="shot">
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <picture>
+            <source srcset="assets/shots/postcall-briefing-dark.webp" media="(prefers-color-scheme: dark)" />
+            <img src="assets/shots/postcall-briefing.webp" width="1280" height="720" loading="lazy"
+                 alt="Post-call briefing: a distilled panel of call outcomes beside the objectives that came out of the conversation." />
+          </picture>
+        </div>
+      </figure>
+      <p class="sub">The detail is all still there. Drill into every one of the 158 -- action items, opportunities, observations, and questions, each attributed to who said it -- or take the whole set with you as Excel, HTML, or text.</p>
+      <figure class="shot">
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <img src="assets/shots/user-insights-158.webp" data-full="assets/shots/user-insights-158-full.webp" width="1600" height="696" loading="lazy"
+               alt="Insights tab: stat tiles reading 158 total, 13 action items, 31 opportunities, 43 observations, and 44 questions, above three speaker-attributed action items." />
+        </div>
+      </figure>
+      <figure class="shot sm">
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <img src="assets/shots/user-export-menu.webp" data-full="assets/shots/user-export-menu-full.webp" width="1400" height="317" loading="lazy"
+               alt="Export menu offering Full Summary as HTML, Insights as Excel, Enhanced Insights, and Transcript as TXT." />
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <section id="speakers" class="alt">
+    <div class="wrap">
+      <span class="kicker">Speakers</span>
+      <h2>Diarization gets close. You get it right.</h2>
+      <p class="sub">Automatic diarization is fast, but it mislabels -- splitting one person across several voices, or blending two into one. Rename, merge, and tag speakers by hand, then re-run the analysis so every insight reflects who actually said it.</p>
+
+      <div class="feature-row">
+        <div class="feature-copy">
+          <h3>Rename, merge, and tag</h3>
+          <p>Silero VAD and WeSpeaker embeddings assign a voice to every line before anyone is named -- and they don't always match reality. Map each auto ID to a real person, tag your side and theirs, and merge the duplicates a long call inevitably throws off.</p>
+        </div>
+        <div class="feature-visual">
+          <div class="browser-frame">
+            <div class="bar" aria-hidden="true"></div>
+            <img src="assets/shots/user-speaker-mapping.webp" data-full="assets/shots/user-speaker-mapping-full.webp" width="1440" height="810" loading="lazy"
+                 alt="Speakers tab: auto-detected speakers with name mapping, team and external tagging, merge controls, and an Enhance Insights button." />
+          </div>
+        </div>
+      </div>
+
+      <div class="feature-row reverse">
+        <div class="feature-copy">
+          <h3>Re-run, and every insight updates</h3>
+          <p>Hit Enhance and Backchannel replays the analysis over the corrected speakers -- "Me to draft the SOW" instead of "Speaker 4" -- so every action item and observation is re-attributed to the right person.</p>
+        </div>
+        <div class="feature-visual">
+          <div class="browser-frame">
+            <div class="bar" aria-hidden="true"></div>
+            <img src="assets/shots/user-insights-enhanced.webp" data-full="assets/shots/user-insights-enhanced-full.webp" width="1440" height="481" loading="lazy"
+                 alt="Insights after speaker mapping and Enhance: an Enhanced 15 tile lit, with action items rewritten in the first person." />
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="chat">
+    <div class="wrap">
+      <span class="kicker">Across meetings</span>
+      <h2>Ask across every meeting</h2>
+      <p class="sub">Every transcript stays on your server, and stays queryable. Ask a question against one call or all of them at once, and get a grounded answer with the meetings it came from.</p>
+      <figure class="shot">
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <img src="assets/shots/user-chat-tech.webp" data-full="assets/shots/user-chat-tech-full.webp" width="1400" height="787" loading="lazy"
+               alt="Cross-session chat answering which technologies were mentioned, with a grounded multi-session answer and session scope pickers." />
+        </div>
+      </figure>
     </div>
   </section>
 
@@ -386,6 +524,47 @@ docker compose up --build
     <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
   </div>
 </footer>
+
+<dialog id="lightbox" class="lightbox" aria-label="Enlarged screenshot">
+  <button type="button" class="lightbox-close" aria-label="Close enlarged screenshot">&times;</button>
+  <img alt="" />
+</dialog>
+
+<script>
+  // Click-to-enlarge for product screenshots. The native <dialog> supplies
+  // Esc-to-close, the backdrop, and a focus trap; we add a delegated open,
+  // keyboard activation, and lazy-load the larger *-full image (when present)
+  // only at open time so page load stays light.
+  (function () {
+    var dlg = document.getElementById("lightbox");
+    if (!dlg || typeof dlg.showModal !== "function") return;
+    var big = dlg.querySelector("img");
+    var SEL = ".browser-frame img, .shot-strip img, .feature-visual img";
+    Array.prototype.forEach.call(document.querySelectorAll(SEL), function (el) {
+      el.classList.add("zoomable");
+      el.tabIndex = 0;
+      el.setAttribute("role", "button");
+      el.setAttribute("aria-label", "Enlarge screenshot: " + (el.alt || "screenshot"));
+    });
+    function open(el) {
+      big.src = el.dataset.full || el.currentSrc || el.src;
+      big.alt = el.alt || "";
+      dlg.showModal();
+    }
+    document.addEventListener("click", function (e) {
+      var el = e.target.closest(SEL);
+      if (el) { e.preventDefault(); open(el); return; }
+      if (dlg.open && (e.target === dlg || e.target === big)) dlg.close();
+    });
+    document.addEventListener("keydown", function (e) {
+      if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches(SEL)) {
+        e.preventDefault(); open(e.target);
+      }
+    });
+    dlg.querySelector(".lightbox-close").addEventListener("click", function () { dlg.close(); });
+    dlg.addEventListener("close", function () { big.removeAttribute("src"); });
+  })();
+</script>
 
 <script>
   // Live GitHub star count for the nav CTA. Unauthenticated GitHub API
