@@ -2,12 +2,16 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "backchannel-site",
   "compatibility_date": "2026-07-01",
+  "main": "worker.js",
   "routes": [
-    { "pattern": "backchannel.page", "custom_domain": true }
+    { "pattern": "backchannel.page", "custom_domain": true },
+    { "pattern": "www.backchannel.page", "custom_domain": true }
   ],
   "assets": {
     "directory": "./dist-site",
+    "binding": "ASSETS",
     "not_found_handling": "404-page",
-    "html_handling": "auto-trailing-slash"
+    "html_handling": "auto-trailing-slash",
+    "run_worker_first": true
   }
 }
