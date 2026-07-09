@@ -88,6 +88,8 @@
 </head>
 <body>
 
+<a class="skip-link" href="#top">Skip to content</a>
+
 <header class="site">
   <div class="wrap">
     <a class="brand" href="#top">
@@ -121,8 +123,11 @@
       </div>
       <p class="quickstart-note">MIT licensed &middot; runs with Docker Compose &middot; works with Zoom, Meet, and Teams &middot; local diarization &middot; optional fully offline transcription</p>
       <div class="hero-shot">
-        <img src="assets/shots/postcall-insights.png" width="1280" height="720"
-             alt="Backchannel insights panel: action items, opportunities, and questions surfaced from a meeting, with supporting context." />
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <img src="assets/shots/user-live-early.webp" width="1600" height="765" fetchpriority="high"
+               alt="Backchannel live mid-call at 03:52: dual Listening indicators, five strategic-signal cards attributed to the Question Hunter, Objection Handler, and Opportunity Scout agents, beside a live speaker-attributed transcript." />
+        </div>
       </div>
     </div>
   </section>
@@ -138,8 +143,11 @@
           <p>Silero VAD and WeSpeaker ResNet152 speaker embeddings attribute every line to a speaker, with interim text streaming seconds ahead of the final transcript. Microphone and tab/system audio are captured as separate tracks, so remote participants get their own identities.</p>
         </div>
         <div class="feature-visual">
-          <img src="assets/shots/postcall-transcript.png" width="1280" height="720" loading="lazy"
-               alt="Backchannel transcript view: every line attributed to a named speaker with timestamps." />
+          <picture>
+            <source srcset="assets/shots/postcall-transcript-dark.webp" media="(prefers-color-scheme: dark)" />
+            <img src="assets/shots/postcall-transcript.webp" width="1280" height="720" loading="lazy"
+                 alt="Backchannel transcript view: every line attributed to a named speaker with timestamps." />
+          </picture>
         </div>
       </div>
 
@@ -149,8 +157,11 @@
           <p>An analyst, a fast objection handler, a synthesizer, and an opportunity specialist each run on their own trigger and push questions, objections, opportunities, and action items mid-call. A briefing arbiter reconciles them into a dual-lens summary.</p>
         </div>
         <div class="feature-visual">
-          <img src="assets/shots/postcall-briefing.png" width="1280" height="720" loading="lazy"
-               alt="Backchannel conversation briefing: top outcomes and objectives synthesized from the call." />
+          <div class="browser-frame">
+            <div class="bar" aria-hidden="true"></div>
+            <img src="assets/shots/user-live-synthesis.webp" width="1600" height="755" loading="lazy"
+                 alt="Backchannel mid-call at 09:11: a Synthesizer observation about a four-pillar statement-of-work structure, among 50 live insights." />
+          </div>
         </div>
       </div>
 
@@ -160,8 +171,11 @@
           <p>Mix Google Gemini and OpenAI per agent, flip on Privacy First to keep every byte on the machine, or transcribe fully offline with local ONNX Whisper and Parakeet -- no API key needed for transcription.</p>
         </div>
         <div class="feature-visual">
-          <img src="assets/shots/admin-agents.png" width="1280" height="720" loading="lazy"
-               alt="Backchannel administration: per-agent model selection, prompts, and a Privacy First toggle." />
+          <picture>
+            <source srcset="assets/shots/admin-agents-dark.webp" media="(prefers-color-scheme: dark)" />
+            <img src="assets/shots/admin-agents.webp" width="1280" height="720" loading="lazy"
+                 alt="Backchannel administration: per-agent model selection, prompts, and a Privacy First toggle." />
+          </picture>
         </div>
       </div>
 
@@ -188,6 +202,115 @@
           <p>Transcript, insight, and summary exports -- plus cross-session chat that answers questions over your past meetings.</p>
         </div>
       </div>
+    </div>
+  </section>
+
+  <section id="answered">
+    <div class="wrap">
+      <span class="kicker">Live</span>
+      <h2>Questions answer themselves</h2>
+      <p class="sub">The synthesizer keeps reading the room. When a question gets answered mid-call, it marks the card Answered, summarizes the answer, and spins off the follow-up you still owe -- no bookkeeping from you.</p>
+      <figure class="shot">
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <img src="assets/shots/user-live-answered.webp" width="1600" height="755" loading="lazy"
+               alt="A live insight card flipping to Answered and Refined with a green answer summary, above a Needs Follow-up child question, at 05:10 into a call." />
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <section id="wrap-up" class="alt">
+    <div class="wrap">
+      <span class="kicker">After the call</span>
+      <h2>When the call ends, the wrap-up runs itself</h2>
+      <p class="sub">Stop the call and Backchannel drains the last segments, runs the final analysis, and saves the session -- then rolls the whole conversation into one reviewable record.</p>
+      <figure class="shot wide">
+        <div class="shot-strip">
+          <img src="assets/shots/user-postprocessing.webp" width="1600" height="151" loading="lazy"
+               alt="End-of-call post-processing at 88 percent, with stage chips for transcription, analysis, and saving the session, beside a 27:06 timer." />
+        </div>
+      </figure>
+      <figure class="shot wide">
+        <div class="shot-strip">
+          <img src="assets/shots/user-session-header.webp" width="1600" height="183" loading="lazy"
+               alt="Post-call session header: two call segments totaling 32 minutes 27 seconds, and 158 insights." />
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <section id="results">
+    <div class="wrap">
+      <span class="kicker">Proof</span>
+      <h2>One call, 158 insights</h2>
+      <p class="sub">A real 32-minute call, replayed under load. Backchannel sorted 158 insights into action items, opportunities, observations, and questions -- each one attributed to the person who said it.</p>
+      <figure class="shot">
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <img src="assets/shots/user-insights-158.webp" width="1600" height="696" loading="lazy"
+               alt="Insights tab showing stat tiles reading 158 total, 13 action items, 31 opportunities, 43 observations, and 44 questions, above three speaker-attributed action items." />
+        </div>
+      </figure>
+      <p class="sub">Then take it with you. Export the full summary as HTML, every insight as Excel, or the raw transcript as text.</p>
+      <figure class="shot sm">
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <img src="assets/shots/user-export-menu.webp" width="1400" height="317" loading="lazy"
+               alt="Export menu offering Full Summary as HTML, Insights as Excel, Enhanced Insights, and Transcript as TXT." />
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <section id="speakers" class="alt">
+    <div class="wrap">
+      <span class="kicker">Speakers</span>
+      <h2>Know who said what</h2>
+      <p class="sub">Diarization runs locally on every call. This one separated 53 distinct voices on its own -- name them once, tag your team and the other side, and merge duplicates in a click.</p>
+
+      <div class="feature-row">
+        <div class="feature-copy">
+          <h3>53 speakers, auto-detected</h3>
+          <p>Silero VAD and WeSpeaker embeddings segment speech and assign a voice to every line before anyone is named. Map an auto ID to a real person and the whole transcript updates.</p>
+        </div>
+        <div class="feature-visual">
+          <div class="browser-frame">
+            <div class="bar" aria-hidden="true"></div>
+            <img src="assets/shots/user-speaker-mapping.webp" width="1440" height="810" loading="lazy"
+                 alt="Speakers tab: 53 auto-detected speakers with name mapping, team and external tagging, merge controls, and an Enhance Insights button." />
+          </div>
+        </div>
+      </div>
+
+      <div class="feature-row reverse">
+        <div class="feature-copy">
+          <h3>Then insights speak in the first person</h3>
+          <p>Once speakers are named, Enhance rewrites the insights with real attribution -- "Me to draft the SOW" instead of "Speaker 4" -- so the action items read like notes a person actually took.</p>
+        </div>
+        <div class="feature-visual">
+          <div class="browser-frame">
+            <div class="bar" aria-hidden="true"></div>
+            <img src="assets/shots/user-insights-enhanced.webp" width="1440" height="481" loading="lazy"
+                 alt="Insights after speaker mapping and Enhance: an Enhanced 15 tile lit, with action items rewritten in the first person." />
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="chat">
+    <div class="wrap">
+      <span class="kicker">Across meetings</span>
+      <h2>Ask across every meeting</h2>
+      <p class="sub">Every transcript stays on your server, and stays queryable. Ask a question against one call or all of them at once, and get a grounded answer with the meetings it came from.</p>
+      <figure class="shot">
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <img src="assets/shots/user-chat-tech.webp" width="1400" height="787" loading="lazy"
+               alt="Cross-session chat answering which technologies were mentioned, with a grounded multi-session answer and session scope pickers." />
+        </div>
+      </figure>
     </div>
   </section>
 
