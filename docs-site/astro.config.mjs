@@ -25,15 +25,25 @@ export default defineConfig({
       sidebar: [
         // ponytail: absolute path escapes the /docs base back to the landing page
         { label: '← Back to homepage', link: 'https://backchannel.page/' },
-        { label: 'Overview', link: '/' },
-        'quickstart',
-        'architecture',
-        'agents',
-        'audio-pipeline',
-        'websocket-protocol',
-        'rest-api',
-        'configuration',
-        'deployment',
+        {
+          label: 'Getting started',
+          items: [
+            { label: 'Overview', link: '/' },
+            'quickstart',
+            'architecture',
+          ],
+        },
+        {
+          label: 'Reference',
+          items: [
+            'agents',
+            'audio-pipeline',
+            'websocket-protocol',
+            'rest-api',
+            'configuration',
+            'deployment',
+          ],
+        },
       ],
       customCss: ['./src/styles/custom.css'],
     }),
