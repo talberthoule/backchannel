@@ -101,7 +101,7 @@
       <a href="#architecture">Architecture</a>
       <a href="#agents">Agents</a>
       <a href="docs/">Docs</a>
-      <a href="https://github.com/talberthoule/backchannel">GitHub</a>
+      <a class="btn primary nav-cta" href="https://github.com/talberthoule/backchannel">Star on GitHub<span id="gh-stars" aria-hidden="true"></span></a>
     </nav>
   </div>
 </header>
@@ -112,54 +112,60 @@
     <div class="wrap">
       <h1>Your meetings, transcribed live.<br />Your next move, <span class="accent">surfaced mid-call</span> -- on your own hardware.</h1>
       <p class="lede">
-        Backchannel is a self-hosted, open-source AI meeting assistant that
-        builds a live speaker-attributed transcript and runs AI agents that
-        surface questions, objections, opportunities, and action items in
-        real time. No bot joins the call: it captures audio in the browser,
-        works with Zoom, Google Meet, Teams, or any meeting app, and keeps
-        your recordings on your own server.
+        A self-hosted, open-source AI meeting assistant: live speaker-attributed
+        transcripts and real-time insight agents, with no bot in the call.
       </p>
       <div class="cta-row">
         <a class="btn primary" href="#quickstart">Self-host in minutes</a>
         <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
       </div>
-      <p class="quickstart-note">MIT licensed &middot; runs with Docker Compose &middot; local diarization &middot; optional fully offline transcription</p>
-      <!--
-        PLACEHOLDER: hero product visual (marketing/cro-review.md item 6).
-        When a screenshot or short muted loop of ActiveCallView exists (live
-        transcript streaming + insights arriving), place it here, directly
-        under the CTA row. No asset exists yet -- do not reference one.
-      -->
+      <p class="quickstart-note">MIT licensed &middot; runs with Docker Compose &middot; works with Zoom, Meet, and Teams &middot; local diarization &middot; optional fully offline transcription</p>
+      <div class="hero-shot">
+        <img src="assets/shots/postcall-insights.png" width="1280" height="720"
+             alt="Backchannel insights panel: action items, opportunities, and questions surfaced from a meeting, with supporting context." />
+      </div>
     </div>
   </section>
 
   <section id="features" class="alt">
     <div class="wrap">
-      <span class="kicker">Features</span>
       <h2>Everything a second set of ears should do</h2>
       <p class="sub">Built for sales, discovery, and client calls -- provider-flexible and centered on a transcript you can trust.</p>
-      <div class="grid">
-        <div class="card">
-          <span class="icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M7 8v8M17 8v8M2 11v2M22 11v2" /></svg>
-          </span>
+
+      <div class="feature-row">
+        <div class="feature-copy">
           <h3>Live diarized transcription</h3>
-          <p>Silero VAD and WeSpeaker ResNet152 speaker embeddings attribute every line to a speaker, with interim text streaming seconds ahead of the final transcript.</p>
+          <p>Silero VAD and WeSpeaker ResNet152 speaker embeddings attribute every line to a speaker, with interim text streaming seconds ahead of the final transcript. Microphone and tab/system audio are captured as separate tracks, so remote participants get their own identities.</p>
         </div>
-        <div class="card">
-          <span class="icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.2 2.2M16.9 16.9l2.2 2.2M19.1 4.9l-2.2 2.2M7.1 16.9l-2.2 2.2" /></svg>
-          </span>
-          <h3>Agent-based analysis</h3>
-          <p>An analyst, a fast objection handler, a synthesizer, and an opportunity specialist each run on their own trigger and push insights mid-call.</p>
+        <div class="feature-visual">
+          <img src="assets/shots/postcall-transcript.png" width="1280" height="720" loading="lazy"
+               alt="Backchannel transcript view: every line attributed to a named speaker with timestamps." />
         </div>
-        <div class="card">
-          <span class="icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M21 3l-7 7M8 21H3v-5M3 21l7-7M21 16v5h-5M14 14l7 7M3 8V3h5M10 10L3 3" /></svg>
-          </span>
-          <h3>Provider-routed models</h3>
-          <p>Mix Google Gemini and OpenAI models per agent, or transcribe fully offline with local ONNX Whisper and Parakeet -- no API key needed for transcription.</p>
+      </div>
+
+      <div class="feature-row reverse">
+        <div class="feature-copy">
+          <h3>Agents that work the call, not just the recap</h3>
+          <p>An analyst, a fast objection handler, a synthesizer, and an opportunity specialist each run on their own trigger and push questions, objections, opportunities, and action items mid-call. A briefing arbiter reconciles them into a dual-lens summary.</p>
         </div>
+        <div class="feature-visual">
+          <img src="assets/shots/postcall-briefing.png" width="1280" height="720" loading="lazy"
+               alt="Backchannel conversation briefing: top outcomes and objectives synthesized from the call." />
+        </div>
+      </div>
+
+      <div class="feature-row">
+        <div class="feature-copy">
+          <h3>Provider-routed models, on your keys</h3>
+          <p>Mix Google Gemini and OpenAI per agent, flip on Privacy First to keep every byte on the machine, or transcribe fully offline with local ONNX Whisper and Parakeet -- no API key needed for transcription.</p>
+        </div>
+        <div class="feature-visual">
+          <img src="assets/shots/admin-agents.png" width="1280" height="720" loading="lazy"
+               alt="Backchannel administration: per-agent model selection, prompts, and a Privacy First toggle." />
+        </div>
+      </div>
+
+      <div class="grid feature-extras">
         <div class="card">
           <span class="icon" aria-hidden="true">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="9" height="7" rx="2" /><rect x="13" y="13" width="9" height="7" rx="2" /><path d="M6.5 11v4a2 2 0 0 0 2 2H13" /></svg>
@@ -187,7 +193,6 @@
 
   <section id="quickstart">
     <div class="wrap">
-      <span class="kicker">Quickstart</span>
       <h2>Running in one copy-paste</h2>
       <p class="sub">Docker is the only hard requirement. The default transcription and analysis models use Google Gemini -- add your key in the app after it starts, or put it in <code>.env</code> first.</p>
       <pre><code>git clone https://github.com/talberthoule/backchannel.git
@@ -234,7 +239,7 @@ docker compose up --build
         interim path for feedback and a durable batch path for the record.
       </p>
       <div class="diagram">
-        <img src="assets/architecture.svg" alt="Backchannel architecture diagram: client layer, backend layer, AI layer, and persistence" />
+        <img src="assets/architecture.svg" width="1200" height="800" alt="Backchannel architecture diagram: client layer, backend layer, AI layer, and persistence" />
       </div>
     </div>
   </section>
@@ -283,7 +288,6 @@ docker compose up --build
 
   <section id="faq">
     <div class="wrap">
-      <span class="kicker">FAQ</span>
       <h2>Privacy, data flow, and what it takes to run</h2>
       <p class="sub">The questions that decide whether you self-host, answered plainly.</p>
       <div class="grid">
@@ -317,7 +321,6 @@ docker compose up --build
 
   <section id="docs" class="alt">
     <div class="wrap">
-      <span class="kicker">Documentation</span>
       <h2>Go deeper</h2>
       <p class="sub">Full technical documentation, searchable and readable.</p>
       <div class="doc-list">
@@ -359,7 +362,6 @@ docker compose up --build
 
   <section id="get-started" class="cta-final">
     <div class="wrap">
-      <span class="kicker">Get started</span>
       <h2>Hear more from your next meeting</h2>
       <p class="sub">Self-hosted, open source, MIT licensed. If Backchannel is useful to you, a star on GitHub helps others find it.</p>
       <div class="cta-row">
@@ -384,6 +386,26 @@ docker compose up --build
     <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
   </div>
 </footer>
+
+<script>
+  // Live GitHub star count for the nav CTA. Unauthenticated GitHub API
+  // (60 req/hr/IP); silently keeps the plain "Star on GitHub" label on any
+  // failure or rate-limit, and hides small counts so a freshly open-sourced
+  // repo shows a clean CTA rather than weak social proof.
+  (function () {
+    var el = document.getElementById("gh-stars");
+    if (!el) return;
+    fetch("https://api.github.com/repos/talberthoule/backchannel")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        var n = d && d.stargazers_count;
+        if (typeof n === "number" && n >= 25) {
+          el.textContent = " " + n.toLocaleString();
+        }
+      })
+      .catch(function () {});
+  })();
+</script>
 
 </body>
 </html>

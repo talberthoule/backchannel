@@ -70,6 +70,17 @@ a:hover {
   text-decoration: underline;
 }
 
+/* Branded keyboard focus ring on all interactive elements */
+a:focus-visible,
+.btn:focus-visible,
+.doc:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+  text-decoration: none;
+}
+
 /* Header */
 
 header.site {
@@ -126,6 +137,33 @@ nav.site-nav a:hover {
   text-decoration: none;
 }
 
+/* Compact nav CTA button (third CTA level) */
+.nav-cta {
+  padding: 8px 16px;
+  font-size: 14px;
+  border-radius: 8px;
+  line-height: 1.2;
+}
+
+nav.site-nav a.nav-cta,
+nav.site-nav a.nav-cta:hover {
+  color: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  nav.site-nav a.nav-cta,
+  nav.site-nav a.nav-cta:hover {
+    color: #04211d;
+  }
+}
+
+#gh-stars:not(:empty) {
+  margin-left: 6px;
+  padding-left: 8px;
+  border-left: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Hero */
 
 .hero {
@@ -157,6 +195,22 @@ nav.site-nav a:hover {
   justify-content: center;
   gap: 14px;
   flex-wrap: wrap;
+}
+
+.hero-shot {
+  margin: 48px auto 0;
+  max-width: 940px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  background: var(--surface);
+}
+
+.hero-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .btn {
@@ -239,6 +293,44 @@ section.cta-final {
 section.cta-final p.sub {
   margin-left: auto;
   margin-right: auto;
+}
+
+/* Feature rows (asymmetric image + copy, alternating) */
+
+.feature-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: center;
+  margin-bottom: 44px;
+}
+
+.feature-row.reverse .feature-copy {
+  order: 2;
+}
+
+.feature-copy h3 {
+  margin: 0 0 12px;
+  font-size: 24px;
+  letter-spacing: -0.4px;
+}
+
+.feature-copy p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.feature-visual img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.feature-extras {
+  margin-top: 8px;
 }
 
 /* Feature grid */
@@ -383,11 +475,19 @@ th, td {
   vertical-align: top;
 }
 
+td {
+  font-variant-numeric: tabular-nums;
+}
+
 tr:last-child td {
   border-bottom: none;
 }
 
-th {
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.8px;
@@ -503,6 +603,22 @@ footer.site .wrap.footer-compare {
 @media (max-width: 900px) {
   .grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .feature-row {
+    gap: 32px;
+  }
+}
+
+@media (max-width: 760px) {
+  .feature-row,
+  .feature-row.reverse {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .feature-row.reverse .feature-copy {
+    order: 0;
   }
 }
 
