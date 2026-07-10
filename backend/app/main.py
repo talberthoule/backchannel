@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.config import settings
 from app.database import engine
 from app.models import Base
 from app.routers import agents, analyze, artifacts, chat, credentials, retranscribe, diagnostics, directives, documents, groups, imports, knowledge, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts
@@ -234,3 +235,15 @@ async def local_only_mode_handler(request: Request, exc: LocalOnlyModeError):
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+def mount_frontend(application: FastAPI, dist_dir: str) -> None:
+    """Serve the built frontend from the backend (native desktop mode)."""
+    if not dist_dir:
+        return
+    from fastapi.staticfiles import StaticFiles
+
+    application.mount("/", StaticFiles(directory=dist_dir, html=True), name="frontend")
+
+
+mount_frontend(app, settings.FRONTEND_DIST)

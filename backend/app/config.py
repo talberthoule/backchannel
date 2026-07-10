@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     DATABASE_URL: str = "postgresql+asyncpg://callhelper:changeme@db:5432/callhelper"
+    FRONTEND_DIST: str = ""  # path to built frontend; empty = nginx serves it (Docker)
     GEMINI_MODEL: str = "gemini-3.1-flash-live-preview"
     BATCH_TRANSCRIBER_MODEL: str = "gemini-3.5-flash"
     REFINEMENT_MODEL: str = "gemini-3.5-flash"
