@@ -110,8 +110,7 @@ class AgentOrchestrator:
         self.local_only = local_only
         self.meeting_type = normalize_meeting_type(meeting_type)
         self.meeting_context = meeting_context
-        self.meeting_context_text = build_meeting_context_text(self.meeting_type, meeting_context)
-        self._offering_matching_enabled = should_match_offerings(self.meeting_type)
+        self._derive_meeting_context()
 
         def _get_model(slug: str, fallback: str = "") -> str:
             cfg = self._agent_configs.get(slug)
@@ -291,14 +290,18 @@ class AgentOrchestrator:
         )
         self._event_bus.subscribe("new_opportunity", self._opp_specialist_subscriber)
 
+    def _derive_meeting_context(self):
+        """Recompute the fields derived from meeting_type/meeting_context."""
+        self.meeting_context_text = build_meeting_context_text(self.meeting_type, self.meeting_context)
+        self._offering_matching_enabled = should_match_offerings(self.meeting_type)
+
     def update_meeting_context(self, meeting_type: str | None = None, meeting_context: str | None = None):
         """Apply a mid-call session context edit to the running text agents."""
         if meeting_type is not None:
             self.meeting_type = normalize_meeting_type(meeting_type)
         if meeting_context is not None:
             self.meeting_context = meeting_context
-        self.meeting_context_text = build_meeting_context_text(self.meeting_type, self.meeting_context)
-        self._offering_matching_enabled = should_match_offerings(self.meeting_type)
+        self._derive_meeting_context()
         self.consolidated_agent.meeting_context_text = self.meeting_context_text
         self.objection_agent.update_meeting_context(self.meeting_context_text)
         # If the type change turned offering matching on, the specialist may not be wired yet.
@@ -339,10 +342,14 @@ class AgentOrchestrator:
             return await self._reconnect_gateway()
         return True
 
-    async def close_all(self):
-        self._stopped = True
+    def _unregister_live(self):
+        # Guarded so a newer orchestrator registered for the same session survives.
         if _live_orchestrators.get(self.session_id) is self:
             del _live_orchestrators[self.session_id]
+
+    async def close_all(self):
+        self._stopped = True
+        self._unregister_live()
 
         # Stop cooldown subscribers
         if self._synth_subscriber:
@@ -369,6 +376,9 @@ class AgentOrchestrator:
     ) -> dict[str, int | bool]:
         """Run final text-agent passes before shutting down a live call."""
         self._stopped = True
+        # Unregister up front: mid-drain context edits are pointless (loops are
+        # stopping), and a drain error must not leave a dead entry in the registry.
+        self._unregister_live()
 
         if self._synth_subscriber:
             self._synth_subscriber.stop()
