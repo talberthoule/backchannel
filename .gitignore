@@ -7,6 +7,7 @@ dist/
 *.log
 .DS_Store
 pgdata/
+desktop/pgsql/
 
 # Internal marketing strategy docs (not published)
 marketing/
