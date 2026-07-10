@@ -34,6 +34,26 @@ class EmbeddedPostgresTests(unittest.TestCase):
         self.assertIn("backchannel", cmd)
         self.assertIn("--no-locale", cmd)
 
+    def test_initdb_grants_windows_acl_first(self):
+        with mock.patch("bcdesktop.pg.sys.platform", "win32"), \
+                mock.patch.dict("os.environ", {"USERNAME": "tester"}), \
+                mock.patch("bcdesktop.pg.subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=0)
+            self.pg.ensure_initdb()
+        first_cmd = run.call_args_list[0].args[0]
+        self.assertEqual(first_cmd[0], "icacls")
+        last_cmd = run.call_args_list[-1].args[0]
+        self.assertIn("initdb", str(last_cmd[0]))
+
+    def test_initdb_skips_acl_grant_off_windows(self):
+        with mock.patch("bcdesktop.pg.sys.platform", "linux"), \
+                mock.patch("bcdesktop.pg.subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=0)
+            self.pg.ensure_initdb()
+        self.assertNotIn(
+            "icacls", [call.args[0][0] for call in run.call_args_list]
+        )
+
     def test_initdb_skipped_when_cluster_exists(self):
         (self.data_dir / "pgdata").mkdir(parents=True)
         (self.data_dir / "pgdata" / "PG_VERSION").write_text("16")

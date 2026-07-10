@@ -3,11 +3,13 @@
 import os
 import secrets
 import subprocess
+import sys
 from pathlib import Path
 
 
 class EmbeddedPostgres:
     def __init__(self, pg_dir: Path, data_dir: Path):
+        self.root = Path(data_dir)
         self.bin = Path(pg_dir) / "bin"
         self.pgdata = Path(data_dir) / "pgdata"
         self.pwfile = Path(data_dir) / "pgpassword"
@@ -28,10 +30,25 @@ class EmbeddedPostgres:
                 f"{cmd[0]} failed (exit {proc.returncode}): {detail}"
             )
 
+    def _grant_windows_acl(self) -> None:
+        # ponytail: GH runners / admin users - postgres re-execs with a
+        # restricted token (Administrators becomes deny-only), so the data
+        # dir needs an explicit ACE for the plain user SID.
+        if sys.platform != "win32":
+            return
+        user = os.environ.get("USERNAME")
+        if not user:
+            return
+        subprocess.run(
+            ["icacls", str(self.root), "/grant", f"{user}:(OI)(CI)F", "/T", "/Q"],
+            capture_output=True,
+        )
+
     def ensure_initdb(self) -> None:
         if (self.pgdata / "PG_VERSION").exists():
             return
         self.password()
+        self._grant_windows_acl()
         self._run([
             str(self.bin / "initdb"),
             "-D", str(self.pgdata),
