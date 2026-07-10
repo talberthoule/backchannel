@@ -50,14 +50,23 @@ class EmbeddedPostgres:
             pidfile.unlink()
 
     def start(self, port: int) -> None:
-        self._run([
-            str(self.bin / "pg_ctl"),
-            "-D", str(self.pgdata),
-            "-o", f"-p {port} -c listen_addresses=127.0.0.1",
-            "-l", str(self.log),
-            "-w",
-            "start",
-        ])
+        # No pipes here: the detached postmaster inherits them and
+        # subprocess.run would block forever waiting for EOF. Server
+        # output goes to self.log via -l anyway.
+        subprocess.run(
+            [
+                str(self.bin / "pg_ctl"),
+                "-D", str(self.pgdata),
+                "-o", f"-p {port} -c listen_addresses=127.0.0.1",
+                "-l", str(self.log),
+                "-w",
+                "start",
+            ],
+            check=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
     def stop(self) -> None:
         if not (self.pgdata / "postmaster.pid").exists():
