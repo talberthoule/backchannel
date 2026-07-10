@@ -10,6 +10,19 @@ import urllib.request
 from pathlib import Path
 
 
+def dump_logs(data_dir: Path) -> None:
+    for name in ("backchannel.log", "postgres.log"):
+        log = data_dir / name
+        if log.exists():
+            print(f"----- tail of {name} -----", file=sys.stderr)
+            print(
+                "\n".join(log.read_text(errors="replace").splitlines()[-50:]),
+                file=sys.stderr,
+            )
+        else:
+            print(f"----- {name} missing -----", file=sys.stderr)
+
+
 def bundle_exe() -> Path:
     exe = Path("dist") / "Backchannel" / "Backchannel"
     if sys.platform == "win32":
@@ -31,7 +44,11 @@ def main() -> int:
             port = None
             while time.monotonic() < deadline:
                 if proc.poll() is not None:
-                    print("FAIL: launcher exited early", file=sys.stderr)
+                    print(
+                        f"FAIL: launcher exited early (exit code {proc.returncode})",
+                        file=sys.stderr,
+                    )
+                    dump_logs(Path(tmp))
                     return 1
                 if lock.exists():
                     port = json.loads(lock.read_text())["port"]
@@ -39,12 +56,14 @@ def main() -> int:
                 time.sleep(1)
             if port is None:
                 print("FAIL: timed out waiting for launcher.json", file=sys.stderr)
+                dump_logs(Path(tmp))
                 return 1
             url = f"http://127.0.0.1:{port}/api/health"
             with urllib.request.urlopen(url, timeout=5) as resp:
                 body = resp.read().decode()
             if resp.status != 200 or "ok" not in body:
                 print(f"FAIL: bad health response: {body}", file=sys.stderr)
+                dump_logs(Path(tmp))
                 return 1
             print(f"OK: healthy on port {port}")
         finally:
@@ -54,9 +73,11 @@ def main() -> int:
             except subprocess.TimeoutExpired:
                 proc.kill()
                 print("FAIL: launcher did not shut down cleanly", file=sys.stderr)
+                dump_logs(Path(tmp))
                 return 1
         if proc.returncode != 0:
             print(f"FAIL: exit code {proc.returncode}", file=sys.stderr)
+            dump_logs(Path(tmp))
             return 1
         print("OK: clean shutdown")
         return 0
