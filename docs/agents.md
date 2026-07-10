@@ -81,3 +81,12 @@ directives (including mid-call directives sent over the WebSocket), document
 summaries produced at upload time, the speaker roster with roles and
 team/external tags, the meeting type and meeting context, and currently
 unanswered questions so agents can track what is already open.
+
+Meeting type and context edits made during a live call (`PATCH
+/api/sessions/{id}`) are pushed into the running agents immediately: the
+route looks up the session's live orchestrator in an in-process registry
+and rebuilds the meeting-context prompt block for the consolidated analyst
+and objection handler, taking effect on their next cycle. A type change
+that turns on offering matching (client/sales or customer delivery) also
+wires the opportunity specialist mid-call. The registry is per-process, so
+this requires the single-worker deployment the app uses today.
