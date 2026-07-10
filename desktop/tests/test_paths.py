@@ -1,0 +1,37 @@
+import os
+import socket
+import unittest
+from pathlib import Path
+from unittest import mock
+
+from bcdesktop.paths import app_data_dir, free_port, resource
+
+
+class PathsTests(unittest.TestCase):
+    def test_app_data_dir_env_override_wins(self):
+        with mock.patch.dict(os.environ, {"BACKCHANNEL_DATA_DIR": "/somewhere/else"}):
+            self.assertEqual(app_data_dir(), Path("/somewhere/else"))
+
+    def test_app_data_dir_is_platform_specific(self):
+        with mock.patch.dict(os.environ):
+            os.environ.pop("BACKCHANNEL_DATA_DIR", None)
+            self.assertIn("Backchannel", str(app_data_dir()))
+
+    def test_free_port_is_bindable(self):
+        port = free_port()
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", port))
+
+    def test_resource_dev_fallback_points_into_repo(self):
+        # No _MEIPASS in tests, so these resolve against the repo checkout.
+        self.assertTrue(str(resource("frontend")).endswith("dist"))
+        self.assertTrue(str(resource("models")).endswith("models"))
+        self.assertTrue(str(resource("pgsql")).endswith("pgsql"))
+
+    def test_resource_rejects_unknown_name(self):
+        with self.assertRaises(KeyError):
+            resource("nonsense")
+
+
+if __name__ == "__main__":
+    unittest.main()

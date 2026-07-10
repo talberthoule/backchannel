@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="#quickstart">Quickstart</a> -
+  <a href="#run-it">Run it</a> -
   <a href="#features">Features</a> -
   <a href="#architecture">Architecture</a> -
   <a href="https://backchannel.page/docs/">Documentation</a>
@@ -63,7 +63,34 @@ transcription while the batch pipeline produces the durable record.
 
 Read more in [docs/architecture.md](docs/architecture.md).
 
-## Quickstart
+## Run it
+
+### Option 1: Desktop app (easiest)
+
+Download the latest release for your platform from the
+[Releases page](../../releases):
+
+- `Backchannel-windows-x64.zip` - unzip, run `Backchannel.exe`.
+  Windows SmartScreen will warn on first run because the build is
+  unsigned: click "More info" then "Run anyway".
+- `Backchannel-macos-arm64.zip` (Apple Silicon) - unzip, right-click
+  `Backchannel.app` and choose "Open" the first time (unsigned build).
+
+The app lives in your system tray / menu bar and opens Backchannel in your
+default browser. Data is stored per-user (`%LOCALAPPDATA%\Backchannel` on
+Windows, `~/Library/Application Support/Backchannel` on macOS).
+
+Notes:
+- MP3/M4A audio import needs `ffmpeg` on your PATH (WAV/FLAC/OGG work
+  out of the box).
+- The optional Sortformer diarizer is Docker-only; the desktop app uses
+  the built-in lightweight diarizer.
+
+### Option 2: Docker (isolated)
+
+Keeps everything in containers, includes the optional Sortformer diarizer,
+and doesn't touch your environment - at the cost of installing Docker and a
+couple of extra setup steps.
 
 Requires Docker with the Compose plugin. The default pipeline uses a free
 [Gemini API key](https://ai.google.dev/) for transcription and agents;

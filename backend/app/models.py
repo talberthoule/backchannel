@@ -1,8 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Text, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Text, String, UniqueConstraint, Uuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -13,7 +12,7 @@ class Base(DeclarativeBase):
 class Session(Base):
     __tablename__ = "sessions"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255))
     state: Mapped[str] = mapped_column(String(20), default="pre_call")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -22,7 +21,7 @@ class Session(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     meeting_type: Mapped[str] = mapped_column(String(50), default="general")
     meeting_context: Mapped[str] = mapped_column(Text, default="")
-    group_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("session_groups.id", use_alter=True), nullable=True)
+    group_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(), ForeignKey("session_groups.id", use_alter=True), nullable=True)
     speaker_context_dirty: Mapped[bool] = mapped_column(Boolean, default=False)
     speaker_context_enhanced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -40,8 +39,8 @@ class Session(Base):
 class Document(Base):
     __tablename__ = "documents"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"))
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("sessions.id"))
     filename: Mapped[str] = mapped_column(String(255))
     mime_type: Mapped[str] = mapped_column(String(100))
     gemini_file_uri: Mapped[str] = mapped_column(String(500), default="")
@@ -53,8 +52,8 @@ class Document(Base):
 class Directive(Base):
     __tablename__ = "directives"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"))
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("sessions.id"))
     text: Mapped[str] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -65,12 +64,12 @@ class Directive(Base):
 class TranscriptEntry(Base):
     __tablename__ = "transcript_entries"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"))
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("sessions.id"))
     text: Mapped[str] = mapped_column(Text)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     sequence: Mapped[int] = mapped_column(Integer, default=0)
-    speaker_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("speakers.id"), nullable=True)
+    speaker_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(), ForeignKey("speakers.id"), nullable=True)
 
     session = relationship("Session", back_populates="transcript_entries")
     speaker = relationship("Speaker")
@@ -79,15 +78,15 @@ class TranscriptEntry(Base):
 class Question(Base):
     __tablename__ = "questions"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"))
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("sessions.id"))
     item_type: Mapped[str] = mapped_column(String(50), default="question")  # built-ins (question, observation, opportunity, action_item, objection) or a custom lens type slug
     lens_label: Mapped[str] = mapped_column(String(120), default="")  # display heading of the lens that produced this insight ("" for non-lens agents)
     question: Mapped[str] = mapped_column(Text)  # the text content (question text, observation text, etc.)
     rationale: Mapped[str] = mapped_column(Text, default="")
     source_context: Mapped[str] = mapped_column(Text, default="")
-    speaker_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("speakers.id"), nullable=True)
-    directive_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("directives.id"), nullable=True)
+    speaker_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(), ForeignKey("speakers.id"), nullable=True)
+    directive_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(), ForeignKey("directives.id"), nullable=True)
     starred: Mapped[bool] = mapped_column(Boolean, default=False)
     dismissed: Mapped[bool] = mapped_column(Boolean, default=False)
     answered: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -114,8 +113,8 @@ class SessionSynthesis(Base):
         UniqueConstraint("session_id", "mode", name="uq_session_syntheses_session_mode"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"))
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("sessions.id"))
     mode: Mapped[str] = mapped_column(String(20), default="post_call")  # live, post_call
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, partial, completed, error
     top_outcomes: Mapped[list] = mapped_column(JSON, default=list)
@@ -141,9 +140,9 @@ class SessionSynthesis(Base):
 class InsightCluster(Base):
     __tablename__ = "insight_clusters"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    synthesis_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("session_syntheses.id"))
-    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"))
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    synthesis_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("session_syntheses.id"))
+    session_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("sessions.id"))
     title: Mapped[str] = mapped_column(String(255))
     summary: Mapped[str] = mapped_column(Text, default="")
     priority: Mapped[int] = mapped_column(Integer, default=0)
@@ -158,8 +157,8 @@ class InsightCluster(Base):
 class CallSegment(Base):
     __tablename__ = "call_segments"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"))
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("sessions.id"))
     segment_number: Mapped[int] = mapped_column(Integer)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -171,7 +170,7 @@ class CallSegment(Base):
 class Offering(Base):
     __tablename__ = "offerings"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
     vendor: Mapped[str] = mapped_column(String(100))
     product_name: Mapped[str] = mapped_column(String(255))
     category: Mapped[str] = mapped_column(String(100))  # Security, Cloud, Networking, etc.
@@ -188,7 +187,7 @@ class Offering(Base):
 class KnowledgeSource(Base):
     __tablename__ = "knowledge_sources"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255))
     source_type: Mapped[str] = mapped_column(String(30))  # offerings, collection, files (future: http_rag)
     description: Mapped[str] = mapped_column(Text, default="")
@@ -201,8 +200,8 @@ class KnowledgeSource(Base):
 class KnowledgeRecord(Base):
     __tablename__ = "knowledge_records"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("knowledge_sources.id"))
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    source_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("knowledge_sources.id"))
     title: Mapped[str] = mapped_column(String(500), default="")
     body: Mapped[str] = mapped_column(Text, default="")
     meta: Mapped[str] = mapped_column(Text, default="{}")  # JSON text (filename, import row extras)
@@ -214,8 +213,8 @@ class KnowledgeRecord(Base):
 class Speaker(Base):
     __tablename__ = "speakers"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"))
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("sessions.id"))
     name: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(100), default="")  # e.g. "Sales Engineer", "Client", "Technical Lead"
     color: Mapped[str] = mapped_column(String(20), default="#0d9488")  # hex color for UI
@@ -231,7 +230,7 @@ class Speaker(Base):
 class AgentConfig(Base):
     __tablename__ = "agent_configs"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
     slug: Mapped[str] = mapped_column(String(50), unique=True)
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(Text, default="")
@@ -253,8 +252,8 @@ class AgentConfig(Base):
 class SessionAgentOverride(Base):
     __tablename__ = "session_agent_overrides"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"))
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("sessions.id"))
     agent_slug: Mapped[str] = mapped_column(String(50))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -264,7 +263,7 @@ class SessionAgentOverride(Base):
 class SessionGroup(Base):
     __tablename__ = "session_groups"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255))
     display_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

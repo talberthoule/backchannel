@@ -35,6 +35,15 @@ docker-compose down -v
 - Frontend nginx proxies API and WebSocket traffic from :3000 to backend :8000
 - Database: PostgreSQL 16 on host port 5432
 
+### Desktop bundle (Windows/macOS)
+
+`desktop/` contains a PyInstaller launcher that runs the backend with an
+embedded zonky.io PostgreSQL and serves the built frontend via
+`FRONTEND_DIST`. Desktop tests: run `python -m unittest discover -s tests`
+from `desktop/`. Local build: `pyinstaller desktop/backchannel.spec`;
+release builds run in `.github/workflows/desktop-release.yml` on `v*` tags
+(unsigned; Sortformer and ffmpeg are not bundled).
+
 ### Docs Site
 
 `docs-site/` is an Astro Starlight project deployed as a Cloudflare Worker
