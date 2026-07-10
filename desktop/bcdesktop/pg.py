@@ -38,6 +38,7 @@ class EmbeddedPostgres:
             "-U", "backchannel",
             "-A", "scram-sha-256",
             "--pwfile", str(self.pwfile),
+            "--no-locale",
             "-E", "UTF8",
         ])
 

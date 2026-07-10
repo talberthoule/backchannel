@@ -32,6 +32,7 @@ class EmbeddedPostgresTests(unittest.TestCase):
         self.assertIn("-A", cmd)
         self.assertIn("scram-sha-256", cmd)
         self.assertIn("backchannel", cmd)
+        self.assertIn("--no-locale", cmd)
 
     def test_initdb_skipped_when_cluster_exists(self):
         (self.data_dir / "pgdata").mkdir(parents=True)
