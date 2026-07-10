@@ -292,6 +292,9 @@ figure.shot + figure.shot {
 
 figure.shot + p {
   margin-top: 28px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
 }
 
 /* Click-to-enlarge: zoom affordance + native <dialog> lightbox.
