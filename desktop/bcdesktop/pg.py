@@ -21,7 +21,12 @@ class EmbeddedPostgres:
         return self.pwfile.read_text().strip()
 
     def _run(self, cmd: list) -> None:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            detail = (proc.stderr or "").strip() or (proc.stdout or "").strip()
+            raise RuntimeError(
+                f"{cmd[0]} failed (exit {proc.returncode}): {detail}"
+            )
 
     def ensure_initdb(self) -> None:
         if (self.pgdata / "PG_VERSION").exists():
