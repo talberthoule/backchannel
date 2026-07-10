@@ -138,6 +138,10 @@ def run(headless: bool = False) -> int:
         pg.start(pg_port)
     except Exception:
         log.exception("postgres failed to start")
+        try:
+            pg.stop()
+        except Exception:
+            log.exception("cleanup stop failed")
         if not headless:
             _error_dialog(f"PostgreSQL failed to start. See log: {pg.log}")
         return 1
