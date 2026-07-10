@@ -1,14 +1,58 @@
+import asyncio
+import json
 import unittest
 
 import numpy as np
 
 from app.services.openai_realtime import (
+    COMMIT_INTERVAL_BYTES,
     DEFAULT_TRANSCRIBE_MODEL,
     OpenAIRealtimeSession,
     _parse_event,
     _resample_16k_to_24k,
+    _session_update_payload,
     resolve_transcribe_model,
 )
+
+
+class _FakeWS:
+    def __init__(self):
+        self.sent = []
+
+    async def send(self, data):
+        self.sent.append(json.loads(data))
+
+
+class SessionUpdateTests(unittest.TestCase):
+    def test_ga_session_update_shape(self):
+        payload = _session_update_payload("gpt-realtime-whisper")
+        self.assertEqual("session.update", payload["type"])
+        self.assertEqual("transcription", payload["session"]["type"])
+        audio_input = payload["session"]["audio"]["input"]
+        self.assertEqual({"type": "audio/pcm", "rate": 24000}, audio_input["format"])
+        self.assertEqual("gpt-realtime-whisper", audio_input["transcription"]["model"])
+        # gpt-realtime-whisper rejects server VAD; must stay absent
+        self.assertNotIn("turn_detection", audio_input)
+
+
+class CommitCadenceTests(unittest.TestCase):
+    def test_commits_after_interval_and_resets(self):
+        session = OpenAIRealtimeSession(model_override="gpt-realtime-whisper")
+        ws = _FakeWS()
+        session._ws = ws
+        one_second = b"\x00" * 32000
+
+        async def run():
+            for _ in range(3):
+                await session.send_audio(one_second)
+
+        asyncio.run(run())
+        types = [m["type"] for m in ws.sent]
+        self.assertEqual(3, types.count("input_audio_buffer.append"))
+        self.assertEqual(1, types.count("input_audio_buffer.commit"))
+        self.assertEqual("input_audio_buffer.commit", types[-1])
+        self.assertEqual(0, session._bytes_since_commit)
+        self.assertEqual(3 * 32000, COMMIT_INTERVAL_BYTES)
 
 
 class ResampleTests(unittest.TestCase):

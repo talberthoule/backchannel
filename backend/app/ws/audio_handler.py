@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import uuid
@@ -101,7 +102,7 @@ async def _flush_remaining_audio(
     transcription_queue: OrderedTranscriptionQueue,
     speaker_prefix: str = "",
 ):
-    for seg in flush_diarizer_segments(diarizer):
+    for seg in await asyncio.to_thread(flush_diarizer_segments, diarizer):
         try:
             transcription_queue.add(f"{speaker_prefix}{seg.speaker_id}", seg.pcm_bytes)
         except Exception:
@@ -391,11 +392,11 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
     async def reconnect_orchestrator():
         """Reconnect the audio gateway through the orchestrator."""
         # Flush remaining diarized audio
-        for seg in flush_diarizer_segments(diarizer):
+        for seg in await asyncio.to_thread(flush_diarizer_segments, diarizer):
             transcription_queue.add(seg.speaker_id, seg.pcm_bytes)
         diarizer.reset()
         if sys_diarizer is not None:
-            for seg in flush_diarizer_segments(sys_diarizer):
+            for seg in await asyncio.to_thread(flush_diarizer_segments, sys_diarizer):
                 transcription_queue.add(f"sys_{seg.speaker_id}", seg.pcm_bytes)
             sys_diarizer.reset()
 
@@ -515,11 +516,14 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                                 runtime_config.effective_live_diarizer,
                                 registry=SpeakerRegistry(threshold=runtime_config.speaker_similarity_threshold),
                             )
-                        segments = sys_diarizer.feed_audio(pcm_data)
+                        # Diarizer inference (and its lazy model load) is CPU-bound;
+                        # keep it off the event loop or websocket keepalives starve
+                        # and both the browser and gateway sockets die with 1011.
+                        segments = await asyncio.to_thread(sys_diarizer.feed_audio, pcm_data)
                         for seg in segments:
                             seg.speaker_id = f"sys_{seg.speaker_id}"
                     else:
-                        segments = diarizer.feed_audio(pcm_data)
+                        segments = await asyncio.to_thread(diarizer.feed_audio, pcm_data)
                     audio_bytes_total = getattr(audio_websocket, "_abt", 0) + len(pcm_data)
                     setattr(audio_websocket, "_abt", audio_bytes_total)
                     if audio_bytes_total // 320000 != (audio_bytes_total - len(pcm_data)) // 320000:

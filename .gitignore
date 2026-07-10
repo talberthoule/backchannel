@@ -12,3 +12,8 @@ desktop/pgsql/
 
 # Internal marketing strategy docs (not published)
 marketing/
+
+# Per-machine Claude Code / skill installs (not committed)
+.agents/
+.claude/
+skills-lock.json
