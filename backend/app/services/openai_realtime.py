@@ -3,6 +3,11 @@
 Connects to the realtime WebSocket with intent=transcription, streams PCM16
 audio (upsampled 16k -> 24k, which the API expects), and yields completed
 input transcriptions as {"type": "transcript", "data": text} events.
+
+Uses the GA event shapes: session.update with session.type="transcription"
+(the pre-GA transcription_session.update event was removed). Server VAD is
+not supported for gpt-realtime-whisper, so the buffer is committed manually
+on a fixed cadence to finalize transcription items.
 """
 
 import base64
@@ -19,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 REALTIME_URL = "wss://api.openai.com/v1/realtime?intent=transcription"
 DEFAULT_TRANSCRIBE_MODEL = "gpt-realtime-whisper"
+
+# ponytail: fixed-cadence manual commit (~3s of 16 kHz source audio);
+# upgrade to VAD-gated commits if transcripts read too choppy.
+COMMIT_INTERVAL_BYTES = 3 * 32000
 
 # Registry ids are the real API transcription model ids and pass through as-is.
 TRANSCRIBE_MODEL_IDS = {
@@ -51,6 +60,23 @@ def _resample_16k_to_24k(pcm_bytes: bytes) -> bytes:
     return resampled.astype(np.int16).tobytes()
 
 
+def _session_update_payload(model: str) -> dict:
+    """GA transcription session config. turn_detection is omitted on purpose:
+    gpt-realtime-whisper rejects server VAD; we commit the buffer manually."""
+    return {
+        "type": "session.update",
+        "session": {
+            "type": "transcription",
+            "audio": {
+                "input": {
+                    "format": {"type": "audio/pcm", "rate": 24000},
+                    "transcription": {"model": model},
+                },
+            },
+        },
+    }
+
+
 def _parse_event(event: dict) -> str | None:
     """Return transcript text from a completed input transcription event, else None."""
     if event.get("type") != "conversation.item.input_audio_transcription.completed":
@@ -69,6 +95,7 @@ class OpenAIRealtimeSession:
         self._api_key = api_key
         self._ws = None
         self._transcribe_model = resolve_transcribe_model(model_override)
+        self._bytes_since_commit = 0
         self.session = None  # parity with GeminiLiveSession's "connected" marker
 
     async def connect(self):
@@ -80,14 +107,8 @@ class OpenAIRealtimeSession:
             additional_headers={"Authorization": f"Bearer {key}"},
             max_size=16 * 1024 * 1024,
         )
-        await self._ws.send(json.dumps({
-            "type": "transcription_session.update",
-            "session": {
-                "input_audio_format": "pcm16",
-                "input_audio_transcription": {"model": self._transcribe_model},
-                "turn_detection": {"type": "server_vad"},
-            },
-        }))
+        await self._ws.send(json.dumps(_session_update_payload(self._transcribe_model)))
+        self._bytes_since_commit = 0
         self.session = self._ws
         logger.info(
             f"OpenAI Realtime transcription session connected ({self._transcribe_model})"
@@ -95,11 +116,16 @@ class OpenAIRealtimeSession:
         return self._ws
 
     async def send_audio(self, audio_data: bytes):
-        if self._ws:
-            await self._ws.send(json.dumps({
-                "type": "input_audio_buffer.append",
-                "audio": base64.b64encode(_resample_16k_to_24k(audio_data)).decode(),
-            }))
+        if not self._ws:
+            return
+        await self._ws.send(json.dumps({
+            "type": "input_audio_buffer.append",
+            "audio": base64.b64encode(_resample_16k_to_24k(audio_data)).decode(),
+        }))
+        self._bytes_since_commit += len(audio_data)
+        if self._bytes_since_commit >= COMMIT_INTERVAL_BYTES:
+            self._bytes_since_commit = 0
+            await self._ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
 
     async def receive_responses(self):
         if not self._ws:
