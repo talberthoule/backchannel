@@ -6,6 +6,9 @@ from PyInstaller.utils.hooks import collect_submodules
 
 repo = Path(SPECPATH).parent
 
+# Make the backend package importable for collect_submodules on clean machines.
+sys.path.insert(0, str(repo / "backend"))
+
 hidden = collect_submodules("app") + [
     "uvicorn.logging",
     "uvicorn.loops.auto",
