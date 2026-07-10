@@ -1,0 +1,74 @@
+name: Desktop release
+
+on:
+  push:
+    tags: ["v*"]
+    branches: ["feature/desktop-packaging"]  # temporary: pre-merge CI validation; drop after merge
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset: Backchannel-windows-x64.zip
+          - os: macos-latest
+            asset: Backchannel-macos-arm64.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install -r backend/requirements.txt -r desktop/requirements.txt
+
+      - name: Download ONNX models
+        working-directory: backend
+        run: python scripts/download_models.py
+
+      - name: Download embedded Postgres
+        run: python desktop/scripts/download_pg.py
+
+      - name: Build bundle
+        run: pyinstaller desktop/backchannel.spec --distpath dist --workpath build --noconfirm
+
+      - name: Smoke test bundle
+        run: python desktop/scripts/smoke_test.py
+
+      - name: Zip (Windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path dist/Backchannel -DestinationPath ${{ matrix.asset }}
+
+      - name: Zip (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --keepParent dist/Backchannel.app ${{ matrix.asset }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}
