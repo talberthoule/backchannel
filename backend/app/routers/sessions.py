@@ -18,6 +18,7 @@ from app.schemas import (
     SessionOut,
     SessionUpdate,
 )
+from app.services.agents.orchestrator import get_live_orchestrator
 from app.services.meeting_context import normalize_meeting_type
 from app.services.speaker_context_enhancer import run_speaker_context_enhancement
 
@@ -78,6 +79,15 @@ async def update_session(session_id: uuid.UUID, body: SessionUpdate, db: AsyncSe
         session.group_id = body.group_id
     await db.commit()
     await db.refresh(session)
+
+    # Push mid-call context edits into the running agents, if this session is live.
+    if body.meeting_type is not None or body.meeting_context is not None:
+        orchestrator = get_live_orchestrator(session_id)
+        if orchestrator:
+            orchestrator.update_meeting_context(
+                meeting_type=body.meeting_type,
+                meeting_context=body.meeting_context,
+            )
     return session
 
 

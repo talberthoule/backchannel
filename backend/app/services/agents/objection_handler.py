@@ -70,6 +70,11 @@ class ObjectionHandlerAgent:
         self._recent_objections: deque[str] = deque(maxlen=_MAX_RECENT_OBJECTIONS)
         self._last_window = ""
 
+    def update_meeting_context(self, meeting_context_text: str):
+        self.meeting_context_text = meeting_context_text
+        # Clear the unchanged-window skip so the current window is rescanned with the new context.
+        self._last_window = ""
+
     async def run_cycle(
         self,
         transcript_window: str,

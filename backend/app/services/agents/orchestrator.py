@@ -44,6 +44,14 @@ logger = logging.getLogger(__name__)
 _DEDUP_WINDOW_SECONDS = 60
 ProgressCallback = Callable[[dict[str, object]], Awaitable[None]]
 
+# Live orchestrators by session id so REST routes can push mid-call updates.
+# ponytail: in-process dict; needs a shared channel if the app ever runs multi-worker.
+_live_orchestrators: dict[uuid.UUID, "AgentOrchestrator"] = {}
+
+
+def get_live_orchestrator(session_id: uuid.UUID) -> "AgentOrchestrator | None":
+    return _live_orchestrators.get(session_id)
+
 
 async def _emit_progress(
     progress_callback: ProgressCallback | None,
@@ -252,14 +260,7 @@ class AgentOrchestrator:
             await self._synth_subscriber.start_max_interval()
 
         # --- Event-driven: Opportunity Specialist ---
-        if self._is_enabled("opportunity_specialist") and self._offering_matching_enabled:
-            self._opp_specialist_subscriber = CooldownSubscriber(
-                handler=self._run_opportunity_specialist,
-                cooldown_seconds=self._get_interval(
-                    "opportunity_specialist", settings.OPPORTUNITY_SPECIALIST_COOLDOWN_SECONDS
-                ),
-            )
-            self._event_bus.subscribe("new_opportunity", self._opp_specialist_subscriber)
+        self._wire_opportunity_specialist()
 
         if self.briefing_enabled():
             self._briefing_task = asyncio.create_task(self._live_briefing_loop())
@@ -273,6 +274,38 @@ class AgentOrchestrator:
             f"objection={self._is_enabled('objection_handler')} "
             f"synth={self._is_enabled('synthesizer')}(event-driven) "
             f"opp_specialist={self._is_enabled('opportunity_specialist')}(event-driven)"
+        )
+        _live_orchestrators[self.session_id] = self
+
+    def _wire_opportunity_specialist(self):
+        """Subscribe the opportunity specialist if enabled and the meeting type warrants it."""
+        if self._opp_specialist_subscriber is not None:
+            return
+        if not (self._is_enabled("opportunity_specialist") and self._offering_matching_enabled):
+            return
+        self._opp_specialist_subscriber = CooldownSubscriber(
+            handler=self._run_opportunity_specialist,
+            cooldown_seconds=self._get_interval(
+                "opportunity_specialist", settings.OPPORTUNITY_SPECIALIST_COOLDOWN_SECONDS
+            ),
+        )
+        self._event_bus.subscribe("new_opportunity", self._opp_specialist_subscriber)
+
+    def update_meeting_context(self, meeting_type: str | None = None, meeting_context: str | None = None):
+        """Apply a mid-call session context edit to the running text agents."""
+        if meeting_type is not None:
+            self.meeting_type = normalize_meeting_type(meeting_type)
+        if meeting_context is not None:
+            self.meeting_context = meeting_context
+        self.meeting_context_text = build_meeting_context_text(self.meeting_type, self.meeting_context)
+        self._offering_matching_enabled = should_match_offerings(self.meeting_type)
+        self.consolidated_agent.meeting_context_text = self.meeting_context_text
+        self.objection_agent.update_meeting_context(self.meeting_context_text)
+        # If the type change turned offering matching on, the specialist may not be wired yet.
+        self._wire_opportunity_specialist()
+        logger.info(
+            f"[orchestrator] meeting context updated mid-call: type={self.meeting_type} "
+            f"offering_matching={self._offering_matching_enabled}"
         )
 
     async def send_audio(self, pcm_data: bytes):
@@ -308,6 +341,8 @@ class AgentOrchestrator:
 
     async def close_all(self):
         self._stopped = True
+        if _live_orchestrators.get(self.session_id) is self:
+            del _live_orchestrators[self.session_id]
 
         # Stop cooldown subscribers
         if self._synth_subscriber:
