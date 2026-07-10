@@ -1,5 +1,6 @@
 """Lifecycle management for the bundled zonky.io PostgreSQL binaries."""
 
+import os
 import secrets
 import subprocess
 from pathlib import Path
@@ -16,6 +17,7 @@ class EmbeddedPostgres:
         if not self.pwfile.exists():
             self.pwfile.parent.mkdir(parents=True, exist_ok=True)
             self.pwfile.write_text(secrets.token_hex(16))
+            os.chmod(self.pwfile, 0o600)
         return self.pwfile.read_text().strip()
 
     def _run(self, cmd: list) -> None:

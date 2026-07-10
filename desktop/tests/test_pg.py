@@ -18,6 +18,11 @@ class EmbeddedPostgresTests(unittest.TestCase):
         self.assertEqual(first, self.pg.password())
         self.assertGreaterEqual(len(first), 32)
 
+    def test_password_file_permissions_restricted(self):
+        with mock.patch("bcdesktop.pg.os.chmod") as chmod:
+            self.pg.password()
+        chmod.assert_called_once_with(self.pg.pwfile, 0o600)
+
     def test_initdb_runs_with_password_auth(self):
         with mock.patch("bcdesktop.pg.subprocess.run") as run:
             run.return_value = mock.Mock(returncode=0)
