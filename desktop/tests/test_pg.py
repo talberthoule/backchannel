@@ -61,6 +61,19 @@ class EmbeddedPostgresTests(unittest.TestCase):
             self.pg.ensure_initdb()
         run.assert_not_called()
 
+    def test_initdb_wipes_wedged_pgdata_without_pg_version(self):
+        pgdata = self.data_dir / "pgdata"
+        pgdata.mkdir(parents=True)
+        (pgdata / "stray.txt").write_text("leftover from a crashed initdb")
+        with mock.patch("bcdesktop.pg.subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=0)
+            self.pg.ensure_initdb()
+        # rmtree removed the wedged dir entirely; nothing recreated it
+        # since subprocess.run (initdb) is mocked out.
+        self.assertFalse(pgdata.exists())
+        cmd = run.call_args.args[0]
+        self.assertIn("initdb", str(cmd[0]))
+
     def test_start_binds_localhost_only_on_given_port(self):
         with mock.patch("bcdesktop.pg.subprocess.run") as run:
             run.return_value = mock.Mock(returncode=0)
@@ -70,6 +83,17 @@ class EmbeddedPostgresTests(unittest.TestCase):
         opts = cmd[cmd.index("-o") + 1]
         self.assertIn("-p 54321", opts)
         self.assertIn("listen_addresses=127.0.0.1", opts)
+
+    def test_start_raises_with_pg_ctl_log_tail_on_failure(self):
+        def fake_run(cmd, **kwargs):
+            kwargs["stderr"].write("FATAL: could not bind IPv4 address\n")
+            return mock.Mock(returncode=1)
+
+        with mock.patch("bcdesktop.pg.subprocess.run", side_effect=fake_run):
+            with self.assertRaises(RuntimeError) as ctx:
+                self.pg.start(54321)
+        self.assertIn("pg_ctl", str(ctx.exception))
+        self.assertIn("could not bind IPv4 address", str(ctx.exception))
 
     def test_stop_is_noop_without_pidfile(self):
         with mock.patch("bcdesktop.pg.subprocess.run") as run:

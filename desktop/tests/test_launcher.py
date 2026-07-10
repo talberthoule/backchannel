@@ -57,6 +57,24 @@ class LauncherHelperTests(unittest.TestCase):
 
         self.assertFalse(launcher.wait_healthy(free_port(), timeout=1))
 
+    def test_wait_for_other_instance_returns_port_once_lock_appears(self):
+        port = self._serve_health()
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "launcher.json").write_text(
+                json.dumps({"port": port, "pid": 1})
+            )
+            found = launcher.wait_for_other_instance(
+                Path(tmp), timeout=1, interval=0.05
+            )
+        self.assertEqual(found, port)
+
+    def test_wait_for_other_instance_times_out_when_nothing_appears(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            found = launcher.wait_for_other_instance(
+                Path(tmp), timeout=0.2, interval=0.05
+            )
+        self.assertIsNone(found)
+
 
 if __name__ == "__main__":
     unittest.main()

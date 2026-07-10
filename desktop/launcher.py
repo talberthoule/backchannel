@@ -41,6 +41,20 @@ def existing_instance_port(data_dir: Path) -> int | None:
     return None
 
 
+def wait_for_other_instance(
+    data_dir: Path, timeout: float = 60.0, interval: float = 2.0
+) -> int | None:
+    """Poll for another instance to publish a healthy port, else None."""
+    deadline = time.monotonic() + timeout
+    while True:
+        port = existing_instance_port(data_dir)
+        if port is not None:
+            return port
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(interval)
+
+
 def wait_healthy(port: int, timeout: float = 90.0) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -131,13 +145,35 @@ def run(headless: bool = False) -> int:
 
     pg = EmbeddedPostgres(resource("pgsql"), data_dir)
     pg_port = free_port()
+    foreign_postmaster = False
     try:
         pg.recover_stale()
+        # recover_stale() already unlinked a genuinely stale pidfile, so a
+        # pidfile that still exists here belongs to a LIVE postmaster
+        # owned by another instance that is starting or already running.
+        foreign_postmaster = (pg.pgdata / "postmaster.pid").exists()
         pg.ensure_initdb()
         log.info("starting postgres on port %s", pg_port)
         pg.start(pg_port)
     except Exception:
         log.exception("postgres failed to start")
+        if foreign_postmaster:
+            log.warning(
+                "postmaster.pid belongs to another instance; not stopping it"
+            )
+            other_port = wait_for_other_instance(data_dir)
+            if other_port is not None:
+                log.info("other instance is healthy on port %s", other_port)
+                if not headless:
+                    webbrowser.open(f"http://127.0.0.1:{other_port}")
+                return 0
+            log.error("no other instance became healthy within timeout")
+            if not headless:
+                _error_dialog(
+                    "Backchannel appears to be starting in another window. "
+                    f"If it never opens, see log: {data_dir / 'backchannel.log'}"
+                )
+            return 1
         try:
             pg.stop()
         except Exception:
@@ -167,6 +203,10 @@ def run(headless: bool = False) -> int:
     try:
         if not wait_healthy(app_port):
             log.error("app failed to become healthy; see postgres.log too")
+            if not headless:
+                _error_dialog(
+                    f"Backchannel failed to start. See log: {data_dir / 'backchannel.log'}"
+                )
             return 1
         lock.write_text(json.dumps({"port": app_port, "pid": os.getpid()}))
         if headless:

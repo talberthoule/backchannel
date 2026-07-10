@@ -2,6 +2,7 @@
 
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -14,6 +15,7 @@ class EmbeddedPostgres:
         self.pgdata = Path(data_dir) / "pgdata"
         self.pwfile = Path(data_dir) / "pgpassword"
         self.log = Path(data_dir) / "postgres.log"
+        self.pg_ctl_log = Path(data_dir) / "pg_ctl.log"
 
     def password(self) -> str:
         if not self.pwfile.exists():
@@ -47,6 +49,11 @@ class EmbeddedPostgres:
     def ensure_initdb(self) -> None:
         if (self.pgdata / "PG_VERSION").exists():
             return
+        if self.pgdata.exists():
+            # A pgdata dir without PG_VERSION was never a valid cluster
+            # (e.g. initdb crashed or was killed mid-run). initdb refuses
+            # to write into a non-empty directory, so clear it first.
+            shutil.rmtree(self.pgdata)
         self.password()
         self._grant_windows_acl()
         self._run([
@@ -73,23 +80,36 @@ class EmbeddedPostgres:
             pidfile.unlink()
 
     def start(self, port: int) -> None:
-        # No pipes here: the detached postmaster inherits them and
-        # subprocess.run would block forever waiting for EOF. Server
-        # output goes to self.log via -l anyway.
-        subprocess.run(
-            [
-                str(self.bin / "pg_ctl"),
-                "-D", str(self.pgdata),
-                "-o", f"-p {port} -c listen_addresses=127.0.0.1",
-                "-l", str(self.log),
-                "-w",
-                "start",
-            ],
-            check=True,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        # No pipes for stdin/stdout: the detached postmaster inherits them
+        # and subprocess.run would block forever waiting for EOF. Server
+        # output goes to self.log via -l anyway. pg_ctl's own stderr (its
+        # exit diagnostics, not the postmaster's) goes to a real file
+        # instead of DEVNULL so start failures are debuggable; a file
+        # handle doesn't block on child inheritance either.
+        with open(self.pg_ctl_log, "w") as err:
+            proc = subprocess.run(
+                [
+                    str(self.bin / "pg_ctl"),
+                    "-D", str(self.pgdata),
+                    "-o", f"-p {port} -c listen_addresses=127.0.0.1",
+                    "-l", str(self.log),
+                    "-w",
+                    "start",
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=err,
+            )
+        if proc.returncode != 0:
+            tail = ""
+            try:
+                lines = self.pg_ctl_log.read_text(errors="replace").splitlines()
+                tail = "\n".join(lines[-20:])
+            except OSError:
+                pass
+            raise RuntimeError(
+                f"pg_ctl start failed (exit {proc.returncode}): {tail}"
+            )
 
     def stop(self) -> None:
         if not (self.pgdata / "postmaster.pid").exists():
