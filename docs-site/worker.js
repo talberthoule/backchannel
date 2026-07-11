@@ -6,6 +6,7 @@ const ADMIN_API_PATH = '/api/admin/interests';
 const ADMIN_ASSETS = new Map([
   ['/', '/admin/index.html'],
   ['/index.html', '/admin/index.html'],
+  ['/style.css', '/style.css'],
   ['/admin.css', '/admin/admin.css'],
   ['/admin.js', '/admin/admin.js'],
 ]);

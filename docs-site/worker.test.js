@@ -361,15 +361,17 @@ test('admin API rejects mutations and redacts D1 failures', async () => {
 test('private host serves only mapped assets with security headers', async () => {
   const { env, assetRequests } = adminBindings();
   const page = await workerModule.route(adminRequest('/'), env, allowOwner);
+  const sharedStyle = await workerModule.route(adminRequest('/style.css'), env, allowOwner);
   const script = await workerModule.route(adminRequest('/admin.js'), env, allowOwner);
   const missing = await workerModule.route(adminRequest('/not-found'), env, allowOwner);
 
   assert.equal(page.status, 200);
+  assert.equal(sharedStyle.status, 200);
   assert.equal(script.status, 200);
   assert.equal(missing.status, 404);
   assert.deepEqual(
     assetRequests.map((assetRequest) => new URL(assetRequest.url).pathname),
-    ['/admin/index.html', '/admin/admin.js'],
+    ['/admin/index.html', '/style.css', '/admin/admin.js'],
   );
   assert.equal(page.headers.get('cache-control'), 'no-store');
   assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);

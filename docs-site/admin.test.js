@@ -11,7 +11,9 @@ function read(url) {
 }
 
 const html = read(new URL('../site/admin/index.html', import.meta.url));
-const css = read(new URL('../site/admin/admin.css', import.meta.url));
+const sharedCss = read(new URL('../site/style.css', import.meta.url));
+const adminCss = read(new URL('../site/admin/admin.css', import.meta.url));
+const css = `${sharedCss}\n${adminCss}`;
 const script = read(new URL('../site/admin/admin.js', import.meta.url));
 const config = JSON.parse(readFileSync(new URL('./wrangler.jsonc', import.meta.url), 'utf8'));
 
@@ -31,6 +33,7 @@ test('private admin page has an accessible table and explicit states', () => {
 });
 
 test('private admin page uses CSP-compatible local assets and safe DOM rendering', () => {
+  assert.match(html, /href="\/style\.css"/);
   assert.match(html, /href="\/admin\.css"/);
   assert.match(html, /src="\/admin\.js"/);
   assert.doesNotMatch(html, /<style[\s>]/);
