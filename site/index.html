@@ -634,6 +634,7 @@ docker compose up --build
       event.preventDefault();
       if (!form.reportValidity()) return;
       var data = new FormData(form);
+      email.removeAttribute("aria-invalid");
       var token = data.get("cf-turnstile-response");
       if (!token) {
         status.textContent = "Complete the verification and try again.";
@@ -643,7 +644,6 @@ docker compose up --build
 
       button.disabled = true;
       form.setAttribute("aria-busy", "true");
-      email.removeAttribute("aria-invalid");
       status.textContent = "Saving your request...";
       status.dataset.state = "pending";
 
@@ -654,7 +654,12 @@ docker compose up --build
       })
         .then(function (response) {
           return response.json().then(function (body) {
-            if (!response.ok) throw new Error(body.message || "Request failed.");
+            if (!response.ok) {
+              var failure = new Error("Interest request failed");
+              failure.userMessage = body.message || "We couldn't save this right now. Please try again.";
+              failure.field = body.message === "Enter a valid email address." ? "email" : "";
+              throw failure;
+            }
             return body;
           });
         })
@@ -665,8 +670,8 @@ docker compose up --build
           if (window.turnstile) window.turnstile.reset();
         })
         .catch(function (error) {
-          email.setAttribute("aria-invalid", "true");
-          status.textContent = error.message || "We couldn't save this right now. Please try again.";
+          if (error && error.field === "email") email.setAttribute("aria-invalid", "true");
+          status.textContent = (error && error.userMessage) || "We couldn't save this right now. Please try again.";
           status.dataset.state = "error";
           if (window.turnstile) window.turnstile.reset();
         })
