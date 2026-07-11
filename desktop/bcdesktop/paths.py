@@ -14,6 +14,7 @@ _DEV_RESOURCES = {
     "frontend": _REPO_ROOT / "frontend" / "dist",
     "models": _REPO_ROOT / "backend" / "models",
     "pgsql": _REPO_ROOT / "desktop" / "pgsql",
+    "assets": _REPO_ROOT / "desktop" / "assets",
 }
 
 

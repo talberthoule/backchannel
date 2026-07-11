@@ -27,6 +27,12 @@ class PathsTests(unittest.TestCase):
         self.assertTrue(str(resource("frontend")).endswith("dist"))
         self.assertTrue(str(resource("models")).endswith("models"))
         self.assertTrue(str(resource("pgsql")).endswith("pgsql"))
+        self.assertTrue(str(resource("assets")).endswith("assets"))
+
+    def test_brand_icons_are_committed(self):
+        for name in ("icon.png", "icon.ico", "icon.icns"):
+            with self.subTest(icon=name):
+                self.assertTrue((resource("assets") / name).exists())
 
     def test_resource_rejects_unknown_name(self):
         with self.assertRaises(KeyError):

@@ -30,6 +30,7 @@ a = Analysis(
         (str(repo / "frontend" / "dist"), "frontend"),
         (str(repo / "backend" / "models"), "models"),
         (str(repo / "desktop" / "pgsql"), "pgsql"),
+        (str(repo / "desktop" / "assets"), "assets"),
     ],
     hiddenimports=hidden,
 )
@@ -42,6 +43,9 @@ exe = EXE(
     exclude_binaries=True,
     name="Backchannel",
     console=False,
+    icon=str(repo / "desktop" / "assets" / "icon.ico")
+    if sys.platform == "win32"
+    else None,
 )
 
 coll = COLLECT(exe, a.binaries, a.datas, name="Backchannel")
@@ -51,6 +55,7 @@ if sys.platform == "darwin":
         coll,
         name="Backchannel.app",
         bundle_identifier="io.github.backchannel",
+        icon=str(repo / "desktop" / "assets" / "icon.icns"),
         # Menu-bar (tray) app: no Dock icon.
         info_plist={"LSUIElement": True},
     )

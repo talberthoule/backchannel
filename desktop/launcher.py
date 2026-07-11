@@ -125,13 +125,27 @@ def _open_data_folder(data_dir: Path) -> None:
         logging.getLogger("launcher").exception("failed to open data folder")
 
 
-def _run_tray(port: int, data_dir: Path) -> None:
-    import pystray
+def _tray_image():
     from PIL import Image, ImageDraw
 
+    icon_png = resource("assets") / "icon.png"
+    try:
+        with Image.open(icon_png) as brand:
+            return brand.convert("RGBA")
+    except Exception:
+        logging.getLogger("launcher").exception(
+            "brand icon unavailable at %s; using fallback", icon_png
+        )
     image = Image.new("RGB", (64, 64), (30, 41, 59))
     draw = ImageDraw.Draw(image)
     draw.ellipse((16, 16, 48, 48), fill=(56, 189, 248))
+    return image
+
+
+def _run_tray(port: int, data_dir: Path) -> None:
+    import pystray
+
+    image = _tray_image()
 
     icon = pystray.Icon(
         "backchannel",
