@@ -46,7 +46,8 @@ action items you would otherwise reconstruct from memory afterwards.
   documents, speaker roles, and an offerings/knowledge catalog all feed
   agent prompts
 - **Exports and chat** -- transcript TXT, insights XLSX, and summary HTML
-  exports, plus cross-session Q&A chat over your past meetings
+  exports, plus cross-session Q&A grounded in each meeting's briefing,
+  saved insights, and speaker-attributed transcript
 - **Encrypted credentials** -- provider API keys are stored encrypted at
   rest and managed from the Admin panel
 
