@@ -1,6 +1,8 @@
 import re
 
-_MIN_NEW_SPEAKER_SECONDS = 4.0
+from app.config import settings
+
+_MIN_NEW_SPEAKER_SECONDS = settings.MIN_NEW_SPEAKER_MS / 1000.0
 _MIN_NEW_SPEAKER_WORDS = 10
 
 

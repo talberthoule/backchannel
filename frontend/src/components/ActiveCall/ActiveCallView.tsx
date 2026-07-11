@@ -45,8 +45,15 @@ function useSessionTimer(startedAt: string | null) {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
-    if (!startedAt) return;
+    if (!startedAt) {
+      setElapsed(0);
+      return;
+    }
     const start = new Date(startedAt).getTime();
+    if (!Number.isFinite(start)) {
+      setElapsed(0);
+      return;
+    }
 
     function tick() {
       setElapsed(Math.floor((Date.now() - start) / 1000));
@@ -277,6 +284,7 @@ export default function ActiveCallView({
               questions={displayQuestions}
               speakers={speakers}
               strategicSignalQuestionIds={strategicSignalQuestionIds}
+              showEnhanced={Boolean(session.speaker_context_enhanced_at)}
               onStar={onStarQuestion}
               onDismiss={onDismissQuestion}
               onVote={onVoteQuestion}

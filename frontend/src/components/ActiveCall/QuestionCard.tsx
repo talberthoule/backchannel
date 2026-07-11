@@ -19,6 +19,7 @@ interface QuestionCardProps {
   question: Question;
   speakers: Speaker[];
   isStrategicSignal?: boolean;
+  showEnhanced?: boolean;
   onStar: (starred: boolean) => void;
   onDismiss: () => void;
   onVote: (vote: number) => void;
@@ -28,7 +29,7 @@ function speakerLabel(speaker: Speaker): string {
   return speaker.display_name && speaker.display_name_enabled ? speaker.display_name : speaker.name;
 }
 
-export default function QuestionCard({ question, speakers, isStrategicSignal = false, onStar, onDismiss, onVote }: QuestionCardProps) {
+export default function QuestionCard({ question, speakers, isStrategicSignal = false, showEnhanced = false, onStar, onDismiss, onVote }: QuestionCardProps) {
   const [dismissing, setDismissing] = useState(false);
   const [showEnrichment, setShowEnrichment] = useState(false);
   const currentVote = question.vote ?? 0;
@@ -75,7 +76,7 @@ export default function QuestionCard({ question, speakers, isStrategicSignal = f
               Answered
             </span>
           )}
-          {question.enhanced && (
+          {showEnhanced && question.enhanced && (
             <span className="inline-flex items-center rounded-full bg-brand-teal-light/10 px-2 py-0.5 font-body text-xs font-medium text-brand-teal-light">
               Enhanced
             </span>

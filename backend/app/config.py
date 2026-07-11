@@ -31,7 +31,9 @@ class Settings(BaseSettings):
 
     # Speaker diarization settings
     LIVE_DIARIZER: str = "lightweight"
-    SPEAKER_SIMILARITY_THRESHOLD: float = 0.72
+    SPEAKER_SIMILARITY_THRESHOLD: float = 0.68
+    MIN_NEW_SPEAKER_MS: int = 4000
+    MAX_SPEAKER_PROFILES_PER_TRACK: int = 4
     VAD_THRESHOLD: float = 0.6
     SILENCE_GAP_MS: int = 600
     MAX_SEGMENT_MS: int = 15000

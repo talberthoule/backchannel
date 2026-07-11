@@ -43,7 +43,11 @@ export default function PrivacyModeCard({ config, onChanged }: PrivacyModeCardPr
         <div>
           <div className="flex items-center gap-2">
             <h3 className="font-display text-base font-bold text-brand-dark-gray">Privacy First</h3>
-            <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium text-white ${enabled ? "bg-brand-teal" : "bg-brand-mid-gray"}`}>
+            <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+              enabled
+                ? "border-teal-600 bg-teal-700 text-white dark:border-teal-500 dark:bg-teal-900 dark:text-teal-100"
+                : "border-slate-500 bg-slate-700 text-slate-50"
+            }`}>
               {enabled ? "Local-only processing" : "Cloud AI allowed"}
             </span>
           </div>

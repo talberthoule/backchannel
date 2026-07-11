@@ -193,9 +193,11 @@ export default function DiarizationCapabilityCard() {
       ? diarization.benchmark_status
       : diarization?.status)
     ?? "unknown";
-  const diagnosticStatusColor = statusLabel === "passed"
-    ? "#10b981"
-    : (diarization?.sortformer_available ? "#f59e0b" : "#94a3b8");
+  const diagnosticStatusClass = statusLabel === "passed"
+    ? "border-emerald-600 bg-emerald-700 text-white dark:border-emerald-500 dark:bg-emerald-900 dark:text-emerald-100"
+    : diarization?.sortformer_available
+      ? "border-amber-500 bg-amber-100 text-amber-900 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-100"
+      : "border-slate-500 bg-slate-700 text-slate-50";
   const selectedMode = diarization?.selected_live_diarizer ?? "lightweight";
   const effectiveMode = diarization?.effective_live_diarizer ?? selectedMode;
   const enhancedUnlocked = Boolean(diarization?.sortformer_selectable);
@@ -220,8 +222,7 @@ export default function DiarizationCapabilityCard() {
           <div className="flex items-center gap-2">
             <h3 className="font-display text-base font-bold text-brand-dark-gray">Diarization Capability</h3>
             <span
-              className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
-              style={{ backgroundColor: diagnosticStatusColor }}
+              className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${diagnosticStatusClass}`}
             >
               {statusLabel}
             </span>

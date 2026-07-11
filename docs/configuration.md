@@ -89,7 +89,9 @@ defaults (see [Agent System](agents.md)).
 | `MIN_SEGMENT_MS` | 750 | Minimum speech segment length |
 | `MAX_SEGMENT_MS` | 15000 | Maximum segment length before a forced cut |
 | `SILENCE_GAP_MS` | 600 | Silence gap that closes a segment |
-| `SPEAKER_SIMILARITY_THRESHOLD` | 0.72 | Embedding similarity to match an existing speaker |
+| `SPEAKER_SIMILARITY_THRESHOLD` | 0.68 | Embedding similarity to match an existing speaker |
+| `MIN_NEW_SPEAKER_MS` | 4000 | Minimum speech needed to enroll a new speaker profile |
+| `MAX_SPEAKER_PROFILES_PER_TRACK` | 4 | Maximum auto-enrolled speaker profiles per audio track |
 | `SORTFORMER_WINDOW_MS` | 15000 | Sortformer processing window |
 
 Diarization values can be changed at runtime through

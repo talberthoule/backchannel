@@ -26,12 +26,25 @@ class LauncherHelperTests(unittest.TestCase):
     def _serve_health(self):
         server = http.server.HTTPServer(("127.0.0.1", 0), _HealthHandler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
         return server.server_address[1]
 
     def test_no_lock_file_means_no_instance(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertIsNone(launcher.existing_instance_port(Path(tmp)))
+
+    def test_browser_url_uses_friendly_localhost_name(self):
+        self.assertEqual(
+            "http://localhost:54321",
+            launcher.app_url(54321),
+        )
+
+    def test_health_url_stays_on_numeric_loopback(self):
+        self.assertEqual(
+            "http://127.0.0.1:54321/api/health",
+            launcher.health_url(54321),
+        )
 
     def test_stale_lock_file_means_no_instance(self):
         with tempfile.TemporaryDirectory() as tmp:

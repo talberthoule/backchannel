@@ -2,19 +2,21 @@ import { useState } from "react";
 import type { Question, Speaker } from "../../types";
 import { presentTypes, typeColor, typeGroupLabel, typeLabel } from "../../utils/insightTypes";
 
-// "all", an item_type slug (built-in or custom lens type), "enhanced", or "dismissed"
+// "all", an item_type slug (built-in or custom lens type), or "dismissed".
+// "enhanced" is added only after the session's explicit enhancement pass.
 type FilterType = string;
 
 interface QuestionSummaryProps {
   questions: Question[];
   speakers: Speaker[];
+  showEnhanced?: boolean;
 }
 
 function speakerLabel(speaker: Speaker): string {
   return speaker.display_name && speaker.display_name_enabled ? speaker.display_name : speaker.name;
 }
 
-function SummaryCard({ question, speakers }: { question: Question; speakers: Speaker[] }) {
+function SummaryCard({ question, speakers, showEnhanced }: { question: Question; speakers: Speaker[]; showEnhanced: boolean }) {
   const itemType = question.item_type || "question";
   const cardColor = typeColor(itemType);
   const attributedSpeaker = question.speaker_id
@@ -62,7 +64,7 @@ function SummaryCard({ question, speakers }: { question: Question; speakers: Spe
                 Answered
               </span>
             )}
-            {question.enhanced && (
+            {showEnhanced && question.enhanced && (
               <span className="inline-flex items-center rounded-full bg-brand-teal-light/10 px-2 py-0.5 font-body text-xs font-medium text-brand-teal-light">
                 Enhanced
               </span>
@@ -170,14 +172,14 @@ function StatCard({
   );
 }
 
-export default function QuestionSummary({ questions, speakers }: QuestionSummaryProps) {
+export default function QuestionSummary({ questions, speakers, showEnhanced = false }: QuestionSummaryProps) {
   const [showDismissed, setShowDismissed] = useState(false);
   const [filter, setFilter] = useState<FilterType>("all");
 
   // Separate dismissed first
   const dismissed = questions.filter((q) => q.dismissed);
   const active = questions.filter((q) => !q.dismissed);
-  const enhanced = active.filter((q) => q.enhanced);
+  const enhanced = showEnhanced ? active.filter((q) => q.enhanced) : [];
   const visibleActive = filter === "enhanced" ? enhanced : active;
 
   // Dynamic type groups: built-ins in fixed order, then custom lens types
@@ -230,13 +232,15 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
             />
           );
         })}
-        <StatCard
-          label="Enhanced"
-          count={enhanced.length}
-          dotColor={typeColor("question")}
-          isActive={filter === "enhanced"}
-          onClick={() => handleFilterClick("enhanced")}
-        />
+        {showEnhanced && (
+          <StatCard
+            label="Enhanced"
+            count={enhanced.length}
+            dotColor={typeColor("question")}
+            isActive={filter === "enhanced"}
+            onClick={() => handleFilterClick("enhanced")}
+          />
+        )}
       </div>
 
       {/* Typed sections (built-ins first, then custom lens types); the
@@ -248,7 +252,7 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
           <section key={t} className="space-y-3">
             <SectionHeader label={typeGroupLabel(t, items)} color={typeColor(t)} count={items.length} />
             {items.map((q) => (
-              <SummaryCard key={q.id} question={q} speakers={speakers} />
+              <SummaryCard key={q.id} question={q} speakers={speakers} showEnhanced={showEnhanced} />
             ))}
           </section>
         );
@@ -265,7 +269,7 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
                 Needs Follow-up
               </h4>
               {qNeedsFollowup.map((q) => (
-                <SummaryCard key={q.id} question={q} speakers={speakers} />
+                <SummaryCard key={q.id} question={q} speakers={speakers} showEnhanced={showEnhanced} />
               ))}
             </div>
           )}
@@ -276,7 +280,7 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
                 Starred
               </h4>
               {qStarred.map((q) => (
-                <SummaryCard key={q.id} question={q} speakers={speakers} />
+                <SummaryCard key={q.id} question={q} speakers={speakers} showEnhanced={showEnhanced} />
               ))}
             </div>
           )}
@@ -287,7 +291,7 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
                 Answered
               </h4>
               {qAnswered.map((q) => (
-                <SummaryCard key={q.id} question={q} speakers={speakers} />
+                <SummaryCard key={q.id} question={q} speakers={speakers} showEnhanced={showEnhanced} />
               ))}
             </div>
           )}
@@ -298,7 +302,7 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
                 Unanswered
               </h4>
               {qUnanswered.map((q) => (
-                <SummaryCard key={q.id} question={q} speakers={speakers} />
+                <SummaryCard key={q.id} question={q} speakers={speakers} showEnhanced={showEnhanced} />
               ))}
             </div>
           )}
@@ -327,7 +331,7 @@ export default function QuestionSummary({ questions, speakers }: QuestionSummary
           {showDismissed && (
             <div className="mt-3 space-y-3 opacity-60">
               {dismissed.map((q) => (
-                <SummaryCard key={q.id} question={q} speakers={speakers} />
+                <SummaryCard key={q.id} question={q} speakers={speakers} showEnhanced={showEnhanced} />
               ))}
             </div>
           )}
