@@ -17,3 +17,4 @@ marketing/
 .agents/
 .claude/
 skills-lock.json
+.worktrees/
