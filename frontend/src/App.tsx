@@ -153,6 +153,8 @@ export default function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [groups, setGroups] = useState<SessionGroup[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [runtimeSessionId, setRuntimeSessionId] = useState<string | null>(null);
+  const [liveSessionId, setLiveSessionId] = useState<string | null>(null);
   const [showOfferings, setShowOfferings] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
@@ -195,6 +197,10 @@ export default function App() {
   // Track when the current call segment started (resets on each start/resume)
   const [callSegmentStart, setCallSegmentStart] = useState<string | null>(null);
   const [postProcessing, setPostProcessing] = useState<PostProcessingProgress>(() => idlePostProcessing());
+  const runtimeSessionIdRef = useRef(runtimeSessionId);
+  const liveSessionIdRef = useRef(liveSessionId);
+  runtimeSessionIdRef.current = runtimeSessionId;
+  liveSessionIdRef.current = liveSessionId;
 
   useEffect(() => {
     api.listSessions().then(setSessions).catch(console.error);
@@ -204,14 +210,18 @@ export default function App() {
   // Process incoming WebSocket messages — questions and transcripts
   const processedCount = useRef(0);
   useEffect(() => {
+    if (messages.length < processedCount.current) {
+      processedCount.current = 0;
+    }
     const newMessages = messages.slice(processedCount.current);
     processedCount.current = messages.length;
+    const messageSessionId = liveSessionIdRef.current ?? runtimeSessionIdRef.current ?? "";
 
     for (const msg of newMessages) {
       if (msg.type === "question") {
         const q: Question = {
           id: msg.data.id,
-          session_id: activeSessionId || "",
+          session_id: messageSessionId,
           item_type: (msg.data.item_type as any) || "question",
           lens_label: msg.data.lens_label || "",
           question: msg.data.question,
@@ -251,7 +261,11 @@ export default function App() {
         // Diarized transcript arrived from backend — clear interim text since this replaces it
         setInterimText("");
         setLiveTranscripts((prev) => [...prev, msg.data]);
-        if (msg.data.speaker_id && !speakers.some((s) => s.id === msg.data.speaker_id)) {
+        if (
+          messageSessionId === activeSessionId &&
+          msg.data.speaker_id &&
+          !speakers.some((s) => s.id === msg.data.speaker_id)
+        ) {
           void refreshSpeakers();
         }
       } else if (msg.type === "interim_transcript") {
@@ -321,22 +335,35 @@ export default function App() {
     }
   }, [messages, activeSessionId, speakers, refreshSpeakers]);
 
-  const allQuestions = session?.state === "completed"
-    ? mergeQuestions(savedQuestions, liveQuestions)
-    : mergeQuestions(liveQuestions, savedQuestions);
+  const runtimeMatchesView = Boolean(activeSessionId && activeSessionId === runtimeSessionId);
+  const viewLiveQuestions = runtimeMatchesView ? liveQuestions : [];
+  const viewLiveTranscripts = runtimeMatchesView ? liveTranscripts : [];
+  const viewRuntimeSynthesis = runtimeMatchesView ? runtimeSynthesis : null;
 
-  const persistedAndLiveTranscripts = mergeTranscripts(savedTranscripts, liveTranscripts);
+  const allQuestions = runtimeMatchesView
+    ? session?.state === "completed"
+      ? mergeQuestions(savedQuestions, viewLiveQuestions)
+      : mergeQuestions(viewLiveQuestions, savedQuestions)
+    : savedQuestions;
+
+  const persistedAndLiveTranscripts = mergeTranscripts(savedTranscripts, viewLiveTranscripts);
 
   // Combine final transcripts + current interim for display
   const displayTranscripts: TranscriptEntry[] = [
     ...persistedAndLiveTranscripts,
-    ...(interimText
+    ...(runtimeMatchesView && interimText
       ? [{ text: interimText, timestamp: new Date().toISOString() }]
       : []),
   ];
   const reviewTranscripts = persistedAndLiveTranscripts;
-  const liveSynthesis = newestSynthesis("live", savedLiveSynthesis, runtimeSynthesis);
-  const postCallSynthesis = newestSynthesis("post_call", savedSynthesis, runtimeSynthesis);
+  const liveSynthesis = newestSynthesis("live", savedLiveSynthesis, viewRuntimeSynthesis);
+  const postCallSynthesis = newestSynthesis("post_call", savedSynthesis, viewRuntimeSynthesis);
+  const openSegmentStart = [...segments]
+    .reverse()
+    .find((segment) => !segment.ended_at)?.started_at ?? null;
+  const viewedCallSegmentStart = runtimeMatchesView
+    ? callSegmentStart ?? openSegmentStart ?? session?.started_at ?? null
+    : openSegmentStart ?? session?.started_at ?? null;
 
   const refreshSessions = useCallback(async () => {
     const s = await api.listSessions();
@@ -349,6 +376,10 @@ export default function App() {
   }, []);
 
   const resetSessionRuntimeState = useCallback(() => {
+    runtimeSessionIdRef.current = null;
+    liveSessionIdRef.current = null;
+    setRuntimeSessionId(null);
+    setLiveSessionId(null);
     setLiveQuestions([]);
     setLiveTranscripts([]);
     setInterimText("");
@@ -369,7 +400,7 @@ export default function App() {
   const handleCreateSession = useCallback(async (name: string, meetingType: Session["meeting_type"]) => {
     const s = await api.createSession(name, { meeting_type: meetingType });
     await refreshSessions();
-    resetSessionRuntimeState();
+    if (!liveSessionIdRef.current) resetSessionRuntimeState();
     setActiveSessionId(s.id);
     setShowNewSession(false);
     setShowOfferings(false);
@@ -378,7 +409,7 @@ export default function App() {
   }, [refreshSessions, resetSessionRuntimeState]);
 
   const handleSelectSession = useCallback((id: string) => {
-    resetSessionRuntimeState();
+    if (!liveSessionIdRef.current) resetSessionRuntimeState();
     setActiveSessionId(id);
     setShowOfferings(false);
     setShowKnowledge(false);
@@ -386,7 +417,7 @@ export default function App() {
   }, [resetSessionRuntimeState]);
 
   const handleOpenOfferings = useCallback(() => {
-    resetSessionRuntimeState();
+    if (!liveSessionIdRef.current) resetSessionRuntimeState();
     setShowOfferings(true);
     setShowKnowledge(false);
     setShowAdmin(false);
@@ -394,7 +425,7 @@ export default function App() {
   }, [resetSessionRuntimeState]);
 
   const handleOpenKnowledge = useCallback(() => {
-    resetSessionRuntimeState();
+    if (!liveSessionIdRef.current) resetSessionRuntimeState();
     setShowKnowledge(true);
     setShowOfferings(false);
     setShowAdmin(false);
@@ -402,7 +433,7 @@ export default function App() {
   }, [resetSessionRuntimeState]);
 
   const handleOpenAdmin = useCallback(() => {
-    resetSessionRuntimeState();
+    if (!liveSessionIdRef.current) resetSessionRuntimeState();
     setShowAdmin(true);
     setShowOfferings(false);
     setShowKnowledge(false);
@@ -425,24 +456,29 @@ export default function App() {
 
   const handleDeleteSession = useCallback(async () => {
     if (!activeSessionId) return;
+    if (activeSessionId === liveSessionIdRef.current) {
+      alert("End the active call before deleting this session.");
+      return;
+    }
     if (!confirm("Delete this session and all its data?")) return;
     await api.deleteSession(activeSessionId);
     setActiveSessionId(null);
-    resetSessionRuntimeState();
+    if (!liveSessionIdRef.current) resetSessionRuntimeState();
     await refreshSessions();
   }, [activeSessionId, refreshSessions, resetSessionRuntimeState]);
 
   const handleDeleteSessionById = useCallback(async (sessionId: string) => {
+    if (sessionId === liveSessionIdRef.current) {
+      alert("End the active call before deleting this session.");
+      return;
+    }
     await api.deleteSession(sessionId);
     if (sessionId === activeSessionId) {
       setActiveSessionId(null);
-      resetSessionRuntimeState();
+      if (!liveSessionIdRef.current) resetSessionRuntimeState();
     }
     await refreshSessions();
   }, [activeSessionId, refreshSessions, resetSessionRuntimeState]);
-
-  const activeSessionIdRef = useRef(activeSessionId);
-  activeSessionIdRef.current = activeSessionId;
 
   const startAudioFeed = useCallback(async (sessionId: string, reconnect = false) => {
     setCaptureError(null);
@@ -466,10 +502,20 @@ export default function App() {
 
   const beginCall = useCallback(async () => {
     if (!activeSessionId) return;
+    const sessionId = activeSessionId;
+    if (liveSessionIdRef.current && liveSessionIdRef.current !== sessionId) {
+      alert("End the current active call before starting another session.");
+      return;
+    }
 
-    await api.updateSession(activeSessionId, { state: "active" });
+    await api.updateSession(sessionId, { state: "active" });
     await refreshSession();
     await refreshSessions();
+
+    runtimeSessionIdRef.current = sessionId;
+    liveSessionIdRef.current = sessionId;
+    setRuntimeSessionId(sessionId);
+    setLiveSessionId(sessionId);
 
     setLiveQuestions([]);
     setLiveTranscripts([]);
@@ -486,26 +532,38 @@ export default function App() {
     // Auto-create default speakers if none exist
     let currentSpeakers = speakers;
     if (currentSpeakers.length === 0) {
-      await api.createSpeaker(activeSessionId, { name: "Me / Team Member", role: "", color: "#0d9488", is_user: true, speaker_type: "team" });
-      await api.createSpeaker(activeSessionId, { name: "Participant 1", role: "", color: "#f59e0b", is_user: false, speaker_type: "external" });
+      await api.createSpeaker(sessionId, { name: "Me / Team Member", role: "", color: "#0d9488", is_user: true, speaker_type: "team" });
+      await api.createSpeaker(sessionId, { name: "Participant 1", role: "", color: "#f59e0b", is_user: false, speaker_type: "external" });
       await refreshSpeakers();
-      currentSpeakers = await api.listSpeakers(activeSessionId);
+      currentSpeakers = await api.listSpeakers(sessionId);
     }
 
     // Connect WebSocket (audio → backend for diarization + Gemini for questions)
-    await startAudioFeed(activeSessionId, true);
+    await startAudioFeed(sessionId, true);
   }, [activeSessionId, startAudioFeed, startListening, refreshSession, refreshSessions, speakers, refreshSpeakers, messages.length]);
 
   const handleStartCall = useCallback(() => beginCall(), [beginCall]);
 
   const handleResumeAudio = useCallback(async () => {
     if (!activeSessionId) return;
+    const reconnecting = status !== "connected" || liveSessionIdRef.current !== activeSessionId;
     if (isCapturing) {
       stopCapture();
     }
-    setCallSegmentStart((current) => current ?? new Date().toISOString());
-    await startAudioFeed(activeSessionId, status !== "connected");
-  }, [activeSessionId, isCapturing, startAudioFeed, status, stopCapture]);
+    if (runtimeSessionIdRef.current !== activeSessionId) {
+      setLiveQuestions([]);
+      setLiveTranscripts([]);
+      setInterimText("");
+      setRuntimeSynthesis(null);
+    }
+    runtimeSessionIdRef.current = activeSessionId;
+    liveSessionIdRef.current = activeSessionId;
+    setRuntimeSessionId(activeSessionId);
+    setLiveSessionId(activeSessionId);
+    setCallSegmentStart((current) => reconnecting ? new Date().toISOString() : current ?? new Date().toISOString());
+    processedCount.current = messages.length;
+    await startAudioFeed(activeSessionId, reconnecting);
+  }, [activeSessionId, isCapturing, messages.length, startAudioFeed, status, stopCapture]);
 
   const handleProcessTranscript = useCallback(async () => {
     if (!activeSessionId) return;
@@ -546,6 +604,8 @@ export default function App() {
     stopListening();
     const backendCompleted = await sendStop();
     disconnect();
+    liveSessionIdRef.current = null;
+    setLiveSessionId(null);
     setInterimText("");
 
     if (activeSessionId) {
@@ -682,14 +742,14 @@ export default function App() {
             onAddDirective={handleAddDirective}
             onUpdateSessionContext={handleUpdateSessionContext}
             audioLevel={audioLevel}
-            systemAudioLevel={systemAudioLevel}
-            systemAudioActive={systemAudioActive}
-            isCapturing={isCapturing}
+            systemAudioLevel={liveSessionId === session.id ? systemAudioLevel : 0}
+            systemAudioActive={liveSessionId === session.id && systemAudioActive}
+            isCapturing={liveSessionId === session.id && isCapturing}
             audioStats={audioStats}
-            backendAudioStatus={backendAudioStatus}
-            captureError={captureError}
-            status={status}
-            callSegmentStart={callSegmentStart}
+            backendAudioStatus={runtimeMatchesView ? backendAudioStatus : null}
+            captureError={runtimeMatchesView ? captureError : null}
+            status={liveSessionId === session.id ? status : "disconnected"}
+            callSegmentStart={viewedCallSegmentStart}
             speakers={speakers}
             postProcessing={postProcessing}
             synthesis={liveSynthesis}

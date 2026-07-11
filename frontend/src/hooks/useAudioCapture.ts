@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type AudioTrack = 0 | 1; // 0 = mic, 1 = system audio
 
@@ -48,6 +48,20 @@ export function useAudioCapture() {
   const levelFrameRef = useRef<number>(0);
   const onLevelRef = useRef<((level: number) => void) | null>(null);
   const workletReadyRef = useRef(false);
+
+  useEffect(() => {
+    const resumeContext = () => {
+      if (document.visibilityState === "visible" && contextRef.current?.state === "suspended") {
+        void contextRef.current.resume();
+      }
+    };
+    document.addEventListener("visibilitychange", resumeContext);
+    window.addEventListener("focus", resumeContext);
+    return () => {
+      document.removeEventListener("visibilitychange", resumeContext);
+      window.removeEventListener("focus", resumeContext);
+    };
+  }, []);
 
   const attachPipeline = useCallback(async (
     ctx: AudioContext,
@@ -114,8 +128,8 @@ export function useAudioCapture() {
     const micStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
-        echoCancellation: false,
-        noiseSuppression: false,
+        echoCancellation: options?.systemAudio ?? false,
+        noiseSuppression: options?.systemAudio ?? false,
         autoGainControl: true,
       },
     });
@@ -161,8 +175,8 @@ export function useAudioCapture() {
         if (track === 0) micRms = rms; else sysRms = rms;
       }
       onLevelRef.current?.(micRms);
-      setAudioLevel(Math.min(1, micRms * 3)); // scale up for visibility
-      setSystemAudioLevel(Math.min(1, sysRms * 3));
+      setAudioLevel(Math.min(1, micRms * 10));
+      setSystemAudioLevel(Math.min(1, sysRms * 10));
       levelFrameRef.current = requestAnimationFrame(updateLevel);
     };
     levelFrameRef.current = requestAnimationFrame(updateLevel);

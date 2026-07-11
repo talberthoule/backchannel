@@ -9,14 +9,19 @@ export default function AudioIndicator({ isCapturing, audioLevel }: AudioIndicat
   const bars = useMemo(() => {
     const count = 5;
     const level = Math.max(0, Math.min(1, audioLevel));
-    return Array.from({ length: count }, (_, i) => {
-      const threshold = (i + 1) / count;
-      return level >= threshold;
-    });
+    const activeCount = level > 0.015 ? Math.max(1, Math.ceil(level * count)) : 0;
+    return Array.from({ length: count }, (_, i) => i < activeCount);
   }, [audioLevel]);
 
   return (
-    <div className="flex items-center gap-2">
+    <div
+      className="flex items-center gap-2"
+      role="meter"
+      aria-label="Microphone input level"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(audioLevel * 100)}
+    >
       {/* Pulsing dot */}
       <span className="relative flex h-3 w-3">
         {isCapturing && (

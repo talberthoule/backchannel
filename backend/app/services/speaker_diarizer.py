@@ -5,7 +5,7 @@ Pipeline: PCM16 audio → VAD (speech detection) → speaker embedding → match
 
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import onnxruntime as ort
@@ -208,10 +208,16 @@ class _SpeakerProfile:
 class SpeakerRegistry:
     """Manages speaker voice profiles with cosine similarity matching."""
 
-    def __init__(self, threshold: float | None = None):
-        self._threshold = threshold or settings.SPEAKER_SIMILARITY_THRESHOLD
+    def __init__(self, threshold: float | None = None, max_profiles: int | None = None):
+        self._threshold = threshold if threshold is not None else settings.SPEAKER_SIMILARITY_THRESHOLD
+        configured_limit = max_profiles if max_profiles is not None else settings.MAX_SPEAKER_PROFILES_PER_TRACK
+        self._max_profiles = max(1, configured_limit)
         self._profiles: list[_SpeakerProfile] = []
         self._next_id = 1
+
+    @property
+    def profile_count(self) -> int:
+        return len(self._profiles)
 
     def enroll(self, speaker_id: str, embedding: np.ndarray):
         """Pre-register a speaker with a known ID."""
@@ -222,39 +228,30 @@ class SpeakerRegistry:
 
     def match(self, embedding: np.ndarray) -> tuple[str | None, float]:
         """Find best matching speaker. Returns (speaker_id, similarity) or (None, 0)."""
-        if not self._profiles:
-            return None, 0.0
-
-        best_sim = -1.0
-        best_profile = None
-
-        for profile in self._profiles:
-            sim = float(np.dot(embedding, profile.embedding))
-            if sim > best_sim:
-                best_sim = sim
-                best_profile = profile
+        best_profile, best_sim = self._best_profile(embedding)
 
         if best_profile and best_sim >= self._threshold:
             return best_profile.speaker_id, best_sim
         return None, best_sim
 
-    def match_or_create(self, embedding: np.ndarray) -> str:
+    def match_or_create(self, embedding: np.ndarray, allow_create: bool = True) -> str:
         """Match to existing speaker or auto-enroll as new. Returns speaker_id."""
         speaker_id, sim = self.match(embedding)
 
         if speaker_id:
-            # Update running average
-            for p in self._profiles:
-                if p.speaker_id == speaker_id:
-                    n = p.sample_count
-                    p.embedding = (p.embedding * n + embedding) / (n + 1)
-                    # Re-normalize
-                    norm = np.linalg.norm(p.embedding)
-                    if norm > 0:
-                        p.embedding = p.embedding / norm
-                    p.sample_count += 1
-                    break
+            self._update_profile(speaker_id, embedding)
             return speaker_id
+
+        best_profile, _ = self._best_profile(embedding)
+        if best_profile and (not allow_create or len(self._profiles) >= self._max_profiles):
+            reason = "short segment" if not allow_create else "profile limit"
+            logger.info(
+                "Reusing closest speaker %s for %s (similarity %.3f)",
+                best_profile.speaker_id,
+                reason,
+                sim,
+            )
+            return best_profile.speaker_id
 
         # New speaker
         new_id = f"auto_{self._next_id}"
@@ -262,6 +259,27 @@ class SpeakerRegistry:
         self.enroll(new_id, embedding)
         logger.info(f"New speaker enrolled: {new_id} (best sim was {sim:.3f})")
         return new_id
+
+    def _best_profile(self, embedding: np.ndarray) -> tuple[_SpeakerProfile | None, float]:
+        if not self._profiles:
+            return None, 0.0
+        best_profile = max(
+            self._profiles,
+            key=lambda profile: float(np.dot(embedding, profile.embedding)),
+        )
+        return best_profile, float(np.dot(embedding, best_profile.embedding))
+
+    def _update_profile(self, speaker_id: str, embedding: np.ndarray) -> None:
+        for profile in self._profiles:
+            if profile.speaker_id != speaker_id:
+                continue
+            sample_count = profile.sample_count
+            profile.embedding = (profile.embedding * sample_count + embedding) / (sample_count + 1)
+            norm = np.linalg.norm(profile.embedding)
+            if norm > 0:
+                profile.embedding = profile.embedding / norm
+            profile.sample_count += 1
+            return
 
     def reset(self):
         self._profiles.clear()
@@ -292,6 +310,7 @@ class SpeakerDiarizer:
         self._silence_gap_samples = int(settings.SILENCE_GAP_MS * self._sample_rate / 1000)
         self._max_segment_samples = int(settings.MAX_SEGMENT_MS * self._sample_rate / 1000)
         self._min_segment_samples = int(settings.MIN_SEGMENT_MS * self._sample_rate / 1000)
+        self._min_new_speaker_samples = int(settings.MIN_NEW_SPEAKER_MS * self._sample_rate / 1000)
 
         # State
         self._pending_audio = bytearray()  # unprocessed PCM16 bytes
@@ -393,7 +412,10 @@ class SpeakerDiarizer:
         pcm_float = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
         try:
             embedding = _extract_embedding(pcm_float, self._sample_rate)
-            speaker_id = self._registry.match_or_create(embedding)
+            speaker_id = self._registry.match_or_create(
+                embedding,
+                allow_create=segment_samples >= self._min_new_speaker_samples,
+            )
         except Exception as e:
             logger.warning(f"Embedding extraction failed: {e}")
             speaker_id = "auto_unknown"

@@ -13,12 +13,13 @@ interface QuestionListProps {
   questions: Question[];
   speakers: Speaker[];
   strategicSignalQuestionIds?: string[];
+  showEnhanced?: boolean;
   onStar: (id: string, starred: boolean) => void;
   onDismiss: (id: string) => void;
   onVote: (id: string, vote: number) => void;
 }
 
-export default function QuestionList({ questions, speakers, strategicSignalQuestionIds = [], onStar, onDismiss, onVote }: QuestionListProps) {
+export default function QuestionList({ questions, speakers, strategicSignalQuestionIds = [], showEnhanced = false, onStar, onDismiss, onVote }: QuestionListProps) {
   const [activeFilters, setActiveFilters] = useState<Set<Filter>>(new Set(["all"]));
   const strategicSignalIdSet = useMemo(
     () => new Set(strategicSignalQuestionIds),
@@ -69,7 +70,7 @@ export default function QuestionList({ questions, speakers, strategicSignalQuest
       const hasStarred = activeFilters.has("starred");
       const hasAnswered = activeFilters.has("answered");
       const hasPrioritized = activeFilters.has("prioritized");
-      const hasEnhanced = activeFilters.has("enhanced");
+      const hasEnhanced = showEnhanced && activeFilters.has("enhanced");
 
       const hasTypeFilter = typeFilters.size > 0;
       const hasStatusFilter = hasStarred || hasAnswered || hasPrioritized || hasEnhanced;
@@ -87,7 +88,7 @@ export default function QuestionList({ questions, speakers, strategicSignalQuest
       if (hasTypeFilter && hasStatusFilter) return !q.dismissed && matchesType && matchesStatus;
       return !q.dismissed;
     });
-  }, [questions, activeFilters, strategicSignalIdSet]);
+  }, [questions, activeFilters, strategicSignalIdSet, showEnhanced]);
 
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: "All" },
@@ -95,7 +96,7 @@ export default function QuestionList({ questions, speakers, strategicSignalQuest
     { key: "starred", label: "Starred" },
     { key: "answered", label: "Answered" },
     { key: "prioritized", label: "Prioritized" },
-    { key: "enhanced", label: "Enhanced" },
+    ...(showEnhanced ? [{ key: "enhanced", label: "Enhanced" }] : []),
   ];
 
   return (
@@ -138,6 +139,7 @@ export default function QuestionList({ questions, speakers, strategicSignalQuest
               question={q}
               speakers={speakers}
               isStrategicSignal={strategicSignalIdSet.has(q.id)}
+              showEnhanced={showEnhanced}
               onStar={(starred) => onStar(q.id, starred)}
               onDismiss={() => onDismiss(q.id)}
               onVote={(vote) => onVote(q.id, vote)}

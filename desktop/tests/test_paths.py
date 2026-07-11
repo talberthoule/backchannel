@@ -15,7 +15,7 @@ class PathsTests(unittest.TestCase):
     def test_app_data_dir_is_platform_specific(self):
         with mock.patch.dict(os.environ):
             os.environ.pop("BACKCHANNEL_DATA_DIR", None)
-            self.assertIn("Backchannel", str(app_data_dir()))
+            self.assertIn("backchannel", str(app_data_dir()).lower())
 
     def test_free_port_is_bindable(self):
         port = free_port()

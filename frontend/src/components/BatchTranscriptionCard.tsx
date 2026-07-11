@@ -77,7 +77,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
         <div>
           <div className="flex items-center gap-2">
             <h3 className="font-display text-base font-bold text-brand-dark-gray">Batch Transcription</h3>
-            <span className="inline-flex rounded-full bg-brand-dark-gray px-2 py-0.5 text-[10px] font-medium text-white">
+            <span className="inline-flex rounded-full border border-slate-500 bg-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-50">
               Final transcript
             </span>
           </div>

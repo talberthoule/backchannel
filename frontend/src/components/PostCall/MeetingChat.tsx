@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { RotateCcw, Send } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ModelInfo, Session } from "../../types";
 import * as api from "../../services/api";
 
@@ -11,8 +14,31 @@ interface ChatMsg {
   content: string;
 }
 
+const MAX_HISTORY_MESSAGES = 8;
+const CHAT_STORAGE_PREFIX = "backchannel:meeting-chat:";
+
+function trimHistory(messages: ChatMsg[]): ChatMsg[] {
+  return messages.slice(-MAX_HISTORY_MESSAGES);
+}
+
+function loadHistory(sessionId: string): ChatMsg[] {
+  try {
+    const raw = window.sessionStorage.getItem(`${CHAT_STORAGE_PREFIX}${sessionId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return trimHistory(parsed.filter(
+      (message): message is ChatMsg =>
+        (message?.role === "user" || message?.role === "assistant") &&
+        typeof message?.content === "string",
+    ));
+  } catch {
+    return [];
+  }
+}
+
 export default function MeetingChat({ session }: MeetingChatProps) {
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [messages, setMessages] = useState<ChatMsg[]>(() => loadHistory(session.id));
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +69,13 @@ export default function MeetingChat({ session }: MeetingChatProps) {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
   }, [messages, busy]);
 
+  useEffect(() => {
+    window.sessionStorage.setItem(
+      `${CHAT_STORAGE_PREFIX}${session.id}`,
+      JSON.stringify(trimHistory(messages)),
+    );
+  }, [messages, session.id]);
+
   const groupSessions = useMemo(
     () => allSessions.filter((s) => s.id !== session.id && session.group_id && s.group_id === session.group_id),
     [allSessions, session],
@@ -72,14 +105,14 @@ export default function MeetingChat({ session }: MeetingChatProps) {
   const handleSend = async () => {
     const question = input.trim();
     if (!question || busy || !modelId) return;
-    const nextMessages: ChatMsg[] = [...messages, { role: "user", content: question }];
+    const nextMessages = trimHistory([...messages, { role: "user", content: question }]);
     setMessages(nextMessages);
     setInput("");
     setBusy(true);
     setError(null);
     try {
       const res = await api.chat(modelId, [...selectedIds], nextMessages);
-      setMessages([...nextMessages, { role: "assistant", content: res.reply }]);
+      setMessages(trimHistory([...nextMessages, { role: "assistant", content: res.reply }]));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Chat failed");
       setMessages(messages); // roll back the optimistic user message
@@ -87,6 +120,13 @@ export default function MeetingChat({ session }: MeetingChatProps) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleReset = () => {
+    setMessages([]);
+    setInput("");
+    setError(null);
+    window.sessionStorage.removeItem(`${CHAT_STORAGE_PREFIX}${session.id}`);
   };
 
   const sessionCheckbox = (s: Session, removable = false) => (
@@ -127,6 +167,16 @@ export default function MeetingChat({ session }: MeetingChatProps) {
               <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={handleReset}
+            disabled={busy || messages.length === 0}
+            className="inline-flex items-center gap-1.5 rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1 font-body text-xs font-medium text-brand-gray transition-colors hover:border-brand-teal hover:text-brand-teal disabled:cursor-not-allowed disabled:opacity-40"
+            title="Reset chat history"
+          >
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+            Reset chat
+          </button>
         </div>
         {searchResults.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-2">
@@ -153,13 +203,19 @@ export default function MeetingChat({ session }: MeetingChatProps) {
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
-              className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2 font-body text-sm leading-relaxed ${
+              className={`max-w-[88%] rounded-lg px-4 py-2.5 font-body text-sm leading-relaxed ${
                 m.role === "user"
-                  ? "bg-brand-teal text-white"
-                  : "bg-brand-light-gray-2 text-brand-dark-gray"
+                  ? "whitespace-pre-wrap bg-brand-teal text-white"
+                  : "border border-brand-light-gray-1 bg-brand-light-gray-2 text-brand-dark-gray"
               }`}
             >
-              {m.content}
+              {m.role === "assistant" ? (
+                <div className="chat-markdown">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {m.content}
+                  </ReactMarkdown>
+                </div>
+              ) : m.content}
             </div>
           </div>
         ))}
@@ -179,10 +235,12 @@ export default function MeetingChat({ session }: MeetingChatProps) {
           className="flex-1 rounded-lg border border-brand-light-gray-1 bg-surface px-3 py-2 font-body text-sm text-brand-dark-gray focus:border-brand-teal"
         />
         <button
+          type="button"
           onClick={handleSend}
           disabled={busy || !input.trim()}
-          className="rounded-lg bg-brand-teal px-4 py-2 font-body text-sm font-medium text-white transition-opacity disabled:opacity-40"
+          className="inline-flex items-center gap-2 rounded-lg bg-brand-teal px-4 py-2 font-body text-sm font-medium text-white transition-colors hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
+          <Send className="h-4 w-4" aria-hidden="true" />
           Send
         </button>
       </div>

@@ -35,9 +35,10 @@
   --accent-light: var(--p-teal-light);
   --accent-2: var(--p-amber);
 
-  --surface: var(--p-white);          /* cards, panels, header, sidebar */
-  --surface-raised: var(--p-slate-50); /* app canvas / hover / inset */
-  --border-subtle: var(--p-slate-200);
+  --surface: var(--p-white);           /* cards, panels, header, sidebar */
+  --canvas: var(--p-slate-100);        /* app background, visibly below cards */
+  --surface-muted: var(--p-slate-50);  /* hover and inset surfaces */
+  --border-subtle: var(--p-slate-300);
 
   --text-primary: var(--p-slate-900);
   --text-secondary: var(--p-slate-600);
@@ -57,7 +58,8 @@
   --accent-2: var(--p-amber);
 
   --surface: var(--p-slate-800);       /* panels sit above canvas */
-  --surface-raised: var(--p-slate-900); /* app canvas (darkest) */
+  --canvas: var(--p-slate-900);        /* app canvas (darkest) */
+  --surface-muted: var(--p-slate-900); /* hover and inset surfaces */
   --border-subtle: var(--p-slate-700);
 
   --text-primary: var(--p-slate-100);
@@ -73,7 +75,8 @@
     color-scheme: dark;
     --accent-dark: var(--p-teal);
     --surface: var(--p-slate-800);
-    --surface-raised: var(--p-slate-900);
+    --canvas: var(--p-slate-900);
+    --surface-muted: var(--p-slate-900);
     --border-subtle: var(--p-slate-700);
     --text-primary: var(--p-slate-100);
     --text-secondary: var(--p-slate-300);
@@ -98,4 +101,101 @@ h1, h2, h3, h4, h5, h6 {
   outline: 2px solid rgb(var(--focus));
   outline-offset: 2px;
   border-radius: 2px;
+}
+
+.chat-markdown {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.chat-markdown > * {
+  margin: 0;
+}
+
+.chat-markdown > * + * {
+  margin-top: 0.65rem;
+}
+
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3,
+.chat-markdown h4 {
+  color: rgb(var(--text-primary));
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.chat-markdown h1 { font-size: 1.125rem; }
+.chat-markdown h2 { font-size: 1rem; }
+.chat-markdown h3,
+.chat-markdown h4 { font-size: 0.875rem; }
+
+.chat-markdown ul,
+.chat-markdown ol {
+  padding-left: 1.35rem;
+}
+
+.chat-markdown ul { list-style: disc; }
+.chat-markdown ol { list-style: decimal; }
+.chat-markdown li + li { margin-top: 0.25rem; }
+.chat-markdown li > ul,
+.chat-markdown li > ol { margin-top: 0.25rem; }
+
+.chat-markdown blockquote {
+  border-left: 3px solid rgb(var(--accent));
+  color: rgb(var(--text-secondary));
+  padding-left: 0.75rem;
+}
+
+.chat-markdown code {
+  border: 1px solid rgb(var(--border-subtle));
+  border-radius: 4px;
+  background: rgb(var(--surface));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.8em;
+  padding: 0.1rem 0.3rem;
+}
+
+.chat-markdown pre {
+  overflow-x: auto;
+  border: 1px solid rgb(var(--border-subtle));
+  border-radius: 6px;
+  background: rgb(var(--surface));
+  padding: 0.75rem;
+}
+
+.chat-markdown pre code {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.chat-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.chat-markdown th,
+.chat-markdown td {
+  border: 1px solid rgb(var(--border-subtle));
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+}
+
+.chat-markdown th {
+  background: rgb(var(--surface));
+  font-weight: 700;
+}
+
+.chat-markdown a {
+  color: rgb(var(--accent));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.chat-markdown hr {
+  border: 0;
+  border-top: 1px solid rgb(var(--border-subtle));
 }

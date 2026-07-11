@@ -8,6 +8,12 @@ import sys
 from pathlib import Path
 
 
+def _windows_creation_flags() -> int:
+    if sys.platform != "win32":
+        return 0
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 class EmbeddedPostgres:
     def __init__(self, pg_dir: Path, data_dir: Path):
         self.root = Path(data_dir)
@@ -25,7 +31,12 @@ class EmbeddedPostgres:
         return self.pwfile.read_text().strip()
 
     def _run(self, cmd: list) -> None:
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            creationflags=_windows_creation_flags(),
+        )
         if proc.returncode != 0:
             detail = (proc.stderr or "").strip() or (proc.stdout or "").strip()
             raise RuntimeError(
@@ -44,6 +55,7 @@ class EmbeddedPostgres:
         subprocess.run(
             ["icacls", str(self.root), "/grant", f"{user}:(OI)(CI)F", "/T", "/Q"],
             capture_output=True,
+            creationflags=_windows_creation_flags(),
         )
 
     def ensure_initdb(self) -> None:
@@ -75,6 +87,7 @@ class EmbeddedPostgres:
         status = subprocess.run(
             [str(self.bin / "pg_ctl"), "-D", str(self.pgdata), "status"],
             capture_output=True,
+            creationflags=_windows_creation_flags(),
         )
         if status.returncode != 0:
             pidfile.unlink()
@@ -99,6 +112,7 @@ class EmbeddedPostgres:
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=err,
+                creationflags=_windows_creation_flags(),
             )
         if proc.returncode != 0:
             tail = ""

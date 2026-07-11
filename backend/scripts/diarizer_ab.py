@@ -41,13 +41,13 @@ class RecordingRegistry(SpeakerRegistry):
         self.matched_sims: list[float] = []
         self.new_speaker_sims: list[float] = []
 
-    def match_or_create(self, embedding: np.ndarray) -> str:
+    def match_or_create(self, embedding: np.ndarray, allow_create: bool = True) -> str:
         speaker_id, sim = self.match(embedding)
         if speaker_id:
             self.matched_sims.append(sim)
         else:
             self.new_speaker_sims.append(sim)
-        return super().match_or_create(embedding)
+        return super().match_or_create(embedding, allow_create=allow_create)
 
 
 def load_pcm16_mono_16k(path: str) -> bytes:

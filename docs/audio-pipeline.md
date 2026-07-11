@@ -34,13 +34,17 @@ diagnostics endpoints (`/api/diagnostics/diarization`):
 | `MIN_SEGMENT_MS` | 750 | Segments shorter than this are dropped |
 | `MAX_SEGMENT_MS` | 15000 | Force a segment boundary after this much speech |
 | `SILENCE_GAP_MS` | 600 | Silence long enough to close the current segment |
-| `SPEAKER_SIMILARITY_THRESHOLD` | 0.72 | Cosine similarity required to match an existing speaker embedding |
+| `SPEAKER_SIMILARITY_THRESHOLD` | 0.68 | Cosine similarity required to match an existing speaker embedding |
+| `MIN_NEW_SPEAKER_MS` | 4000 | Minimum speech needed before enrolling a new voice profile |
+| `MAX_SPEAKER_PROFILES_PER_TRACK` | 4 | Safety cap for auto-enrolled profiles on each audio track |
 
 ## Speaker identification
 
 Each closed segment gets a WeSpeaker ResNet152 embedding, compared against the
 per-call `SpeakerRegistry`. A match reuses that auto ID; otherwise a new
-`auto_N` identity is created. The WebSocket handler maps auto IDs to
+`auto_N` identity is created after enough speech is available. Short unmatched
+segments reuse the closest established profile without changing its centroid,
+and each input track has a bounded profile count. The WebSocket handler maps auto IDs to
 database `Speaker` rows, auto-creating "Participant N" (or "Remote
 Participant N" for `sys_` IDs) rows when a new voice appears. A ghost filter
 (`backend/app/services/speaker_ghost_filter.py`) defers short one-off

@@ -21,6 +21,16 @@ from bcdesktop.pg import EmbeddedPostgres
 
 LOCK_NAME = "launcher.json"
 STOP_NAME = "stop"
+LOOPBACK_HOST = "127.0.0.1"
+BROWSER_HOST = "localhost"
+
+
+def app_url(port: int) -> str:
+    return f"http://{BROWSER_HOST}:{port}"
+
+
+def health_url(port: int) -> str:
+    return f"http://{LOOPBACK_HOST}:{port}/api/health"
 
 
 def existing_instance_port(data_dir: Path) -> int | None:
@@ -30,9 +40,7 @@ def existing_instance_port(data_dir: Path) -> int | None:
         return None
     try:
         port = json.loads(lock.read_text())["port"]
-        req = urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/api/health", timeout=2
-        )
+        req = urllib.request.urlopen(health_url(port), timeout=2)
         with req as resp:
             if resp.status == 200:
                 return port
@@ -59,9 +67,7 @@ def wait_healthy(port: int, timeout: float = 90.0) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            req = urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/api/health", timeout=2
-            )
+            req = urllib.request.urlopen(health_url(port), timeout=2)
             with req as resp:
                 if resp.status == 200:
                     return True
@@ -103,7 +109,19 @@ def _error_dialog(message: str) -> None:
     print(message, file=sys.stderr)
 
 
-def _run_tray(port: int) -> None:
+def _open_data_folder(data_dir: Path) -> None:
+    try:
+        if sys.platform == "win32":
+            os.startfile(data_dir)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            import subprocess
+
+            subprocess.run(["open", str(data_dir)], check=False)
+    except Exception:
+        logging.getLogger("launcher").exception("failed to open data folder")
+
+
+def _run_tray(port: int, data_dir: Path) -> None:
     import pystray
     from PIL import Image, ImageDraw
 
@@ -114,13 +132,17 @@ def _run_tray(port: int) -> None:
     icon = pystray.Icon(
         "backchannel",
         image,
-        "Backchannel",
+        f"Backchannel - {BROWSER_HOST}:{port}",
         menu=pystray.Menu(
             pystray.MenuItem(
-                "Open",
-                lambda: webbrowser.open(f"http://127.0.0.1:{port}"),
+                "Open Backchannel",
+                lambda _icon, _item: webbrowser.open(app_url(port)),
             ),
-            pystray.MenuItem("Quit", lambda: icon.stop()),
+            pystray.MenuItem(
+                "Open data folder",
+                lambda _icon, _item: _open_data_folder(data_dir),
+            ),
+            pystray.MenuItem("Quit", lambda _icon, _item: icon.stop()),
         ),
     )
     icon.run()
@@ -140,7 +162,7 @@ def run(headless: bool = False) -> int:
     if port is not None:
         log.info("instance already running on port %s", port)
         if not headless:
-            webbrowser.open(f"http://127.0.0.1:{port}")
+            webbrowser.open(app_url(port))
         return 0
 
     pg = EmbeddedPostgres(resource("pgsql"), data_dir)
@@ -165,7 +187,7 @@ def run(headless: bool = False) -> int:
             if other_port is not None:
                 log.info("other instance is healthy on port %s", other_port)
                 if not headless:
-                    webbrowser.open(f"http://127.0.0.1:{other_port}")
+                    webbrowser.open(app_url(other_port))
                 return 0
             log.error("no other instance became healthy within timeout")
             if not headless:
@@ -192,7 +214,7 @@ def run(headless: bool = False) -> int:
 
     server = uvicorn.Server(
         uvicorn.Config(
-            "app.main:app", host="127.0.0.1", port=app_port, log_config=None
+            "app.main:app", host=LOOPBACK_HOST, port=app_port, log_config=None
         )
     )
     thread = threading.Thread(target=server.run, daemon=True)
@@ -212,8 +234,8 @@ def run(headless: bool = False) -> int:
         if headless:
             _wait_for_stop_file(data_dir)
         else:
-            webbrowser.open(f"http://127.0.0.1:{app_port}")
-            _run_tray(app_port)
+            webbrowser.open(app_url(app_port))
+            _run_tray(app_port, data_dir)
     finally:
         log.info("shutting down")
         server.should_exit = True

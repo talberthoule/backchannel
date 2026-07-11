@@ -10,7 +10,7 @@ export default {
         // Semantic tokens backed by CSS variables (see index.css). These swap
         // between light and dark; primitives never change.
         surface: channel("--surface"),
-        canvas: channel("--surface-raised"),
+        canvas: channel("--canvas"),
         // Backchannel brand palette. Names kept for back-compat; values now
         // resolve through the semantic token layer so a theme swap re-skins
         // the whole app without touching components.
@@ -23,7 +23,7 @@ export default {
           "dark-gray": channel("--text-primary"),
           "mid-gray": channel("--text-tertiary"),
           "light-gray-1": channel("--border-subtle"),
-          "light-gray-2": channel("--surface-raised"),
+          "light-gray-2": channel("--surface-muted"),
         },
       },
       fontFamily: {

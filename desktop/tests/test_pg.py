@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from bcdesktop.pg import EmbeddedPostgres
+from bcdesktop.pg import EmbeddedPostgres, _windows_creation_flags
 
 
 class EmbeddedPostgresTests(unittest.TestCase):
@@ -83,6 +83,30 @@ class EmbeddedPostgresTests(unittest.TestCase):
         opts = cmd[cmd.index("-o") + 1]
         self.assertIn("-p 54321", opts)
         self.assertIn("listen_addresses=127.0.0.1", opts)
+
+    def test_windows_helpers_request_no_console_window(self):
+        with mock.patch("bcdesktop.pg.sys.platform", "win32"), \
+                mock.patch.object(
+                    __import__("subprocess"),
+                    "CREATE_NO_WINDOW",
+                    0x08000000,
+                    create=True,
+                ):
+            self.assertEqual(0x08000000, _windows_creation_flags())
+
+    def test_windows_start_hides_pg_ctl_console(self):
+        with mock.patch("bcdesktop.pg.sys.platform", "win32"), \
+                mock.patch.object(
+                    __import__("subprocess"),
+                    "CREATE_NO_WINDOW",
+                    0x08000000,
+                    create=True,
+                ), \
+                mock.patch("bcdesktop.pg.subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=0)
+            self.pg.start(54321)
+
+        self.assertEqual(0x08000000, run.call_args.kwargs["creationflags"])
 
     def test_start_raises_with_pg_ctl_log_tail_on_failure(self):
         def fake_run(cmd, **kwargs):

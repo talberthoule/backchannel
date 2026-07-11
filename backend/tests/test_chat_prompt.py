@@ -36,6 +36,20 @@ class ChatPromptTests(unittest.TestCase):
         self.assertLess(prompt.index("first question"), prompt.index("first answer"))
         self.assertLess(prompt.index("first answer"), prompt.index("second question"))
 
+    def test_conversation_history_is_bounded_to_recent_messages(self):
+        sessions = [session_data("S", [("A", "hello world")])]
+        messages = [
+            {"role": "user", "content": f"message-{index}"}
+            for index in range(10)
+        ]
+
+        prompt = build_chat_prompt(sessions, messages, budget=10000)
+
+        self.assertNotIn("message-0\n", prompt)
+        self.assertNotIn("message-1\n", prompt)
+        self.assertIn("message-2", prompt)
+        self.assertIn("message-9", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

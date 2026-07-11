@@ -1,8 +1,9 @@
 import logging
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,27 +16,32 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 CONTEXT_BUDGET_CHARS = 60000
+MAX_CHAT_HISTORY_MESSAGES = 8
+MAX_CHAT_MESSAGE_CHARS = 8000
 
 SYSTEM_PROMPT = (
     "You are a meeting analysis assistant. Answer questions using ONLY the "
     "meeting transcripts provided below. Quote or reference speakers where "
-    "helpful. If the transcripts do not contain the answer, say so plainly."
+    "helpful. If the transcripts do not contain the answer, say so plainly. "
+    "Format the response as concise GitHub-flavored Markdown with short "
+    "headings, bullets, and tables only when they improve readability."
 )
 
 
 class ChatMessage(BaseModel):
-    role: str  # "user" | "assistant"
-    content: str
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=MAX_CHAT_MESSAGE_CHARS)
 
 
 class ChatIn(BaseModel):
     model_id: str
     session_ids: list[uuid.UUID]
-    messages: list[ChatMessage]
+    messages: list[ChatMessage] = Field(min_length=1, max_length=MAX_CHAT_HISTORY_MESSAGES)
 
 
 def build_chat_prompt(sessions_data: list[dict], messages: list[dict], budget: int = CONTEXT_BUDGET_CHARS) -> str:
     """Assemble transcripts (newest-first priority, oldest truncated) plus conversation."""
+    messages = messages[-MAX_CHAT_HISTORY_MESSAGES:]
     blocks: list[str] = []
     remaining = budget
     # Iterate newest-last sessions in reverse so the most recent survive truncation.
