@@ -6,7 +6,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with this repo
 
 Backchannel (formerly Call Helper) is a real-time meeting analysis app. A React frontend captures microphone audio as PCM16 16 kHz mono and streams it over WebSocket. The FastAPI backend writes speaker-attributed transcript entries, runs Gemini-based analysis agents over recent transcript text, and stores insights in PostgreSQL.
 
-The codebase currently has no test framework configured. Treat behavior checks as targeted build/import checks unless you add tests for the work at hand.
+Backend tests live in `backend/tests/` as stdlib `unittest` files; run them from `backend/` with `python -m unittest discover -s tests`. Desktop tests use the same runner from `desktop/`, and frontend behavior checks use `npm run build` for typechecking and bundling.
 
 ## Build & Run
 
@@ -34,6 +34,15 @@ docker-compose down -v
 - Backend container: http://localhost:8001
 - Frontend nginx proxies API and WebSocket traffic from :3000 to backend :8000
 - Database: PostgreSQL 16 on host port 5432
+
+### Multi-target releases
+
+Public releases span source-built Docker images, the Cloudflare documentation
+site, and tag-built Windows/macOS desktop bundles. Follow
+`docs/releasing.md` as the authoritative checklist. A `master` push does not
+update existing desktop downloads; do not mark a release complete until the
+tag workflow has published and verified both platform assets and the site has
+been updated to the same version.
 
 ### Local Development
 
@@ -104,7 +113,9 @@ Values come from `backend/app/config.py`:
 - `MIN_SEGMENT_MS`: 750
 - `MAX_SEGMENT_MS`: 15000
 - `SILENCE_GAP_MS`: 600
-- `SPEAKER_SIMILARITY_THRESHOLD`: 0.72
+- `SPEAKER_SIMILARITY_THRESHOLD`: 0.68
+- `MIN_NEW_SPEAKER_MS`: 4000
+- `MAX_SPEAKER_PROFILES_PER_TRACK`: 4
 
 ONNX models are expected at `backend/models/silero_vad.onnx` and `backend/models/ecapa_tdnn.onnx`; use `backend/scripts/download_models.py` to fetch them.
 

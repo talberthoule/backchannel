@@ -42,6 +42,7 @@ export default defineConfig({
             'rest-api',
             'configuration',
             'deployment',
+            'releasing',
           ],
         },
       ],

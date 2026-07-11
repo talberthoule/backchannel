@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 Backchannel (formerly Call Helper) is a real-time meeting analysis app. A React frontend captures microphone audio (and optionally tab/system audio) as PCM16 16 kHz mono and streams it over WebSocket with a 1-byte track prefix. The FastAPI backend writes speaker-attributed transcript entries, records per-segment call audio to disk, runs provider-routed analysis agents (Gemini or OpenAI) over recent transcript text, and stores insights in PostgreSQL.
 
-Backend tests live in `backend/tests/` as stdlib `unittest` files; run them from `backend/` with `python -m unittest discover -s tests`. Frontend behavior checks are `npm run build` (typecheck). Two orchestrator graceful-drain tests currently fail on the base branch (pre-existing).
+Backend tests live in `backend/tests/` as stdlib `unittest` files; run them from `backend/` with `python -m unittest discover -s tests`. Frontend behavior checks are `npm run build` (typecheck).
 
 ## Build & Run
 
@@ -34,6 +34,15 @@ docker-compose down -v
 - Backend container: http://localhost:8001
 - Frontend nginx proxies API and WebSocket traffic from :3000 to backend :8000
 - Database: PostgreSQL 16 on host port 5432
+
+### Multi-target releases
+
+Public releases span source-built Docker images, the Cloudflare documentation
+site, and tag-built Windows/macOS desktop bundles. Follow
+`docs/releasing.md` as the authoritative checklist. A `master` push does not
+update existing desktop downloads; do not mark a release complete until the
+tag workflow has published and verified both platform assets and the site has
+been updated to the same version.
 
 ### Desktop bundle (Windows/macOS)
 
@@ -128,7 +137,9 @@ Values come from `backend/app/config.py`:
 - `MIN_SEGMENT_MS`: 750
 - `MAX_SEGMENT_MS`: 15000
 - `SILENCE_GAP_MS`: 600
-- `SPEAKER_SIMILARITY_THRESHOLD`: 0.72
+- `SPEAKER_SIMILARITY_THRESHOLD`: 0.68
+- `MIN_NEW_SPEAKER_MS`: 4000
+- `MAX_SPEAKER_PROFILES_PER_TRACK`: 4
 
 ONNX models are expected at `backend/models/silero_vad.onnx` and `backend/models/voxceleb_resnet152_LM.onnx` (WeSpeaker ResNet152-LM speaker embeddings; the legacy `ecapa_tdnn.onnx` file - which actually held WeSpeaker ResNet34-LM - is used as a fallback when the new file is absent); use `backend/scripts/download_models.py` to fetch them. Embedding features are Kaldi fbank via `kaldi-native-fbank` with mean-only CMN, matching WeSpeaker's training frontend.
 

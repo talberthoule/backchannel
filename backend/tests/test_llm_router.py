@@ -5,6 +5,15 @@ from app.services import llm
 
 
 class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        local_only = mock.patch.object(
+            llm,
+            "is_local_only",
+            mock.AsyncMock(return_value=False),
+        )
+        local_only.start()
+        self.addCleanup(local_only.stop)
+
     async def test_openai_model_dispatches_to_openai(self):
         with mock.patch.object(llm, "_resolve_key", mock.AsyncMock(return_value="k")), \
              mock.patch.object(llm, "_call_openai", mock.AsyncMock(return_value="openai says")) as call:

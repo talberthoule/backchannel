@@ -68,7 +68,7 @@ Read more in [docs/architecture.md](docs/architecture.md).
 ### Option 1: Desktop app (easiest)
 
 Download the latest desktop release for your platform from the
-[Backchannel release page](https://backchannel.page/releases/v0.1.0/):
+[Backchannel release page](https://backchannel.page/releases/v0.1.1/):
 
 - `Backchannel-windows-x64.zip` - unzip, run `Backchannel.exe`.
   Windows SmartScreen will warn on first run because the build is

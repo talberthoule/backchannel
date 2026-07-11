@@ -50,6 +50,7 @@ class AgentOrchestratorGracefulDrainTests(unittest.IsolatedAsyncioTestCase):
                 doc_summaries="",
                 active_questions=[],
                 speakers=[],
+                meeting_type="client_sales",
                 agent_configs={
                     "consolidated_analyst": MagicMock(
                         enabled=True,
@@ -57,6 +58,7 @@ class AgentOrchestratorGracefulDrainTests(unittest.IsolatedAsyncioTestCase):
                         prompt="",
                         interval_seconds=15,
                         sub_types="question,opportunity",
+                        lenses="",
                     ),
                     "synthesizer": MagicMock(enabled=True, model_id="synth-model", prompt=""),
                     "opportunity_specialist": MagicMock(enabled=True, model_id="opp-model", prompt=""),
@@ -122,6 +124,7 @@ class AgentOrchestratorGracefulDrainTests(unittest.IsolatedAsyncioTestCase):
                 doc_summaries="",
                 active_questions=[],
                 speakers=[],
+                meeting_type="client_sales",
                 agent_configs={
                     "consolidated_analyst": MagicMock(
                         enabled=True,
@@ -129,6 +132,7 @@ class AgentOrchestratorGracefulDrainTests(unittest.IsolatedAsyncioTestCase):
                         prompt="",
                         interval_seconds=15,
                         sub_types="question,opportunity",
+                        lenses="",
                     ),
                     "synthesizer": MagicMock(enabled=True, model_id="synth-model", prompt=""),
                     "opportunity_specialist": MagicMock(enabled=True, model_id="opp-model", prompt=""),
