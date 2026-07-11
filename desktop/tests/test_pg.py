@@ -124,6 +124,72 @@ class EmbeddedPostgresTests(unittest.TestCase):
             self.pg.stop()
         run.assert_not_called()
 
+    def _write_pidfile(self, pid: int) -> Path:
+        pgdata = self.data_dir / "pgdata"
+        pgdata.mkdir(parents=True, exist_ok=True)
+        pidfile = pgdata / "postmaster.pid"
+        pidfile.write_text(f"{pid}\n{pgdata}\n")
+        return pidfile
+
+    def test_stop_skips_foreign_postmaster_when_never_started(self):
+        # A lingering instance quitting must not stop a postmaster that a
+        # newer instance started on the shared pgdata.
+        self._write_pidfile(4242)
+        with mock.patch("bcdesktop.pg.subprocess.run") as run:
+            self.pg.stop()
+        run.assert_not_called()
+
+    def test_stop_skips_when_another_postmaster_took_over(self):
+        self.pg.started_pid = 111
+        self._write_pidfile(222)
+        with mock.patch("bcdesktop.pg.subprocess.run") as run:
+            self.pg.stop()
+        run.assert_not_called()
+
+    def test_stop_stops_the_postmaster_it_started(self):
+        self.pg.started_pid = 333
+        self._write_pidfile(333)
+        with mock.patch("bcdesktop.pg.subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=0)
+            self.pg.stop()
+        cmd = run.call_args.args[0]
+        self.assertIn("pg_ctl", str(cmd[0]))
+        self.assertIn("stop", cmd)
+
+    def test_start_records_spawned_postmaster_pid(self):
+        def fake_run(cmd, **kwargs):
+            self._write_pidfile(4321)
+            return mock.Mock(returncode=0)
+
+        with mock.patch("bcdesktop.pg.subprocess.run", side_effect=fake_run):
+            self.pg.start(54321)
+        self.assertEqual(4321, self.pg.started_pid)
+
+    def test_failed_start_still_records_half_started_postmaster(self):
+        # pg_ctl -w can time out while the postmaster it spawned lives on;
+        # cleanup must remain able to stop it.
+        def fake_run(cmd, **kwargs):
+            self._write_pidfile(5555)
+            kwargs["stderr"].write("server did not start in time\n")
+            return mock.Mock(returncode=1)
+
+        with mock.patch("bcdesktop.pg.subprocess.run", side_effect=fake_run):
+            with self.assertRaises(RuntimeError):
+                self.pg.start(54321)
+        self.assertEqual(5555, self.pg.started_pid)
+
+    def test_failed_start_never_claims_a_preexisting_postmaster(self):
+        self._write_pidfile(7777)
+
+        def fake_run(cmd, **kwargs):
+            kwargs["stderr"].write("lock file exists\n")
+            return mock.Mock(returncode=1)
+
+        with mock.patch("bcdesktop.pg.subprocess.run", side_effect=fake_run):
+            with self.assertRaises(RuntimeError):
+                self.pg.start(54321)
+        self.assertIsNone(self.pg.started_pid)
+
     def test_recover_stale_removes_pidfile_when_not_running(self):
         pgdata = self.data_dir / "pgdata"
         pgdata.mkdir(parents=True)

@@ -22,6 +22,17 @@ class EmbeddedPostgres:
         self.pwfile = Path(data_dir) / "pgpassword"
         self.log = Path(data_dir) / "postgres.log"
         self.pg_ctl_log = Path(data_dir) / "pg_ctl.log"
+        # Postmaster spawned by THIS process; stop() refuses to touch any
+        # other postmaster on the shared pgdata (e.g. one started by a
+        # newer instance while this one lingered in the tray).
+        self.started_pid = None
+
+    def _postmaster_pid(self):
+        try:
+            pidfile = self.pgdata / "postmaster.pid"
+            return int(pidfile.read_text().splitlines()[0].strip())
+        except (OSError, ValueError, IndexError):
+            return None
 
     def password(self) -> str:
         if not self.pwfile.exists():
@@ -99,6 +110,7 @@ class EmbeddedPostgres:
         # exit diagnostics, not the postmaster's) goes to a real file
         # instead of DEVNULL so start failures are debuggable; a file
         # handle doesn't block on child inheritance either.
+        pre_start_pid = self._postmaster_pid()
         with open(self.pg_ctl_log, "w") as err:
             proc = subprocess.run(
                 [
@@ -114,6 +126,12 @@ class EmbeddedPostgres:
                 stderr=err,
                 creationflags=_windows_creation_flags(),
             )
+        # Record the postmaster this attempt spawned - even on failure a
+        # half-started postmaster may be up (pg_ctl -w timeout) and must
+        # remain stoppable, while a pre-existing foreign pid stays foreign.
+        post_start_pid = self._postmaster_pid()
+        if post_start_pid is not None and post_start_pid != pre_start_pid:
+            self.started_pid = post_start_pid
         if proc.returncode != 0:
             tail = ""
             try:
@@ -127,6 +145,15 @@ class EmbeddedPostgres:
 
     def stop(self) -> None:
         if not (self.pgdata / "postmaster.pid").exists():
+            return
+        if self.started_pid is None:
+            # This process never spawned a postmaster; whatever owns the
+            # pidfile belongs to another instance.
+            return
+        current = self._postmaster_pid()
+        if current is not None and current != self.started_pid:
+            # Another instance's postmaster took over the cluster after
+            # ours went away; stopping it would yank its database away.
             return
         self._run([
             str(self.bin / "pg_ctl"),

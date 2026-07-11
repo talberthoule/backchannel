@@ -28,6 +28,17 @@ class ReleaseContractTests(unittest.TestCase):
     def test_release_attachment_remains_tag_only(self):
         self.assertIn("if: startsWith(github.ref, 'refs/tags/')", WORKFLOW)
 
+    def test_linux_tarball_is_created_inside_the_workspace(self):
+        # tar resolves -f against the original working directory, so a
+        # "../" prefix would drop the archive outside the workspace and
+        # the upload and release-attach steps would silently miss it.
+        self.assertNotIn('-czf "../', WORKFLOW)
+
+    def test_spec_bundles_brand_icons(self):
+        self.assertIn('"assets"', SPEC)
+        self.assertIn("icon.ico", SPEC)
+        self.assertIn("icon.icns", SPEC)
+
 
 if __name__ == "__main__":
     unittest.main()
