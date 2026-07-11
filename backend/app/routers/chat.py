@@ -20,10 +20,14 @@ MAX_CHAT_HISTORY_MESSAGES = 8
 MAX_CHAT_MESSAGE_CHARS = 8000
 
 SYSTEM_PROMPT = (
-    "You are a meeting analysis assistant. Answer questions using ONLY the "
-    "meeting transcripts provided below. Quote or reference speakers where "
-    "helpful. If the transcripts do not contain the answer, say so plainly. "
-    "Format the response as concise GitHub-flavored Markdown with short "
+    "You are a meeting analysis assistant. Use ONLY the supplied meeting "
+    "briefings, saved insights, transcripts, and chat history. Begin from the "
+    "briefing when deciding priorities, themes, outcomes, risks, and next steps. "
+    "Use saved insights for supporting analysis and unresolved detail. Use the "
+    "transcript as factual grounding and the only source for direct quotations. "
+    "If sources conflict, identify the conflict and ground factual claims in the "
+    "transcript. If the supplied context does not contain the answer, say so "
+    "plainly. Format the response as concise GitHub-flavored Markdown with short "
     "headings, bullets, and tables only when they improve readability."
 )
 
@@ -39,15 +43,17 @@ class ChatIn(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1, max_length=MAX_CHAT_HISTORY_MESSAGES)
 
 
-def build_chat_prompt(sessions_data: list[dict], messages: list[dict], budget: int = CONTEXT_BUDGET_CHARS) -> str:
-    """Assemble transcripts (newest-first priority, oldest truncated) plus conversation."""
-    messages = messages[-MAX_CHAT_HISTORY_MESSAGES:]
+def _layer_blocks(sessions_data: list[dict], key: str, remaining: int) -> tuple[str, int]:
     blocks: list[str] = []
-    remaining = budget
-    # Iterate newest-last sessions in reverse so the most recent survive truncation.
     for data in reversed(sessions_data):
-        lines = "\n".join(f"{speaker}: {text}" for speaker, text in data["lines"])
-        block = f"## {data['name']} ({data['started_at']})\n{lines}"
+        if key == "transcript":
+            content = "\n".join(f"{speaker}: {text}" for speaker, text in data["lines"])
+        else:
+            content = data.get(key, "").strip()
+        if not content:
+            continue
+
+        block = f"## {data['name']} ({data['started_at']})\n{content}"
         if len(block) > remaining:
             marker = "\n[truncated]"
             keep = remaining - len(marker)
@@ -57,12 +63,32 @@ def build_chat_prompt(sessions_data: list[dict], messages: list[dict], budget: i
             remaining -= len(block)
         if remaining <= 0:
             break
+    return "\n\n".join(blocks), remaining
+
+
+def build_chat_prompt(
+    sessions_data: list[dict],
+    messages: list[dict],
+    budget: int = CONTEXT_BUDGET_CHARS,
+) -> str:
+    """Assemble brief-first meeting context plus bounded conversation history."""
+    messages = messages[-MAX_CHAT_HISTORY_MESSAGES:]
+    remaining = budget
+    sections: list[str] = []
+    for heading, key in (
+        ("Meeting Briefings (primary context)", "briefing"),
+        ("Saved Insights (supporting context)", "insights"),
+        ("Meeting Transcripts (grounding evidence)", "transcript"),
+    ):
+        content, remaining = _layer_blocks(sessions_data, key, remaining)
+        if content:
+            sections.append(f"# {heading}\n\n{content}")
+        if remaining <= 0:
+            break
 
     conversation = "\n".join(f"{m['role'].capitalize()}: {m['content']}" for m in messages)
-    return (
-        f"# Meeting Transcripts\n\n" + "\n\n".join(blocks) +
-        f"\n\n# Conversation\n{conversation}\nAssistant:"
-    )
+    sections.append(f"# Conversation\n{conversation}\nAssistant:")
+    return "\n\n".join(sections)
 
 
 @router.post("")
