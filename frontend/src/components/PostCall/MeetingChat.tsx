@@ -147,7 +147,7 @@ export default function MeetingChat({ session }: MeetingChatProps) {
       {/* Scope picker */}
       <div className="border-b border-brand-light-gray-1 p-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-body text-xs font-medium text-brand-gray">Transcripts:</span>
+          <span className="font-body text-xs font-medium text-brand-gray">Meetings:</span>
           {sessionCheckbox(session)}
           {groupSessions.map((s) => sessionCheckbox(s))}
           {selectedExtra.map((s) => sessionCheckbox(s, true))}
@@ -197,7 +197,7 @@ export default function MeetingChat({ session }: MeetingChatProps) {
       <div ref={threadRef} className="flex-1 space-y-3 overflow-auto p-4">
         {messages.length === 0 && (
           <p className="py-10 text-center font-body text-sm text-brand-mid-gray">
-            Ask anything about the selected meeting transcripts.
+            Ask across the selected meetings&apos; briefing, saved insights, and transcript.
           </p>
         )}
         {messages.map((m, i) => (

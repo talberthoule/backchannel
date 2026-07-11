@@ -1,8 +1,9 @@
 # Deployment
 
-Backchannel deploys as a self-hosted Docker Compose stack: nginx-served
-frontend, FastAPI backend, and PostgreSQL. There is no cloud-specific
-tooling; anything that runs Docker can host it.
+The Backchannel app deploys as a self-hosted Docker Compose stack:
+nginx-served frontend, FastAPI backend, and PostgreSQL. Anything that runs
+Docker can host the app. The public documentation site is a separate
+Cloudflare Worker with static assets and a private D1 interest list.
 
 ## Services (`docker-compose.yml`)
 
@@ -138,3 +139,88 @@ uvicorn (honoring `BACKEND_RELOAD`) after the database is reachable.
 | Local ASR model weights | `DATA_DIR/asr-models/` (downloaded on first use) |
 | Credentials master key | `DATA_DIR/master.key` (unless `CREDENTIALS_MASTER_KEY` is set) |
 | VAD / speaker-embedding models | `backend/models/*.onnx` (baked into the image / fetched by `scripts/download_models.py`) |
+
+## Public-site interest list
+
+The landing page sends early-access requests to `POST /api/interest` on the
+Cloudflare Worker. The Worker verifies Cloudflare Turnstile before storing the
+lowercased email and consent metadata in the private `backchannel-interest` D1
+database. It exposes no public list, export, update, or unsubscribe endpoint.
+
+### One-time Cloudflare setup
+
+From `docs-site/`, authenticate Wrangler with a narrowly scoped Cloudflare API
+token, then apply the checked-in schema:
+
+```powershell
+cd docs-site
+npx wrangler d1 migrations apply INTEREST_DB --local
+npx wrangler d1 migrations apply INTEREST_DB --remote
+npx wrangler secret put TURNSTILE_SECRET_KEY
+```
+
+The production Worker must have these bindings:
+
+- D1 database `backchannel-interest` as `INTEREST_DB`
+- encrypted secret `TURNSTILE_SECRET_KEY`
+
+Create a managed Turnstile widget named `Backchannel early access`, allow only
+`backchannel.page`, use action `interest`, and leave pre-clearance disabled.
+The widget's site key is public and belongs in `site/index.html`; its secret
+belongs only in the Worker secret binding. The same setup can be completed in
+the authenticated Cloudflare dashboard when Wrangler is not authorized. Never
+paste the secret into source, documentation, command history, logs, or issue
+trackers.
+
+### Review and track invites
+
+List the structured records in creation order:
+
+```powershell
+npx wrangler d1 execute INTEREST_DB --remote --command "SELECT email, status, source, consent_at, invited_at, last_contacted_at FROM interest_subscribers ORDER BY created_at;"
+```
+
+After sending an invite, run this as a parameterized statement in the
+authenticated D1 console or an approved administrative client:
+
+```sql
+UPDATE interest_subscribers
+SET status = 'invited',
+    invited_at = datetime('now'),
+    last_contacted_at = datetime('now')
+WHERE email = ?;
+```
+
+After any later release or news update, set `last_contacted_at` for the exact
+recipients. When someone unsubscribes, preserve the record so they are not
+silently re-added:
+
+```sql
+UPDATE interest_subscribers
+SET status = 'unsubscribed', last_contacted_at = datetime('now')
+WHERE email = ?;
+```
+
+There is no mailing-service integration yet. If a sender is added later, it
+must include an unsubscribe option in every message and write unsubscribes back
+to D1 before another send.
+
+### Export and retention
+
+Export only when importing the list into an approved sender:
+
+```powershell
+npx wrangler d1 export backchannel-interest --remote --table=interest_subscribers --output=interest-subscribers.sql
+```
+
+The export contains personal data. Keep it outside Git and shared folders,
+limit access to the invite/update operator, and delete the local file after the
+approved sender has accepted it. `docs-site/.gitignore` blocks the standard
+export filename as a second line of defense.
+
+### Rotate Turnstile
+
+Rotate the widget secret in Cloudflare, immediately replace
+`TURNSTILE_SECRET_KEY` in the Worker, and verify a fresh production request.
+The public site key and application code do not change. Never retrieve or print
+the saved Worker secret; verify it by binding name only.

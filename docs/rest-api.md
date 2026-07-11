@@ -175,7 +175,7 @@ Providers: `google`, `openai`. Keys are stored encrypted (see
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| POST | `/api/chat` | Ask questions over selected sessions' transcripts via the provider-routed text LLM |
+| POST | `/api/chat` | Ask questions over selected sessions' settled briefings, non-dismissed insights, and speaker-attributed transcripts; briefings guide interpretation while transcripts ground facts and quotations |
 
 ### Diagnostics (`routers/diagnostics.py`)
 
