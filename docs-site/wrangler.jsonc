@@ -7,6 +7,13 @@
     { "pattern": "backchannel.page", "custom_domain": true },
     { "pattern": "www.backchannel.page", "custom_domain": true }
   ],
+  "d1_databases": [
+    {
+      "binding": "INTEREST_DB",
+      "database_name": "backchannel-interest",
+      "database_id": "05a99bac-102f-4a43-ac87-ae06251efdff"
+    }
+  ],
   "assets": {
     "directory": "./dist-site",
     "binding": "ASSETS",
