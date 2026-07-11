@@ -19,6 +19,7 @@
   <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
   <link rel="stylesheet" href="style.css" />
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -124,11 +125,10 @@
         transcripts and real-time insight agents, with no bot in the call.
       </p>
       <div class="cta-row">
-        <a class="btn primary" href="releases/v0.1.1/">Download for desktop</a>
+        <a class="btn primary" href="#early-access">Request early access</a>
         <a class="btn ghost" href="#quickstart">Self-host in minutes</a>
-        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
       </div>
-      <p class="quickstart-note">Free desktop app for Windows &amp; macOS, no Docker needed &middot; or self-host the full stack with Docker Compose &middot; works with Zoom, Meet, and Teams &middot; MIT licensed</p>
+      <p class="quickstart-note">Private desktop preview for Windows &amp; macOS &middot; self-host anytime with Docker Compose &middot; works with Zoom, Meet, and Teams &middot; MIT licensed</p>
       <div class="hero-shot">
         <div class="browser-frame">
           <div class="bar" aria-hidden="true"></div>
@@ -525,15 +525,23 @@ docker compose up --build
     </div>
   </section>
 
-  <section id="get-started" class="cta-final">
-    <div class="wrap">
-      <h2>Hear more from your next meeting</h2>
-      <p class="sub">Self-hosted, open source, MIT licensed. If Backchannel is useful to you, a star on GitHub helps others find it.</p>
-      <div class="cta-row">
-        <a class="btn primary" href="releases/v0.1.1/">Download for desktop</a>
-        <a class="btn ghost" href="#quickstart">Self-host in minutes</a>
-        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+  <section id="early-access" class="early-access">
+    <div class="wrap early-access-grid">
+      <div class="early-access-copy">
+        <h2>Get the next desktop build</h2>
+        <p class="sub">Request access to the private Windows and macOS preview. We will also send meaningful release updates and occasional Backchannel news.</p>
+        <p class="early-access-proof">No weekly drip campaign. Just invites and product updates worth opening.</p>
       </div>
+      <form id="interest-form" class="interest-form" action="/api/interest" method="post">
+        <label for="interest-email">Email address</label>
+        <div class="interest-control-row">
+          <input id="interest-email" name="email" type="email" autocomplete="email" inputmode="email" maxlength="254" aria-describedby="interest-consent interest-status" required />
+          <button class="btn primary" type="submit">Request access</button>
+        </div>
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAADzsy7I_nGWf_fZB" data-action="interest" data-theme="auto"></div>
+        <p id="interest-consent" class="interest-consent">By requesting access, you agree to receive an invite and occasional Backchannel product news. Every update will include an unsubscribe option.</p>
+        <p id="interest-status" class="interest-status" role="status" aria-live="polite"></p>
+      </form>
     </div>
   </section>
 
@@ -611,6 +619,62 @@ docker compose up --build
         }
       })
       .catch(function () {});
+  })();
+</script>
+
+<script>
+  (function () {
+    var form = document.getElementById("interest-form");
+    if (!form) return;
+    var email = document.getElementById("interest-email");
+    var button = form.querySelector("button[type=submit]");
+    var status = document.getElementById("interest-status");
+
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      var data = new FormData(form);
+      var token = data.get("cf-turnstile-response");
+      if (!token) {
+        status.textContent = "Complete the verification and try again.";
+        status.dataset.state = "error";
+        return;
+      }
+
+      button.disabled = true;
+      form.setAttribute("aria-busy", "true");
+      email.removeAttribute("aria-invalid");
+      status.textContent = "Saving your request...";
+      status.dataset.state = "pending";
+
+      fetch(form.action, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: data.get("email"), token: token })
+      })
+        .then(function (response) {
+          return response.json().then(function (body) {
+            if (!response.ok) throw new Error(body.message || "Request failed.");
+            return body;
+          });
+        })
+        .then(function (body) {
+          form.reset();
+          status.textContent = body.message;
+          status.dataset.state = "success";
+          if (window.turnstile) window.turnstile.reset();
+        })
+        .catch(function (error) {
+          email.setAttribute("aria-invalid", "true");
+          status.textContent = error.message || "We couldn't save this right now. Please try again.";
+          status.dataset.state = "error";
+          if (window.turnstile) window.turnstile.reset();
+        })
+        .finally(function () {
+          button.disabled = false;
+          form.removeAttribute("aria-busy");
+        });
+    });
   })();
 </script>
 
