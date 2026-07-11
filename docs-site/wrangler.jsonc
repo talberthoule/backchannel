@@ -5,7 +5,8 @@
   "main": "worker.js",
   "routes": [
     { "pattern": "backchannel.page", "custom_domain": true },
-    { "pattern": "www.backchannel.page", "custom_domain": true }
+    { "pattern": "www.backchannel.page", "custom_domain": true },
+    { "pattern": "admin.backchannel.page", "custom_domain": true }
   ],
   "d1_databases": [
     {

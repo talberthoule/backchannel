@@ -6,6 +6,7 @@
     "sync": "node sync-docs.mjs",
     "dev": "npm run sync && astro dev",
     "build": "npm run sync && astro build && node assemble.mjs",
+    "test:admin": "node --test admin.test.js",
     "test:worker": "node --test worker.test.js",
     "test:site": "node --test site.test.js",
     "preview": "astro preview",
