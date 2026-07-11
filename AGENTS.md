@@ -37,12 +37,21 @@ docker-compose down -v
 
 ### Multi-target releases
 
-Public releases span source-built Docker images, the Cloudflare documentation
-site, and tag-built Windows/macOS desktop bundles. Follow
+Releases span source-built Docker images, the Cloudflare documentation site,
+and tag-built Linux x64, macOS arm64, and Windows x64 desktop bundles. Follow
 `docs/releasing.md` as the authoritative checklist. A `master` push does not
 update existing desktop downloads; do not mark a release complete until the
-tag workflow has published and verified both platform assets and the site has
-been updated to the same version.
+tag workflow has published and verified all three platform assets and the site
+has been updated to the same version.
+
+### Docs site and private interest admin
+
+`docs-site/` builds the public `backchannel.page` site and the private
+`admin.backchannel.page` interest console. Every request to the private host is
+Cloudflare Access protected and then checked again by the Worker for a valid
+issuer, audience, and exact `ADMIN_EMAIL`; all three settings are Worker
+secrets. The D1 admin API is read-only. Never add a public admin route, commit
+an operator identity, or log subscriber or Access data.
 
 ### Local Development
 

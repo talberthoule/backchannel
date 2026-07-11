@@ -117,6 +117,10 @@ def _open_data_folder(data_dir: Path) -> None:
             import subprocess
 
             subprocess.run(["open", str(data_dir)], check=False)
+        else:
+            import subprocess
+
+            subprocess.run(["xdg-open", str(data_dir)], check=False)
     except Exception:
         logging.getLogger("launcher").exception("failed to open data folder")
 

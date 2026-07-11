@@ -172,6 +172,39 @@ the authenticated Cloudflare dashboard when Wrangler is not authorized. Never
 paste the secret into source, documentation, command history, logs, or issue
 trackers.
 
+### Private interest admin
+
+The read-only interest console is available only at
+`https://admin.backchannel.page/`. Protect the complete hostname with one
+Cloudflare Access self-hosted application before routing production traffic to
+it; do not configure only a path. Add one Allow policy whose Include rule is
+the exact operator email, with no broad group, domain, Bypass, or Service Auth
+rule.
+
+Copy the application's Audience (AUD) tag and your Access team hostname, then
+enter all three values interactively as encrypted Worker secrets:
+
+```powershell
+cd docs-site
+npx wrangler secret put ADMIN_EMAIL
+npx wrangler secret put ACCESS_TEAM_DOMAIN
+npx wrangler secret put ACCESS_AUD
+```
+
+Use only the hostname (for example, `<team>.cloudflareaccess.com`) for
+`ACCESS_TEAM_DOMAIN`; omit the scheme and path. `ADMIN_EMAIL` must match the
+single email in the Access Allow policy. The Worker validates the
+`Cf-Access-Jwt-Assertion` signature, issuer, and audience against Access's JWKS,
+then requires an exact case-insensitive email match before serving any private
+asset or D1 row. Missing configuration fails closed. The endpoint supports only
+`GET`, returns only the existing consent fields, and sends `Cache-Control:
+no-store`; record changes remain an authenticated D1-console operation.
+
+After deployment, verify that the configured operator can load the page and
+refresh its table, while a signed-out browser and a different Access identity
+cannot load the page or `/api/admin/interests`. Never place any of these values
+in `wrangler.jsonc`, source, logs, screenshots, or issue trackers.
+
 ### Review and track invites
 
 List the structured records in creation order:

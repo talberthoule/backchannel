@@ -37,21 +37,22 @@ docker-compose down -v
 
 ### Multi-target releases
 
-Public releases span source-built Docker images, the Cloudflare documentation
-site, and tag-built Windows/macOS desktop bundles. Follow
+Releases span source-built Docker images, the Cloudflare documentation site,
+and tag-built Linux x64, macOS arm64, and Windows x64 desktop bundles. Follow
 `docs/releasing.md` as the authoritative checklist. A `master` push does not
 update existing desktop downloads; do not mark a release complete until the
-tag workflow has published and verified both platform assets and the site has
-been updated to the same version.
+tag workflow has published and verified all three platform assets and the site
+has been updated to the same version.
 
-### Desktop bundle (Windows/macOS)
+### Desktop bundle (Linux/macOS/Windows)
 
 `desktop/` contains a PyInstaller launcher that runs the backend with an
 embedded zonky.io PostgreSQL and serves the built frontend via
 `FRONTEND_DIST`. Desktop tests: run `python -m unittest discover -s tests`
 from `desktop/`. Local build: `pyinstaller desktop/backchannel.spec`;
-release builds run in `.github/workflows/desktop-release.yml` on `v*` tags
-(unsigned; Sortformer and ffmpeg are not bundled).
+release builds produce a portable Linux x64 tarball plus macOS arm64 and
+Windows x64 zip bundles in `.github/workflows/desktop-release.yml` on `v*`
+tags (unsigned; Sortformer and ffmpeg are not bundled).
 
 ### Docs Site
 
@@ -59,6 +60,10 @@ release builds run in `.github/workflows/desktop-release.yml` on `v*` tags
 (`backchannel-site`, same pattern as the quartermaster repo) by
 `.github/workflows/deploy-site.yml`: the `site/` landing page at
 https://backchannel.page/ and the docs at `/docs/`.
+The same Worker serves the read-only D1 interest console only on
+`https://admin.backchannel.page/`. Cloudflare Access protects the complete
+private hostname, and the Worker independently verifies the Access JWT issuer,
+audience, and exact `ADMIN_EMAIL`; those values are encrypted Worker secrets.
 `docs/*.md` stays the source of truth: do not
 edit `docs-site/src/content/docs/` (generated, gitignored). At build time
 `docs-site/sync-docs.mjs` copies the docs in, derives frontmatter titles from

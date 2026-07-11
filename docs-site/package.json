@@ -6,6 +6,7 @@
     "sync": "node sync-docs.mjs",
     "dev": "npm run sync && astro dev",
     "build": "npm run sync && astro build && node assemble.mjs",
+    "test:admin": "node --test admin.test.js",
     "test:worker": "node --test worker.test.js",
     "test:site": "node --test site.test.js",
     "preview": "astro preview",
@@ -14,6 +15,7 @@
   "dependencies": {
     "@astrojs/starlight": "^0.41.3",
     "astro": "^7.0.7",
+    "jose": "^6.2.3",
     "sharp": "^0.35.3"
   },
   "devDependencies": {

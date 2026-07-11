@@ -4,6 +4,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import launcher
 
@@ -87,6 +88,15 @@ class LauncherHelperTests(unittest.TestCase):
                 Path(tmp), timeout=0.2, interval=0.05
             )
         self.assertIsNone(found)
+
+    def test_linux_opens_data_folder_with_xdg_open(self):
+        with (
+            patch.object(launcher.sys, "platform", "linux"),
+            patch("subprocess.run") as run,
+        ):
+            launcher._open_data_folder(Path("/tmp/data"))
+
+        run.assert_called_once_with(["xdg-open", "/tmp/data"], check=False)
 
 
 if __name__ == "__main__":

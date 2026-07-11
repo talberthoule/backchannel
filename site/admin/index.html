@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)" />
+  <title>Early access | Backchannel admin</title>
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/admin.css" />
+  <script src="/admin.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to access requests</a>
+
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <a class="brand" href="/" aria-label="Backchannel admin home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        Backchannel
+      </a>
+      <p class="private-label">
+        <span class="private-dot" aria-hidden="true"></span>
+        Private admin
+      </p>
+    </div>
+  </header>
+
+  <main id="main" class="shell">
+    <section class="page-head" aria-labelledby="page-title">
+      <div>
+        <h1 id="page-title">Early access</h1>
+        <p>Consent records from the private desktop preview.</p>
+      </div>
+      <dl class="summary" aria-label="Request summary">
+        <div>
+          <dt>Requests</dt>
+          <dd id="request-count">—</dd>
+        </div>
+        <div>
+          <dt>Last refreshed</dt>
+          <dd><time id="last-refreshed">Not yet</time></dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="data-region" aria-labelledby="requests-heading">
+      <div class="toolbar">
+        <div>
+          <h2 id="requests-heading">Access requests</h2>
+          <p id="admin-status" role="status" aria-live="polite">Loading access requests…</p>
+        </div>
+        <button id="refresh" class="refresh" type="button">Refresh</button>
+      </div>
+
+      <p id="table-hint" class="table-hint">Scroll horizontally to view all columns.</p>
+      <div
+        class="table-scroll"
+        role="region"
+        aria-labelledby="requests-heading"
+        aria-describedby="admin-status table-hint"
+        tabindex="0"
+      >
+        <table id="interest-table" aria-busy="true">
+          <caption>Early-access consent records, newest first</caption>
+          <thead>
+            <tr>
+              <th scope="col">Email</th>
+              <th scope="col">Status</th>
+              <th scope="col">Source</th>
+              <th scope="col">Requested</th>
+              <th scope="col">Consent</th>
+              <th scope="col">Invited</th>
+              <th scope="col">Last contacted</th>
+            </tr>
+          </thead>
+          <tbody id="interest-rows">
+            <tr class="state-row">
+              <td colspan="7">Loading access requests…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <noscript>
+    <p class="noscript">JavaScript is required to load private access records.</p>
+  </noscript>
+</body>
+</html>
