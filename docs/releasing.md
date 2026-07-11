@@ -16,6 +16,21 @@ A normal push to `master` does not rebuild desktop downloads. Existing GitHub
 release assets are immutable release output and do not change when source code
 changes.
 
+## Installer access policy
+
+Desktop installers remain in the repository's private GitHub releases. Creating
+a tag and verifying its assets does not authorize public access. Unless the
+repository owner gives explicit approval for that release:
+
+- Keep the repository and release assets private.
+- Do not change repository visibility, mirror installers to another host,
+  create public sharing URLs, or otherwise enable anonymous downloads.
+- Verify release assets with authenticated GitHub access and confirm anonymous
+  release and download requests remain denied.
+
+An anonymous `404` from a private GitHub release is the expected access-control
+result, not a failed build. Record explicit approval before changing that state.
+
 ## Versioned release files
 
 For each public version `vX.Y.Z`, update or add all of the following before
@@ -86,8 +101,8 @@ users to the new download URLs:
 git push origin vX.Y.Z
 ```
 
-Wait for every `Desktop release` matrix job to succeed. Confirm the GitHub
-release has both exact assets:
+Wait for every `Desktop release` matrix job to succeed. With authenticated
+GitHub access, confirm the release has both exact assets:
 
 - `Backchannel-windows-x64.zip`
 - `Backchannel-macos-arm64.zip`
@@ -117,7 +132,9 @@ docker compose up -d --build
 Do not call the release complete until all of these are true:
 
 - The GitHub tag points to the intended release commit.
-- Both desktop assets exist and download successfully.
+- Both desktop assets exist and are downloadable with authenticated access.
+- Anonymous installer access remains denied unless explicit approval to make
+  that release public has been recorded.
 - The Windows and macOS workflow smoke tests passed.
 - The site deployment passed and the new release page returns HTTP 200.
 - Landing-page, README, quickstart, comparison-page, sitemap, and `llms.txt`
