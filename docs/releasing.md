@@ -10,15 +10,15 @@ verified.
 | --- | --- | --- |
 | Docker Compose | Source commit or tag; users rebuild locally | `backend` and `frontend` images are built from the checked-out source. No container registry image is published. |
 | Documentation site | Push to `master` that changes `site/`, `docs/`, `docs-site/`, `architecture.svg`, or the site workflow | Cloudflare deploy of `backchannel.page` and `/docs/` |
-| Windows and macOS desktop | Push of a `v*` tag | GitHub Actions builds, smoke-tests, zips, and attaches Windows x64 and macOS arm64 bundles to the GitHub release |
+| Linux, macOS, and Windows desktop | Push of a `v*` tag | GitHub Actions builds, smoke-tests, archives, and attaches Linux x64, macOS arm64, and Windows x64 bundles to the GitHub release |
 
 A normal push to `master` does not rebuild desktop downloads. Existing GitHub
 release assets are immutable release output and do not change when source code
 changes.
 
-## Installer access policy
+## Desktop bundle access policy
 
-Desktop installers remain in the repository's private GitHub releases. Creating
+Desktop bundles remain in the repository's private GitHub releases. Creating
 a tag and verifying its assets does not authorize public access. Unless the
 repository owner gives explicit approval for that release:
 
@@ -82,7 +82,7 @@ docker compose build frontend backend
 
 Also run the backend and desktop unit suites and `git diff --check`. The
 tag-triggered desktop workflow performs a clean build and bundle smoke test on
-both operating systems; do not treat local tests as a replacement for those
+Linux, macOS, and Windows; do not treat local tests as a replacement for those
 jobs.
 
 ### 3. Commit and tag
@@ -102,17 +102,18 @@ git push origin vX.Y.Z
 ```
 
 Wait for every `Desktop release` matrix job to succeed. With authenticated
-GitHub access, confirm the release has both exact assets:
+GitHub access, confirm the release has all three exact assets:
 
 - `Backchannel-windows-x64.zip`
 - `Backchannel-macos-arm64.zip`
+- `Backchannel-linux-x64.tar.gz` (portable bundle, not a package-manager installer)
 
 The workflow's manual-dispatch mode uploads workflow artifacts for testing,
 but it does not attach them to a GitHub release because there is no tag.
 
 ### 4. Publish the site and Docker source
 
-After both desktop assets are downloadable, push the release commit to
+After all three desktop assets are downloadable, push the release commit to
 `master`:
 
 ```bash
@@ -132,10 +133,10 @@ docker compose up -d --build
 Do not call the release complete until all of these are true:
 
 - The GitHub tag points to the intended release commit.
-- Both desktop assets exist and are downloadable with authenticated access.
-- Anonymous installer access remains denied unless explicit approval to make
+- All three desktop assets exist and are downloadable with authenticated access.
+- Anonymous desktop-asset access remains denied unless explicit approval to make
   that release public has been recorded.
-- The Windows and macOS workflow smoke tests passed.
+- The Linux, macOS, and Windows workflow smoke tests passed.
 - The site deployment passed and the new release page returns HTTP 200.
 - Landing-page, README, quickstart, comparison-page, sitemap, and `llms.txt`
   links resolve to the new version.

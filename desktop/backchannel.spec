@@ -20,6 +20,8 @@ if sys.platform == "win32":
     hidden.append("pystray._win32")
 elif sys.platform == "darwin":
     hidden.append("pystray._darwin")
+else:
+    hidden.append("pystray._xorg")
 
 a = Analysis(
     [str(repo / "desktop" / "launcher.py")],

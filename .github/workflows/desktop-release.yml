@@ -18,6 +18,8 @@ jobs:
             asset: Backchannel-windows-x64.zip
           - os: macos-latest
             asset: Backchannel-macos-arm64.zip
+          - os: ubuntu-latest
+            asset: Backchannel-linux-x64.tar.gz
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -59,6 +61,10 @@ jobs:
       - name: Zip (macOS)
         if: runner.os == 'macOS'
         run: ditto -c -k --keepParent dist/Backchannel.app ${{ matrix.asset }}
+
+      - name: Archive (Linux)
+        if: runner.os == 'Linux'
+        run: tar -C dist -czf "../${{ matrix.asset }}" Backchannel
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
