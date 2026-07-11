@@ -27,7 +27,7 @@
         "@type": "SoftwareApplication",
         "name": "Backchannel",
         "applicationCategory": "BusinessApplication",
-        "operatingSystem": "Self-hosted (Docker Compose); any modern browser",
+        "operatingSystem": "Windows x64, macOS Apple Silicon, Docker Compose; any modern browser",
         "description": "Backchannel is an open-source, self-hosted AI meeting assistant: live speaker-diarized transcripts and real-time insights, no bot joining your call.",
         "url": "https://backchannel.page/",
         "license": "https://github.com/talberthoule/backchannel/blob/master/LICENSE",
@@ -83,7 +83,7 @@
             "name": "What do I need to run it?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Docker with the Compose plugin, plus a Gemini API key for the default transcription and analysis models. An OpenAI key is optional for OpenAI-routed agents, and local ONNX transcription needs no key at all."
+              "text": "Use the desktop app for the easiest start: download the zip for Windows or macOS, unzip it, run the app, and add a Gemini API key in Admin. Use Docker Compose when you want the full self-hosted stack, local development, or GPU diarization. An OpenAI key is optional for OpenAI-routed agents, and local ONNX transcription needs no key at all."
             }
           }
         ]
@@ -124,7 +124,7 @@
         transcripts and real-time insight agents, with no bot in the call.
       </p>
       <div class="cta-row">
-        <a class="btn primary" href="https://github.com/talberthoule/backchannel/releases/latest">Download for desktop</a>
+        <a class="btn primary" href="releases/v0.1.0/">Download for desktop</a>
         <a class="btn ghost" href="#quickstart">Self-host in minutes</a>
         <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
       </div>
@@ -333,24 +333,49 @@
 
   <section id="quickstart">
     <div class="wrap">
-      <h2>Running in one copy-paste</h2>
-      <p class="sub">Docker is the only hard requirement. The default transcription and analysis models use Google Gemini -- add your key in the app after it starts, or put it in <code>.env</code> first.</p>
-      <pre><code>git clone https://github.com/talberthoule/backchannel.git
+      <h2>Install the way you want to run it</h2>
+      <p class="sub">Use the desktop executable when you want the shortest path, or Docker Compose when you want the full self-hosted stack, development hooks, and GPU options.</p>
+
+      <div class="setup-grid">
+        <article class="setup-panel featured">
+          <span class="kicker">Desktop app</span>
+          <h3>Download, unzip, run</h3>
+          <p>Windows and macOS builds bundle the app, backend, and per-user database. Backchannel sits in your system tray or menu bar, opens in your browser, and needs no Docker.</p>
+          <ul class="setup-list">
+            <li><strong>Windows x64:</strong> unzip <code>Backchannel-windows-x64.zip</code> and run <code>Backchannel.exe</code>.</li>
+            <li><strong>macOS Apple Silicon:</strong> unzip <code>Backchannel-macos-arm64.zip</code> and open <code>Backchannel.app</code>.</li>
+            <li>Add provider keys after launch in <strong>Admin -&gt; API Keys</strong>.</li>
+          </ul>
+          <div class="setup-actions">
+            <a class="btn primary" href="releases/v0.1.0/">View desktop release</a>
+            <a class="btn ghost" href="https://github.com/talberthoule/backchannel/releases/download/v0.1.0/Backchannel-windows-x64.zip">Windows zip</a>
+            <a class="btn ghost" href="https://github.com/talberthoule/backchannel/releases/download/v0.1.0/Backchannel-macos-arm64.zip">macOS zip</a>
+          </div>
+        </article>
+
+        <article class="setup-panel">
+          <span class="kicker">Docker Compose</span>
+          <h3>Self-host the full stack</h3>
+          <p>Compose keeps every service isolated and is still the most flexible path for local development, server installs, and optional NVIDIA GPU diarization.</p>
+          <pre><code>git clone https://github.com/talberthoule/backchannel.git
 cd backchannel
 cp .env.example .env   <span class="cmt"># optionally set GEMINI_API_KEY here</span>
 docker compose up --build
 
 <span class="cmt"># app at http://localhost:3000 -- add API keys any time in Admin -&gt; API Keys</span></code></pre>
+          <p class="quickstart-note">
+            The first start builds images and downloads models, so give it a
+            few minutes. Have an NVIDIA GPU? Add the override for GPU
+            diarization: <code>docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build</code>
+          </p>
+        </article>
+      </div>
+
       <p class="quickstart-note">
-        The first start builds images and downloads models, so give it a few
-        minutes. Prefer zero API keys? Switch batch transcription to a local
-        ONNX Whisper or Parakeet model: transcription and diarization run
-        fully offline, and only the insight agents still need a Gemini or
+        Prefer zero API keys for transcription? Switch batch transcription to
+        a local ONNX Whisper or Parakeet model: transcription and diarization
+        run fully offline, and only the insight agents still need a Gemini or
         OpenAI key.
-      </p>
-      <p class="quickstart-note">
-        Have an NVIDIA GPU? Add the override for GPU diarization:
-        <code>docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build</code>
       </p>
     </div>
   </section>
@@ -453,7 +478,7 @@ docker compose up --build
         </div>
         <div class="card">
           <h3>What do I need to run it?</h3>
-          <p>Docker with the Compose plugin, plus a Gemini API key for the default transcription and analysis models. An OpenAI key is optional for OpenAI-routed agents, and local ONNX transcription needs no key at all.</p>
+          <p>Use the desktop app for the easiest start: download the zip for Windows or macOS, unzip it, run the app, and add a Gemini API key in Admin. Use Docker Compose when you want the full self-hosted stack, local development, or GPU diarization. An OpenAI key is optional for OpenAI-routed agents, and local ONNX transcription needs no key at all.</p>
         </div>
       </div>
     </div>
@@ -505,7 +530,7 @@ docker compose up --build
       <h2>Hear more from your next meeting</h2>
       <p class="sub">Self-hosted, open source, MIT licensed. If Backchannel is useful to you, a star on GitHub helps others find it.</p>
       <div class="cta-row">
-        <a class="btn primary" href="https://github.com/talberthoule/backchannel/releases/latest">Download for desktop</a>
+        <a class="btn primary" href="releases/v0.1.0/">Download for desktop</a>
         <a class="btn ghost" href="#quickstart">Self-host in minutes</a>
         <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
       </div>

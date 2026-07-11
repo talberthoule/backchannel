@@ -2,7 +2,7 @@
 
 ## Desktop app (easiest)
 
-Prefer a one-click install? Download the latest [release](https://github.com/talberthoule/backchannel/releases/latest) for your platform:
+Prefer the shortest path? Download the latest [desktop release](https://backchannel.page/releases/v0.1.0/) for your platform:
 
 - **Windows** -- `Backchannel-windows-x64.zip`; unzip and run `Backchannel.exe`.
 - **macOS** (Apple Silicon) -- `Backchannel-macos-arm64.zip`; unzip and open `Backchannel.app`.

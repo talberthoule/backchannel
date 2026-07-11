@@ -8,15 +8,17 @@
 > opportunities, and action items while the meeting is still happening.
 
 Backchannel is free to run: there is no hosted service, no pricing tiers,
-and no account. You deploy it yourself with Docker Compose (React frontend,
-FastAPI backend, PostgreSQL). Bring your own Gemini or OpenAI API key, or
-transcribe fully offline with local ONNX Whisper/Parakeet models. Because it
-is self-hosted, meeting audio and transcripts never leave your
-infrastructure except for the model API calls you configure.
+and no account. You can run it from the desktop executable on Windows or
+macOS, or deploy it yourself with Docker Compose (React frontend, FastAPI
+backend, PostgreSQL). Bring your own Gemini or OpenAI API key, or transcribe
+fully offline with local ONNX Whisper/Parakeet models. Because it is
+self-hosted, meeting audio and transcripts never leave your infrastructure
+except for the model API calls you configure.
 
 Key facts:
 - License: MIT, source at https://github.com/talberthoule/backchannel
 - Category: real-time meeting analysis / AI meeting assistant / meeting copilot
+- Desktop release: Windows x64 and macOS Apple Silicon downloads at https://backchannel.page/releases/v0.1.0/
 - Self-hosted alternative to cloud meeting assistants such as Otter.ai,
   Fireflies.ai, and Granola
 - Stack: React 18 + TypeScript frontend, FastAPI backend, PostgreSQL 16
@@ -29,6 +31,7 @@ Key facts:
 
 ## Docs
 
+- [Desktop release v0.1.0](https://backchannel.page/releases/v0.1.0/): Windows and macOS executable downloads, install notes, and first-run guidance
 - [Quickstart](https://backchannel.page/docs/quickstart/): Docker Compose setup, local development, migrations, tests
 - [Architecture](https://backchannel.page/docs/architecture/): the live call path end to end
 - [Agent System](https://backchannel.page/docs/agents/): each agent's trigger, purpose, and configuration

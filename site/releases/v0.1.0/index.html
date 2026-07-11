@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Backchannel v0.1.0 - desktop downloads</title>
+  <meta name="description" content="Backchannel v0.1.0 is the first desktop release, with Windows x64 and macOS Apple Silicon executables for running Backchannel without Docker." />
+  <link rel="canonical" href="https://backchannel.page/releases/v0.1.0/" />
+  <meta property="og:title" content="Backchannel v0.1.0 - desktop downloads" />
+  <meta property="og:description" content="Download the first Backchannel desktop release for Windows x64 and macOS Apple Silicon." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Backchannel" />
+  <meta property="og:url" content="https://backchannel.page/releases/v0.1.0/" />
+  <meta property="og:image" content="https://backchannel.page/assets/og-image.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
+  <link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body>
+
+<a class="skip-link" href="#top">Skip to content</a>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="../../">
+      <img src="../../assets/favicon.svg" alt="" />
+      backchannel
+    </a>
+    <nav class="site-nav">
+      <a href="../../#features">Features</a>
+      <a href="../../#quickstart">Quickstart</a>
+      <a href="../../#how-it-works">How it works</a>
+      <a href="../../#architecture">Architecture</a>
+      <a href="../../#agents">Agents</a>
+      <a href="../../docs/">Docs</a>
+      <a class="btn primary nav-cta" href="https://github.com/talberthoule/backchannel">Star on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="release-hero">
+    <div class="wrap">
+      <div class="release-copy">
+        <span class="kicker">Release v0.1.0</span>
+        <h1>Desktop builds for Backchannel</h1>
+        <p class="lede">
+          The first Backchannel desktop release gives Windows and macOS users a
+          zip download, a double-clickable app, and the same browser UI without
+          installing Docker first.
+        </p>
+        <div class="cta-row">
+          <a class="btn primary" href="#downloads">Download</a>
+          <a class="btn ghost" href="../../docs/quickstart/">Read quickstart</a>
+          <a class="btn ghost" href="https://github.com/talberthoule/backchannel/releases/tag/v0.1.0">GitHub release</a>
+        </div>
+      </div>
+
+      <aside class="release-panel" aria-label="Release details">
+        <h2>What ships</h2>
+        <p>Backchannel as a tray or menu-bar app, packaged with the backend and a per-user database.</p>
+        <ul class="release-facts">
+          <li><span>Version</span><strong>v0.1.0</strong></li>
+          <li><span>Published</span><strong>July 10, 2026</strong></li>
+          <li><span>Platforms</span><strong>Windows x64, macOS arm64</strong></li>
+          <li><span>License</span><strong>MIT</strong></li>
+        </ul>
+      </aside>
+    </div>
+  </section>
+
+  <section id="downloads" class="alt">
+    <div class="wrap">
+      <h2>Download the executable</h2>
+      <p class="sub">These are unsigned open-source builds attached to the GitHub release. The first run includes the normal Windows SmartScreen or macOS Gatekeeper prompts.</p>
+
+      <div class="download-grid">
+        <article class="download-panel">
+          <span class="kicker">Windows</span>
+          <h3>Windows x64</h3>
+          <p>For Windows 10 or later on 64-bit Intel or AMD processors.</p>
+          <ol class="install-steps">
+            <li>Download <code>Backchannel-windows-x64.zip</code>.</li>
+            <li>Unzip it and run <code>Backchannel.exe</code>.</li>
+            <li>If SmartScreen appears, choose <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+          </ol>
+          <a class="btn primary" href="https://github.com/talberthoule/backchannel/releases/download/v0.1.0/Backchannel-windows-x64.zip">Download Windows zip</a>
+        </article>
+
+        <article class="download-panel">
+          <span class="kicker">macOS</span>
+          <h3>macOS Apple Silicon</h3>
+          <p>For Apple Silicon Macs. Intel macOS builds are not included in this release.</p>
+          <ol class="install-steps">
+            <li>Download <code>Backchannel-macos-arm64.zip</code>.</li>
+            <li>Unzip it and move <code>Backchannel.app</code> wherever you keep apps.</li>
+            <li>Right-click <code>Backchannel.app</code> and choose <strong>Open</strong> the first time.</li>
+          </ol>
+          <a class="btn primary" href="https://github.com/talberthoule/backchannel/releases/download/v0.1.0/Backchannel-macos-arm64.zip">Download macOS zip</a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Why this release matters</h2>
+      <p class="sub">Docker remains available for full self-hosting and development, but the desktop app removes the biggest setup hurdle for people who just want to run Backchannel locally.</p>
+
+      <div class="release-notes">
+        <div>
+          <h3>No Docker required</h3>
+          <p>The desktop package starts the local backend, serves the frontend, and stores data per user.</p>
+        </div>
+        <div>
+          <h3>Same product surface</h3>
+          <p>The app opens the normal Backchannel browser UI, including live transcription, insights, speaker correction, exports, and chat.</p>
+        </div>
+        <div>
+          <h3>Docker path unchanged</h3>
+          <p>Use Compose when you want containers, local development, server deployment, or the optional Sortformer diarizer.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>First-run notes</h2>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Need</th><th>What to do</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Provider key</td>
+              <td>Add a Gemini key in <strong>Admin -&gt; API Keys</strong> after launch. Add OpenAI only if you route agents to OpenAI.</td>
+            </tr>
+            <tr>
+              <td>Audio imports</td>
+              <td>WAV, FLAC, and OGG work out of the box. MP3 and M4A imports need <code>ffmpeg</code> on your PATH.</td>
+            </tr>
+            <tr>
+              <td>Diarization</td>
+              <td>The desktop app uses the built-in lightweight diarizer. Use Docker Compose for optional Sortformer diarization.</td>
+            </tr>
+            <tr>
+              <td>Source</td>
+              <td>Backchannel remains open source. Review the code, Docker path, and release workflow on GitHub.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final">
+    <div class="wrap">
+      <h2>Start with the desktop app or self-host the stack</h2>
+      <p class="sub">Both paths run Backchannel on your machine. Choose the executable for the fastest start, or Compose for maximum control.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="#downloads">Download v0.1.0</a>
+        <a class="btn ghost" href="../../#quickstart">Compare setup paths</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View source</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="wrap footer-compare">
+    <span>Compare:</span>
+    <a href="/otter-alternative/">Open-source Otter.ai alternative</a>
+    <a href="/granola-alternative/">Granola alternative</a>
+    <a href="/fireflies-alternative/">Fireflies.ai alternative</a>
+    <a href="/vs-meetily/">Backchannel vs Meetily</a>
+  </div>
+  <div class="wrap">
+    <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
+    <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+  </div>
+</footer>
+
+</body>
+</html>
