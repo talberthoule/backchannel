@@ -28,7 +28,7 @@
         "@type": "SoftwareApplication",
         "name": "Backchannel",
         "applicationCategory": "BusinessApplication",
-        "operatingSystem": "Windows x64, macOS Apple Silicon, Docker Compose; any modern browser",
+        "operatingSystem": "Windows x64, macOS Apple Silicon, Linux x64, Docker Compose; any modern browser",
         "description": "Backchannel is an open-source, self-hosted AI meeting assistant: live speaker-diarized transcripts and real-time insights, no bot joining your call.",
         "url": "https://backchannel.page/",
         "license": "https://github.com/talberthoule/backchannel/blob/master/LICENSE",
@@ -84,7 +84,7 @@
             "name": "What do I need to run it?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Use the desktop app for the easiest start: download the zip for Windows or macOS, unzip it, run the app, and add a Gemini API key in Admin. Use Docker Compose when you want the full self-hosted stack, local development, or GPU diarization. An OpenAI key is optional for OpenAI-routed agents, and local ONNX transcription needs no key at all."
+              "text": "Use the desktop app for the easiest start: download the build for Windows, macOS, or Linux, unpack it, run the app, and add a Gemini API key in Admin. Use Docker Compose when you want the full self-hosted stack, local development, or GPU diarization. An OpenAI key is optional for OpenAI-routed agents, and local ONNX transcription needs no key at all."
             }
           }
         ]
@@ -128,7 +128,7 @@
         <a class="btn primary" href="#early-access">Request early access</a>
         <a class="btn ghost" href="#quickstart">Self-host in minutes</a>
       </div>
-      <p class="quickstart-note">Private desktop preview for Windows &amp; macOS &middot; self-host anytime with Docker Compose &middot; works with Zoom, Meet, and Teams &middot; MIT licensed</p>
+      <p class="quickstart-note">Private desktop preview for Windows, macOS &amp; Linux &middot; self-host anytime with Docker Compose &middot; works with Zoom, Meet, and Teams &middot; MIT licensed</p>
       <div class="hero-shot">
         <div class="browser-frame">
           <div class="bar" aria-hidden="true"></div>
@@ -340,16 +340,18 @@
         <article class="setup-panel featured">
           <span class="kicker">Desktop app</span>
           <h3>Download, unzip, run</h3>
-          <p>Windows and macOS builds bundle the app, backend, and per-user database. Backchannel sits in your system tray or menu bar, opens in your browser, and needs no Docker.</p>
+          <p>Windows, macOS, and Linux builds bundle the app, backend, and per-user database. Backchannel sits in your system tray or menu bar, opens in your browser, and needs no Docker. Downloads require authenticated access to the private GitHub repository; anonymous requests return 404.</p>
           <ul class="setup-list">
             <li><strong>Windows x64:</strong> unzip <code>Backchannel-windows-x64.zip</code> and run <code>Backchannel.exe</code>.</li>
             <li><strong>macOS Apple Silicon:</strong> unzip <code>Backchannel-macos-arm64.zip</code> and open <code>Backchannel.app</code>.</li>
+            <li><strong>Linux x64:</strong> a portable tarball, not a package-manager installer: extract <code>Backchannel-linux-x64.tar.gz</code> and run <code>Backchannel/Backchannel</code>; data lives in <code>~/.local/share/backchannel</code>.</li>
             <li>Add provider keys after launch in <strong>Admin -&gt; API Keys</strong>.</li>
           </ul>
           <div class="setup-actions">
-            <a class="btn primary" href="releases/v0.1.1/">View desktop release</a>
-            <a class="btn ghost" href="https://github.com/talberthoule/backchannel/releases/download/v0.1.1/Backchannel-windows-x64.zip">Windows zip</a>
-            <a class="btn ghost" href="https://github.com/talberthoule/backchannel/releases/download/v0.1.1/Backchannel-macos-arm64.zip">macOS zip</a>
+            <a class="btn primary" href="releases/v0.2.0/">View desktop release</a>
+            <a class="btn ghost" href="https://github.com/talberthoule/backchannel/releases/download/v0.2.0/Backchannel-windows-x64.zip">Windows zip</a>
+            <a class="btn ghost" href="https://github.com/talberthoule/backchannel/releases/download/v0.2.0/Backchannel-macos-arm64.zip">macOS zip</a>
+            <a class="btn ghost" href="https://github.com/talberthoule/backchannel/releases/download/v0.2.0/Backchannel-linux-x64.tar.gz">Linux tarball</a>
           </div>
         </article>
 
@@ -478,7 +480,7 @@ docker compose up --build
         </div>
         <div class="card">
           <h3>What do I need to run it?</h3>
-          <p>Use the desktop app for the easiest start: download the zip for Windows or macOS, unzip it, run the app, and add a Gemini API key in Admin. Use Docker Compose when you want the full self-hosted stack, local development, or GPU diarization. An OpenAI key is optional for OpenAI-routed agents, and local ONNX transcription needs no key at all.</p>
+          <p>Use the desktop app for the easiest start: download the build for Windows, macOS, or Linux, unpack it, run the app, and add a Gemini API key in Admin. Use Docker Compose when you want the full self-hosted stack, local development, or GPU diarization. An OpenAI key is optional for OpenAI-routed agents, and local ONNX transcription needs no key at all.</p>
         </div>
       </div>
     </div>
@@ -529,7 +531,7 @@ docker compose up --build
     <div class="wrap early-access-grid">
       <div class="early-access-copy">
         <h2>Get the next desktop build</h2>
-        <p class="sub">Request access to the private Windows and macOS preview. We will also send meaningful release updates and occasional Backchannel news.</p>
+        <p class="sub">Request access to the private Windows, macOS, and Linux preview. We will also send meaningful release updates and occasional Backchannel news.</p>
         <p class="early-access-proof">No weekly drip campaign. Just invites and product updates worth opening.</p>
       </div>
       <form id="interest-form" class="interest-form" action="/api/interest" method="post">

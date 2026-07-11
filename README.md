@@ -69,17 +69,25 @@ Read more in [docs/architecture.md](docs/architecture.md).
 ### Option 1: Desktop app (easiest)
 
 Download the latest desktop release for your platform from the
-[Backchannel release page](https://backchannel.page/releases/v0.1.1/):
+[Backchannel release page](https://backchannel.page/releases/v0.2.0/):
 
 - `Backchannel-windows-x64.zip` - unzip, run `Backchannel.exe`.
   Windows SmartScreen will warn on first run because the build is
   unsigned: click "More info" then "Run anyway".
 - `Backchannel-macos-arm64.zip` (Apple Silicon) - unzip, right-click
   `Backchannel.app` and choose "Open" the first time (unsigned build).
+- `Backchannel-linux-x64.tar.gz` (x64) - a portable bundle, not a
+  package-manager installer: `tar -xzf Backchannel-linux-x64.tar.gz`,
+  then run `Backchannel/Backchannel`.
+
+Desktop assets are attached to releases in this private GitHub repository;
+downloading them requires authenticated access, and anonymous requests
+return 404.
 
 The app lives in your system tray / menu bar and opens Backchannel in your
 default browser. Data is stored per-user (`%LOCALAPPDATA%\Backchannel` on
-Windows, `~/Library/Application Support/Backchannel` on macOS).
+Windows, `~/Library/Application Support/Backchannel` on macOS,
+`~/.local/share/backchannel` on Linux).
 
 Notes:
 - MP3/M4A audio import needs `ffmpeg` on your PATH (WAV/FLAC/OGG work

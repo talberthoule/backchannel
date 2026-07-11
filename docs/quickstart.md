@@ -2,10 +2,16 @@
 
 ## Desktop app (easiest)
 
-Prefer the shortest path? Download the latest [desktop release](https://backchannel.page/releases/v0.1.1/) for your platform:
+Prefer the shortest path? Download the latest [desktop release](https://backchannel.page/releases/v0.2.0/) for your platform:
 
 - **Windows** -- `Backchannel-windows-x64.zip`; unzip and run `Backchannel.exe`.
 - **macOS** (Apple Silicon) -- `Backchannel-macos-arm64.zip`; unzip and open `Backchannel.app`.
+- **Linux** (x64) -- `Backchannel-linux-x64.tar.gz`; a portable bundle (not a
+  package-manager installer): `tar -xzf` it and run `Backchannel/Backchannel`.
+  Data lives in `~/.local/share/backchannel`.
+
+Desktop assets require authenticated access to the private GitHub repository;
+anonymous download requests return 404.
 
 The app runs from your system tray / menu bar and stores data per-user, no Docker needed. Set a Gemini API key in Admin -> API Keys on first run. For the full self-hosted stack, use Docker Compose below.
 

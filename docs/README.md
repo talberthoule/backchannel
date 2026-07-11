@@ -25,7 +25,7 @@ This folder is the deeper technical reference behind the top-level
 | [REST API](rest-api.md) | Endpoint reference for all routers, grouped by resource |
 | [Configuration](configuration.md) | Settings, environment variables, encrypted credentials, the model registry |
 | [Deployment](deployment.md) | Docker Compose services, GPU support, nginx proxying, startup behavior |
-| [Releasing](releasing.md) | Coordinating Docker source, the documentation site, and versioned Windows/macOS desktop artifacts |
+| [Releasing](releasing.md) | Coordinating Docker source, the documentation site, and versioned Windows/macOS/Linux desktop artifacts |
 
 ## Reading order
 
