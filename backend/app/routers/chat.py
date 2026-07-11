@@ -1,3 +1,4 @@
+import json
 import logging
 import uuid
 from typing import Literal
@@ -6,9 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Session, Speaker, TranscriptEntry
+from app.models import Question, Session, SessionSynthesis, Speaker, TranscriptEntry
 from app.services.llm import generate_text, registry_entry
 
 logger = logging.getLogger(__name__)
@@ -18,6 +20,15 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 CONTEXT_BUDGET_CHARS = 60000
 MAX_CHAT_HISTORY_MESSAGES = 8
 MAX_CHAT_MESSAGE_CHARS = 8000
+BRIEFING_FIELDS = (
+    "top_outcomes",
+    "client_objectives",
+    "top_opportunities",
+    "risks_blockers",
+    "action_plan",
+    "unresolved_discovery_questions",
+    "strategic_signals",
+)
 
 SYSTEM_PROMPT = (
     "You are a meeting analysis assistant. Use ONLY the supplied meeting "
@@ -39,8 +50,47 @@ class ChatMessage(BaseModel):
 
 class ChatIn(BaseModel):
     model_id: str
-    session_ids: list[uuid.UUID]
+    session_ids: list[uuid.UUID] = Field(min_length=1, max_length=20)
     messages: list[ChatMessage] = Field(min_length=1, max_length=MAX_CHAT_HISTORY_MESSAGES)
+
+
+def _format_briefing(synthesis) -> str:
+    if synthesis is None or getattr(synthesis, "status", "") not in {"completed", "partial"}:
+        return ""
+    content = {field: getattr(synthesis, field, []) or [] for field in BRIEFING_FIELDS}
+    content["insight_clusters"] = [
+        {
+            "title": cluster.title,
+            "summary": cluster.summary,
+            "priority": cluster.priority,
+            "confidence": cluster.confidence,
+        }
+        for cluster in (getattr(synthesis, "clusters", []) or [])
+    ]
+    content["arbiter_notes"] = getattr(synthesis, "arbiter_notes", "") or ""
+    return json.dumps(content, ensure_ascii=False, separators=(",", ":"))
+
+
+def _format_insights(items, speaker_names: dict[str, str]) -> str:
+    if not items:
+        return ""
+    content = [
+        {
+            "id": str(item.id),
+            "type": item.item_type,
+            "text": item.question,
+            "rationale": item.rationale,
+            "source_context": item.source_context,
+            "speaker": speaker_names.get(str(item.speaker_id), "Unknown") if item.speaker_id else "",
+            "answered": item.answered,
+            "answer_summary": item.answer_summary,
+            "needs_followup": item.needs_followup,
+            "followup_question": item.followup_question,
+            "offering_match": item.offering_match,
+        }
+        for item in items
+    ]
+    return json.dumps(content, ensure_ascii=False, separators=(",", ":"))
 
 
 def _layer_blocks(sessions_data: list[dict], key: str, remaining: int) -> tuple[str, int]:
@@ -93,10 +143,6 @@ def build_chat_prompt(
 
 @router.post("")
 async def chat(body: ChatIn, db: AsyncSession = Depends(get_db)):
-    if not body.session_ids:
-        raise HTTPException(400, "session_ids must not be empty")
-    if not body.messages:
-        raise HTTPException(400, "messages must not be empty")
     entry = registry_entry(body.model_id)
     if not entry or not entry.get("supports_text"):
         raise HTTPException(400, f"Model {body.model_id} does not support text generation")
@@ -119,14 +165,36 @@ async def chat(body: ChatIn, db: AsyncSession = Depends(get_db)):
             (speaker_names.get(str(e.speaker_id), "Unknown"), e.text)
             for e in entries_result.scalars().all()
         ]
+
+        synthesis_result = await db.execute(
+            select(SessionSynthesis)
+            .where(
+                SessionSynthesis.session_id == session_id,
+                SessionSynthesis.mode == "post_call",
+                SessionSynthesis.status.in_(("completed", "partial")),
+            )
+            .options(selectinload(SessionSynthesis.clusters))
+        )
+        synthesis = synthesis_result.scalar_one_or_none()
+
+        insights_result = await db.execute(
+            select(Question)
+            .where(Question.session_id == session_id, Question.dismissed.is_(False))
+            .order_by(Question.created_at)
+        )
+        insights = insights_result.scalars().all()
+
         started = session.started_at or session.created_at
         sessions_data.append({
             "name": session.name,
             "started_at": started.date().isoformat() if started else "unknown date",
+            "sort_key": started.isoformat() if started else "",
+            "briefing": _format_briefing(synthesis),
+            "insights": _format_insights(insights, speaker_names),
             "lines": lines,
         })
 
-    # Keep chronological order (oldest first) so truncation drops the oldest.
+    sessions_data.sort(key=lambda data: data["sort_key"])
     prompt = build_chat_prompt(sessions_data, [m.model_dump() for m in body.messages])
 
     try:

@@ -1,6 +1,9 @@
 import unittest
+from types import SimpleNamespace
 
-from app.routers.chat import build_chat_prompt
+from pydantic import ValidationError
+
+from app.routers.chat import ChatIn, _format_briefing, _format_insights, build_chat_prompt
 
 
 def session_data(name, lines, *, briefing="", insights="", started_at="2026-07-01"):
@@ -117,6 +120,65 @@ class ChatPromptTests(unittest.TestCase):
 
         self.assertIn("NEW_BRIEF", prompt)
         self.assertIn("[truncated]", prompt)
+
+    def test_briefing_formatter_keeps_settled_sections_clusters_and_notes(self):
+        synthesis = SimpleNamespace(
+            status="completed",
+            top_outcomes=[{"title": "Outcome", "summary": "Confirmed"}],
+            client_objectives=[],
+            top_opportunities=[],
+            risks_blockers=[],
+            action_plan=[{"title": "Send proposal", "owner": "Alice"}],
+            unresolved_discovery_questions=[],
+            strategic_signals=[],
+            arbiter_notes="Brief wins on priorities.",
+            clusters=[SimpleNamespace(
+                title="Security",
+                summary="SSO and audit requirements",
+                priority=1,
+                confidence="high",
+            )],
+        )
+
+        content = _format_briefing(synthesis)
+        self.assertIn('"Outcome"', content)
+        self.assertIn('"Send proposal"', content)
+        self.assertIn('"Security"', content)
+        self.assertIn('"Brief wins on priorities."', content)
+
+    def test_briefing_formatter_omits_unsettled_synthesis(self):
+        self.assertEqual("", _format_briefing(SimpleNamespace(status="pending")))
+        self.assertEqual("", _format_briefing(SimpleNamespace(status="error")))
+
+    def test_insight_formatter_keeps_active_detail_and_speaker(self):
+        item = SimpleNamespace(
+            id="insight-1",
+            item_type="action_item",
+            question="Send the proposal.",
+            rationale="Customer requested Friday.",
+            source_context="Alice committed on the call.",
+            speaker_id="speaker-1",
+            answered=True,
+            answer_summary="Friday confirmed.",
+            needs_followup=False,
+            followup_question="",
+            offering_match="",
+        )
+        content = _format_insights([item], {"speaker-1": "Alice"})
+        self.assertIn('"speaker":"Alice"', content)
+        self.assertIn('"answer_summary":"Friday confirmed."', content)
+        self.assertIn('"source_context":"Alice committed on the call."', content)
+
+    def test_chat_request_rejects_more_than_twenty_sessions(self):
+        with self.assertRaises(ValidationError):
+            ChatIn(
+                model_id="gemini-test",
+                session_ids=[
+                    f"00000000-0000-0000-0000-{index:012d}"
+                    for index in range(21)
+                ],
+                messages=[{"role": "user", "content": "q"}],
+            )
 
 
 if __name__ == "__main__":
