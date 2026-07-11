@@ -3,7 +3,6 @@ name: Desktop release
 on:
   push:
     tags: ["v*"]
-    branches: ["feature/desktop-packaging"]  # temporary: pre-merge CI validation; drop after merge
   workflow_dispatch:
 
 permissions:

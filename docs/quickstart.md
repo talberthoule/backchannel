@@ -1,5 +1,14 @@
 # Quickstart
 
+## Desktop app (easiest)
+
+Prefer a one-click install? Download the latest [release](https://github.com/talberthoule/backchannel/releases/latest) for your platform:
+
+- **Windows** -- `Backchannel-windows-x64.zip`; unzip and run `Backchannel.exe`.
+- **macOS** (Apple Silicon) -- `Backchannel-macos-arm64.zip`; unzip and open `Backchannel.app`.
+
+The app runs from your system tray / menu bar and stores data per-user, no Docker needed. Set a Gemini API key in Admin -> API Keys on first run. For the full self-hosted stack, use Docker Compose below.
+
 ## Prerequisites
 
 - Docker with Docker Compose (the primary way to run the stack), or
