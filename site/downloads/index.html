@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f5f7f6" />
+  <title>Release access | Backchannel</title>
+  <link rel="stylesheet" href="/downloads.css" />
+  <script src="/downloads.js" defer></script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script>
+</head>
+<body>
+  <main class="page" aria-busy="true">
+    <a class="brand" href="/" aria-label="Backchannel release access">
+      <span class="brand-mark" aria-hidden="true"></span>
+      Backchannel
+    </a>
+
+    <section id="login-panel" class="panel" aria-hidden="true" hidden>
+      <p class="kicker">Private release access</p>
+      <h1 id="login-heading" tabindex="-1">Sign in to Backchannel</h1>
+      <p class="intro">Use the credentials provided with your release invitation.</p>
+      <form id="login-form">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="username" required />
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" maxlength="128" required />
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAADzsy7I_nGWf_fZB" data-action="download_login" data-callback="onTurnstileVerified"></div>
+        <p id="login-alert" class="alert" role="alert" aria-live="assertive"></p>
+        <button id="login-submit" type="submit">Sign in</button>
+      </form>
+    </section>
+
+    <section id="change-panel" class="panel" aria-hidden="true" hidden>
+      <p class="kicker">Secure your access</p>
+      <h1 id="change-heading" tabindex="-1">Choose a new password</h1>
+      <p id="password-guidance" class="intro">Use 14 to 128 characters. A unique passphrase is easiest to remember.</p>
+      <form id="change-form">
+        <label for="new-password">New password</label>
+        <input id="new-password" name="new-password" type="password" autocomplete="new-password" minlength="14" maxlength="128" aria-describedby="password-guidance" required />
+        <p id="change-alert" class="alert" role="alert" aria-live="assertive"></p>
+        <button id="change-submit" type="submit">Change password</button>
+      </form>
+      <button class="secondary logout" type="button">Log out</button>
+    </section>
+
+    <section id="releases-panel" class="panel" aria-hidden="true" hidden>
+      <p class="kicker">Private release access</p>
+      <h1 id="releases-heading" tabindex="-1">Backchannel releases</h1>
+      <p class="intro">Your available releases will load here.</p>
+      <p id="releases-alert" class="alert" role="alert" aria-live="assertive"></p>
+      <button class="secondary logout" type="button">Log out</button>
+    </section>
+  </main>
+  <noscript>JavaScript is required to access private releases.</noscript>
+</body>
+</html>

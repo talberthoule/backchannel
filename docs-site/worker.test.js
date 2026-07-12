@@ -682,6 +682,7 @@ function downloadRequest(path, body, init = {}) {
 function downloadBindings({ first = async () => undefined, run, batch } = {}) {
   const calls = [];
   const batchCalls = [];
+  const assetRequests = [];
   const defaultRun = async () => ({ success: true, meta: { changes: 1 } });
   return {
     calls,
@@ -709,8 +710,12 @@ function downloadBindings({ first = async () => undefined, run, batch } = {}) {
             : statements.map(() => ({ success: true, meta: { changes: 1 } }));
         },
       },
-      ASSETS: { fetch: async () => new Response('public asset') },
+      ASSETS: { fetch: async (requestValue) => {
+        assetRequests.push(requestValue);
+        return new Response('recipient asset');
+      } },
     },
+    assetRequests,
   };
 }
 
@@ -737,6 +742,37 @@ const approvedAccount = {
   password_expires_at: '2026-07-12T12:30:00.000Z',
 };
 
+test('recipient host serves only mapped assets with distinct private headers', async () => {
+  const bindingsValue = downloadBindings();
+  const paths = ['/', '/index.html', '/downloads.js', '/downloads.css'];
+  const responses = [];
+  for (const path of paths) {
+    responses.push(await workerModule.route(downloadRequest(path, undefined, { method: 'GET' }), bindingsValue.env));
+  }
+  const missing = await workerModule.route(
+    downloadRequest('/not-found', undefined, { method: 'GET' }),
+    bindingsValue.env,
+  );
+  const admin = adminBindings();
+  const adminPage = await workerModule.route(adminRequest('/'), admin.env, allowOwner);
+
+  assert.ok(responses.every((response) => response.status === 200));
+  assert.deepEqual(
+    bindingsValue.assetRequests.map((requestValue) => new URL(requestValue.url).pathname),
+    ['/downloads/index.html', '/downloads/index.html', '/downloads/downloads.js', '/downloads/downloads.css'],
+  );
+  const expectedCsp = "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
+  for (const response of [...responses, missing]) {
+    assert.equal(response.headers.get('content-security-policy'), expectedCsp);
+    assert.equal(response.headers.get('cache-control'), 'private, no-store');
+    assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+    assert.match(response.headers.get('permissions-policy'), /camera=\(\)/);
+  }
+  assert.equal(missing.status, 404);
+  assert.notEqual(adminPage.headers.get('content-security-policy'), expectedCsp);
+});
+
 test('recipient host keeps unknown paths private and mutations enforce request boundaries', async () => {
   const missing = downloadBindings();
   for (const path of ['/unknown', '/api/download/unknown']) {
@@ -745,7 +781,7 @@ test('recipient host keeps unknown paths private and mutations enforce request b
       missing.env,
     );
     assert.equal(response.status, 404);
-    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('cache-control'), 'private, no-store');
     assert.equal(response.headers.get('x-frame-options'), 'DENY');
   }
   assert.equal(missing.calls.length, 0);

@@ -31,6 +31,12 @@ const ADMIN_ASSETS = new Map([
   ['/admin.css', '/admin/admin.css'],
   ['/admin.js', '/admin/admin.js'],
 ]);
+const DOWNLOAD_ASSETS = new Map([
+  ['/', '/downloads/index.html'],
+  ['/index.html', '/downloads/index.html'],
+  ['/downloads.js', '/downloads/downloads.js'],
+  ['/downloads.css', '/downloads/downloads.css'],
+]);
 const CONSENT_VERSION = '2026-07-11';
 const MAX_BODY_BYTES = 4096;
 const MAX_ADMIN_BODY_BYTES = 8192;
@@ -42,6 +48,14 @@ const ACCESS_HOST = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.cloudflareaccess\.com$/;
 const PRIVATE_HEADERS = {
   'cache-control': 'no-store',
   'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  'referrer-policy': 'no-referrer',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+};
+const DOWNLOAD_HEADERS = {
+  'cache-control': 'private, no-store',
+  'content-security-policy': "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+  'permissions-policy': 'accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()',
   'referrer-policy': 'no-referrer',
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'DENY',
@@ -70,9 +84,13 @@ function privateJson(status, body, headers = {}) {
   return json(status, body, { ...PRIVATE_HEADERS, ...headers });
 }
 
-function secureAsset(response) {
+function downloadJson(status, body, headers = {}) {
+  return json(status, body, { ...DOWNLOAD_HEADERS, ...headers });
+}
+
+function secureAsset(response, privateHeaders = PRIVATE_HEADERS) {
   const headers = new Headers(response.headers);
-  for (const [name, value] of Object.entries(PRIVATE_HEADERS)) headers.set(name, value);
+  for (const [name, value] of Object.entries(privateHeaders)) headers.set(name, value);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -197,22 +215,23 @@ async function readAdminBody(
   request,
   host = ADMIN_HOST,
   maxBytes = MAX_ADMIN_BODY_BYTES,
+  respond = privateJson,
 ) {
   if (request.headers.get('origin') !== `https://${host}`) {
-    return { response: privateJson(403, { ok: false, message: 'Request origin is not allowed.' }) };
+    return { response: respond(403, { ok: false, message: 'Request origin is not allowed.' }) };
   }
   const contentType = request.headers.get('content-type') || '';
   const [mediaType, ...parameters] = contentType.split(';').map((part) => part.trim());
   if (mediaType.toLowerCase() !== 'application/json'
     || parameters.some((part) => !/^charset\s*=\s*['"]?utf-8['"]?$/i.test(part))) {
-    return { response: privateJson(415, { ok: false, message: 'Request must be JSON.' }) };
+    return { response: respond(415, { ok: false, message: 'Request must be JSON.' }) };
   }
   const declaredLength = Number(request.headers.get('content-length') || 0);
   if (declaredLength > maxBytes) {
-    return { response: privateJson(413, { ok: false, message: 'Request is too large.' }) };
+    return { response: respond(413, { ok: false, message: 'Request is too large.' }) };
   }
   const reader = request.body?.getReader();
-  if (!reader) return { response: privateJson(400, { ok: false, message: 'Request is not valid JSON.' }) };
+  if (!reader) return { response: respond(400, { ok: false, message: 'Request is not valid JSON.' }) };
   const chunks = [];
   let length = 0;
   try {
@@ -222,7 +241,7 @@ async function readAdminBody(
       length += value.byteLength;
       if (length > maxBytes) {
         await reader.cancel();
-        return { response: privateJson(413, { ok: false, message: 'Request is too large.' }) };
+        return { response: respond(413, { ok: false, message: 'Request is too large.' }) };
       }
       chunks.push(value);
     }
@@ -236,7 +255,7 @@ async function readAdminBody(
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TypeError();
     return { body };
   } catch {
-    return { response: privateJson(400, { ok: false, message: 'Request is not valid JSON.' }) };
+    return { response: respond(400, { ok: false, message: 'Request is not valid JSON.' }) };
   }
 }
 
@@ -505,11 +524,11 @@ function clearSessionCookie() {
 }
 
 function signInDenied() {
-  return privateJson(401, { ok: false, error: 'Unable to sign in.' });
+  return downloadJson(401, { ok: false, error: 'Unable to sign in.' });
 }
 
 function downloadUnavailable() {
-  return privateJson(503, { ok: false, error: 'Request could not be completed.' });
+  return downloadJson(503, { ok: false, error: 'Request could not be completed.' });
 }
 
 function downloadNow(dependencies) {
@@ -561,7 +580,22 @@ async function findDownloadSession(env, tokenHash, now) {
 }
 
 async function readDownloadBody(request) {
-  return readAdminBody(request, DOWNLOAD_HOST, MAX_DOWNLOAD_BODY_BYTES);
+  return readAdminBody(request, DOWNLOAD_HOST, MAX_DOWNLOAD_BODY_BYTES, downloadJson);
+}
+
+async function handleDownloadAsset(request, env, assetPath) {
+  if (request.method !== 'GET') {
+    return downloadJson(405, { ok: false, error: 'Method not allowed.' }, { allow: 'GET' });
+  }
+  if (!env.ASSETS) return downloadJson(503, { ok: false, error: 'Request could not be completed.' });
+  const assetUrl = new URL(request.url);
+  assetUrl.pathname = assetPath;
+  assetUrl.search = '';
+  try {
+    return secureAsset(await env.ASSETS.fetch(new Request(assetUrl, request)), DOWNLOAD_HEADERS);
+  } catch {
+    return downloadJson(503, { ok: false, error: 'Request could not be completed.' });
+  }
 }
 
 async function handleDownloadLogin(request, env, dependencies) {
@@ -574,7 +608,7 @@ async function handleDownloadLogin(request, env, dependencies) {
     : '';
   if (!email || password.length < 1 || password.length > 128
     || turnstileToken.length < 1 || turnstileToken.length > 2048) {
-    return privateJson(400, { ok: false, error: 'Request is invalid.' });
+    return downloadJson(400, { ok: false, error: 'Request is invalid.' });
   }
   if (!env.INTEREST_DB || typeof env.TURNSTILE_SECRET !== 'string'
     || !env.TURNSTILE_SECRET) return downloadUnavailable();
@@ -672,7 +706,7 @@ async function handleDownloadLogin(request, env, dependencies) {
   } catch {
     return downloadUnavailable();
   }
-  return privateJson(200, { ok: true, must_change_password: temporary }, {
+  return downloadJson(200, { ok: true, must_change_password: temporary }, {
     'set-cookie': sessionCookie(session.token, maxAge),
   });
 }
@@ -685,10 +719,10 @@ async function handleDownloadSession(request, env, dependencies) {
       await tokenHashFromRequest(request),
       downloadNow(dependencies),
     );
-    if (!account) return privateJson(200, { authenticated: false }, {
+    if (!account) return downloadJson(200, { authenticated: false }, {
       'set-cookie': clearSessionCookie(),
     });
-    return privateJson(200, {
+    return downloadJson(200, {
       authenticated: true,
       must_change_password: account.password_change_only === 1,
       email: account.email.trim().toLowerCase(),
@@ -703,7 +737,7 @@ async function handleDownloadPassword(request, env, dependencies) {
   if (parsed.response) return parsed.response;
   const password = typeof parsed.body.password === 'string' ? parsed.body.password : '';
   if (password.length < 14 || password.length > 128) {
-    return privateJson(400, { ok: false, error: 'Request is invalid.' });
+    return downloadJson(400, { ok: false, error: 'Request is invalid.' });
   }
   if (!env.INTEREST_DB) return downloadUnavailable();
   const now = downloadNow(dependencies);
@@ -715,7 +749,7 @@ async function handleDownloadPassword(request, env, dependencies) {
     return downloadUnavailable();
   }
   if (!account || account.password_change_only !== 1) {
-    return privateJson(401, { ok: false, error: 'Unable to change password.' });
+    return downloadJson(401, { ok: false, error: 'Unable to change password.' });
   }
 
   const randomBytes = dependencies.randomBytes
@@ -766,14 +800,14 @@ async function handleDownloadPassword(request, env, dependencies) {
       `, account.email, nowIso, ...marker),
     ]);
     if ((results[0]?.meta?.changes ?? 0) !== 1) {
-      return privateJson(401, { ok: false, error: 'Unable to change password.' });
+      return downloadJson(401, { ok: false, error: 'Unable to change password.' });
     }
     if ((results[2]?.meta?.changes ?? 0) !== 1
       || (results[3]?.meta?.changes ?? 0) !== 1) return downloadUnavailable();
   } catch {
     return downloadUnavailable();
   }
-  return privateJson(200, { ok: true }, {
+  return downloadJson(200, { ok: true }, {
     'set-cookie': sessionCookie(session.token, SESSION_TTL_SECONDS),
   });
 }
@@ -801,7 +835,7 @@ async function handleDownloadLogout(request, env, dependencies) {
       // Clearing the browser cookie is still a successful local logout.
     }
   }
-  return privateJson(200, { ok: true }, { 'set-cookie': clearSessionCookie() });
+  return downloadJson(200, { ok: true }, { 'set-cookie': clearSessionCookie() });
 }
 
 async function handleDownloadRequest(request, env, dependencies) {
@@ -812,9 +846,9 @@ async function handleDownloadRequest(request, env, dependencies) {
     ['/api/download/logout', ['POST', handleDownloadLogout]],
   ]);
   const routeValue = routes.get(new URL(request.url).pathname);
-  if (!routeValue) return privateJson(404, { ok: false, error: 'Not found.' });
+  if (!routeValue) return downloadJson(404, { ok: false, error: 'Not found.' });
   if (request.method !== routeValue[0]) {
-    return privateJson(405, { ok: false, error: 'Method not allowed.' }, { allow: routeValue[0] });
+    return downloadJson(405, { ok: false, error: 'Method not allowed.' }, { allow: routeValue[0] });
   }
   return routeValue[1](request, env, dependencies);
 }
@@ -898,7 +932,11 @@ export async function route(request, env, verify = verifyAccessToken, dependenci
     url.hostname = url.hostname.slice(4);
     return Response.redirect(url.toString(), 301);
   }
-  if (url.hostname === DOWNLOAD_HOST) return handleDownloadRequest(request, env, dependencies);
+  if (url.hostname === DOWNLOAD_HOST) {
+    const assetPath = DOWNLOAD_ASSETS.get(url.pathname);
+    if (assetPath) return handleDownloadAsset(request, env, assetPath);
+    return handleDownloadRequest(request, env, dependencies);
+  }
   if (url.hostname === ADMIN_HOST) {
     const denied = await authorizeAdmin(request, env, verify);
     if (denied) return denied;

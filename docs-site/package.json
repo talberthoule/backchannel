@@ -7,6 +7,7 @@
     "dev": "npm run sync && astro dev",
     "build": "npm run sync && astro build && node assemble.mjs",
     "test:admin": "node --test admin.test.js",
+    "test:download": "node --test download.test.js",
     "test:release-access": "node --test release-access.test.js",
     "test:migration": "node --test migration.test.js",
     "test:worker": "node --test worker.test.js",
