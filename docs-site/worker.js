@@ -648,16 +648,27 @@ async function handleDownloadLogin(request, env, dependencies) {
           SELECT 1 FROM release_accounts a
           JOIN interest_subscribers i ON i.email = a.email
           WHERE a.email = ? AND a.state = 'active' AND i.release_decision = 'approved'
+            AND a.password_hash = ? AND a.password_salt = ?
+            AND a.password_iterations = ? AND a.must_change_password = ?
+            AND a.password_expires_at IS ?
+            AND (? = 0 OR a.password_expires_at > ?)
         )
       `, session.tokenHash, email, temporary ? 1 : 0, now.toISOString(),
-      expiresAt.toISOString(), email),
+      expiresAt.toISOString(), email, account.password_hash, account.password_salt,
+      account.password_iterations, account.must_change_password, account.password_expires_at,
+      temporary ? 1 : 0, now.toISOString()),
       statement(env, `
         INSERT INTO release_access_events (email, action, version, created_at)
-        SELECT ?, 'login_success', NULL, ? WHERE EXISTS
-          (SELECT 1 FROM release_sessions WHERE token_hash = ?)
-      `, email, now.toISOString(), session.tokenHash),
+        SELECT ?, 'login_success', NULL, ? WHERE EXISTS (
+          SELECT 1 FROM release_sessions
+          WHERE token_hash = ? AND email = ? AND password_change_only = ?
+            AND created_at = ? AND expires_at = ?
+        )
+      `, email, now.toISOString(), session.tokenHash, email, temporary ? 1 : 0,
+      now.toISOString(), expiresAt.toISOString()),
     ]);
-    if ((results[0]?.meta?.changes ?? 0) !== 1) return downloadUnavailable();
+    if ((results[0]?.meta?.changes ?? 0) !== 1) return signInDenied();
+    if ((results[1]?.meta?.changes ?? 0) !== 1) return downloadUnavailable();
   } catch {
     return downloadUnavailable();
   }
@@ -696,9 +707,10 @@ async function handleDownloadPassword(request, env, dependencies) {
   }
   if (!env.INTEREST_DB) return downloadUnavailable();
   const now = downloadNow(dependencies);
+  const tokenHash = await tokenHashFromRequest(request);
   let account;
   try {
-    account = await findDownloadSession(env, await tokenHashFromRequest(request), now);
+    account = await findDownloadSession(env, tokenHash, now);
   } catch {
     return downloadUnavailable();
   }
@@ -716,29 +728,48 @@ async function handleDownloadPassword(request, env, dependencies) {
       iterations: PASSWORD_ITERATIONS,
     });
     session = await (dependencies.createSessionToken || createSessionToken)(randomBytes);
+    const nowIso = now.toISOString();
     const expiresAt = new Date(now.getTime() + SESSION_TTL_SECONDS * 1000).toISOString();
+    const changedAccount = `
+      SELECT 1 FROM release_accounts
+      WHERE email = ? AND state = 'active' AND password_hash = ? AND password_salt = ?
+        AND password_iterations = ? AND must_change_password = 0
+        AND password_expires_at IS NULL AND password_changed_at = ?
+    `;
+    const marker = [
+      account.email, hashed.hash, hashed.salt, PASSWORD_ITERATIONS, nowIso,
+    ];
     const results = await env.INTEREST_DB.batch([
       statement(env, `
         UPDATE release_accounts SET password_hash = ?, password_salt = ?,
           password_iterations = ?, must_change_password = 0, password_expires_at = NULL,
           password_changed_at = ?
-        WHERE email = ? AND state = 'active'
-      `, hashed.hash, hashed.salt, PASSWORD_ITERATIONS, now.toISOString(), account.email),
-      statement(env, 'DELETE FROM release_sessions WHERE email = ?', account.email),
+        WHERE email = ? AND state = 'active' AND must_change_password = 1
+          AND EXISTS (
+            SELECT 1 FROM release_sessions
+            WHERE token_hash = ? AND email = ? AND password_change_only = 1
+              AND expires_at > ?
+          )
+      `, hashed.hash, hashed.salt, PASSWORD_ITERATIONS, nowIso, account.email,
+      tokenHash, account.email, nowIso),
+      statement(env, `
+        DELETE FROM release_sessions WHERE email = ? AND EXISTS (${changedAccount})
+      `, account.email, ...marker),
       statement(env, `
         INSERT INTO release_sessions
           (token_hash, email, password_change_only, created_at, expires_at)
-        SELECT ?, ?, 0, ?, ? WHERE EXISTS
-          (SELECT 1 FROM release_accounts WHERE email = ? AND state = 'active')
-      `, session.tokenHash, account.email, now.toISOString(), expiresAt, account.email),
+        SELECT ?, ?, 0, ?, ? WHERE EXISTS (${changedAccount})
+      `, session.tokenHash, account.email, nowIso, expiresAt, ...marker),
       statement(env, `
         INSERT INTO release_access_events (email, action, version, created_at)
-        SELECT ?, 'password_change', NULL, ? WHERE EXISTS
-          (SELECT 1 FROM release_accounts WHERE email = ? AND state = 'active')
-      `, account.email, now.toISOString(), account.email),
+        SELECT ?, 'password_change', NULL, ? WHERE EXISTS (${changedAccount})
+      `, account.email, nowIso, ...marker),
     ]);
-    if ((results[0]?.meta?.changes ?? 0) !== 1
-      || (results[2]?.meta?.changes ?? 0) !== 1) return downloadUnavailable();
+    if ((results[0]?.meta?.changes ?? 0) !== 1) {
+      return privateJson(401, { ok: false, error: 'Unable to change password.' });
+    }
+    if ((results[2]?.meta?.changes ?? 0) !== 1
+      || (results[3]?.meta?.changes ?? 0) !== 1) return downloadUnavailable();
   } catch {
     return downloadUnavailable();
   }

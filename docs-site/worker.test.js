@@ -830,6 +830,28 @@ test('recipient login performs one password verification for every account state
   ]));
 });
 
+test('recipient login uses the real dummy derivation for unknown and malformed accounts', async () => {
+  const originalDeriveBits = globalThis.crypto.subtle.deriveBits;
+  let derivations = 0;
+  globalThis.crypto.subtle.deriveBits = async function deriveBits(...args) {
+    derivations += 1;
+    return originalDeriveBits.apply(this, args);
+  };
+  try {
+    for (const account of [undefined, { ...approvedAccount, password_hash: 'malformed' }]) {
+      const bindingsValue = downloadBindings({ first: async () => account });
+      const response = await workerModule.route(downloadRequest('/api/download/login', {
+        email: 'person@example.com', password: 'wrong', turnstile_token: 'challenge',
+      }), bindingsValue.env, undefined, downloadDependencies());
+      assert.equal(response.status, 401);
+      assert.deepEqual(await response.json(), { ok: false, error: 'Unable to sign in.' });
+    }
+  } finally {
+    globalThis.crypto.subtle.deriveBits = originalDeriveBits;
+  }
+  assert.equal(derivations, 2);
+});
+
 test('temporary login stores only a token hash and caps the change session expiry', async () => {
   for (const [passwordExpires, expectedExpires, maxAge] of [
     ['2026-07-12T12:10:00.000Z', '2026-07-12T12:10:00.000Z', 600],
@@ -854,6 +876,7 @@ test('temporary login stores only a token hash and caps the change session expir
     assert.deepEqual(bindingsValue.calls[1].values, [
       'stored-token-hash', 'person@example.com', 1,
       '2026-07-12T12:00:00.000Z', expectedExpires, 'person@example.com',
+      'hash', 'salt', 600000, 1, passwordExpires, 1, '2026-07-12T12:00:00.000Z',
     ]);
     assert.match(bindingsValue.calls[2].sql, /login_success/i);
     assert.equal(serialized.includes('raw-token'), false);
@@ -875,7 +898,36 @@ test('permanent login creates a seven-day normal session', async () => {
   assert.deepEqual(bindingsValue.calls[1].values, [
     'stored-token-hash', 'person@example.com', 0,
     '2026-07-12T12:00:00.000Z', '2026-07-19T12:00:00.000Z', 'person@example.com',
+    'hash', 'salt', 600000, 0, null, 0, '2026-07-12T12:00:00.000Z',
   ]);
+});
+
+test('login rejects a concurrent credential reset without storing a session or cookie', async () => {
+  const bindingsValue = downloadBindings({
+    first: async () => approvedAccount,
+    batch: async (statements) => statements.map(() => ({ success: true, meta: { changes: 0 } })),
+  });
+  const response = await workerModule.route(downloadRequest('/api/download/login', {
+    email: 'person@example.com', password: 'temporary', turnstile_token: 'challenge',
+  }), bindingsValue.env, undefined, downloadDependencies({
+    verifyPassword: async () => true,
+    createSessionToken: async () => ({ token: 'stale-raw-token', tokenHash: 'stale-token-hash' }),
+  }));
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { ok: false, error: 'Unable to sign in.' });
+  assert.equal(response.headers.get('set-cookie'), null);
+  assert.equal(bindingsValue.batchCalls.length, 1);
+  assert.match(bindingsValue.calls[1].sql,
+    /password_hash = \?[\s\S]+password_salt = \?[\s\S]+password_iterations = \?[\s\S]+must_change_password = \?[\s\S]+password_expires_at IS \?[\s\S]+password_expires_at > \?/i);
+  assert.deepEqual(bindingsValue.calls[1].values, [
+    'stale-token-hash', 'person@example.com', 1,
+    '2026-07-12T12:00:00.000Z', '2026-07-12T12:30:00.000Z',
+    'person@example.com', 'hash', 'salt', 600000, 1,
+    '2026-07-12T12:30:00.000Z', 1, '2026-07-12T12:00:00.000Z',
+  ]);
+  assert.match(bindingsValue.calls[2].sql,
+    /login_success[\s\S]+WHERE EXISTS[\s\S]+release_sessions[\s\S]+token_hash = \?/i);
 });
 
 test('session status hashes only the named cookie and rechecks session and account state', async () => {
@@ -957,6 +1009,38 @@ test('password change requires a change-only session and rotates it atomically',
   assert.equal(JSON.stringify(bindingsValue.calls).includes('new-raw-token'), false);
   assert.equal(response.headers.get('set-cookie'),
     '__Host-backchannel_release=new-raw-token; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=604800');
+});
+
+test('password change makes every write conditional on the exact presented session', async () => {
+  const token = await createSessionToken((length) => new Uint8Array(length).fill(10));
+  const bindingsValue = downloadBindings({
+    first: async () => ({
+      email: 'person@example.com', state: 'active', password_change_only: 1,
+      expires_at: '2026-07-12T12:30:00.000Z',
+    }),
+    batch: async (statements) => statements.map(() => ({ success: true, meta: { changes: 0 } })),
+  });
+  const response = await workerModule.route(downloadRequest('/api/download/password', {
+    password: 'a new permanent password',
+  }, { headers: { cookie: `__Host-backchannel_release=${token.token}` } }),
+  bindingsValue.env, undefined, downloadDependencies({
+    hashPassword: async () => ({ hash: 'new-hash', salt: 'new-salt', iterations: 600000 }),
+    createSessionToken: async () => ({ token: 'new-raw-token', tokenHash: 'new-token-hash' }),
+  }));
+
+  assert.equal(response.status, 401);
+  assert.equal(response.headers.get('set-cookie'), null);
+  assert.equal(bindingsValue.batchCalls.length, 1);
+  assert.match(bindingsValue.calls[1].sql,
+    /UPDATE release_accounts[\s\S]+WHERE[\s\S]+state = 'active'[\s\S]+EXISTS[\s\S]+release_sessions[\s\S]+token_hash = \?[\s\S]+password_change_only = 1[\s\S]+expires_at > \?/i);
+  assert.ok(bindingsValue.calls[1].values.includes(token.tokenHash));
+  for (const call of bindingsValue.calls.slice(2, 5)) {
+    assert.match(call.sql,
+      /EXISTS[\s\S]+password_hash = \?[\s\S]+password_salt = \?[\s\S]+password_changed_at = \?/i);
+    assert.ok(call.values.includes('new-hash'));
+    assert.ok(call.values.includes('new-salt'));
+    assert.ok(call.values.includes('2026-07-12T12:00:00.000Z'));
+  }
 });
 
 test('logout deletes only the presented session and always clears the cookie', async () => {
