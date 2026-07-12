@@ -1417,6 +1417,78 @@ test('GET preconditions use object metadata in RFC order before Range parsing', 
   }
 });
 
+test('legacy HTTP dates honor RFC850 rollover and asctime semantics before Range', async () => {
+  const cases = [
+    ['RFC850 most-recent-past year fails If-Unmodified-Since',
+      'if-unmodified-since', 'Sunday, 06-Nov-94 08:49:37 GMT',
+      '1995-01-01T00:00:00.000Z', 412],
+    ['RFC850 exactly fifty years ahead is not rolled back',
+      'if-unmodified-since', 'Sunday, 12-Jul-76 12:00:00 GMT',
+      '2100-01-01T00:00:00.000Z', 412],
+    ['asctime not-modified returns 304',
+      'if-modified-since', 'Sun Jul 12 13:00:00 2026',
+      '2026-07-12T12:00:00.900Z', 304],
+    ['impossible RFC850 date is ignored',
+      'if-unmodified-since', 'Monday, 31-Feb-25 12:00:00 GMT',
+      '2026-07-12T12:00:00.900Z', 416],
+    ['RFC850 lookalike without GMT is ignored',
+      'if-unmodified-since', 'Saturday, 12-Jul-25 12:00:00 UTC',
+      '2026-07-12T12:00:00.900Z', 416],
+    ['malformed asctime spacing is ignored',
+      'if-modified-since', 'Sun Jul 6 13:00:00 2026',
+      '2026-07-12T12:00:00.900Z', 416],
+  ];
+
+  for (const [name, header, value, uploaded, expected] of cases) {
+    const bucket = releaseBucket({ metadata: {
+      size: 100, httpEtag: '"object-etag"', uploaded: new Date(uploaded),
+    } });
+    const bindingsValue = releaseBindings(bucket);
+    const response = await workerModule.route(
+      releaseGet('/api/download/releases/v1.0.0/windows-x64', {
+        [header]: value, range: 'bytes=0-1,5-6',
+      }),
+      bindingsValue.env, undefined, downloadDependencies(),
+    );
+    assert.equal(response.status, expected, name);
+    assert.equal(bucket.calls.filter(({ operation }) => operation === 'head').length, 1, name);
+    assert.equal(assetCalls(bucket).length, 0, name);
+  }
+});
+
+test('legacy HTTP dates are reevaluated on bodyless conditional get results', async () => {
+  const cases = [
+    ['RFC850 fallback returns 412', 'if-unmodified-since',
+      'Sunday, 12-Jul-26 13:00:00 GMT',
+      '2026-07-12T12:00:00.000Z', '2026-07-12T14:00:00.000Z', 412],
+    ['asctime fallback returns 304', 'if-modified-since',
+      'Sun Jul 12 13:00:00 2026',
+      '2026-07-12T14:00:00.000Z', '2026-07-12T12:00:00.000Z', 304],
+  ];
+
+  for (const [name, header, value, headUploaded, getUploaded, expected] of cases) {
+    const bucket = releaseBucket({
+      metadata: {
+        size: 100, httpEtag: '"object-etag"', uploaded: new Date(headUploaded),
+      },
+      object: async () => ({
+        size: 100, httpEtag: '"object-etag"', uploaded: new Date(getUploaded),
+      }),
+    });
+    const bindingsValue = releaseBindings(bucket);
+    const response = await workerModule.route(
+      releaseGet('/api/download/releases/v1.0.0/windows-x64', {
+        [header]: value, range: 'bytes=0-9',
+      }),
+      bindingsValue.env, undefined, downloadDependencies(),
+    );
+    assert.equal(response.status, expected, name);
+    assert.equal(assetCalls(bucket).length, 1, name);
+    assert.equal(response.body, null, name);
+    assert.equal(bindingsValue.calls.some(({ sql }) => /download_start/.test(sql)), false, name);
+  }
+});
+
 test('missing bindings and missing authorized objects fail generically without download events', async () => {
   const noBinding = releaseBindings();
   const absentBucket = releaseBucket({ metadata: null });

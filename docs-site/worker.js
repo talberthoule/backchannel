@@ -699,14 +699,53 @@ function metadataSeconds(value) {
   return Number.isFinite(milliseconds) ? Math.floor(milliseconds / 1000) : null;
 }
 
+const HTTP_MONTHS = new Map([
+  ['Jan', 0], ['Feb', 1], ['Mar', 2], ['Apr', 3], ['May', 4], ['Jun', 5],
+  ['Jul', 6], ['Aug', 7], ['Sep', 8], ['Oct', 9], ['Nov', 10], ['Dec', 11],
+]);
+const HTTP_WEEKDAYS = new Map([
+  ['Sun', 0], ['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6],
+  ['Sunday', 0], ['Monday', 1], ['Tuesday', 2], ['Wednesday', 3],
+  ['Thursday', 4], ['Friday', 5], ['Saturday', 6],
+]);
+
+function dateSeconds(year, monthName, day, hour, minute, second, weekday) {
+  const month = HTTP_MONTHS.get(monthName);
+  if (month === undefined || year < 0 || year > 9999 || day < 1 || day > 31
+    || hour > 23 || minute > 59 || second > 59) return null;
+  const date = new Date(0);
+  date.setUTCFullYear(year, month, day);
+  date.setUTCHours(hour, minute, second, 0);
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month
+    || date.getUTCDate() !== day || date.getUTCHours() !== hour
+    || date.getUTCMinutes() !== minute || date.getUTCSeconds() !== second
+    || (weekday !== undefined && date.getUTCDay() !== HTTP_WEEKDAYS.get(weekday))) return null;
+  return Math.floor(date.getTime() / 1000);
+}
+
 function httpDateSeconds(value) {
-  if (!/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(value)) {
-    return null;
+  let match = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat), (\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(value);
+  if (match) {
+    return dateSeconds(Number(match[4]), match[3], Number(match[2]),
+      Number(match[5]), Number(match[6]), Number(match[7]), match[1]);
   }
-  const milliseconds = Date.parse(value);
-  return Number.isFinite(milliseconds) && new Date(milliseconds).toUTCString() === value
-    ? Math.floor(milliseconds / 1000)
-    : null;
+
+  match = /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday), (\d{2})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-(\d{2}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(value);
+  if (match) {
+    const now = new Date();
+    let year = Math.floor(now.getUTCFullYear() / 100) * 100 + Number(match[4]);
+    const candidate = dateSeconds(year, match[3], Number(match[2]),
+      Number(match[5]), Number(match[6]), Number(match[7]));
+    const cutoff = new Date(now);
+    cutoff.setUTCFullYear(cutoff.getUTCFullYear() + 50);
+    if (candidate !== null && candidate * 1000 > cutoff.getTime()) year -= 100;
+    return dateSeconds(year, match[3], Number(match[2]),
+      Number(match[5]), Number(match[6]), Number(match[7]), match[1]);
+  }
+
+  match = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (?:(\d{2})| ([1-9])) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(value);
+  return match ? dateSeconds(Number(match[8]), match[2], Number(match[3] || match[4]),
+    Number(match[5]), Number(match[6]), Number(match[7]), match[1]) : null;
 }
 
 function getPreconditionStatus(request, metadata) {
