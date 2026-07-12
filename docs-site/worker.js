@@ -1,14 +1,20 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import {
+  CHANGE_SESSION_TTL_SECONDS,
   PASSWORD_ITERATIONS,
+  SESSION_COOKIE,
+  SESSION_TTL_SECONDS,
   TEMPORARY_PASSWORD_TTL_SECONDS,
+  createSessionToken,
   generateTemporaryPassword,
   hashPassword,
   loadReleaseCatalog,
+  verifyPassword,
 } from './release-access.js';
 
 const API_PATH = '/api/interest';
 const ADMIN_HOST = 'admin.backchannel.page';
+const DOWNLOAD_HOST = 'downloads.backchannel.page';
 const ADMIN_API_PATH = '/api/admin/interests';
 const ADMIN_RELEASES_PATH = '/api/admin/releases';
 const ADMIN_MUTATIONS = new Map([
@@ -28,6 +34,7 @@ const ADMIN_ASSETS = new Map([
 const CONSENT_VERSION = '2026-07-11';
 const MAX_BODY_BYTES = 4096;
 const MAX_ADMIN_BODY_BYTES = 8192;
+const MAX_DOWNLOAD_BODY_BYTES = 8192;
 const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VERSION = /^v[0-9]+\.[0-9]+\.[0-9]+$/;
@@ -186,8 +193,12 @@ export async function handleAdminReleases(request, env) {
   }
 }
 
-async function readAdminBody(request) {
-  if (request.headers.get('origin') !== `https://${ADMIN_HOST}`) {
+async function readAdminBody(
+  request,
+  host = ADMIN_HOST,
+  maxBytes = MAX_ADMIN_BODY_BYTES,
+) {
+  if (request.headers.get('origin') !== `https://${host}`) {
     return { response: privateJson(403, { ok: false, message: 'Request origin is not allowed.' }) };
   }
   const contentType = request.headers.get('content-type') || '';
@@ -197,7 +208,7 @@ async function readAdminBody(request) {
     return { response: privateJson(415, { ok: false, message: 'Request must be JSON.' }) };
   }
   const declaredLength = Number(request.headers.get('content-length') || 0);
-  if (declaredLength > MAX_ADMIN_BODY_BYTES) {
+  if (declaredLength > maxBytes) {
     return { response: privateJson(413, { ok: false, message: 'Request is too large.' }) };
   }
   const reader = request.body?.getReader();
@@ -209,7 +220,7 @@ async function readAdminBody(request) {
       const { done, value } = await reader.read();
       if (done) break;
       length += value.byteLength;
-      if (length > MAX_ADMIN_BODY_BYTES) {
+      if (length > maxBytes) {
         await reader.cancel();
         return { response: privateJson(413, { ok: false, message: 'Request is too large.' }) };
       }
@@ -485,6 +496,298 @@ async function handleAdminAsset(request, env, assetPath) {
   }
 }
 
+function sessionCookie(token, maxAge) {
+  return `${SESSION_COOKIE}=${token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${maxAge}`;
+}
+
+function clearSessionCookie() {
+  return sessionCookie('', 0);
+}
+
+function signInDenied() {
+  return privateJson(401, { ok: false, error: 'Unable to sign in.' });
+}
+
+function downloadUnavailable() {
+  return privateJson(503, { ok: false, error: 'Request could not be completed.' });
+}
+
+function downloadNow(dependencies) {
+  return dependencies.now ? dependencies.now() : new Date();
+}
+
+function rawSessionToken(request) {
+  const prefix = `${SESSION_COOKIE}=`;
+  const cookie = (request.headers.get('cookie') || '')
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
+  return cookie ? cookie.slice(prefix.length) : null;
+}
+
+async function tokenHashFromRequest(request) {
+  const token = rawSessionToken(request);
+  if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+  try {
+    const bytes = Uint8Array.from(
+      atob(`${token.replaceAll('-', '+').replaceAll('_', '/')}=`),
+      (character) => character.charCodeAt(0),
+    );
+    if (bytes.length !== 32) return null;
+    const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes));
+    return btoa(String.fromCharCode(...digest))
+      .replaceAll('+', '-')
+      .replaceAll('/', '_')
+      .replace(/=+$/, '');
+  } catch {
+    return null;
+  }
+}
+
+async function findDownloadSession(env, tokenHash, now) {
+  if (!tokenHash) return null;
+  const account = await env.INTEREST_DB.prepare(`
+    SELECT s.email, s.password_change_only, s.expires_at, a.state
+    FROM release_sessions s
+    JOIN release_accounts a ON a.email = s.email
+    WHERE s.token_hash = ? AND s.expires_at > ? AND a.state = 'active'
+  `).bind(tokenHash, now.toISOString()).first();
+  const expiresAt = Date.parse(account?.expires_at);
+  if (!account || account.state !== 'active'
+    || ![0, 1].includes(account.password_change_only)
+    || typeof account.email !== 'string'
+    || !Number.isFinite(expiresAt) || expiresAt <= now.getTime()) return null;
+  return account;
+}
+
+async function readDownloadBody(request) {
+  return readAdminBody(request, DOWNLOAD_HOST, MAX_DOWNLOAD_BODY_BYTES);
+}
+
+async function handleDownloadLogin(request, env, dependencies) {
+  const parsed = await readDownloadBody(request);
+  if (parsed.response) return parsed.response;
+  const email = emailFrom(parsed.body);
+  const password = typeof parsed.body.password === 'string' ? parsed.body.password : '';
+  const turnstileToken = typeof parsed.body.turnstile_token === 'string'
+    ? parsed.body.turnstile_token
+    : '';
+  if (!email || password.length < 1 || password.length > 128
+    || turnstileToken.length < 1 || turnstileToken.length > 2048) {
+    return privateJson(400, { ok: false, error: 'Request is invalid.' });
+  }
+  if (!env.INTEREST_DB || typeof env.TURNSTILE_SECRET !== 'string'
+    || !env.TURNSTILE_SECRET) return downloadUnavailable();
+
+  let verification;
+  try {
+    const form = new FormData();
+    form.set('secret', env.TURNSTILE_SECRET);
+    form.set('response', turnstileToken);
+    const response = await (dependencies.fetch || fetch)(SITEVERIFY_URL, {
+      method: 'POST',
+      body: form,
+    });
+    if (!response.ok) return downloadUnavailable();
+    verification = await response.json();
+  } catch {
+    return downloadUnavailable();
+  }
+  if (verification?.success !== true || verification.hostname !== DOWNLOAD_HOST
+    || verification.action !== 'download_login') return signInDenied();
+
+  let account;
+  try {
+    account = await env.INTEREST_DB.prepare(`
+      SELECT a.email, a.state, a.password_hash, a.password_salt, a.password_iterations,
+             a.must_change_password, a.password_expires_at, i.release_decision
+      FROM release_accounts a
+      JOIN interest_subscribers i ON i.email = a.email
+      WHERE a.email = ?
+    `).bind(email).first();
+  } catch {
+    return downloadUnavailable();
+  }
+
+  const verify = dependencies.verifyPassword || verifyPassword;
+  let passwordMatches = false;
+  try {
+    passwordMatches = await verify(password, account ? {
+      hash: account.password_hash,
+      salt: account.password_salt,
+      iterations: account.password_iterations,
+    } : undefined);
+  } catch {
+    return downloadUnavailable();
+  }
+  const now = downloadNow(dependencies);
+  const temporary = account?.must_change_password === 1;
+  const permanent = account?.must_change_password === 0;
+  const temporaryExpiry = Date.parse(account?.password_expires_at);
+  if (!passwordMatches || account?.state !== 'active'
+    || account?.release_decision !== 'approved' || (!temporary && !permanent)
+    || (temporary && (!Number.isFinite(temporaryExpiry) || temporaryExpiry <= now.getTime()))) {
+    return signInDenied();
+  }
+
+  const expiresAt = new Date(temporary
+    ? Math.min(now.getTime() + CHANGE_SESSION_TTL_SECONDS * 1000, temporaryExpiry)
+    : now.getTime() + SESSION_TTL_SECONDS * 1000);
+  const maxAge = Math.floor((expiresAt.getTime() - now.getTime()) / 1000);
+  if (maxAge <= 0) return signInDenied();
+  let session;
+  try {
+    session = await (dependencies.createSessionToken || createSessionToken)(
+      dependencies.randomBytes,
+    );
+    const results = await env.INTEREST_DB.batch([
+      statement(env, `
+        INSERT INTO release_sessions
+          (token_hash, email, password_change_only, created_at, expires_at)
+        SELECT ?, ?, ?, ?, ? WHERE EXISTS (
+          SELECT 1 FROM release_accounts a
+          JOIN interest_subscribers i ON i.email = a.email
+          WHERE a.email = ? AND a.state = 'active' AND i.release_decision = 'approved'
+        )
+      `, session.tokenHash, email, temporary ? 1 : 0, now.toISOString(),
+      expiresAt.toISOString(), email),
+      statement(env, `
+        INSERT INTO release_access_events (email, action, version, created_at)
+        SELECT ?, 'login_success', NULL, ? WHERE EXISTS
+          (SELECT 1 FROM release_sessions WHERE token_hash = ?)
+      `, email, now.toISOString(), session.tokenHash),
+    ]);
+    if ((results[0]?.meta?.changes ?? 0) !== 1) return downloadUnavailable();
+  } catch {
+    return downloadUnavailable();
+  }
+  return privateJson(200, { ok: true, must_change_password: temporary }, {
+    'set-cookie': sessionCookie(session.token, maxAge),
+  });
+}
+
+async function handleDownloadSession(request, env, dependencies) {
+  if (!env.INTEREST_DB) return downloadUnavailable();
+  try {
+    const account = await findDownloadSession(
+      env,
+      await tokenHashFromRequest(request),
+      downloadNow(dependencies),
+    );
+    if (!account) return privateJson(200, { authenticated: false }, {
+      'set-cookie': clearSessionCookie(),
+    });
+    return privateJson(200, {
+      authenticated: true,
+      must_change_password: account.password_change_only === 1,
+      email: account.email.trim().toLowerCase(),
+    });
+  } catch {
+    return downloadUnavailable();
+  }
+}
+
+async function handleDownloadPassword(request, env, dependencies) {
+  const parsed = await readDownloadBody(request);
+  if (parsed.response) return parsed.response;
+  const password = typeof parsed.body.password === 'string' ? parsed.body.password : '';
+  if (password.length < 14 || password.length > 128) {
+    return privateJson(400, { ok: false, error: 'Request is invalid.' });
+  }
+  if (!env.INTEREST_DB) return downloadUnavailable();
+  const now = downloadNow(dependencies);
+  let account;
+  try {
+    account = await findDownloadSession(env, await tokenHashFromRequest(request), now);
+  } catch {
+    return downloadUnavailable();
+  }
+  if (!account || account.password_change_only !== 1) {
+    return privateJson(401, { ok: false, error: 'Unable to change password.' });
+  }
+
+  const randomBytes = dependencies.randomBytes
+    || ((length) => globalThis.crypto.getRandomValues(new Uint8Array(length)));
+  let hashed;
+  let session;
+  try {
+    hashed = await (dependencies.hashPassword || hashPassword)(password, {
+      salt: randomBytes(16),
+      iterations: PASSWORD_ITERATIONS,
+    });
+    session = await (dependencies.createSessionToken || createSessionToken)(randomBytes);
+    const expiresAt = new Date(now.getTime() + SESSION_TTL_SECONDS * 1000).toISOString();
+    const results = await env.INTEREST_DB.batch([
+      statement(env, `
+        UPDATE release_accounts SET password_hash = ?, password_salt = ?,
+          password_iterations = ?, must_change_password = 0, password_expires_at = NULL,
+          password_changed_at = ?
+        WHERE email = ? AND state = 'active'
+      `, hashed.hash, hashed.salt, PASSWORD_ITERATIONS, now.toISOString(), account.email),
+      statement(env, 'DELETE FROM release_sessions WHERE email = ?', account.email),
+      statement(env, `
+        INSERT INTO release_sessions
+          (token_hash, email, password_change_only, created_at, expires_at)
+        SELECT ?, ?, 0, ?, ? WHERE EXISTS
+          (SELECT 1 FROM release_accounts WHERE email = ? AND state = 'active')
+      `, session.tokenHash, account.email, now.toISOString(), expiresAt, account.email),
+      statement(env, `
+        INSERT INTO release_access_events (email, action, version, created_at)
+        SELECT ?, 'password_change', NULL, ? WHERE EXISTS
+          (SELECT 1 FROM release_accounts WHERE email = ? AND state = 'active')
+      `, account.email, now.toISOString(), account.email),
+    ]);
+    if ((results[0]?.meta?.changes ?? 0) !== 1
+      || (results[2]?.meta?.changes ?? 0) !== 1) return downloadUnavailable();
+  } catch {
+    return downloadUnavailable();
+  }
+  return privateJson(200, { ok: true }, {
+    'set-cookie': sessionCookie(session.token, SESSION_TTL_SECONDS),
+  });
+}
+
+async function handleDownloadLogout(request, env, dependencies) {
+  const parsed = await readDownloadBody(request);
+  if (parsed.response) return parsed.response;
+  const now = downloadNow(dependencies);
+  const tokenHash = await tokenHashFromRequest(request);
+  if (env.INTEREST_DB && tokenHash) {
+    try {
+      const account = await findDownloadSession(env, tokenHash, now);
+      if (account) {
+        await env.INTEREST_DB.batch([
+          statement(env, 'DELETE FROM release_sessions WHERE token_hash = ?', tokenHash),
+          statement(env, `
+            INSERT INTO release_access_events (email, action, version, created_at)
+            VALUES (?, 'logout', NULL, ?)
+          `, account.email, now.toISOString()),
+        ]);
+      } else {
+        await statement(env, 'DELETE FROM release_sessions WHERE token_hash = ?', tokenHash).run();
+      }
+    } catch {
+      // Clearing the browser cookie is still a successful local logout.
+    }
+  }
+  return privateJson(200, { ok: true }, { 'set-cookie': clearSessionCookie() });
+}
+
+async function handleDownloadRequest(request, env, dependencies) {
+  const routes = new Map([
+    ['/api/download/login', ['POST', handleDownloadLogin]],
+    ['/api/download/session', ['GET', handleDownloadSession]],
+    ['/api/download/password', ['POST', handleDownloadPassword]],
+    ['/api/download/logout', ['POST', handleDownloadLogout]],
+  ]);
+  const routeValue = routes.get(new URL(request.url).pathname);
+  if (!routeValue) return privateJson(404, { ok: false, error: 'Not found.' });
+  if (request.method !== routeValue[0]) {
+    return privateJson(405, { ok: false, error: 'Method not allowed.' }, { allow: routeValue[0] });
+  }
+  return routeValue[1](request, env, dependencies);
+}
+
 export async function handleInterest(request, env, fetcher = fetch) {
   if (request.method !== 'POST') {
     return json(405, { ok: false, message: 'Method not allowed.' }, { allow: 'POST' });
@@ -564,6 +867,7 @@ export async function route(request, env, verify = verifyAccessToken, dependenci
     url.hostname = url.hostname.slice(4);
     return Response.redirect(url.toString(), 301);
   }
+  if (url.hostname === DOWNLOAD_HOST) return handleDownloadRequest(request, env, dependencies);
   if (url.hostname === ADMIN_HOST) {
     const denied = await authorizeAdmin(request, env, verify);
     if (denied) return denied;

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import worker, { handleInterest } from './worker.js';
 import * as workerModule from './worker.js';
+import { createSessionToken } from './release-access.js';
 
 const validVerification = {
   success: true,
@@ -660,4 +661,326 @@ test('public host never serves private admin assets', async () => {
     assert.equal(response.headers.get('cache-control'), 'no-store');
   }
   assert.equal(assetRequests.length, 0);
+});
+
+const DOWNLOAD_ORIGIN = 'https://downloads.backchannel.page';
+const downloadNow = new Date('2026-07-12T12:00:00.000Z');
+
+function downloadRequest(path, body, init = {}) {
+  const method = init.method || (path.endsWith('/session') ? 'GET' : 'POST');
+  const headers = method === 'GET' ? {} : {
+    origin: DOWNLOAD_ORIGIN,
+    'content-type': 'application/json; charset=utf-8',
+  };
+  return new Request(`${DOWNLOAD_ORIGIN}${path}`, {
+    method,
+    headers: { ...headers, ...init.headers },
+    body: method === 'GET' ? undefined : (typeof body === 'string' ? body : JSON.stringify(body ?? {})),
+  });
+}
+
+function downloadBindings({ first = async () => undefined, run, batch } = {}) {
+  const calls = [];
+  const batchCalls = [];
+  const defaultRun = async () => ({ success: true, meta: { changes: 1 } });
+  return {
+    calls,
+    batchCalls,
+    env: {
+      TURNSTILE_SECRET: 'download-secret',
+      INTEREST_DB: {
+        prepare(sql) {
+          const call = { sql, values: [] };
+          calls.push(call);
+          const prepared = {
+            bind(...values) {
+              call.values = values;
+              return prepared;
+            },
+            first,
+            run: run || defaultRun,
+          };
+          return prepared;
+        },
+        async batch(statements) {
+          batchCalls.push(statements);
+          return batch
+            ? batch(statements)
+            : statements.map(() => ({ success: true, meta: { changes: 1 } }));
+        },
+      },
+      ASSETS: { fetch: async () => new Response('public asset') },
+    },
+  };
+}
+
+function downloadDependencies(overrides = {}) {
+  return {
+    now: () => downloadNow,
+    fetch: async () => new Response(JSON.stringify({
+      success: true,
+      hostname: 'downloads.backchannel.page',
+      action: 'download_login',
+    })),
+    ...overrides,
+  };
+}
+
+const approvedAccount = {
+  email: 'person@example.com',
+  state: 'active',
+  release_decision: 'approved',
+  password_hash: 'hash',
+  password_salt: 'salt',
+  password_iterations: 600000,
+  must_change_password: 1,
+  password_expires_at: '2026-07-12T12:30:00.000Z',
+};
+
+test('recipient host keeps unknown paths private and mutations enforce request boundaries', async () => {
+  const missing = downloadBindings();
+  for (const path of ['/unknown', '/api/download/unknown']) {
+    const response = await workerModule.route(
+      downloadRequest(path, undefined, { method: 'GET' }),
+      missing.env,
+    );
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('x-frame-options'), 'DENY');
+  }
+  assert.equal(missing.calls.length, 0);
+
+  const cases = [
+    [downloadRequest('/api/download/login', {
+      email: 'person@example.com', password: 'temporary', turnstile_token: 'token',
+    }, { headers: { origin: 'https://attacker.example' } }), 403],
+    [downloadRequest('/api/download/login', {
+      email: 'person@example.com', password: 'temporary', turnstile_token: 'token',
+    }, { headers: { 'content-type': 'text/plain' } }), 415],
+    [downloadRequest('/api/download/login', 'x'.repeat(8193)), 413],
+  ];
+  for (const [requestValue, expected] of cases) {
+    const bindingsValue = downloadBindings();
+    const response = await workerModule.route(
+      requestValue,
+      bindingsValue.env,
+      undefined,
+      downloadDependencies(),
+    );
+    assert.equal(response.status, expected);
+    assert.equal(bindingsValue.calls.length, 0);
+  }
+});
+
+test('recipient login requires exact Turnstile hostname and action', async () => {
+  const bodies = [];
+  for (const verification of [
+    { success: true, hostname: 'backchannel.page', action: 'download_login' },
+    { success: true, hostname: 'downloads.backchannel.page', action: 'interest' },
+  ]) {
+    const bindingsValue = downloadBindings();
+    const response = await workerModule.route(downloadRequest('/api/download/login', {
+      email: ' Person@Example.com ', password: 'temporary', turnstile_token: 'challenge',
+    }), bindingsValue.env, undefined, downloadDependencies({
+      async fetch(url, init) {
+        bodies.push({ url, init });
+        return new Response(JSON.stringify(verification));
+      },
+    }));
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { ok: false, error: 'Unable to sign in.' });
+    assert.equal(bindingsValue.calls.length, 0);
+  }
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0].url, 'https://challenges.cloudflare.com/turnstile/v0/siteverify');
+  assert.equal(bodies[0].init.body.get('secret'), 'download-secret');
+  assert.equal(bodies[0].init.body.get('response'), 'challenge');
+});
+
+test('recipient login performs one password verification for every account state', async () => {
+  const cases = [
+    undefined,
+    { ...approvedAccount, state: 'revoked' },
+    { ...approvedAccount, release_decision: 'pending' },
+    { ...approvedAccount, release_decision: 'rejected' },
+    { ...approvedAccount, password_hash: 'malformed' },
+    { ...approvedAccount, password_expires_at: '2026-07-12T11:59:59.000Z' },
+    approvedAccount,
+  ];
+  const bodies = [];
+  for (const [index, account] of cases.entries()) {
+    let derivations = 0;
+    const bindingsValue = downloadBindings({ first: async () => account });
+    const response = await workerModule.route(downloadRequest('/api/download/login', {
+      email: ' Person@Example.com ', password: 'wrong', turnstile_token: 'challenge',
+    }), bindingsValue.env, undefined, downloadDependencies({
+      async verifyPassword(password, record) {
+        derivations += 1;
+        assert.equal(password, 'wrong');
+        if (index === 0) assert.equal(record, undefined);
+        return index !== 4 && index !== 6;
+      },
+    }));
+    assert.equal(derivations, 1);
+    bodies.push({ status: response.status, body: await response.json() });
+  }
+  assert.deepEqual(new Set(bodies.map(({ status }) => status)), new Set([401]));
+  assert.deepEqual(new Set(bodies.map(({ body }) => JSON.stringify(body))), new Set([
+    JSON.stringify({ ok: false, error: 'Unable to sign in.' }),
+  ]));
+});
+
+test('temporary login stores only a token hash and caps the change session expiry', async () => {
+  for (const [passwordExpires, expectedExpires, maxAge] of [
+    ['2026-07-12T12:10:00.000Z', '2026-07-12T12:10:00.000Z', 600],
+    ['2026-07-12T13:00:00.000Z', '2026-07-12T12:30:00.000Z', 1800],
+  ]) {
+    const bindingsValue = downloadBindings({
+      first: async () => ({ ...approvedAccount, password_expires_at: passwordExpires }),
+    });
+    const response = await workerModule.route(downloadRequest('/api/download/login', {
+      email: ' Person@Example.com ', password: 'temporary', turnstile_token: 'challenge',
+    }), bindingsValue.env, undefined, downloadDependencies({
+      verifyPassword: async () => true,
+      createSessionToken: async () => ({ token: 'raw-token', tokenHash: 'stored-token-hash' }),
+    }));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('set-cookie'),
+      `__Host-backchannel_release=raw-token; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${maxAge}`);
+    assert.equal(bindingsValue.batchCalls.length, 1);
+    const serialized = JSON.stringify(bindingsValue.calls);
+    assert.match(bindingsValue.calls[1].sql,
+      /INSERT INTO release_sessions[\s\S]+SELECT[\s\S]+WHERE EXISTS[\s\S]+state = 'active'[\s\S]+release_decision = 'approved'/i);
+    assert.deepEqual(bindingsValue.calls[1].values, [
+      'stored-token-hash', 'person@example.com', 1,
+      '2026-07-12T12:00:00.000Z', expectedExpires, 'person@example.com',
+    ]);
+    assert.match(bindingsValue.calls[2].sql, /login_success/i);
+    assert.equal(serialized.includes('raw-token'), false);
+  }
+});
+
+test('permanent login creates a seven-day normal session', async () => {
+  const bindingsValue = downloadBindings({
+    first: async () => ({ ...approvedAccount, must_change_password: 0, password_expires_at: null }),
+  });
+  const response = await workerModule.route(downloadRequest('/api/download/login', {
+    email: 'person@example.com', password: 'permanent password', turnstile_token: 'challenge',
+  }), bindingsValue.env, undefined, downloadDependencies({
+    verifyPassword: async () => true,
+    createSessionToken: async () => ({ token: 'raw-token', tokenHash: 'stored-token-hash' }),
+  }));
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('set-cookie'), /Max-Age=604800$/);
+  assert.deepEqual(bindingsValue.calls[1].values, [
+    'stored-token-hash', 'person@example.com', 0,
+    '2026-07-12T12:00:00.000Z', '2026-07-19T12:00:00.000Z', 'person@example.com',
+  ]);
+});
+
+test('session status hashes only the named cookie and rechecks session and account state', async () => {
+  const token = await createSessionToken((length) => new Uint8Array(length).fill(7));
+  const bindingsValue = downloadBindings({
+    first: async () => ({
+      email: 'person@example.com', state: 'active', password_change_only: 1,
+      expires_at: '2026-07-12T12:30:00.000Z',
+    }),
+  });
+  const response = await workerModule.route(downloadRequest('/api/download/session', undefined, {
+    headers: { cookie: `other=ignored; __Host-backchannel_release=${token.token}` },
+  }), bindingsValue.env, undefined, downloadDependencies());
+  assert.deepEqual(await response.json(), {
+    authenticated: true,
+    must_change_password: true,
+    email: 'person@example.com',
+  });
+  assert.match(bindingsValue.calls[0].sql, /release_sessions[\s\S]+release_accounts/i);
+  assert.match(bindingsValue.calls[0].sql, /expires_at/i);
+  assert.match(bindingsValue.calls[0].sql, /state/i);
+  assert.equal(bindingsValue.calls[0].values[0], token.tokenHash);
+
+  const invalid = downloadBindings();
+  const invalidResponse = await workerModule.route(downloadRequest('/api/download/session', undefined, {
+    headers: { cookie: `__Host-backchannel_release=${token.token}` },
+  }), invalid.env, undefined, downloadDependencies());
+  assert.deepEqual(await invalidResponse.json(), { authenticated: false });
+  assert.equal(invalidResponse.headers.get('set-cookie'),
+    '__Host-backchannel_release=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0');
+
+  const malformed = downloadBindings({ first: async () => ({
+    email: 'person@example.com', state: 'active', password_change_only: 0,
+    expires_at: 'not-a-time',
+  }) });
+  const malformedResponse = await workerModule.route(downloadRequest('/api/download/session', undefined, {
+    headers: { cookie: `__Host-backchannel_release=${token.token}` },
+  }), malformed.env, undefined, downloadDependencies());
+  assert.deepEqual(await malformedResponse.json(), { authenticated: false });
+});
+
+test('password change requires a change-only session and rotates it atomically', async () => {
+  const token = await createSessionToken((length) => new Uint8Array(length).fill(8));
+  const normal = downloadBindings({ first: async () => ({
+    email: 'person@example.com', state: 'active', password_change_only: 0,
+    expires_at: '2026-07-19T12:00:00.000Z',
+  }) });
+  const denied = await workerModule.route(downloadRequest('/api/download/password', {
+    password: 'long enough password',
+  }, { headers: { cookie: `__Host-backchannel_release=${token.token}` } }),
+  normal.env, undefined, downloadDependencies());
+  assert.equal(denied.status, 401);
+  assert.equal(normal.batchCalls.length, 0);
+
+  const short = downloadBindings();
+  const shortResponse = await workerModule.route(downloadRequest('/api/download/password', {
+    password: '1234567890123',
+  }), short.env, undefined, downloadDependencies());
+  assert.equal(shortResponse.status, 400);
+  assert.equal(short.calls.length, 0);
+
+  const bindingsValue = downloadBindings({ first: async () => ({
+    email: 'person@example.com', state: 'active', password_change_only: 1,
+    expires_at: '2026-07-12T12:30:00.000Z',
+  }) });
+  const response = await workerModule.route(downloadRequest('/api/download/password', {
+    password: 'a new permanent password',
+  }, { headers: { cookie: `__Host-backchannel_release=${token.token}` } }),
+  bindingsValue.env, undefined, downloadDependencies({
+    hashPassword: async () => ({ hash: 'new-hash', salt: 'new-salt', iterations: 600000 }),
+    createSessionToken: async () => ({ token: 'new-raw-token', tokenHash: 'new-token-hash' }),
+  }));
+  assert.equal(response.status, 200);
+  assert.equal(bindingsValue.batchCalls.length, 1);
+  assert.match(bindingsValue.calls[1].sql, /UPDATE release_accounts[\s\S]+must_change_password\s*=\s*0/i);
+  assert.match(bindingsValue.calls[2].sql, /DELETE FROM release_sessions[\s\S]+email/i);
+  assert.match(bindingsValue.calls[3].sql, /INSERT INTO release_sessions/i);
+  assert.match(bindingsValue.calls[4].sql, /password_change/i);
+  assert.equal(JSON.stringify(bindingsValue.calls).includes('new-raw-token'), false);
+  assert.equal(response.headers.get('set-cookie'),
+    '__Host-backchannel_release=new-raw-token; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=604800');
+});
+
+test('logout deletes only the presented session and always clears the cookie', async () => {
+  const token = await createSessionToken((length) => new Uint8Array(length).fill(9));
+  const bindingsValue = downloadBindings({ first: async () => ({
+    email: 'person@example.com', state: 'active', password_change_only: 0,
+    expires_at: '2026-07-19T12:00:00.000Z',
+  }) });
+  const response = await workerModule.route(downloadRequest('/api/download/logout', {}, {
+    headers: { cookie: `__Host-backchannel_release=${token.token}` },
+  }), bindingsValue.env, undefined, downloadDependencies());
+  assert.deepEqual(await response.json(), { ok: true });
+  assert.equal(bindingsValue.batchCalls.length, 1);
+  assert.match(bindingsValue.calls[1].sql, /DELETE FROM release_sessions WHERE token_hash = \?/i);
+  assert.deepEqual(bindingsValue.calls[1].values, [token.tokenHash]);
+  assert.match(bindingsValue.calls[2].sql, /logout/i);
+  assert.equal(response.headers.get('set-cookie'),
+    '__Host-backchannel_release=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0');
+
+  const invalid = downloadBindings();
+  const invalidResponse = await workerModule.route(downloadRequest('/api/download/logout', {}, {
+    headers: { cookie: '__Host-backchannel_release=invalid' },
+  }), invalid.env, undefined, downloadDependencies());
+  assert.deepEqual(await invalidResponse.json(), { ok: true });
+  assert.equal(invalidResponse.headers.get('set-cookie'),
+    '__Host-backchannel_release=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0');
 });
