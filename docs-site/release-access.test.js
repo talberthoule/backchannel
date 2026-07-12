@@ -13,6 +13,7 @@ import {
   loadReleaseCatalog,
   parseManifest,
   parseSingleRange,
+  releaseSummary,
   resolveEntitlements,
   verifyPassword,
 } from './release-access.js';
@@ -366,6 +367,20 @@ test('entitlements reject leading-zero version aliases even from a supplied cata
     manifests: new Map([[version, manifestFor(version)]]),
   };
   assert.deepEqual(resolveEntitlements({ include_latest: 1 }, [version], catalog), []);
+});
+
+test('release summaries expose recipient fields without trusted storage metadata', () => {
+  const summary = releaseSummary({ ...baseManifest, assets: trustedAssets });
+  assert.deepEqual(summary, {
+    version: 'v1.2.3',
+    published_at: '2026-07-12T18:00:00Z',
+    assets: trustedAssets.map(({ id, platform, filename, size, sha256 }) => ({
+      id, platform, filename, size, sha256,
+    })),
+  });
+  assert.equal(JSON.stringify(summary).includes('releases/'), false);
+  assert.equal(JSON.stringify(summary).includes('content_type'), false);
+  assert.equal(JSON.stringify(summary).includes(baseManifest.commit), false);
 });
 
 test('single byte ranges parse all supported shapes', () => {

@@ -1104,3 +1104,287 @@ test('logout deletes only the presented session and always clears the cookie', a
   assert.equal(invalidResponse.headers.get('set-cookie'),
     '__Host-backchannel_release=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0');
 });
+
+const releaseToken = await createSessionToken((length) => new Uint8Array(length).fill(11));
+const releaseSession = {
+  email: 'person@example.com',
+  state: 'active',
+  password_change_only: 0,
+  expires_at: '2026-07-19T12:00:00.000Z',
+  include_latest: 1,
+  versions: JSON.stringify(['v1.0.0', 'v2.0.0', 'v1.0.0']),
+};
+
+function releaseManifest(version, size = 100) {
+  return {
+    version,
+    published_at: version === 'v2.0.0' ? '2026-07-12T18:00:00Z' : '2026-06-01T18:00:00Z',
+    commit: 'a'.repeat(40),
+    assets: [{
+      id: 'windows-x64',
+      platform: 'Windows x64',
+      filename: 'Backchannel-windows-x64.zip',
+      key: `releases/${version}/Backchannel-windows-x64.zip`,
+      size,
+      sha256: 'b'.repeat(64),
+      content_type: 'application/zip',
+    }],
+  };
+}
+
+function releaseBucket({ object = async () => null, malformed = false } = {}) {
+  const calls = [];
+  const manifests = new Map([
+    ['v1.0.0', releaseManifest('v1.0.0')],
+    ['v2.0.0', releaseManifest('v2.0.0')],
+  ]);
+  return {
+    calls,
+    async list(options) {
+      calls.push({ operation: 'list', options });
+      return {
+        objects: [
+          ...[...manifests].map(([version]) => ({ key: `releases/${version}/manifest.json` })),
+          ...(malformed ? [{ key: 'releases/v3.0.0/manifest.json' }] : []),
+        ],
+        truncated: false,
+      };
+    },
+    async get(key, options) {
+      calls.push({ operation: 'get', key, options });
+      if (key === 'releases/latest.json') return { json: async () => ({ version: 'v2.0.0' }) };
+      const manifest = /^releases\/(v[0-9.]+)\/manifest\.json$/.exec(key);
+      if (manifest) return {
+        json: async () => malformed && manifest[1] === 'v3.0.0'
+          ? { version: 'not-valid' }
+          : structuredClone(manifests.get(manifest[1])),
+      };
+      return object(key, options);
+    },
+  };
+}
+
+function releaseGet(path, headers = {}) {
+  return downloadRequest(path, undefined, {
+    method: 'GET',
+    headers: {
+      cookie: `__Host-backchannel_release=${releaseToken.token}`,
+      ...headers,
+    },
+  });
+}
+
+function releaseBindings(bucket, session = releaseSession) {
+  const result = downloadBindings({ first: async () => session });
+  if (bucket) result.env.RELEASES = bucket;
+  return result;
+}
+
+function assetCalls(bucket) {
+  return bucket.calls.filter(({ key }) => key?.endsWith('Backchannel-windows-x64.zip'));
+}
+
+test('recipient release listing resolves Latest plus explicit grants without leaking R2 metadata', async () => {
+  const bucket = releaseBucket({ malformed: true });
+  const bindingsValue = releaseBindings(bucket);
+  const response = await workerModule.route(
+    releaseGet('/api/download/releases'), bindingsValue.env, undefined, downloadDependencies(),
+  );
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.latest_version, 'v2.0.0');
+  assert.deepEqual(body.items.map(({ version }) => version), ['v2.0.0', 'v1.0.0']);
+  assert.deepEqual(Object.keys(body.items[0]), ['version', 'published_at', 'assets']);
+  assert.deepEqual(Object.keys(body.items[0].assets[0]),
+    ['id', 'platform', 'filename', 'size', 'sha256']);
+  assert.doesNotMatch(JSON.stringify(body), /releases\/|content_type|commit/);
+});
+
+test('release APIs reject invalid sessions and paths before catalog or object access', async () => {
+  const invalidSessions = [
+    null,
+    { ...releaseSession, state: 'revoked' },
+    { ...releaseSession, password_change_only: 1 },
+    { ...releaseSession, expires_at: '2026-07-12T11:59:59.000Z' },
+  ];
+  for (const session of invalidSessions) {
+    const bucket = releaseBucket();
+    const response = await workerModule.route(
+      releaseGet('/api/download/releases'), releaseBindings(bucket, session).env,
+      undefined, downloadDependencies(),
+    );
+    assert.equal(response.status, 404);
+    assert.equal(bucket.calls.length, 0);
+  }
+
+  for (const path of [
+    '/api/download/releases/1.0.0/windows-x64',
+    '/api/download/releases/v01.0.0/windows-x64',
+    '/api/download/releases/v1.0.0/Windows-x64',
+    '/api/download/releases/v1.0.0/Backchannel-windows-x64.zip',
+    '/api/download/releases/v1.0.0/windows-x64/extra',
+    '/api/download/releases/v1.0.0%2Fwindows-x64',
+    '/api/download/releases/v1.0.0/windows%2Fx64',
+  ]) {
+    const bucket = releaseBucket();
+    const response = await workerModule.route(
+      releaseGet(path), releaseBindings(bucket).env, undefined, downloadDependencies(),
+    );
+    assert.equal(response.status, 404, path);
+    assert.equal(bucket.calls.length, 0, path);
+  }
+});
+
+test('unauthorized versions and missing asset IDs are indistinguishable private 404s', async () => {
+  const responses = [];
+  for (const path of [
+    '/api/download/releases/v3.0.0/windows-x64',
+    '/api/download/releases/v1.0.0/linux-x64',
+  ]) {
+    const bucket = releaseBucket();
+    responses.push(await workerModule.route(
+      releaseGet(path), releaseBindings(bucket).env, undefined, downloadDependencies(),
+    ));
+    assert.equal(assetCalls(bucket).length, 0);
+  }
+  assert.deepEqual(responses.map(({ status }) => status), [404, 404]);
+  assert.deepEqual(await responses[0].json(), await responses[1].json());
+  assert.equal(responses[0].headers.get('cache-control'), 'private, no-store');
+});
+
+test('authorized downloads stream full and ranged R2 bodies with exact headers and safe events', async () => {
+  const cases = [
+    [undefined, 200, 100, null],
+    ['bytes=10-19', 206, 10, 'bytes 10-19/100'],
+    ['bytes=25-', 206, 75, 'bytes 25-99/100'],
+    ['bytes=-10', 206, 10, 'bytes 90-99/100'],
+    ['bytes=7-7', 206, 1, 'bytes 7-7/100'],
+  ];
+  for (const [range, status, length, contentRange] of cases) {
+    const body = new ReadableStream();
+    const bucket = releaseBucket({ object: async () => ({
+      body, size: 100, httpEtag: '"object-etag"',
+    }) });
+    const bindingsValue = releaseBindings(bucket);
+    const response = await workerModule.route(
+      releaseGet('/api/download/releases/v1.0.0/windows-x64', range ? { range } : {}),
+      bindingsValue.env, undefined, downloadDependencies(),
+    );
+    assert.equal(response.status, status, range);
+    assert.equal(response.body, body, range);
+    assert.equal(response.headers.get('content-length'), String(length));
+    assert.equal(response.headers.get('content-range'), contentRange);
+    assert.equal(response.headers.get('content-type'), 'application/zip');
+    assert.equal(response.headers.get('content-disposition'),
+      'attachment; filename="Backchannel-windows-x64.zip"');
+    assert.equal(response.headers.get('etag'), '"object-etag"');
+    assert.equal(response.headers.get('accept-ranges'), 'bytes');
+    assert.equal(response.headers.get('cache-control'), 'private, no-store');
+    const call = assetCalls(bucket)[0];
+    assert.equal(call.options.range.get('range'), range || null);
+    assert.equal(call.options.onlyIf.get('range'), range || null);
+    const event = bindingsValue.calls.find(({ sql }) => /download_start/.test(sql));
+    assert.deepEqual(event.values, [
+      'person@example.com', 'v1.0.0', '2026-07-12T12:00:00.000Z',
+    ]);
+    assert.doesNotMatch(JSON.stringify(event), /windows-x64|object-etag|Backchannel/);
+  }
+});
+
+test('ranges and conditional absence map to 304, 412, and 416 with defined precedence', async () => {
+  for (const range of ['', 'bytes=0-1,5-6', 'bytes=100-', 'items=0-1']) {
+    const bucket = releaseBucket();
+    const bindingsValue = releaseBindings(bucket);
+    const response = await workerModule.route(
+      releaseGet('/api/download/releases/v1.0.0/windows-x64', { range }),
+      bindingsValue.env, undefined, downloadDependencies(),
+    );
+    assert.equal(response.status, 416, range);
+    assert.equal(response.body, null);
+    assert.equal(response.headers.get('content-range'), 'bytes */100');
+    assert.equal(assetCalls(bucket).length, 0);
+    assert.equal(bindingsValue.calls.some(({ sql }) => /download_start/.test(sql)), false);
+  }
+
+  const conditions = [
+    [{ 'if-none-match': '"old"', range: 'bytes=0-9' }, 304],
+    [{ 'if-modified-since': 'Sat, 11 Jul 2026 00:00:00 GMT' }, 304],
+    [{ 'if-match': '"old"', range: 'bytes=0-9' }, 412],
+    [{ 'if-unmodified-since': 'Sat, 11 Jul 2026 00:00:00 GMT' }, 412],
+    [{ 'if-match': '"old"', 'if-none-match': '"old"', range: 'bytes=0-9' }, 412],
+  ];
+  for (const [headers, status] of conditions) {
+    const bucket = releaseBucket({ object: async () => ({ size: 100, httpEtag: '"etag"' }) });
+    const bindingsValue = releaseBindings(bucket);
+    const response = await workerModule.route(
+      releaseGet('/api/download/releases/v1.0.0/windows-x64', headers),
+      bindingsValue.env, undefined, downloadDependencies(),
+    );
+    assert.equal(response.status, status, JSON.stringify(headers));
+    assert.equal(response.body, null);
+    assert.equal(response.headers.get('content-length'), null);
+    const call = assetCalls(bucket)[0];
+    for (const [name, value] of Object.entries(headers)) {
+      assert.equal(call.options.onlyIf.get(name), value);
+    }
+    assert.equal(bindingsValue.calls.some(({ sql }) => /download_start/.test(sql)), false);
+  }
+});
+
+test('missing bindings and missing authorized objects fail generically without download events', async () => {
+  const noBinding = releaseBindings();
+  const absentBucket = releaseBucket();
+  const absent = releaseBindings(absentBucket);
+  const responses = [
+    await workerModule.route(releaseGet('/api/download/releases'), noBinding.env,
+      undefined, downloadDependencies()),
+    await workerModule.route(releaseGet('/api/download/releases/v1.0.0/windows-x64'), absent.env,
+      undefined, downloadDependencies()),
+  ];
+  assert.deepEqual(responses.map(({ status }) => status), [503, 503]);
+  assert.equal(absent.calls.some(({ sql }) => /download_start/.test(sql)), false);
+});
+
+test('router isolates every hostname before API and static dispatch', async () => {
+  const assets = [];
+  const env = {
+    ...downloadBindings().env,
+    ADMIN_EMAIL: 'owner@example.com',
+    ACCESS_TEAM_DOMAIN: 'backchannel.cloudflareaccess.com',
+    ACCESS_AUD: 'admin-audience',
+    ASSETS: { async fetch(requestValue) {
+      assets.push(requestValue.url);
+      return new Response('asset');
+    } },
+  };
+
+  const redirect = await workerModule.route(
+    new Request('https://www.backchannel.page/docs/?q=1'), env, allowOwner,
+  );
+  assert.equal(redirect.status, 301);
+  assert.equal(redirect.headers.get('location'), 'https://backchannel.page/docs/?q=1');
+
+  for (const host of [
+    'www.attacker.example', 'backchannel-site.workers.dev',
+    'preview.backchannel-site.workers.dev', 'unknown.backchannel.page',
+  ]) {
+    const response = await workerModule.route(new Request(`https://${host}/api/interest`), env,
+      async () => { throw new Error('unknown hosts must not authorize'); });
+    assert.equal(response.status, 404, host);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  }
+
+  const isolated = [
+    new Request('https://backchannel.page/%61dmin/admin.js'),
+    new Request('https://backchannel.page/downloads/downloads.js'),
+    new Request('https://downloads.backchannel.page/admin.js'),
+    new Request('https://downloads.backchannel.page/api%2Fdownload%2Freleases'),
+    adminRequest('/downloads.js'),
+  ];
+  for (const requestValue of isolated) {
+    const response = await workerModule.route(requestValue, env, allowOwner);
+    assert.equal(response.status, 404, requestValue.url);
+  }
+  assert.equal(assets.length, 0);
+});

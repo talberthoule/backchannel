@@ -9,10 +9,15 @@ import {
   generateTemporaryPassword,
   hashPassword,
   loadReleaseCatalog,
+  parseSingleRange,
+  releaseSummary,
+  resolveEntitlements,
   verifyPassword,
 } from './release-access.js';
 
 const API_PATH = '/api/interest';
+const PUBLIC_HOST = 'backchannel.page';
+const WWW_HOST = 'www.backchannel.page';
 const ADMIN_HOST = 'admin.backchannel.page';
 const DOWNLOAD_HOST = 'downloads.backchannel.page';
 const ADMIN_API_PATH = '/api/admin/interests';
@@ -43,7 +48,8 @@ const MAX_ADMIN_BODY_BYTES = 8192;
 const MAX_DOWNLOAD_BODY_BYTES = 8192;
 const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const VERSION = /^v[0-9]+\.[0-9]+\.[0-9]+$/;
+const VERSION = /^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
+const ASSET_ID = /^[a-z0-9-]{1,32}$/;
 const ACCESS_HOST = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.cloudflareaccess\.com$/;
 const PRIVATE_HEADERS = {
   'cache-control': 'no-store',
@@ -566,7 +572,9 @@ async function tokenHashFromRequest(request) {
 async function findDownloadSession(env, tokenHash, now) {
   if (!tokenHash) return null;
   const account = await env.INTEREST_DB.prepare(`
-    SELECT s.email, s.password_change_only, s.expires_at, a.state
+    SELECT s.email, s.password_change_only, s.expires_at, a.state, a.include_latest,
+      COALESCE((SELECT json_group_array(version) FROM release_account_versions
+        WHERE email = s.email), '[]') AS versions
     FROM release_sessions s
     JOIN release_accounts a ON a.email = s.email
     WHERE s.token_hash = ? AND s.expires_at > ? AND a.state = 'active'
@@ -577,6 +585,142 @@ async function findDownloadSession(env, tokenHash, now) {
     || typeof account.email !== 'string'
     || !Number.isFinite(expiresAt) || expiresAt <= now.getTime()) return null;
   return account;
+}
+
+function releaseNotFound() {
+  return downloadJson(404, { ok: false, error: 'Not found.' });
+}
+
+async function releaseSession(request, env, dependencies) {
+  if (!env.INTEREST_DB) return { response: downloadUnavailable() };
+  try {
+    const account = await findDownloadSession(
+      env,
+      await tokenHashFromRequest(request),
+      downloadNow(dependencies),
+    );
+    if (!account || account.password_change_only !== 0) return { response: releaseNotFound() };
+    const versions = typeof account.versions === 'string' ? JSON.parse(account.versions) : [];
+    if (![0, 1].includes(account.include_latest) || !Array.isArray(versions)) {
+      return { response: downloadUnavailable() };
+    }
+    return { account, versions };
+  } catch {
+    return { response: downloadUnavailable() };
+  }
+}
+
+async function entitledCatalog(env, account, versions) {
+  const catalog = await loadReleaseCatalog(env.RELEASES);
+  if (catalog.diagnostics.includes('catalog-unavailable')
+    || catalog.diagnostics.includes('catalog-invalid')) throw new Error('catalog unavailable');
+  return { catalog, manifests: resolveEntitlements(account, versions, catalog) };
+}
+
+async function handleReleaseList(request, env, dependencies) {
+  const session = await releaseSession(request, env, dependencies);
+  if (session.response) return session.response;
+  if (!env.RELEASES) return downloadUnavailable();
+  try {
+    const { catalog, manifests } = await entitledCatalog(env, session.account, session.versions);
+    return downloadJson(200, {
+      items: manifests.map(releaseSummary),
+      latest_version: catalog.latestVersion,
+    });
+  } catch {
+    return downloadUnavailable();
+  }
+}
+
+function decodedReleasePath(pathname) {
+  const match = /^\/api\/download\/releases\/([^/]+)\/([^/]+)$/.exec(pathname);
+  if (!match || /%(?:2f|5c)/i.test(pathname)) return null;
+  try {
+    const version = decodeURIComponent(match[1]);
+    const assetId = decodeURIComponent(match[2]);
+    return VERSION.test(version) && ASSET_ID.test(assetId) ? { version, assetId } : null;
+  } catch {
+    return null;
+  }
+}
+
+function objectHeaders(asset, object, length, contentRange) {
+  const headers = new Headers(DOWNLOAD_HEADERS);
+  headers.set('accept-ranges', 'bytes');
+  headers.set('content-disposition', `attachment; filename="${asset.filename}"`);
+  headers.set('content-length', String(length));
+  headers.set('content-type', asset.content_type);
+  if (typeof object.httpEtag === 'string') {
+    headers.set('etag', object.httpEtag.startsWith('"')
+      ? object.httpEtag
+      : `"${object.httpEtag.replaceAll('"', '')}"`);
+  }
+  if (contentRange) headers.set('content-range', contentRange);
+  return headers;
+}
+
+function emptyObjectResponse(request, object) {
+  let status;
+  if (request.headers.has('if-match') || request.headers.has('if-unmodified-since')) status = 412;
+  else if (request.headers.has('if-none-match') || request.headers.has('if-modified-since')) status = 304;
+  else return null;
+  const headers = new Headers(DOWNLOAD_HEADERS);
+  headers.set('accept-ranges', 'bytes');
+  if (typeof object.httpEtag === 'string') headers.set('etag', object.httpEtag);
+  return new Response(null, { status, headers });
+}
+
+async function handleReleaseDownload(request, env, dependencies) {
+  const session = await releaseSession(request, env, dependencies);
+  if (session.response) return session.response;
+  const path = decodedReleasePath(new URL(request.url).pathname);
+  if (!path) return releaseNotFound();
+  if (!env.RELEASES) return downloadUnavailable();
+
+  let manifest;
+  let asset;
+  try {
+    const entitled = await entitledCatalog(env, session.account, session.versions);
+    manifest = entitled.manifests.find(({ version }) => version === path.version);
+    asset = manifest?.assets.find(({ id }) => id === path.assetId);
+  } catch {
+    return downloadUnavailable();
+  }
+  if (!asset) return releaseNotFound();
+
+  const range = parseSingleRange(request.headers.get('range'), asset.size);
+  if (range?.unsatisfiable) {
+    return new Response(null, {
+      status: 416,
+      headers: { ...DOWNLOAD_HEADERS, 'accept-ranges': 'bytes',
+        'content-range': `bytes */${asset.size}` },
+    });
+  }
+
+  let object;
+  try {
+    object = await env.RELEASES.get(asset.key, {
+      range: request.headers,
+      onlyIf: request.headers,
+    });
+  } catch {
+    return downloadUnavailable();
+  }
+  if (!object) return downloadUnavailable();
+  if (!object.body) return emptyObjectResponse(request, object) || downloadUnavailable();
+
+  const status = range ? 206 : 200;
+  const length = range ? range.length : asset.size;
+  const headers = objectHeaders(asset, object, length, range?.contentRange);
+  try {
+    await statement(env, `
+      INSERT INTO release_access_events (email, action, version, created_at)
+      VALUES (?, 'download_start', ?, ?)
+    `, session.account.email, manifest.version, downloadNow(dependencies).toISOString()).run();
+  } catch {
+    return downloadUnavailable();
+  }
+  return new Response(object.body, { status, headers });
 }
 
 async function readDownloadBody(request) {
@@ -844,8 +988,13 @@ async function handleDownloadRequest(request, env, dependencies) {
     ['/api/download/session', ['GET', handleDownloadSession]],
     ['/api/download/password', ['POST', handleDownloadPassword]],
     ['/api/download/logout', ['POST', handleDownloadLogout]],
+    ['/api/download/releases', ['GET', handleReleaseList]],
   ]);
-  const routeValue = routes.get(new URL(request.url).pathname);
+  const pathname = new URL(request.url).pathname;
+  const routeValue = routes.get(pathname)
+    || (pathname.startsWith('/api/download/releases/')
+      ? ['GET', handleReleaseDownload]
+      : undefined);
   if (!routeValue) return downloadJson(404, { ok: false, error: 'Not found.' });
   if (request.method !== routeValue[0]) {
     return downloadJson(405, { ok: false, error: 'Method not allowed.' }, { allow: routeValue[0] });
@@ -928,9 +1077,12 @@ export async function handleInterest(request, env, fetcher = fetch) {
 
 export async function route(request, env, verify = verifyAccessToken, dependencies = {}) {
   const url = new URL(request.url);
-  if (url.hostname.startsWith('www.')) {
-    url.hostname = url.hostname.slice(4);
+  if (url.hostname === WWW_HOST) {
+    url.hostname = PUBLIC_HOST;
     return Response.redirect(url.toString(), 301);
+  }
+  if (![PUBLIC_HOST, ADMIN_HOST, DOWNLOAD_HOST].includes(url.hostname)) {
+    return privateJson(404, { ok: false, message: 'Not found.' });
   }
   if (url.hostname === DOWNLOAD_HOST) {
     const assetPath = DOWNLOAD_ASSETS.get(url.pathname);
@@ -955,7 +1107,16 @@ export async function route(request, env, verify = verifyAccessToken, dependenci
     if (assetPath) return handleAdminAsset(request, env, assetPath);
     return privateJson(404, { ok: false, message: 'Not found.' });
   }
-  if (url.pathname === '/admin' || url.pathname.startsWith('/admin/')) {
+  let publicPath;
+  try {
+    publicPath = decodeURIComponent(url.pathname);
+  } catch {
+    return json(404, { ok: false, message: 'Not found.' });
+  }
+  if (publicPath === '/admin' || publicPath.startsWith('/admin/')
+    || publicPath === '/admin.js' || publicPath === '/admin.css'
+    || publicPath === '/downloads' || publicPath.startsWith('/downloads/')
+    || publicPath === '/downloads.js' || publicPath === '/downloads.css') {
     return json(404, { ok: false, message: 'Not found.' });
   }
   if (url.pathname === API_PATH) return handleInterest(request, env);

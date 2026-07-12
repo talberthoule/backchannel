@@ -272,6 +272,16 @@ export function resolveEntitlements(account, explicitVersions, catalog) {
     .map((version) => catalog.manifests.get(version));
 }
 
+export function releaseSummary(manifest) {
+  return {
+    version: manifest.version,
+    published_at: manifest.published_at,
+    assets: manifest.assets.map(({ id, platform, filename, size, sha256 }) => ({
+      id, platform, filename, size, sha256,
+    })),
+  };
+}
+
 export function parseSingleRange(header, size) {
   if (header == null) return null;
   if (!Number.isSafeInteger(size) || size <= 0 || typeof header !== 'string') {

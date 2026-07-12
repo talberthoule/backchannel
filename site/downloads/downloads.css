@@ -110,6 +110,38 @@ input {
   font-size: 14px;
 }
 
+#releases-list {
+  display: grid;
+  gap: 28px;
+  margin-block-end: 24px;
+}
+
+.release + .release {
+  padding-block-start: 28px;
+  border-block-start: 1px solid var(--border);
+}
+
+.release h2,
+.release h3,
+.release p { margin-block: 10px; }
+
+.release article { margin-block-start: 22px; }
+
+.checksum {
+  color: var(--muted);
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.release a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--accent-dark);
+  font-weight: 650;
+}
+
 button {
   width: 100%;
   min-height: 44px;
@@ -143,6 +175,11 @@ button:focus-visible,
 h1:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
+}
+
+.release:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 6px;
 }
 
 noscript {

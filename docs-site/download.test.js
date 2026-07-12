@@ -11,6 +11,7 @@ const publicHtml = read('../site/index.html');
 const script = read('../site/downloads/downloads.js');
 const css = read('../site/downloads/downloads.css');
 const packageJson = JSON.parse(read('./package.json'));
+const wrangler = JSON.parse(read('./wrangler.jsonc'));
 
 function panel(id) {
   return html.match(new RegExp(`<section[^>]+id="${id}"[\\s\\S]*?<\\/section>`))?.[0] || '';
@@ -103,6 +104,28 @@ test('recipient script resets Turnstile in login finally and uses safe browser A
   assert.match(script, /password\.value\s*=\s*['"]/);
   assert.doesNotMatch(script, /innerHTML|outerHTML|insertAdjacentHTML/);
   assert.doesNotMatch(script, /localStorage|sessionStorage|document\.cookie|console\./);
+});
+
+test('recipient UI renders entitled releases and validates optional deep links with safe DOM APIs', () => {
+  assert.match(script, /releasesList\.id\s*=\s*['"]releases-list['"]/);
+  assert.match(script, /releasesList\.setAttribute\(['"]aria-live['"],\s*['"]polite['"]\)/);
+  assert.match(script, /releasesIntro\.setAttribute\(['"]role['"],\s*['"]status['"]\)/);
+  assert.match(script, /releasesIntro\.setAttribute\(['"]aria-live['"],\s*['"]polite['"]\)/);
+  assert.match(script, /fetch\(['"]\/api\/download\/releases['"]/);
+  assert.match(script, /createElement\(/);
+  assert.match(script, /\.textContent\s*=/);
+  assert.match(script, /encodeURIComponent\(release\.version\)/);
+  assert.match(script, /encodeURIComponent\(asset\.id\)/);
+  assert.match(script, /URLSearchParams\(location\.search\)/);
+  assert.match(script, /\^v\(\?:0\|\[1-9\]\[0-9\]\*\)\\\./);
+  assert.match(script, /Loading releases/i);
+  assert.match(script, /No releases are available/i);
+  assert.match(script, /scrollIntoView/);
+  assert.match(script, /section\.className\s*=\s*['"]release['"]/);
+  assert.match(script, /checksum\.className\s*=\s*['"]checksum['"]/);
+  assert.match(css, /\.checksum\s*\{[^}]*overflow-wrap:\s*anywhere/);
+  assert.match(css, /\.release:focus-visible/);
+  assert.doesNotMatch(script, /innerHTML|outerHTML|insertAdjacentHTML/);
 });
 
 test('Turnstile errors clear only challenge state and alert an already-active login', () => {
@@ -207,4 +230,20 @@ test('recipient controls use valid inherited font declarations', () => {
 test('download contract is runnable and static assets contain no secrets', () => {
   assert.equal(packageJson.scripts?.['test:download'], 'node --test download.test.js');
   assert.doesNotMatch(`${html}\n${script}\n${css}`, /ADMIN_EMAIL|ACCESS_AUD|TURNSTILE_SECRET|owner@example\.com|cloudflareaccess\.com/i);
+});
+
+test('Wrangler disables public Worker URLs and binds private releases on four custom domains', () => {
+  assert.equal(wrangler.workers_dev, false);
+  assert.equal(wrangler.preview_urls, false);
+  assert.deepEqual(wrangler.routes, [
+    { pattern: 'backchannel.page', custom_domain: true },
+    { pattern: 'www.backchannel.page', custom_domain: true },
+    { pattern: 'admin.backchannel.page', custom_domain: true },
+    { pattern: 'downloads.backchannel.page', custom_domain: true },
+  ]);
+  assert.deepEqual(wrangler.r2_buckets, [{
+    binding: 'RELEASES', bucket_name: 'backchannel-desktop-releases',
+  }]);
+  assert.equal(wrangler.d1_databases[0].binding, 'INTEREST_DB');
+  assert.equal(wrangler.assets.binding, 'ASSETS');
 });
