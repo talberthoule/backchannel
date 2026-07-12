@@ -650,23 +650,99 @@ function objectHeaders(asset, object, length, contentRange) {
   headers.set('content-disposition', `attachment; filename="${asset.filename}"`);
   headers.set('content-length', String(length));
   headers.set('content-type', asset.content_type);
-  if (typeof object.httpEtag === 'string') {
-    headers.set('etag', object.httpEtag.startsWith('"')
-      ? object.httpEtag
-      : `"${object.httpEtag.replaceAll('"', '')}"`);
-  }
+  const etag = quotedEtag(object.httpEtag);
+  if (etag) headers.set('etag', etag);
   if (contentRange) headers.set('content-range', contentRange);
   return headers;
 }
 
-function emptyObjectResponse(request, object) {
-  let status;
-  if (request.headers.has('if-match') || request.headers.has('if-unmodified-since')) status = 412;
-  else if (request.headers.has('if-none-match') || request.headers.has('if-modified-since')) status = 304;
-  else return null;
+function quotedEtag(value) {
+  if (typeof value !== 'string') return null;
+  const tag = value.trim();
+  return tag.startsWith('"') ? tag : `"${tag.replaceAll('"', '')}"`;
+}
+
+function entityTags(value) {
+  const source = value.trim();
+  if (source === '*') return { wildcard: true, tags: [] };
+  const tags = [];
+  let index = 0;
+  while (index < source.length) {
+    while (source[index] === ' ' || source[index] === '\t' || source[index] === ',') index += 1;
+    let weak = false;
+    if (source.slice(index, index + 2) === 'W/') {
+      weak = true;
+      index += 2;
+    }
+    if (source[index] !== '"') {
+      while (index < source.length && source[index] !== ',') index += 1;
+      continue;
+    }
+    const start = ++index;
+    while (index < source.length && source[index] !== '"') index += 1;
+    if (index === source.length) break;
+    const opaque = source.slice(start, index++);
+    while (source[index] === ' ' || source[index] === '\t') index += 1;
+    if (index === source.length || source[index] === ',') tags.push({ weak, opaque });
+    while (index < source.length && source[index] !== ',') index += 1;
+  }
+  return { wildcard: false, tags };
+}
+
+function metadataTag(metadata) {
+  const etag = quotedEtag(metadata?.httpEtag);
+  return etag ? { weak: false, opaque: etag.slice(1, -1) } : null;
+}
+
+function metadataSeconds(value) {
+  const milliseconds = value instanceof Date ? value.getTime() : Date.parse(value);
+  return Number.isFinite(milliseconds) ? Math.floor(milliseconds / 1000) : null;
+}
+
+function httpDateSeconds(value) {
+  if (!/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(value)) {
+    return null;
+  }
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds) && new Date(milliseconds).toUTCString() === value
+    ? Math.floor(milliseconds / 1000)
+    : null;
+}
+
+function getPreconditionStatus(request, metadata) {
+  const objectTag = metadataTag(metadata);
+  const modified = metadataSeconds(metadata?.uploaded);
+  const ifMatch = request.headers.get('if-match');
+  if (ifMatch !== null) {
+    const condition = entityTags(ifMatch);
+    if (!condition.wildcard && !condition.tags.some((tag) => (
+      !tag.weak && objectTag && !objectTag.weak && tag.opaque === objectTag.opaque
+    ))) return 412;
+  } else {
+    const unmodifiedSince = request.headers.get('if-unmodified-since');
+    const limit = unmodifiedSince === null ? null : httpDateSeconds(unmodifiedSince);
+    if (limit !== null && modified !== null && modified > limit) return 412;
+  }
+
+  const ifNoneMatch = request.headers.get('if-none-match');
+  if (ifNoneMatch !== null) {
+    const condition = entityTags(ifNoneMatch);
+    if (condition.wildcard || condition.tags.some((tag) => (
+      objectTag && tag.opaque === objectTag.opaque
+    ))) return 304;
+  } else {
+    const modifiedSince = request.headers.get('if-modified-since');
+    const limit = modifiedSince === null ? null : httpDateSeconds(modifiedSince);
+    if (limit !== null && modified !== null && modified <= limit) return 304;
+  }
+  return null;
+}
+
+function metadataResponse(status, metadata) {
   const headers = new Headers(DOWNLOAD_HEADERS);
   headers.set('accept-ranges', 'bytes');
-  if (typeof object.httpEtag === 'string') headers.set('etag', object.httpEtag);
+  const etag = quotedEtag(metadata?.httpEtag);
+  if (etag) headers.set('etag', etag);
   return new Response(null, { status, headers });
 }
 
@@ -688,6 +764,17 @@ async function handleReleaseDownload(request, env, dependencies) {
   }
   if (!asset) return releaseNotFound();
 
+  let metadata;
+  try {
+    if (typeof env.RELEASES.head !== 'function') return downloadUnavailable();
+    metadata = await env.RELEASES.head(asset.key);
+  } catch {
+    return downloadUnavailable();
+  }
+  if (!metadata) return downloadUnavailable();
+  const preconditionStatus = getPreconditionStatus(request, metadata);
+  if (preconditionStatus) return metadataResponse(preconditionStatus, metadata);
+
   const range = parseSingleRange(request.headers.get('range'), asset.size);
   if (range?.unsatisfiable) {
     return new Response(null, {
@@ -707,7 +794,10 @@ async function handleReleaseDownload(request, env, dependencies) {
     return downloadUnavailable();
   }
   if (!object) return downloadUnavailable();
-  if (!object.body) return emptyObjectResponse(request, object) || downloadUnavailable();
+  if (!object.body) {
+    const status = getPreconditionStatus(request, object);
+    return status ? metadataResponse(status, object) : downloadUnavailable();
+  }
 
   const status = range ? 206 : 200;
   const length = range ? range.length : asset.size;

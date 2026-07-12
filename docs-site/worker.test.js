@@ -1132,7 +1132,15 @@ function releaseManifest(version, size = 100) {
   };
 }
 
-function releaseBucket({ object = async () => null, malformed = false } = {}) {
+function releaseBucket({
+  object = async () => null,
+  metadata = {
+    size: 100,
+    httpEtag: '"object-etag"',
+    uploaded: new Date('2026-07-12T12:00:00.900Z'),
+  },
+  malformed = false,
+} = {}) {
   const calls = [];
   const manifests = new Map([
     ['v1.0.0', releaseManifest('v1.0.0')],
@@ -1161,6 +1169,10 @@ function releaseBucket({ object = async () => null, malformed = false } = {}) {
       };
       return object(key, options);
     },
+    async head(key) {
+      calls.push({ operation: 'head', key });
+      return metadata;
+    },
   };
 }
 
@@ -1181,7 +1193,9 @@ function releaseBindings(bucket, session = releaseSession) {
 }
 
 function assetCalls(bucket) {
-  return bucket.calls.filter(({ key }) => key?.endsWith('Backchannel-windows-x64.zip'));
+  return bucket.calls.filter(({ operation, key }) => (
+    operation === 'get' && key?.endsWith('Backchannel-windows-x64.zip')
+  ));
 }
 
 test('recipient release listing resolves Latest plus explicit grants without leaking R2 metadata', async () => {
@@ -1308,14 +1322,18 @@ test('ranges and conditional absence map to 304, 412, and 416 with defined prece
   }
 
   const conditions = [
-    [{ 'if-none-match': '"old"', range: 'bytes=0-9' }, 304],
-    [{ 'if-modified-since': 'Sat, 11 Jul 2026 00:00:00 GMT' }, 304],
+    [{ 'if-none-match': '"object-etag"', range: 'bytes=0-9' }, 304],
+    [{ 'if-modified-since': 'Sun, 12 Jul 2026 13:00:00 GMT' }, 304],
     [{ 'if-match': '"old"', range: 'bytes=0-9' }, 412],
-    [{ 'if-unmodified-since': 'Sat, 11 Jul 2026 00:00:00 GMT' }, 412],
-    [{ 'if-match': '"old"', 'if-none-match': '"old"', range: 'bytes=0-9' }, 412],
+    [{ 'if-unmodified-since': 'Sun, 12 Jul 2026 11:59:59 GMT' }, 412],
+    [{ 'if-match': '"old"', 'if-none-match': '"object-etag"', range: 'bytes=0-9' }, 412],
   ];
   for (const [headers, status] of conditions) {
-    const bucket = releaseBucket({ object: async () => ({ size: 100, httpEtag: '"etag"' }) });
+    const bucket = releaseBucket({ object: async () => ({
+      size: 100,
+      httpEtag: '"object-etag"',
+      uploaded: new Date('2026-07-12T12:00:00.900Z'),
+    }) });
     const bindingsValue = releaseBindings(bucket);
     const response = await workerModule.route(
       releaseGet('/api/download/releases/v1.0.0/windows-x64', headers),
@@ -1324,17 +1342,84 @@ test('ranges and conditional absence map to 304, 412, and 416 with defined prece
     assert.equal(response.status, status, JSON.stringify(headers));
     assert.equal(response.body, null);
     assert.equal(response.headers.get('content-length'), null);
-    const call = assetCalls(bucket)[0];
-    for (const [name, value] of Object.entries(headers)) {
-      assert.equal(call.options.onlyIf.get(name), value);
-    }
+    assert.equal(bucket.calls.filter(({ operation }) => operation === 'head').length, 1);
+    assert.equal(assetCalls(bucket).length, 0);
     assert.equal(bindingsValue.calls.some(({ sql }) => /download_start/.test(sql)), false);
+  }
+});
+
+test('GET preconditions use object metadata in RFC order before Range parsing', async () => {
+  const cases = [
+    ['If-Match mismatch beats multi-range', {
+      'if-match': '"other"', range: 'bytes=0-1,5-6',
+    }, 412],
+    ['If-Match uses strong comparison', {
+      'if-match': 'W/"object-etag"', range: 'bytes=100-',
+    }, 412],
+    ['If-Match lists preserve commas inside quoted tags', {
+      'if-match': '"tag,with,comma", "object-etag"', range: 'bytes=100-',
+    }, 416],
+    ['If-Match wildcard passes for an existing object', {
+      'if-match': '*', range: 'bytes=100-',
+    }, 416],
+    ['If-Unmodified-Since failure beats invalid range', {
+      'if-unmodified-since': 'Sun, 12 Jul 2026 11:59:59 GMT', range: 'invalid',
+    }, 412],
+    ['If-Unmodified-Since is ignored when If-Match is present', {
+      'if-match': '"object-etag"',
+      'if-unmodified-since': 'Sun, 12 Jul 2026 11:59:59 GMT',
+      range: 'invalid',
+    }, 416],
+    ['invalid If-Unmodified-Since is ignored', {
+      'if-unmodified-since': '0', range: 'invalid',
+    }, 416],
+    ['If-None-Match uses weak comparison before Range', {
+      'if-none-match': 'W/"object-etag"', range: 'bytes=0-1,5-6',
+    }, 304],
+    ['If-None-Match wildcard matches an existing object', {
+      'if-none-match': '*', range: 'bytes=100-',
+    }, 304],
+    ['If-None-Match suppresses If-Modified-Since when it does not match', {
+      'if-none-match': '"other"',
+      'if-modified-since': 'Sun, 12 Jul 2026 13:00:00 GMT',
+      range: 'bytes=100-',
+    }, 416],
+    ['If-Modified-Since compares at HTTP second precision', {
+      'if-modified-since': 'Sun, 12 Jul 2026 12:00:00 GMT', range: 'bytes=100-',
+    }, 304],
+    ['invalid If-Modified-Since is ignored', {
+      'if-modified-since': '9999', range: 'bytes=100-',
+    }, 416],
+    ['If-Match pass plus If-None-Match match returns actual 304', {
+      'if-match': '"object-etag"',
+      'if-none-match': '"object-etag"',
+      range: 'bytes=100-',
+    }, 304],
+    ['If-Match failure wins over matching If-None-Match', {
+      'if-match': '"other"',
+      'if-none-match': '"object-etag"',
+      range: 'bytes=100-',
+    }, 412],
+  ];
+
+  for (const [name, headers, expected] of cases) {
+    const bucket = releaseBucket();
+    const bindingsValue = releaseBindings(bucket);
+    const response = await workerModule.route(
+      releaseGet('/api/download/releases/v1.0.0/windows-x64', headers),
+      bindingsValue.env, undefined, downloadDependencies(),
+    );
+    assert.equal(response.status, expected, name);
+    assert.equal(bucket.calls.filter(({ operation }) => operation === 'head').length, 1, name);
+    assert.equal(assetCalls(bucket).length, 0, `${name}: must not call get`);
+    assert.equal(response.body, null, name);
+    assert.equal(bindingsValue.calls.some(({ sql }) => /download_start/.test(sql)), false, name);
   }
 });
 
 test('missing bindings and missing authorized objects fail generically without download events', async () => {
   const noBinding = releaseBindings();
-  const absentBucket = releaseBucket();
+  const absentBucket = releaseBucket({ metadata: null });
   const absent = releaseBindings(absentBucket);
   const responses = [
     await workerModule.route(releaseGet('/api/download/releases'), noBinding.env,

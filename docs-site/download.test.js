@@ -128,6 +128,126 @@ test('recipient UI renders entitled releases and validates optional deep links w
   assert.doesNotMatch(script, /innerHTML|outerHTML|insertAdjacentHTML/);
 });
 
+test('recipient release rendering executes with safe fields, encoded links, and exact deep-link focus', async () => {
+  class Element {
+    constructor(tagName, id = '') {
+      this.tagName = tagName;
+      this.id = id;
+      this.children = [];
+      this.attributes = new Map();
+      this.hidden = true;
+      this.textContent = '';
+      this.value = '';
+    }
+
+    addEventListener() {}
+    append(...children) { this.children.push(...children); }
+    replaceChildren(...children) { this.children = [...children]; }
+    setAttribute(name, value) { this.attributes.set(name, String(value)); }
+    focus() { this.focused = true; }
+    scrollIntoView() { this.scrolled = true; }
+    insertBefore(child, reference) {
+      const index = this.children.indexOf(reference);
+      this.children.splice(index < 0 ? this.children.length : index, 0, child);
+    }
+    querySelector(selector) {
+      return selector === '.intro' ? this.children.find(({ className }) => className === 'intro') : null;
+    }
+  }
+
+  const page = new Element('main');
+  const loginPanel = new Element('section', 'login-panel');
+  const changePanel = new Element('section', 'change-panel');
+  const releasesPanel = new Element('section', 'releases-panel');
+  const releasesIntro = new Element('p');
+  releasesIntro.className = 'intro';
+  const releasesAlert = new Element('p', 'releases-alert');
+  releasesPanel.children.push(releasesIntro, releasesAlert);
+  const elements = new Map([
+    ['.page', page],
+    ['#login-panel', loginPanel],
+    ['#change-panel', changePanel],
+    ['#releases-panel', releasesPanel],
+    ['#login-form', new Element('form')],
+    ['#change-form', new Element('form')],
+    ['#email', new Element('input')],
+    ['#password', new Element('input')],
+    ['#new-password', new Element('input')],
+    ['#login-submit', new Element('button')],
+    ['#change-submit', new Element('button')],
+    ['#releases-heading', new Element('h1')],
+    ['#login-alert', new Element('p')],
+    ['#change-alert', new Element('p')],
+    ['#releases-alert', releasesAlert],
+  ]);
+  const documentStub = {
+    querySelector: (selector) => elements.get(selector) || null,
+    querySelectorAll: (selector) => selector === '.panel'
+      ? [loginPanel, changePanel, releasesPanel]
+      : [],
+    createElement: (tagName) => new Element(tagName),
+  };
+  const payload = {
+    latest_version: 'v1.2.3',
+    items: [{
+      version: 'v1.2.3',
+      published_at: '2026-07-12T18:00:00Z',
+      assets: [{
+        id: 'windows/x64',
+        platform: 'Windows x64',
+        filename: 'Backchannel-windows-x64.zip',
+        size: 2048,
+        sha256: 'a'.repeat(64),
+      }],
+    }],
+  };
+  const fetchCalls = [];
+  const saved = {
+    document: globalThis.document,
+    location: globalThis.location,
+    fetch: globalThis.fetch,
+    verified: globalThis.onTurnstileVerified,
+    error: globalThis.onTurnstileError,
+  };
+
+  try {
+    globalThis.document = documentStub;
+    globalThis.location = { search: '?version=v1.2.3' };
+    globalThis.fetch = async (url) => {
+      fetchCalls.push(url);
+      const body = url.endsWith('/session')
+        ? { authenticated: true, must_change_password: false }
+        : payload;
+      return new Response(JSON.stringify(body), {
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+    await import(`${new URL('../site/downloads/downloads.js', import.meta.url).href}?dom-stub=1`);
+    for (let i = 0; i < 4; i += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    assert.deepEqual(fetchCalls, ['/api/download/session', '/api/download/releases']);
+    const list = releasesPanel.children.find(({ id }) => id === 'releases-list');
+    const release = list.children[0];
+    const article = release.children.find(({ tagName }) => tagName === 'article');
+    const link = article.children.find(({ tagName }) => tagName === 'a');
+    assert.equal(release.children[0].textContent, 'v1.2.3 (Latest)');
+    assert.equal(article.children[0].textContent, 'Windows x64');
+    assert.equal(article.children[1].textContent, 'Backchannel-windows-x64.zip - 2.0 KiB');
+    assert.equal(article.children[2].textContent, `SHA-256: ${'a'.repeat(64)}`);
+    assert.equal(link.href, '/api/download/releases/v1.2.3/windows%2Fx64');
+    assert.equal(release.focused, true);
+    assert.equal(release.scrolled, true);
+  } finally {
+    globalThis.document = saved.document;
+    globalThis.location = saved.location;
+    globalThis.fetch = saved.fetch;
+    globalThis.onTurnstileVerified = saved.verified;
+    globalThis.onTurnstileError = saved.error;
+  }
+});
+
 test('Turnstile errors clear only challenge state and alert an already-active login', () => {
   const body = script.match(/globalThis\.onTurnstileError\s*=\s*\(\)\s*=>\s*\{([\s\S]*?)\n\};/)?.[1] || '';
   const run = ({ loginHidden, activePanel, focused, submitDisabled }) => {
