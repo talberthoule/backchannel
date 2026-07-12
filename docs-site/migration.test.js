@@ -70,6 +70,7 @@ test('decision and account constraints enforce the approval invariant', () => {
     assert.throws(() => insertAccount(db, 'missing@example.com'), /FOREIGN KEY constraint failed/);
 
     insertAccount(db, 'person@example.com');
+    assert.throws(() => insertAccount(db, 'PERSON@example.com'), /UNIQUE constraint failed/);
     const account = db.prepare('SELECT * FROM release_accounts').get();
     assert.equal(account.email, 'person@example.com');
     assert.equal(account.password_iterations, 600_000);
@@ -112,6 +113,10 @@ test('version and session constraints reject malformed or orphaned rows', () => 
       /CHECK constraint failed/,
     );
     assert.throws(
+      () => db.exec(`INSERT INTO release_account_versions (email, version) VALUES ('person@example.com', '${'v'.repeat(33)}')`),
+      /CHECK constraint failed/,
+    );
+    assert.throws(
       () => db.exec("INSERT INTO release_account_versions (email, version) VALUES ('person@example.com', 'v1.0.0')"),
       /UNIQUE constraint failed/,
     );
@@ -126,6 +131,10 @@ test('version and session constraints reject malformed or orphaned rows', () => 
     assert.throws(
       () => db.exec("INSERT INTO release_sessions (token_hash, email, password_change_only, expires_at) VALUES ('orphan', 'missing@example.com', 0, datetime('now'))"),
       /FOREIGN KEY constraint failed/,
+    );
+    assert.throws(
+      () => db.exec("INSERT INTO release_sessions (token_hash, email, password_change_only, expires_at) VALUES ('token', 'person@example.com', 0, datetime('now'))"),
+      /UNIQUE constraint failed/,
     );
   } finally {
     db.close();

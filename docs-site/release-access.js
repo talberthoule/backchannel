@@ -9,8 +9,8 @@ const LOWER = 'abcdefghijkmnopqrstuvwxyz';
 const NUMBER = '23456789';
 const SYMBOL = '!#$%&*+?@';
 const PASSWORD_ALPHABET = UPPER + LOWER + NUMBER + SYMBOL;
-const VERSION_PATTERN = /^v[0-9]+\.[0-9]+\.[0-9]+$/;
-const MANIFEST_KEY_PATTERN = /^releases\/(v[0-9]+\.[0-9]+\.[0-9]+)\/manifest\.json$/;
+const VERSION_PATTERN = /^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
+const MANIFEST_KEY_PATTERN = /^releases\/(v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))\/manifest\.json$/;
 const ASSET_TUPLES = new Map([
   ['windows-x64', ['Windows x64', 'Backchannel-windows-x64.zip', 'application/zip']],
   ['macos-arm64', ['macOS arm64', 'Backchannel-macos-arm64.zip', 'application/zip']],
@@ -260,11 +260,12 @@ function compareVersionsNewestFirst(left, right) {
 
 export function resolveEntitlements(account, explicitVersions, catalog) {
   const versions = new Set();
-  if (account?.include_latest === 1 && catalog?.latestVersion) {
+  if (account?.include_latest === 1 && VERSION_PATTERN.test(catalog?.latestVersion)) {
     versions.add(catalog.latestVersion);
   }
   for (const version of Array.isArray(explicitVersions) ? explicitVersions : []) {
-    if (typeof version === 'string' && catalog?.manifests?.has(version)) versions.add(version);
+    if (typeof version === 'string' && VERSION_PATTERN.test(version)
+      && catalog?.manifests?.has(version)) versions.add(version);
   }
   return [...versions]
     .sort(compareVersionsNewestFirst)

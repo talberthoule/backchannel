@@ -224,6 +224,18 @@ test('manifest validation rejects malformed or untrusted content', () => {
   assert.equal(parseManifest(baseManifest, 'v1.2.4'), null);
 });
 
+test('manifest validation rejects leading-zero version aliases', () => {
+  const version = 'v01.2.3';
+  const manifest = {
+    ...baseManifest,
+    version,
+    assets: [{ ...baseAsset, key: `releases/${version}/${baseAsset.filename}` }],
+  };
+  assert.equal(parseManifest(manifest), null);
+  assert.equal(parseManifest(manifest, version), null);
+  assert.equal(parseManifest(baseManifest, version), null);
+});
+
 test('release catalog paginates, ignores untrusted keys, and returns generic diagnostics', async () => {
   const calls = { list: [], get: [] };
   const valid = manifestFor('v1.2.3');
@@ -308,6 +320,22 @@ test('release catalog rejects missing, malformed, or unknown Latest generically'
   }
 });
 
+test('release catalog ignores leading-zero manifest keys and Latest aliases', async () => {
+  const version = 'v01.2.3';
+  const bucket = {
+    async list() {
+      return { objects: [{ key: `releases/${version}/manifest.json` }], truncated: false };
+    },
+    async get(key) {
+      if (key === 'releases/latest.json') return jsonObject({ version });
+      return jsonObject(manifestFor(version));
+    },
+  };
+  const catalog = await loadReleaseCatalog(bucket);
+  assert.equal(catalog.latestVersion, null);
+  assert.deepEqual([...catalog.manifests.keys()], []);
+});
+
 test('entitlements combine dynamic Latest and valid grants newest-first without duplicates', () => {
   const catalog = {
     latestVersion: 'v2.0.0',
@@ -329,6 +357,15 @@ test('entitlements combine dynamic Latest and valid grants newest-first without 
     resolveEntitlements({ include_latest: 0 }, ['v1.9.10'], catalog).map(({ version }) => version),
     ['v1.9.10'],
   );
+});
+
+test('entitlements reject leading-zero version aliases even from a supplied catalog', () => {
+  const version = 'v01.2.3';
+  const catalog = {
+    latestVersion: version,
+    manifests: new Map([[version, manifestFor(version)]]),
+  };
+  assert.deepEqual(resolveEntitlements({ include_latest: 1 }, [version], catalog), []);
 });
 
 test('single byte ranges parse all supported shapes', () => {
