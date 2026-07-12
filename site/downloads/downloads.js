@@ -13,9 +13,9 @@ let turnstileToken = '';
 globalThis.onTurnstileVerified = (token) => { turnstileToken = token; };
 globalThis.onTurnstileError = () => {
   turnstileToken = '';
-  loginSubmit.disabled = false;
-  setAlert('#login-alert', genericError);
-  show(document.querySelector('#login-panel'), email);
+  if (!document.querySelector('#login-panel').hidden) {
+    setAlert('#login-alert', genericError);
+  }
   return true;
 };
 

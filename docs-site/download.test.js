@@ -105,39 +105,74 @@ test('recipient script resets Turnstile in login finally and uses safe browser A
   assert.doesNotMatch(script, /localStorage|sessionStorage|document\.cookie|console\./);
 });
 
-test('Turnstile errors clear held state, restore usable login, and suppress default handling', () => {
+test('Turnstile errors clear only challenge state and alert an already-active login', () => {
   const body = script.match(/globalThis\.onTurnstileError\s*=\s*\(\)\s*=>\s*\{([\s\S]*?)\n\};/)?.[1] || '';
-  const state = { alert: '', focused: false, shown: false, token: 'unread' };
-  const context = {
-    state,
-    document: { querySelector: () => ({ id: 'login-panel' }) },
+  const run = ({ loginHidden, activePanel, focused, submitDisabled }) => {
+    const state = { alert: '', activePanel, focused, submitDisabled, token: 'unread' };
+    const context = { state };
+    vm.runInNewContext(`
+      let turnstileToken = 'held-token';
+      const genericError = 'generic error';
+      const loginSubmit = { disabled: state.submitDisabled };
+      const email = { focus() { state.focused = 'email'; } };
+      const loginPanel = { id: 'login-panel', hidden: ${loginHidden} };
+      const document = { querySelector() { return loginPanel; } };
+      function setAlert(id, message) {
+        if (id === '#login-alert') state.alert = message;
+      }
+      function show(panel, focusTarget) {
+        state.activePanel = panel.id;
+        focusTarget.focus();
+      }
+      globalThis.onTurnstileError = () => {${body}
+      };
+      state.result = globalThis.onTurnstileError();
+      state.token = turnstileToken;
+      state.submitDisabled = loginSubmit.disabled;
+    `, context);
+    return state;
   };
 
-  vm.runInNewContext(`
-    let turnstileToken = 'held-token';
-    const genericError = 'generic error';
-    const loginSubmit = { disabled: true };
-    const email = { focus() { state.focused = true; } };
-    function setAlert(id, message) {
-      if (id === '#login-alert') state.alert = message;
-    }
-    function show(panel, focusTarget) {
-      state.shown = panel.id === 'login-panel';
-      focusTarget.focus();
-    }
-    globalThis.onTurnstileError = () => {${body}
-    };
-    state.result = globalThis.onTurnstileError();
-    state.token = turnstileToken;
-    state.submitDisabled = loginSubmit.disabled;
-  `, context);
+  const change = run({
+    loginHidden: true,
+    activePanel: 'change-panel',
+    focused: 'new-password',
+    submitDisabled: false,
+  });
+  assert.deepEqual(change, {
+    alert: '',
+    activePanel: 'change-panel',
+    focused: 'new-password',
+    submitDisabled: false,
+    token: '',
+    result: true,
+  });
 
-  assert.equal(state.result, true);
-  assert.equal(state.token, '');
-  assert.equal(state.alert, 'generic error');
-  assert.equal(state.submitDisabled, false);
-  assert.equal(state.shown, true);
-  assert.equal(state.focused, true);
+  const login = run({
+    loginHidden: false,
+    activePanel: 'login-panel',
+    focused: 'email',
+    submitDisabled: false,
+  });
+  assert.equal(login.alert, 'generic error');
+  assert.equal(login.activePanel, 'login-panel');
+  assert.equal(login.focused, 'email');
+  assert.equal(login.submitDisabled, false);
+  assert.equal(login.token, '');
+  assert.equal(login.result, true);
+
+  const inFlight = run({
+    loginHidden: false,
+    activePanel: 'login-panel',
+    focused: 'password',
+    submitDisabled: true,
+  });
+  assert.equal(inFlight.alert, 'generic error');
+  assert.equal(inFlight.focused, 'password');
+  assert.equal(inFlight.submitDisabled, true);
+  assert.equal(inFlight.token, '');
+  assert.equal(inFlight.result, true);
+  assert.doesNotMatch(body, /show\(|\.focus\(|loginSubmit\.disabled/);
 });
 
 test('recipient styles are accessible and resilient at 320px', () => {
