@@ -12,13 +12,10 @@
 
 * { box-sizing: border-box; }
 
-html { overflow-x: hidden; }
-
 body {
   min-width: 0;
   min-height: 100vh;
   margin: 0;
-  overflow-x: hidden;
   color: var(--ink);
   background: var(--paper);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -121,7 +118,10 @@ button {
   background: var(--accent);
   border: 1px solid var(--accent);
   border-radius: 7px;
-  font: 650 16px/1.25 inherit;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.25;
   cursor: pointer;
   transition: background-color 120ms ease-out, border-color 120ms ease-out;
 }

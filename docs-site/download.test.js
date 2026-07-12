@@ -6,44 +6,95 @@ const read = (path) => existsSync(new URL(path, import.meta.url))
   ? readFileSync(new URL(path, import.meta.url), 'utf8')
   : '';
 const html = read('../site/downloads/index.html');
+const publicHtml = read('../site/index.html');
 const script = read('../site/downloads/downloads.js');
 const css = read('../site/downloads/downloads.css');
 const packageJson = JSON.parse(read('./package.json'));
 
-test('recipient page uses local assets and the exact Turnstile login action', () => {
+function panel(id) {
+  return html.match(new RegExp(`<section[^>]+id="${id}"[\\s\\S]*?<\\/section>`))?.[0] || '';
+}
+
+function fetchOptions(path) {
+  return script.match(new RegExp(`fetch\\(['"]\\/api\\/download\\/${path}['"],\\s*\\{([\\s\\S]*?)\\n\\s*\\}\\)`))?.[1] || '';
+}
+
+test('recipient page uses only local assets and the exact public Turnstile widget', () => {
+  const publicSiteKey = publicHtml.match(/class="cf-turnstile"[^>]*data-sitekey="([^"]+)"/)?.[1];
+  const recipientWidget = html.match(/class="cf-turnstile"[^>]*>/)?.[0] || '';
+  const recipientSiteKey = recipientWidget.match(/data-sitekey="([^"]+)"/)?.[1];
+  const assetRefs = [...html.matchAll(/<(?:link|script)\b[^>]*(?:href|src)="([^"]+)"[^>]*>/g)]
+    .map((match) => match[1]);
+  const remoteAssets = [...`${html}\n${script}\n${css}`.matchAll(/https?:\/\/[^\s"'<>]+/g)]
+    .map((match) => match[0]);
+
+  assert.ok(publicSiteKey);
+  assert.equal(recipientSiteKey, publicSiteKey);
+  assert.match(recipientWidget, /data-action="download_login"/);
+  assert.match(recipientWidget, /data-size="compact"/);
   assert.match(html, /href="\/downloads\.css"/);
   assert.match(html, /src="\/downloads\.js"\s+defer/);
+  assert.deepEqual(assetRefs, [
+    '/downloads.css',
+    '/downloads.js',
+    'https://challenges.cloudflare.com/turnstile/v0/api.js',
+  ]);
+  assert.deepEqual(remoteAssets, ['https://challenges.cloudflare.com/turnstile/v0/api.js']);
   assert.match(html, /src="https:\/\/challenges\.cloudflare\.com\/turnstile\/v0\/api\.js"\s+defer/);
-  assert.match(html, /class="cf-turnstile"[^>]*data-sitekey="[^"]+"[^>]*data-action="download_login"/s);
-  assert.doesNotMatch(html, /<(?:script|style)(?![^>]*\bsrc=|[^>]*\bhref=)[^>]*>\s*\S/i);
+  assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)[^>]*>|<style\b|\sstyle=|\son\w+=/i);
 });
 
-test('recipient page exposes labelled controls and three exclusive panels', () => {
+test('recipient page exposes labelled controls and accessible feedback in every panel', () => {
   for (const id of ['email', 'password', 'new-password']) {
     assert.match(html, new RegExp(`<label[^>]+for="${id}"`));
     assert.match(html, new RegExp(`<input[^>]+id="${id}"`));
   }
   assert.match(html, /id="new-password"[^>]*minlength="14"[^>]*maxlength="128"/);
-  for (const panel of ['login-panel', 'change-panel', 'releases-panel']) {
-    assert.match(html, new RegExp(`<section[^>]+id="${panel}"[^>]+hidden`));
+  for (const [panelId, alertId] of [
+    ['login-panel', 'login-alert'],
+    ['change-panel', 'change-alert'],
+    ['releases-panel', 'releases-alert'],
+  ]) {
+    const source = panel(panelId);
+    assert.match(source, /hidden/);
+    assert.match(source, /aria-hidden="true"/);
+    assert.match(source, new RegExp(`id="${alertId}"[^>]*role="alert"[^>]*aria-live="assertive"`));
   }
+  assert.match(script, /setAlert\(['"]#login-alert['"]/);
+  assert.match(script, /setAlert\(['"]#change-alert['"]/);
+  assert.match(script, /['"]#change-alert['"]\s*:\s*['"]#releases-alert['"]/);
+  assert.match(script, /setAlert\(alertId,/);
   assert.match(html, /releases will load/i);
-  assert.ok((html.match(/role="alert"/g) || []).length >= 2);
+  assert.equal((html.match(/role="alert"/g) || []).length, 3);
   assert.match(html, /type="submit"[^>]*>\s*Sign in/i);
   assert.match(html, /type="submit"[^>]*>\s*Change password/i);
   assert.ok((html.match(/>\s*Log out\s*</gi) || []).length >= 2);
 });
 
-test('recipient script implements session, login, password, and logout requests safely', () => {
-  for (const path of ['session', 'login', 'password', 'logout']) {
-    assert.match(script, new RegExp(`fetch\\(['"]\\/api\\/download\\/${path}['"]`));
+test('recipient requests have exact methods, bodies, and same-origin credentials', () => {
+  const session = script.match(/fetch\(['"]\/api\/download\/session['"],\s*\{([^}]*)\}\)/)?.[1] || '';
+  const login = fetchOptions('login');
+  const passwordChange = fetchOptions('password');
+  const logout = fetchOptions('logout');
+
+  assert.match(session, /credentials:\s*['"]same-origin['"]/);
+  assert.doesNotMatch(session, /method:|body:/);
+  for (const options of [login, passwordChange, logout]) {
+    assert.match(options, /method:\s*['"]POST['"]/);
+    assert.match(options, /credentials:\s*['"]same-origin['"]/);
+    assert.match(options, /headers:\s*\{\s*['"]content-type['"]:\s*['"]application\/json['"]\s*\}/);
   }
-  assert.match(script, /credentials:\s*['"]same-origin['"]/);
-  assert.match(script, /JSON\.stringify\(\{\s*email:\s*email\.value,\s*password:\s*password\.value,\s*turnstile_token:/s);
-  assert.match(script, /JSON\.stringify\(\{\s*password\s*\}\)/);
-  assert.match(script, /JSON\.stringify\(\{\s*\}\)/);
+  assert.match(login, /body:\s*JSON\.stringify\(\{\s*email:\s*email\.value,\s*password:\s*password\.value,\s*turnstile_token:\s*token\s*\}\)/s);
+  assert.match(passwordChange, /body:\s*JSON\.stringify\(\{\s*password\s*\}\)/);
+  assert.match(logout, /body:\s*JSON\.stringify\(\{\s*\}\)/);
+});
+
+test('recipient script resets Turnstile in login finally and uses safe browser APIs', () => {
+  const loginHandler = script.match(/loginForm\.addEventListener\(['"]submit['"][\s\S]*?^\}\);/m)?.[0] || '';
   assert.match(script, /turnstile\??\.getResponse/);
-  assert.match(script, /turnstile\??\.reset/);
+  assert.match(loginHandler, /finally\s*\{[\s\S]*turnstileToken\s*=\s*['"][\s\S]*turnstile\??\.reset\(\)/);
+  assert.ok(loginHandler.indexOf('turnstile?.reset()') > loginHandler.indexOf("fetch('/api/download/login'"));
+  assert.equal((script.match(/turnstile\??\.reset\(\)/g) || []).length, 1);
   assert.match(script, /\.disabled\s*=\s*true/);
   assert.match(script, /\.disabled\s*=\s*false/);
   assert.match(script, /\.focus\(\)/);
@@ -55,10 +106,21 @@ test('recipient script implements session, login, password, and logout requests 
 test('recipient styles are accessible and resilient at 320px', () => {
   assert.match(css, /:focus-visible/);
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
-  assert.match(css, /max-width:\s*320px|@media\s*\(max-width:\s*\d+px\)/);
-  assert.match(css, /overflow-x:\s*hidden/);
+  assert.match(css, /@media\s*\(max-width:\s*320px\)[\s\S]*\.page\s*\{[^}]*width:\s*min\(100%\s*-\s*20px,\s*460px\)/);
+  assert.match(css, /@media\s*\(max-width:\s*320px\)[\s\S]*\.panel\s*\{[^}]*padding:\s*20px/);
+  assert.doesNotMatch(css, /overflow(?:-x)?:\s*(?:hidden|clip)/);
   assert.match(css, /min-height:\s*44px/);
   assert.match(css, /max-width:\s*100%/);
+  assert.match(css, /\.cf-turnstile\s*\{[^}]*max-width:\s*100%/);
+});
+
+test('recipient controls use valid inherited font declarations', () => {
+  const button = css.match(/button\s*\{([\s\S]*?)\}/)?.[1] || '';
+  assert.doesNotMatch(button, /font:\s*[^;]*inherit/);
+  assert.match(button, /font-family:\s*inherit/);
+  assert.match(button, /font-size:\s*16px/);
+  assert.match(button, /font-weight:\s*650/);
+  assert.match(button, /line-height:\s*1\.25/);
 });
 
 test('download contract is runnable and static assets contain no secrets', () => {
