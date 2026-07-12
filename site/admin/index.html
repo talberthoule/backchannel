@@ -72,17 +72,56 @@
               <th scope="col">Consent</th>
               <th scope="col">Invited</th>
               <th scope="col">Last contacted</th>
+              <th scope="col">Decision</th>
+              <th scope="col">Account</th>
+              <th scope="col">Release access</th>
+              <th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody id="interest-rows">
             <tr class="state-row">
-              <td colspan="7">Loading access requests…</td>
+              <td colspan="11">Loading access requests…</td>
             </tr>
           </tbody>
         </table>
       </div>
     </section>
   </main>
+
+  <dialog id="access-dialog" aria-labelledby="access-dialog-title">
+    <form id="access-form">
+      <h2 id="access-dialog-title">Release access</h2>
+      <p id="access-account"></p>
+      <label class="check-row">
+        Latest
+        <input id="include-latest" type="checkbox" checked />
+      </label>
+      <fieldset>
+        <legend>Historical releases</legend>
+        <div id="version-options" class="version-options"></div>
+      </fieldset>
+      <p id="access-status" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button id="access-cancel" type="button">Cancel</button>
+        <button id="access-submit" type="submit">Approve access</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="credential-dialog" aria-labelledby="credential-dialog-title">
+    <section class="credential-panel">
+      <h2 id="credential-dialog-title">One-time credential</h2>
+      <p>Copy or save this credential now. It will not be shown again.</p>
+      <label for="credential-text">Credential text</label>
+      <textarea id="credential-text" readonly></textarea>
+      <p id="credential-status" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button id="credential-copy" type="button">Copy credential</button>
+        <button id="credential-save" type="button">Save credential text file</button>
+        <button id="credential-close" type="button">Close</button>
+      </div>
+    </section>
+  </dialog>
 
   <noscript>
     <p class="noscript">JavaScript is required to load private access records.</p>

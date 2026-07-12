@@ -229,7 +229,7 @@ body {
 }
 
 table {
-  min-width: 1180px;
+  min-width: 1680px;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
@@ -315,6 +315,92 @@ td.date {
   height: 112px;
   color: var(--muted);
   text-align: center;
+}
+
+.entitlements {
+  max-width: 260px;
+  white-space: normal;
+}
+
+.row-actions,
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.row-action,
+.dialog-actions button {
+  min-height: 44px;
+  padding: 7px 11px;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+dialog {
+  width: min(92vw, 620px);
+  max-height: 88vh;
+  padding: 24px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+dialog::backdrop {
+  background: rgba(2, 6, 23, 0.72);
+}
+
+dialog h2 {
+  margin-top: 0;
+}
+
+fieldset {
+  margin-block: 20px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.version-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.credential-panel {
+  padding: 0;
+}
+
+textarea {
+  width: 100%;
+  min-height: 190px;
+  margin-block: 8px 12px;
+  padding: 12px;
+  resize: vertical;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+#access-status,
+#credential-status {
+  min-height: 20px;
+  color: var(--muted);
 }
 
 @media (hover: hover) and (pointer: fine) {
