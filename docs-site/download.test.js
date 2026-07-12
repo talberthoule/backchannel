@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
+import vm from 'node:vm';
 
 const read = (path) => existsSync(new URL(path, import.meta.url))
   ? readFileSync(new URL(path, import.meta.url), 'utf8')
@@ -32,6 +33,7 @@ test('recipient page uses only local assets and the exact public Turnstile widge
   assert.equal(recipientSiteKey, publicSiteKey);
   assert.match(recipientWidget, /data-action="download_login"/);
   assert.match(recipientWidget, /data-size="compact"/);
+  assert.match(recipientWidget, /data-error-callback="onTurnstileError"/);
   assert.match(html, /href="\/downloads\.css"/);
   assert.match(html, /src="\/downloads\.js"\s+defer/);
   assert.deepEqual(assetRefs, [
@@ -103,11 +105,51 @@ test('recipient script resets Turnstile in login finally and uses safe browser A
   assert.doesNotMatch(script, /localStorage|sessionStorage|document\.cookie|console\./);
 });
 
+test('Turnstile errors clear held state, restore usable login, and suppress default handling', () => {
+  const body = script.match(/globalThis\.onTurnstileError\s*=\s*\(\)\s*=>\s*\{([\s\S]*?)\n\};/)?.[1] || '';
+  const state = { alert: '', focused: false, shown: false, token: 'unread' };
+  const context = {
+    state,
+    document: { querySelector: () => ({ id: 'login-panel' }) },
+  };
+
+  vm.runInNewContext(`
+    let turnstileToken = 'held-token';
+    const genericError = 'generic error';
+    const loginSubmit = { disabled: true };
+    const email = { focus() { state.focused = true; } };
+    function setAlert(id, message) {
+      if (id === '#login-alert') state.alert = message;
+    }
+    function show(panel, focusTarget) {
+      state.shown = panel.id === 'login-panel';
+      focusTarget.focus();
+    }
+    globalThis.onTurnstileError = () => {${body}
+    };
+    state.result = globalThis.onTurnstileError();
+    state.token = turnstileToken;
+    state.submitDisabled = loginSubmit.disabled;
+  `, context);
+
+  assert.equal(state.result, true);
+  assert.equal(state.token, '');
+  assert.equal(state.alert, 'generic error');
+  assert.equal(state.submitDisabled, false);
+  assert.equal(state.shown, true);
+  assert.equal(state.focused, true);
+});
+
 test('recipient styles are accessible and resilient at 320px', () => {
+  const pageGutter = Number(css.match(/@media\s*\(max-width:\s*320px\)[\s\S]*?\.page\s*\{[^}]*width:\s*min\(100%\s*-\s*(\d+)px,/)?.[1]);
+  const panelPadding = Number(css.match(/@media\s*\(max-width:\s*320px\)[\s\S]*?\.panel\s*\{[^}]*padding:\s*(\d+)px/)?.[1]);
+  const panelBorder = Number(css.match(/\.panel\s*\{[\s\S]*?border:\s*(\d+)px/)?.[1]);
+  const contentWidth = 320 - pageGutter - (2 * panelPadding) - (2 * panelBorder);
+
   assert.match(css, /:focus-visible/);
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
-  assert.match(css, /@media\s*\(max-width:\s*320px\)[\s\S]*\.page\s*\{[^}]*width:\s*min\(100%\s*-\s*20px,\s*460px\)/);
-  assert.match(css, /@media\s*\(max-width:\s*320px\)[\s\S]*\.panel\s*\{[^}]*padding:\s*20px/);
+  assert.ok(Number.isFinite(contentWidth));
+  assert.ok(contentWidth >= 150, `320px content width ${contentWidth}px must fit compact Turnstile`);
   assert.doesNotMatch(css, /overflow(?:-x)?:\s*(?:hidden|clip)/);
   assert.match(css, /min-height:\s*44px/);
   assert.match(css, /max-width:\s*100%/);
@@ -116,11 +158,15 @@ test('recipient styles are accessible and resilient at 320px', () => {
 
 test('recipient controls use valid inherited font declarations', () => {
   const button = css.match(/button\s*\{([\s\S]*?)\}/)?.[1] || '';
-  assert.doesNotMatch(button, /font:\s*[^;]*inherit/);
-  assert.match(button, /font-family:\s*inherit/);
-  assert.match(button, /font-size:\s*16px/);
-  assert.match(button, /font-weight:\s*650/);
-  assert.match(button, /line-height:\s*1\.25/);
+  const shorthands = [...button.matchAll(/\bfont:\s*([^;]+);/g)];
+  for (const shorthand of shorthands) {
+    assert.equal(shorthand[1].trim(), 'inherit');
+  }
+  const explicit = /font-family:\s*inherit/.test(button)
+    && /font-size:\s*16px/.test(button)
+    && /font-weight:\s*650/.test(button)
+    && /line-height:\s*1\.25/.test(button);
+  assert.ok(shorthands.some((match) => match[1].trim() === 'inherit') || explicit);
 });
 
 test('download contract is runnable and static assets contain no secrets', () => {

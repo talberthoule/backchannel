@@ -11,6 +11,13 @@ const genericError = "We couldn't complete this request. Please try again.";
 let turnstileToken = '';
 
 globalThis.onTurnstileVerified = (token) => { turnstileToken = token; };
+globalThis.onTurnstileError = () => {
+  turnstileToken = '';
+  loginSubmit.disabled = false;
+  setAlert('#login-alert', genericError);
+  show(document.querySelector('#login-panel'), email);
+  return true;
+};
 
 function show(panel, focusTarget) {
   for (const item of panels) {
