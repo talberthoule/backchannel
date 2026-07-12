@@ -435,6 +435,11 @@ test('approval normalizes input and creates a one-time credential without bindin
   assert.match(batchSql[0], /INSERT INTO release_accounts[\s\S]+SELECT[\s\S]+WHERE EXISTS/i);
   assert.match(batchSql[1], /INSERT INTO release_account_versions/i);
   assert.match(batchSql[2], /INSERT INTO release_account_versions/i);
+  for (const grantSql of batchSql.slice(1, 3)) {
+    assert.match(grantSql, /INSERT INTO release_account_versions[\s\S]+SELECT[\s\S]+WHERE EXISTS/i);
+    assert.match(grantSql, /release_accounts[\s\S]+state = 'active'/i);
+    assert.match(grantSql, /interest_subscribers/i);
+  }
   assert.match(batchSql[3], /UPDATE interest_subscribers/i);
   assert.match(batchSql[4], /INSERT INTO release_access_events/i);
   assert.match(batchSql[4], /WHERE EXISTS[\s\S]+release_accounts/i);
@@ -442,7 +447,7 @@ test('approval normalizes input and creates a one-time credential without bindin
   assert.ok(calls.flatMap(({ values }) => values).includes('person@example.com'));
 });
 
-test('approval fails generically when the interest is absent or a concurrent account wins', async () => {
+test('approval with explicit versions cannot create orphan grants when interest is absent', async () => {
   const absent = adminBindings({
     batch: async (statements) => statements.map((_, index) => ({
       success: true,
@@ -450,11 +455,15 @@ test('approval fails generically when the interest is absent or a concurrent acc
     })),
   });
   const absentResponse = await workerModule.route(adminJson('/api/admin/access/approve', {
-    email: 'missing@example.com', include_latest: true, versions: [],
+    email: 'missing@example.com', include_latest: true, versions: ['v1.2.3'],
   }), absent.env, allowOwner, fixedDependencies);
   assert.ok([404, 409].includes(absentResponse.status));
   assert.doesNotMatch(await absentResponse.text(), /missing@example|password/i);
+  assert.match(absent.calls[1].sql, /INSERT INTO release_account_versions[\s\S]+WHERE EXISTS/i);
+  assert.match(absent.calls[1].sql, /release_accounts[\s\S]+interest_subscribers/i);
+});
 
+test('approval fails generically when a concurrent account wins', async () => {
   const duplicate = adminBindings({
     batch: async () => { throw new Error('UNIQUE release_accounts.email'); },
   });
@@ -470,7 +479,6 @@ test('admin entitlement input requires a boolean and unique strict versions', as
     { email: 'person@example.com', include_latest: 'true', versions: [] },
     { email: 'person@example.com', include_latest: true, versions: ['1.2.3'] },
     { email: 'person@example.com', include_latest: true, versions: ['v1.2.3', 'v1.2.3'] },
-    { email: 'person@example.com', include_latest: true, versions: Array(101).fill('v1.2.3') },
   ];
   for (const body of invalidBodies) {
     const { env, calls } = adminBindings();
@@ -480,6 +488,17 @@ test('admin entitlement input requires a boolean and unique strict versions', as
     assert.equal(response.status, 400);
     assert.equal(calls.length, 0);
   }
+});
+
+test('admin entitlement input rejects more than 100 unique canonical versions', async () => {
+  const { env, calls } = adminBindings();
+  const versions = Array.from({ length: 101 }, (_, index) => `v1.2.${index}`);
+  const response = await workerModule.route(adminJson('/api/admin/access/approve', {
+    email: 'person@example.com', include_latest: true, versions,
+  }), env, allowOwner, fixedDependencies);
+  assert.equal(new Set(versions).size, 101);
+  assert.equal(response.status, 400);
+  assert.equal(calls.length, 0);
 });
 
 test('rejection preserves consent and never creates an account', async () => {

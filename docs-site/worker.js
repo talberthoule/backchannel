@@ -277,8 +277,13 @@ async function approve(env, email, access, dependencies, now) {
   access.includeLatest ? 1 : 0, now, email)];
   for (const version of access.versions) {
     statements.push(statement(env, `
-      INSERT INTO release_account_versions (email, version, granted_at) VALUES (?, ?, ?)
-    `, email, version, now));
+      INSERT INTO release_account_versions (email, version, granted_at)
+      SELECT ?, ?, ? WHERE EXISTS (
+        SELECT 1 FROM release_accounts a
+        JOIN interest_subscribers i ON i.email = a.email
+        WHERE a.email = ? AND a.state = 'active'
+      )
+    `, email, version, now, email));
   }
   statements.push(
     statement(env, `
