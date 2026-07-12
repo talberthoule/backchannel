@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -72,9 +72,226 @@ jobs:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
 
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    concurrency:
+      group: backchannel-r2-publish
+      cancel-in-progress: false
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      AWS_EC2_METADATA_DISABLED: "true"
+      R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      R2_BUCKET: ${{ vars.R2_RELEASES_BUCKET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Backchannel-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Check immutable version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if aws s3api head-object \
+            --endpoint-url "$R2_ENDPOINT" \
+            --bucket "$R2_BUCKET" \
+            --key "releases/${{ github.ref_name }}/manifest.json" \
+            >/dev/null 2>manifest-error.txt; then
+            echo "Release manifest already exists" >&2
+            exit 1
+          fi
+          error="$(tr -d '\r' < manifest-error.txt)"
+          if ! grep -Eq '^An error occurred \((404|NoSuchKey|NotFound)\) when calling the HeadObject operation: (Not Found|NoSuchKey|The specified key does not exist\.)$' <<<"$error"; then
+            printf '%s\n' "$error" >&2
+            exit 1
+          fi
+
+      - name: Fetch current Latest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-metadata
+          if aws s3api get-object \
+            --endpoint-url "$R2_ENDPOINT" \
+            --bucket "$R2_BUCKET" \
+            --key releases/latest.json \
+            release-metadata/current-latest.json \
+            >/dev/null 2>latest-error.txt; then
+            exit 0
+          fi
+          error="$(tr -d '\r' < latest-error.txt)"
+          if ! grep -Eq '^An error occurred \((404|NoSuchKey|NotFound)\) when calling the GetObject operation: (Not Found|NoSuchKey|The specified key does not exist\.)$' <<<"$error"; then
+            printf '%s\n' "$error" >&2
+            exit 1
+          fi
+          rm -f release-metadata/current-latest.json
+
+      - name: Build release manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          published_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          printf '%s\n' "$published_at" > release-metadata/published-at
+          current=()
+          if [[ -f release-metadata/current-latest.json ]]; then
+            current=(--current-latest release-metadata/current-latest.json)
+          fi
+          python desktop/scripts/build_release_manifest.py \
+            --asset-dir release-assets \
+            --tag "${{ github.ref_name }}" \
+            --commit "${{ github.sha }}" \
+            --published-at "$published_at" \
+            --manifest-out release-metadata/manifest.json \
+            --latest-out release-metadata/latest.json \
+            "${current[@]}"
+
+      - name: Upload release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' > release-metadata/assets.tsv
+          import json
+          for asset in json.load(open("release-metadata/manifest.json", encoding="utf-8"))["assets"]:
+              print(asset["filename"], asset["key"], asset["content_type"], sep="\t")
+          PY
+          while IFS=$'\t' read -r filename key content_type; do
+            aws s3 cp "release-assets/$filename" "s3://$R2_BUCKET/$key" \
+              --endpoint-url "$R2_ENDPOINT" \
+              --content-type "$content_type" \
+              --content-disposition "attachment; filename=\"$filename\"" \
+              --only-show-errors
+          done < release-metadata/assets.tsv
+
+      - name: Verify release asset sizes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' > release-metadata/sizes.tsv
+          import json
+          for asset in json.load(open("release-metadata/manifest.json", encoding="utf-8"))["assets"]:
+              print(asset["key"], asset["size"], sep="\t")
+          PY
+          while IFS=$'\t' read -r key expected; do
+            actual="$(aws s3api head-object \
+              --endpoint-url "$R2_ENDPOINT" \
+              --bucket "$R2_BUCKET" \
+              --key "$key" \
+              --query ContentLength \
+              --output text)"
+            [[ "$actual" == "$expected" ]] || {
+              echo "Size mismatch for $key: expected $expected, got $actual" >&2
+              exit 1
+            }
+          done < release-metadata/sizes.tsv
+
+      - name: Create immutable manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws s3api put-object \
+            --endpoint-url "$R2_ENDPOINT" \
+            --bucket "$R2_BUCKET" \
+            --key "releases/${{ github.ref_name }}/manifest.json" \
+            --body release-metadata/manifest.json \
+            --content-type application/json \
+            --cache-control no-store \
+            --if-none-match '*' \
+            >/dev/null
+
+      - name: Verify immutable manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws s3api get-object \
+            --endpoint-url "$R2_ENDPOINT" \
+            --bucket "$R2_BUCKET" \
+            --key "releases/${{ github.ref_name }}/manifest.json" \
+            release-metadata/remote-manifest.json \
+            >/dev/null
+          cmp release-metadata/manifest.json release-metadata/remote-manifest.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from desktop.scripts.build_release_manifest import build_manifest
+
+          remote = json.loads(Path("release-metadata/remote-manifest.json").read_text())
+          expected = build_manifest(
+              Path("release-assets"),
+              remote["version"],
+              remote["commit"],
+              remote["published_at"],
+          )
+          if remote != expected:
+              raise SystemExit("remote manifest failed helper validation")
+          PY
+
+      - name: Update Latest
+        shell: bash
+        run: |
+          set -euo pipefail
+          not_found='^An error occurred \((404|NoSuchKey|NotFound)\) when calling the GetObject operation: (Not Found|NoSuchKey|The specified key does not exist\.)$'
+          for attempt in 1 2; do
+            rm -f release-metadata/retry-current-latest.json
+            if etag="$(aws s3api get-object \
+              --endpoint-url "$R2_ENDPOINT" \
+              --bucket "$R2_BUCKET" \
+              --key releases/latest.json \
+              release-metadata/retry-current-latest.json \
+              --query ETag \
+              --output text 2>latest-read-error.txt)"; then
+              condition=(--if-match "$etag")
+              current=(--current-latest release-metadata/retry-current-latest.json)
+            else
+              error="$(tr -d '\r' < latest-read-error.txt)"
+              grep -Eq "$not_found" <<<"$error" || {
+                printf '%s\n' "$error" >&2
+                exit 1
+              }
+              condition=(--if-none-match '*')
+              current=()
+            fi
+
+            python desktop/scripts/build_release_manifest.py \
+              --asset-dir release-assets \
+              --tag "${{ github.ref_name }}" \
+              --commit "${{ github.sha }}" \
+              --published-at "$(cat release-metadata/published-at)" \
+              --manifest-out release-metadata/retry-manifest.json \
+              --latest-out release-metadata/latest.json \
+              "${current[@]}"
+
+            if aws s3api put-object \
+              --endpoint-url "$R2_ENDPOINT" \
+              --bucket "$R2_BUCKET" \
+              --key releases/latest.json \
+              --body release-metadata/latest.json \
+              --content-type application/json \
+              --cache-control no-store \
+              "${condition[@]}" \
+              >/dev/null 2>latest-write-error.txt; then
+              exit 0
+            fi
+            error="$(tr -d '\r' < latest-write-error.txt)"
+            if [[ $attempt -eq 1 ]] && grep -Eq '(412|PreconditionFailed)' <<<"$error"; then
+              echo "Latest precondition conflict; retrying once"
+              continue
+            fi
+            printf '%s\n' "$error" >&2
+            exit 1
+          done
+
+      - name: Publish GitHub release notes
         uses: softprops/action-gh-release@v2
         with:
           body_path: .github/release-notes/${{ github.ref_name }}.md
-          files: ${{ matrix.asset }}
