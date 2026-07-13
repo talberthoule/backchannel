@@ -80,6 +80,12 @@ function Get-RemoteLatest {
     throw "Reading Latest failed: $($result.Output)"
 }
 
+function Test-ExactSet {
+    param([string[]]$Actual, [string[]]$Expected)
+
+    @(Compare-Object $Actual $Expected).Count -eq 0
+}
+
 foreach ($name in @(
     "R2_ACCESS_KEY_ID",
     "R2_SECRET_ACCESS_KEY",
@@ -102,8 +108,8 @@ $linux = "Backchannel-linux-x64.tar.gz"
 $names = @(Get-ChildItem -LiteralPath $AssetDirectory -Force | ForEach-Object Name | Sort-Object)
 $normal = @(($linux, $macos, $windows) | Sort-Object)
 $legacy = @(($macos, $windows) | Sort-Object)
-$isNormal = (Compare-Object $names $normal).Count -eq 0
-$isLegacy = (Compare-Object $names $legacy).Count -eq 0
+$isNormal = Test-ExactSet $names $normal
+$isLegacy = Test-ExactSet $names $legacy
 if (-not $isNormal -and -not $isLegacy) {
     throw "AssetDirectory must contain exactly three release assets or the legacy Windows/macOS pair"
 }

@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
 
 function Assert-True {
     param([bool]$Condition, [string]$Message)
@@ -16,7 +17,7 @@ $ast = [Management.Automation.Language.Parser]::ParseFile(
     [ref]$errors
 )
 Assert-True ($errors.Count -eq 0) "Migration script did not parse"
-foreach ($name in @("Invoke-R2", "Assert-R2Success", "Get-RemoteLatest")) {
+foreach ($name in @("Invoke-R2", "Assert-R2Success", "Get-RemoteLatest", "Test-ExactSet")) {
     $definition = $ast.Find(
         {
             param($node)
@@ -31,10 +32,29 @@ foreach ($name in @("Invoke-R2", "Assert-R2Success", "Get-RemoteLatest")) {
     . ([scriptblock]::Create($definition.Extent.Text))
 }
 
+$normalAssets = @("linux", "macos", "windows")
+$legacyAssets = @("macos", "windows")
+$wrongAssets = @("linux", "macos", "unexpected")
+Assert-True (Test-ExactSet $normalAssets $normalAssets) "Exact normal assets did not match"
+Assert-True (Test-ExactSet $legacyAssets $legacyAssets) "Exact legacy assets did not match"
+Assert-True (-not (Test-ExactSet $normalAssets $legacyAssets)) "Missing asset was accepted"
+Assert-True (-not (Test-ExactSet $normalAssets $wrongAssets)) "Unexpected asset was accepted"
+
 $temporary = Join-Path ([IO.Path]::GetTempPath()) "backchannel-r2-test-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Path $temporary | Out-Null
 $oldPath = $env:PATH
 $oldFakeResult = $env:R2_FAKE_RESULT
+$credentialNames = @(
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY",
+    "CLOUDFLARE_ACCOUNT_ID",
+    "R2_RELEASES_BUCKET"
+)
+$oldCredentials = @{}
+foreach ($name in $credentialNames) {
+    $oldCredentials[$name] = [Environment]::GetEnvironmentVariable($name)
+    [Environment]::SetEnvironmentVariable($name, "test-value")
+}
 $hadNativePreference = Test-Path Variable:PSNativeCommandUseErrorActionPreference
 if ($hadNativePreference) {
     $oldNativePreference = $PSNativeCommandUseErrorActionPreference
@@ -45,6 +65,23 @@ $script:Bucket = "test-bucket"
 
 try {
     $env:PATH = "$temporary;$oldPath"
+    $invalidAssets = Join-Path $temporary "invalid-assets"
+    New-Item -ItemType Directory -Path $invalidAssets | Out-Null
+    [IO.File]::WriteAllText((Join-Path $invalidAssets "unexpected.zip"), "test")
+    $callerFailurePropagated = $false
+    try {
+        & $migration `
+            -Version "v0.2.0" `
+            -Commit "0123456789abcdef0123456789abcdef01234567" `
+            -PublishedAt "2026-07-13T00:00:00Z" `
+            -AssetDirectory $invalidAssets
+    } catch {
+        $callerFailurePropagated = $_.Exception.Message.Contains(
+            "AssetDirectory must contain exactly three release assets or the legacy Windows/macOS pair"
+        )
+    }
+    Assert-True $callerFailurePropagated "Live migration failure did not propagate to its caller"
+
     $node = Join-Path $temporary "node.cmd"
     [IO.File]::WriteAllLines(
         $node,
@@ -126,6 +163,9 @@ try {
 } finally {
     $env:PATH = $oldPath
     $env:R2_FAKE_RESULT = $oldFakeResult
+    foreach ($name in $credentialNames) {
+        [Environment]::SetEnvironmentVariable($name, $oldCredentials[$name])
+    }
     if ($hadNativePreference) {
         $PSNativeCommandUseErrorActionPreference = $oldNativePreference
     } else {
