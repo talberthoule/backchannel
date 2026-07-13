@@ -10,6 +10,7 @@ export const EXIT_PRECONDITION_FAILED = 42;
 export const EXIT_USAGE = 2;
 
 const ACCOUNT_ID_PATTERN = /^[0-9a-f]{32}$/;
+const R2_HOST_PATTERN = /^[0-9a-f]{32}\.r2\.cloudflarestorage\.com$/;
 const PAYLOAD_HASH_PATTERN = /^[0-9a-f]{64}$/;
 const BUCKET_PATTERN = /^[a-z0-9](?:[a-z0-9.-]{1,61}[a-z0-9])$/;
 
@@ -59,8 +60,10 @@ function canonicalQuery(url) {
 export function signRequest({method, url, headers, payloadHash, credentials, now}) {
   if (!(url instanceof URL)
       || url.protocol !== 'https:'
-      || !ACCOUNT_ID_PATTERN.test(url.hostname.split('.')[0])
-      || !url.hostname.endsWith('.r2.cloudflarestorage.com')
+      || !R2_HOST_PATTERN.test(url.hostname)
+      || url.port !== ''
+      || url.username !== ''
+      || url.password !== ''
       || !PAYLOAD_HASH_PATTERN.test(payloadHash)
       || !credentials?.accessKeyId
       || !credentials?.secretAccessKey

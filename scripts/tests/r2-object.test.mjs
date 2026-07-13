@@ -103,6 +103,23 @@ test('signRequest rejects non-lowercase SHA-256 payload hashes', () => {
   }), TypeError);
 });
 
+for (const [label, url] of [
+  ['extra hostname labels', new URL(`https://${ACCOUNT_ID}.unexpected.r2.cloudflarestorage.com/${BUCKET}/releases/latest.json`)],
+  ['explicit ports', new URL(`https://${ACCOUNT_ID}.r2.cloudflarestorage.com:8443/${BUCKET}/releases/latest.json`)],
+  ['URL credentials', new URL(`https://user:password@${ACCOUNT_ID}.r2.cloudflarestorage.com/${BUCKET}/releases/latest.json`)],
+]) {
+  test(`signRequest rejects ${label}`, () => {
+    assert.throws(() => signRequest({
+      method: 'HEAD',
+      url,
+      headers: {},
+      payloadHash: EMPTY_HASH,
+      credentials: {accessKeyId: 'R2TESTACCESS', secretAccessKey: 'r2-test-secret'},
+      now: NOW,
+    }), TypeError);
+  });
+}
+
 async function expectUsage(argv, env = CREDENTIALS) {
   const stdout = [];
   const stderr = [];
