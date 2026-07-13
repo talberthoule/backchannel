@@ -507,18 +507,47 @@ test('separated admin read endpoints return disjoint route-specific records', as
     adminRequest('/api/admin/authorization'), env.env, allowOwner, dependencies,
   );
 
-  assert.deepEqual(Object.keys((await interests.json()).items[0]).sort(), [
+  const interestItem = (await interests.json()).items[0];
+  const userItem = (await users.json()).items[0];
+  const authorizationItem = (await authorization.json()).items[0];
+
+  assert.deepEqual(Object.keys(interestItem).sort(), [
     'consent_at', 'consent_version', 'created_at', 'email', 'invited_at',
     'last_contacted_at', 'release_decision', 'release_reviewed_at', 'source', 'status',
   ]);
-  assert.deepEqual(Object.keys((await users.json()).items[0]).sort(), [
+  assert.deepEqual(Object.keys(userItem).sort(), [
     'active_session_count', 'approved_at', 'email', 'latest_session_expires_at',
     'must_change_password', 'password_changed_at', 'password_expires_at',
     'requested_at', 'revoked_at', 'source', 'state',
   ]);
-  assert.deepEqual(Object.keys((await authorization.json()).items[0]).sort(), [
+  assert.equal(userItem.must_change_password, true);
+  assert.deepEqual(Object.keys(authorizationItem).sort(), [
     'account_state', 'email', 'include_latest', 'updated_at', 'versions',
   ]);
+  assert.equal(authorizationItem.include_latest, true);
+  assert.deepEqual(authorizationItem.versions, ['v0.2.1']);
+});
+
+test('admin authorization rejects malformed versions rows generically', async () => {
+  const { env } = adminBindings({
+    all: async () => ({ results: [{
+      email: 'person@example.com',
+      account_state: 'active',
+      include_latest: 1,
+      updated_at: '2026-07-12T12:00:00.000Z',
+      versions: ['v0.2.1'],
+    }] }),
+  });
+
+  const response = await workerModule.route(
+    adminRequest('/api/admin/authorization'), env, allowOwner,
+  );
+
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    ok: false,
+    message: 'Request could not be completed.',
+  });
 });
 
 test('admin read endpoints authorize before D1 reads', async () => {

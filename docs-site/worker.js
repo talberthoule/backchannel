@@ -236,8 +236,9 @@ export async function handleAdminAuthorization(request, env) {
       ORDER BY a.email
     `).all();
     const items = (result.results || []).map((record) => {
-      if (![0, 1].includes(record.include_latest)) throw new TypeError();
-      const versions = typeof record.versions === 'string' ? JSON.parse(record.versions) : [];
+      if (![0, 1].includes(record.include_latest)
+        || typeof record.versions !== 'string') throw new TypeError();
+      const versions = JSON.parse(record.versions);
       if (!Array.isArray(versions)) throw new TypeError();
       return { ...record, include_latest: record.include_latest === 1, versions };
     });
