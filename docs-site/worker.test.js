@@ -1443,19 +1443,23 @@ const releaseSession = {
   versions: JSON.stringify(['v1.0.0', 'v2.0.0', 'v1.0.0']),
 };
 
-function releaseManifest(version, size = 100) {
+const defaultReleaseAsset = {
+  id: 'windows-x64',
+  platform: 'Windows x64',
+  filename: 'Backchannel-windows-x64.zip',
+  content_type: 'application/zip',
+};
+
+function releaseManifest(version, size = 100, asset = defaultReleaseAsset) {
   return {
     version,
     published_at: version === 'v2.0.0' ? '2026-07-12T18:00:00Z' : '2026-06-01T18:00:00Z',
     commit: 'a'.repeat(40),
     assets: [{
-      id: 'windows-x64',
-      platform: 'Windows x64',
-      filename: 'Backchannel-windows-x64.zip',
-      key: `releases/${version}/Backchannel-windows-x64.zip`,
+      ...asset,
+      key: `releases/${version}/${asset.filename}`,
       size,
       sha256: 'b'.repeat(64),
-      content_type: 'application/zip',
     }],
   };
 }
@@ -1468,11 +1472,12 @@ function releaseBucket({
     uploaded: new Date('2026-07-12T12:00:00.900Z'),
   },
   malformed = false,
+  asset = defaultReleaseAsset,
 } = {}) {
   const calls = [];
   const manifests = new Map([
-    ['v1.0.0', releaseManifest('v1.0.0')],
-    ['v2.0.0', releaseManifest('v2.0.0')],
+    ['v1.0.0', releaseManifest('v1.0.0', 100, asset)],
+    ['v2.0.0', releaseManifest('v2.0.0', 100, asset)],
   ]);
   return {
     calls,
@@ -1520,9 +1525,9 @@ function releaseBindings(bucket, session = releaseSession) {
   return result;
 }
 
-function assetCalls(bucket) {
+function assetCalls(bucket, filename = defaultReleaseAsset.filename) {
   return bucket.calls.filter(({ operation, key }) => (
-    operation === 'get' && key?.endsWith('Backchannel-windows-x64.zip')
+    operation === 'get' && key?.endsWith(filename)
   ));
 }
 
@@ -1619,7 +1624,7 @@ test('authorized downloads stream full and ranged R2 bodies with exact headers a
     assert.equal(response.headers.get('content-range'), contentRange);
     assert.equal(response.headers.get('content-type'), 'application/zip');
     assert.equal(response.headers.get('content-disposition'),
-      'attachment; filename="Backchannel-windows-x64.zip"');
+      'attachment; filename="Backchannel-windows-x64-v1.0.0.zip"');
     assert.equal(response.headers.get('etag'), '"object-etag"');
     assert.equal(response.headers.get('accept-ranges'), 'bytes');
     assert.equal(response.headers.get('cache-control'), 'private, no-store');
@@ -1631,6 +1636,40 @@ test('authorized downloads stream full and ranged R2 bodies with exact headers a
       'person@example.com', 'v1.0.0', '2026-07-12T12:00:00.000Z',
     ]);
     assert.doesNotMatch(JSON.stringify(event), /windows-x64|object-etag|Backchannel/);
+  }
+});
+
+test('download filenames append version before archive extensions', async () => {
+  const cases = [
+    [{
+      id: 'windows-x64', platform: 'Windows x64',
+      filename: 'Backchannel-windows-x64.zip', content_type: 'application/zip',
+    }, 'Backchannel-windows-x64-v1.0.0.zip'],
+    [{
+      id: 'macos-arm64', platform: 'macOS arm64',
+      filename: 'Backchannel-macos-arm64.zip', content_type: 'application/zip',
+    }, 'Backchannel-macos-arm64-v1.0.0.zip'],
+    [{
+      id: 'linux-x64', platform: 'Linux x64',
+      filename: 'Backchannel-linux-x64.tar.gz', content_type: 'application/gzip',
+    }, 'Backchannel-linux-x64-v1.0.0.tar.gz'],
+  ];
+
+  for (const [asset, expected] of cases) {
+    const body = new ReadableStream();
+    const bucket = releaseBucket({
+      asset,
+      object: async () => ({ body, size: 100, httpEtag: '"object-etag"' }),
+    });
+    const response = await workerModule.route(
+      releaseGet(`/api/download/releases/v1.0.0/${asset.id}`),
+      releaseBindings(bucket).env, undefined, downloadDependencies(),
+    );
+    assert.equal(response.status, 200, asset.id);
+    assert.equal(response.headers.get('content-disposition'),
+      `attachment; filename="${expected}"`, asset.id);
+    assert.equal(response.body, body, asset.id);
+    assert.equal(assetCalls(bucket, asset.filename).length, 1, asset.id);
   }
 });
 

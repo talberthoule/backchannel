@@ -687,10 +687,11 @@ function decodedReleasePath(pathname) {
   }
 }
 
-function objectHeaders(asset, object, length, contentRange) {
+function objectHeaders(asset, version, object, length, contentRange) {
   const headers = new Headers(DOWNLOAD_HEADERS);
   headers.set('accept-ranges', 'bytes');
-  headers.set('content-disposition', `attachment; filename="${asset.filename}"`);
+  headers.set('content-disposition',
+    `attachment; filename="${asset.filename.replace(/(\.tar\.gz|\.zip)$/, `-${version}$1`)}"`);
   headers.set('content-length', String(length));
   headers.set('content-type', asset.content_type);
   const etag = quotedEtag(object.httpEtag);
@@ -883,7 +884,7 @@ async function handleReleaseDownload(request, env, dependencies) {
 
   const status = range ? 206 : 200;
   const length = range ? range.length : asset.size;
-  const headers = objectHeaders(asset, object, length, range?.contentRange);
+  const headers = objectHeaders(asset, manifest.version, object, length, range?.contentRange);
   try {
     await statement(env, `
       INSERT INTO release_access_events (email, action, version, created_at)
