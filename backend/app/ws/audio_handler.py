@@ -97,6 +97,13 @@ async def _would_create_new_speaker(
     return auto_speaker_would_create_new_speaker(auto_id, auto_speaker_map, speakers)
 
 
+def _decode_audio_frame(raw_frame: bytes) -> tuple[int, bytes]:
+    if len(raw_frame) % 2 == 0:
+        return 0, raw_frame
+    track = raw_frame[0] if raw_frame[0] in (0, 1) else 0
+    return track, raw_frame[1:]
+
+
 async def _flush_remaining_audio(
     diarizer: Any,
     transcription_queue: OrderedTranscriptionQueue,
@@ -468,15 +475,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                 break
 
             if "bytes" in message:
-                raw_frame = message["bytes"]
-                # 1-byte track prefix (0=mic, 1=system). PCM16 is even-length,
-                # so an odd frame is prefixed; even frames are legacy mic audio.
-                if len(raw_frame) % 2 == 1:
-                    track = raw_frame[0] if raw_frame[0] in (0, 1) else 0
-                    pcm_data = raw_frame[1:]
-                else:
-                    track = 0
-                    pcm_data = raw_frame
+                track, pcm_data = _decode_audio_frame(message["bytes"])
                 try:
                     audio_chunks_received += 1
                     audio_bytes_received += len(pcm_data)
