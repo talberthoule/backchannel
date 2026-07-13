@@ -21,7 +21,8 @@ local transcription.
    to find speech, then WeSpeaker ResNet152 speaker embeddings to assign an auto
    speaker ID (`auto_1`, `auto_2`, ...) to each segment. Auto IDs are mapped
    to database `Speaker` rows, creating "Participant N" rows when a new voice
-   appears.
+   appears. In split-track calls, mic segments bind to the sole configured local
+   user while system-audio segments retain normal remote diarization.
 4. **Transcribe** -- `backend/app/services/batch_transcriber.py` wraps each
    diarized segment as WAV and transcribes it (Gemini Flash by default, or a
    local ONNX model -- see [Audio Pipeline](audio-pipeline.md)). Low-energy

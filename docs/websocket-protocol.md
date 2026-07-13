@@ -27,6 +27,14 @@ as legacy microphone audio without a prefix.
 ### JSON messages
 
 ```json
+{"type": "track_state", "track": 1, "active": false}
+```
+
+Reports whether system/tab audio is currently active. The backend snapshots
+this state when each microphone segment is queued so later transcription does
+not change its speaker-routing policy.
+
+```json
 {"type": "stop"}
 ```
 

@@ -189,6 +189,7 @@ Endpoint: `/ws/{session_id}`
 Client sends:
 
 - Binary frames: 1-byte track prefix (`0x00` mic, `0x01` system audio) + PCM16 16 kHz mono audio chunk. Legacy even-length frames without a prefix are treated as mic audio.
+- `{"type": "track_state", "track": 1, "active": false}`: system-audio capture state
 - `{"type": "stop"}`: end the call
 - `{"type": "directive", "text": "..."}`: add a mid-call directive
 
@@ -232,7 +233,7 @@ Hooks:
 
 - `useSession`: loads session metadata, directives, documents, questions, call segments, and speakers
 - `useWebSocket`: manages `/ws/{session_id}` JSON and binary traffic
-- `useAudioCapture`: mic capture, audio level, PCM16 conversion
+- `useAudioCapture`: single-flight mic/system capture, audio levels, PCM16 conversion
 - `useSpeechRecognition`: browser STT fallback hook; currently not central to the main live transcript path
 
 ## Backend Structure

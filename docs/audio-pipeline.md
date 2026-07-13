@@ -21,6 +21,13 @@ On the backend the two tracks are mixed into a single stream
 the session recording, while each track is diarized separately so remote
 (system-audio) speakers get their own identities, prefixed `sys_`.
 
+During split-track capture, microphone segments resolve directly to the sole
+configured `is_user` speaker and stay out of the remote auto-speaker map.
+System-audio speakers retain normal diarization. Mic-only capture, or sessions
+with zero or multiple `is_user` rows, retain normal mic diarization. The client
+sends system-track state changes explicitly, and that state is snapshotted on
+each queued segment so stopping sharing cannot relabel in-flight transcription.
+
 ## Voice activity detection and segmentation
 
 `backend/app/services/speaker_diarizer.py` runs Silero VAD over the incoming
