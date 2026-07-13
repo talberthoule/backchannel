@@ -140,3 +140,35 @@ test('the sitemap remains a same-host index while public pages link to the porta
   assert.doesNotMatch(sitemap, /downloads\.backchannel\.page/i);
   assert.match(read('../site/index.html'), /https:\/\/downloads\.backchannel\.page\//i);
 });
+
+test('historical migration normalizes peeled commit timestamps to strict UTC', () => {
+  const releasing = read('../docs/releasing.md');
+  assert.match(releasing, /\[DateTimeOffset\]::Parse/);
+  assert.match(releasing, /\.UtcDateTime\.ToString\("yyyy-MM-dd'T'HH:mm:ss'Z'"/);
+  for (const version of ['v0.1.0', 'v0.1.1', 'v0.2.0', 'v0.2.1']) {
+    assert.match(releasing, new RegExp(`git rev-parse ['"]${version}\\^\\{commit\\}['"]`));
+  }
+  assert.doesNotMatch(releasing, /\$v\d+Time\s*=\s*\(& git show[^\n]+\)\.Trim\(\)/);
+});
+
+test('production deployment always rebuilds immediately before Wrangler deploy', () => {
+  const deployment = read('../docs/deployment.md');
+  assert.match(deployment, /^npm run deploy$/m);
+  assert.doesNotMatch(deployment, /^npx wrangler deploy$/m);
+  assert.match(deployment, /never deploy (?:a )?preexisting `dist-site`|fresh build immediately before deploy/i);
+});
+
+test('D1 exports require operator-supplied absolute paths outside the repository', () => {
+  const deployment = read('../docs/deployment.md');
+  assert.match(deployment, /BACKCHANNEL_D1_BACKUP_PATH/);
+  assert.match(deployment, /\[IO\.Path\]::IsPathRooted\(/);
+  assert.match(deployment, /--output="\$backupPath"/);
+  assert.doesNotMatch(deployment, /--output=(?:backchannel-interest-backup|interest-subscribers)\.sql/);
+});
+
+test('release recovery names the Update Latest boundary precisely', () => {
+  const releasing = read('../docs/releasing.md');
+  assert.match(releasing, /failure before the Update Latest step leaves Latest unchanged/i);
+  assert.match(releasing, /GitHub note creation fails after Latest advances/i);
+  assert.doesNotMatch(releasing, /failure before the last step/i);
+});

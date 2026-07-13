@@ -141,19 +141,31 @@ then resolve each original peeled tag commit and time and migrate in order:
 $env:R2_RELEASES_BUCKET = 'backchannel-desktop-releases'
 
 $v010Commit = (& git rev-parse 'v0.1.0^{commit}').Trim()
-$v010Time = (& git show -s --format=%cI 'v0.1.0^{commit}').Trim()
+$v010Time = [DateTimeOffset]::Parse(
+    (& git show -s --format=%cI 'v0.1.0^{commit}').Trim(),
+    [Globalization.CultureInfo]::InvariantCulture
+).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
 .\scripts\migrate_releases_to_r2.ps1 -Version v0.1.0 -Commit $v010Commit -PublishedAt $v010Time -AssetDirectory .\release-assets\v0.1.0
 
 $v011Commit = (& git rev-parse 'v0.1.1^{commit}').Trim()
-$v011Time = (& git show -s --format=%cI 'v0.1.1^{commit}').Trim()
+$v011Time = [DateTimeOffset]::Parse(
+    (& git show -s --format=%cI 'v0.1.1^{commit}').Trim(),
+    [Globalization.CultureInfo]::InvariantCulture
+).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
 .\scripts\migrate_releases_to_r2.ps1 -Version v0.1.1 -Commit $v011Commit -PublishedAt $v011Time -AssetDirectory .\release-assets\v0.1.1
 
 $v020Commit = (& git rev-parse 'v0.2.0^{commit}').Trim()
-$v020Time = (& git show -s --format=%cI 'v0.2.0^{commit}').Trim()
+$v020Time = [DateTimeOffset]::Parse(
+    (& git show -s --format=%cI 'v0.2.0^{commit}').Trim(),
+    [Globalization.CultureInfo]::InvariantCulture
+).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
 .\scripts\migrate_releases_to_r2.ps1 -Version v0.2.0 -Commit $v020Commit -PublishedAt $v020Time -AssetDirectory .\release-assets\v0.2.0
 
 $v021Commit = (& git rev-parse 'v0.2.1^{commit}').Trim()
-$v021Time = (& git show -s --format=%cI 'v0.2.1^{commit}').Trim()
+$v021Time = [DateTimeOffset]::Parse(
+    (& git show -s --format=%cI 'v0.2.1^{commit}').Trim(),
+    [Globalization.CultureInfo]::InvariantCulture
+).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
 .\scripts\migrate_releases_to_r2.ps1 -Version v0.2.1 -Commit $v021Commit -PublishedAt $v021Time -AssetDirectory .\release-assets\v0.2.1 -SetLatest
 ```
 
@@ -163,8 +175,8 @@ and never deletes old assets.
 
 ## Failure recovery and rollback
 
-- Any failure before the last step leaves Latest unchanged. Do not point Latest
-  at a partial release.
+- Any failure before the Update Latest step leaves Latest unchanged. Do not
+  point Latest at a partial release.
 - Never overwrite a published version prefix or manifest. Use a new patch tag.
 - If upload fails before a manifest exists, manually inspect the unpublished
   prefix and delete only confirmed partial objects before retrying. Never let an

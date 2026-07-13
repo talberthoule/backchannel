@@ -154,12 +154,23 @@ migration:
 
 ```powershell
 cd docs-site
-npx wrangler d1 export INTEREST_DB --remote --output=backchannel-interest-backup.sql
+$backupPath = $env:BACKCHANNEL_D1_BACKUP_PATH
+if ([string]::IsNullOrWhiteSpace($backupPath) -or -not [IO.Path]::IsPathRooted($backupPath)) {
+    throw 'BACKCHANNEL_D1_BACKUP_PATH must be an absolute path in approved encrypted storage outside the repository.'
+}
+$backupPath = [IO.Path]::GetFullPath($backupPath)
+$repoRoot = (Resolve-Path ..).Path
+if ($backupPath.StartsWith($repoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'BACKCHANNEL_D1_BACKUP_PATH must be outside the repository.'
+}
+npx wrangler d1 export INTEREST_DB --remote --output="$backupPath"
 ```
 
-The export contains personal and authentication data. Move it immediately to
-approved encrypted storage outside Git and shared folders, restrict it to the
-minimum operators, and retain it through deployment acceptance.
+Set `BACKCHANNEL_D1_BACKUP_PATH` to an operator-controlled absolute path in
+approved encrypted storage before running the command. The export contains
+personal and authentication data; never create it in the repository first.
+Restrict it to the minimum operators and retain it through deployment
+acceptance.
 
 ### 2. Apply migration 0002 and prove integrity
 
@@ -234,8 +245,12 @@ npx wrangler secret put TURNSTILE_SECRET_KEY
 npx wrangler secret put ADMIN_EMAIL
 npx wrangler secret put ACCESS_TEAM_DOMAIN
 npx wrangler secret put ACCESS_AUD
-npx wrangler deploy
+npm run deploy
 ```
+
+`npm run deploy` synchronizes and builds the site immediately before invoking
+Wrangler. Never deploy a preexisting `dist-site` or invoke Wrangler directly
+for production deployment.
 
 Do not add a broad group/domain Include, Bypass, or Service Auth rule. The
 Worker must independently validate the Access JWT signature, Cloudflare issuer,
@@ -309,11 +324,20 @@ WHERE email = ?;
 
 If a mailing sender is added later, it must provide unsubscribe handling and
 write that state to D1 before another send. Export only the required consent
-table into approved encrypted storage, then delete the local file after the
-record-count check:
+table directly to an operator-controlled absolute path in approved encrypted
+storage, then delete it after the record-count check:
 
 ```powershell
-npx wrangler d1 export backchannel-interest --remote --table=interest_subscribers --output=interest-subscribers.sql
+$exportPath = $env:BACKCHANNEL_INTEREST_EXPORT_PATH
+if ([string]::IsNullOrWhiteSpace($exportPath) -or -not [IO.Path]::IsPathRooted($exportPath)) {
+    throw 'BACKCHANNEL_INTEREST_EXPORT_PATH must be an absolute path in approved encrypted storage outside the repository.'
+}
+$exportPath = [IO.Path]::GetFullPath($exportPath)
+$repoRoot = (Resolve-Path ..).Path
+if ($exportPath.StartsWith($repoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'BACKCHANNEL_INTEREST_EXPORT_PATH must be outside the repository.'
+}
+npx wrangler d1 export backchannel-interest --remote --table=interest_subscribers --output="$exportPath"
 ```
 
 Rotate either Turnstile secret by replacing only its encrypted Worker binding
