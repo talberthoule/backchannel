@@ -175,6 +175,14 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertRegex(latest, re.compile(r"(?:-eq|==)\s+42"))
         self.assertIn("retry", latest.lower())
         self.assertIn("--current-latest", latest)
+        self.assertEqual(latest.count("for attempt in 1 2; do"), 1)
+        latest_put = publish.index(
+            "node scripts/r2-object.mjs put", publish.index("name: Update Latest")
+        )
+        self.assertNotIn(
+            "node scripts/r2-object.mjs",
+            publish[latest_put + len("node scripts/r2-object.mjs put") :],
+        )
 
     def test_owner_migration_is_validated_and_opt_in_for_latest(self):
         for value in (
