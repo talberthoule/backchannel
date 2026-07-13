@@ -107,9 +107,15 @@ The production GitHub environment requires these repository secrets:
 - `R2_SECRET_ACCESS_KEY`
 
 It also requires repository variable `R2_RELEASES_BUCKET` with value
-`backchannel-desktop-releases`. Create a separate bucket-scoped R2 S3 Object
-Read & Write credential for publication. Do not reuse or expand the site
-deployment token.
+`backchannel-desktop-releases`. Create a separate bucket-scoped Cloudflare R2
+API token with Object Read & Write permission; Cloudflare exposes its
+S3-compatible writer credentials as access-key and secret fields. Do not reuse
+or expand the site deployment token.
+
+The checked-in `scripts/r2-object.mjs` client calls Cloudflare R2 directly and
+is the only release object transport. `AWS4-HMAC-SHA256` and `x-amz-*` are the
+protocol field names Cloudflare requires for its S3-compatible API; they are
+not AWS credentials or services.
 
 ## Release checklist
 
@@ -119,7 +125,14 @@ deployment token.
 2. Confirm `vX.Y.Z` is unused locally, remotely, and in R2.
 3. Update `.github/release-notes/vX.Y.Z.md`, the public release page, and
    current-version references.
-4. Run the local test/build gate and `git diff --check`.
+4. Run the local test/build gate and `git diff --check`, including the focused
+   release transport checks:
+
+   ```powershell
+   node --test scripts/tests/r2-object.test.mjs
+   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test_migrate_releases_to_r2.ps1
+   ```
+
 5. Commit release metadata, then create and push an annotated canonical tag:
 
    ```powershell
