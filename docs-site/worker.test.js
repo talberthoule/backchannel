@@ -617,6 +617,32 @@ test('approval creates identity and default Latest policy without grant input', 
   `).get('person@example.com').count, 0);
 });
 
+test('approval accepts exactly an email body', async () => {
+  let r2Calls = 0;
+  const bindings = adminBindings({
+    releases: {
+      async list() { r2Calls += 1; throw new Error('R2 must not be reached'); },
+      async get() { r2Calls += 1; throw new Error('R2 must not be reached'); },
+    },
+  });
+  const response = await workerModule.route(
+    adminJson('/api/admin/interests/approve', {
+      email: 'person@example.com',
+      include_latest: true,
+      versions: [],
+    }),
+    bindings.env,
+    allowOwner,
+    fixedDependencies,
+  );
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { ok: false, message: 'Request is invalid.' });
+  assert.equal(bindings.calls.length, 0);
+  assert.equal(bindings.batchCalls.length, 0);
+  assert.equal(r2Calls, 0);
+});
+
 test('failed approval cannot backfill policy or emit an event', async (context) => {
   const bindings = sqliteReleaseBindings();
   context.after(() => bindings.db.close());
@@ -937,7 +963,7 @@ test('approved account and session survive a rejected-state race in real SQLite'
   };
 
   const approval = await workerModule.route(adminJson('/api/admin/interests/approve', {
-    email: 'person@example.com', include_latest: true, versions: [],
+    email: 'person@example.com',
   }), env, allowOwner, fixedDependencies);
   assert.equal(approval.status, 201);
   const token = await createSessionToken((length) => new Uint8Array(length).fill(31));
@@ -994,6 +1020,44 @@ test('grant replacement checks active state and batches delete, inserts, update,
   }, { method: 'PUT' }), denied.env, allowOwner, fixedDependencies);
   assert.equal(deniedResponse.status, 400);
   assert.equal(denied.calls.length, 0);
+});
+
+test('password reset requires its exact batch and audit event', async () => {
+  const observed = {
+    state: 'active', release_decision: 'approved',
+    password_hash: 'observed-hash', password_salt: 'observed-salt',
+    password_iterations: 600000, must_change_password: 0, password_expires_at: null,
+  };
+  const cases = [
+    [
+      { success: true, meta: { changes: 1 } },
+      { success: true, meta: { changes: 0 } },
+      { success: true, meta: { changes: 0 } },
+    ],
+    [
+      { success: true, meta: { changes: 1 } },
+      { success: true, meta: { changes: 0 } },
+      { success: true, meta: { changes: 1 } },
+      { success: true, meta: { changes: 1 } },
+    ],
+  ];
+
+  for (const results of cases) {
+    const bindings = adminBindings({
+      first: async () => observed,
+      batch: async () => results,
+    });
+    const response = await workerModule.route(
+      adminJson('/api/admin/users/reset-password', { email: 'person@example.com' }),
+      bindings.env,
+      allowOwner,
+      fixedDependencies,
+    );
+    const text = await response.text();
+
+    assert.notEqual(response.status, 200);
+    assert.doesNotMatch(text, /credential|password|person@example\.com/i);
+  }
 });
 
 test('reset and revoke delete sessions atomically without reactivating accounts', async () => {
@@ -1061,7 +1125,8 @@ test('reset and revoke delete sessions atomically without reactivating accounts'
     batch: async (statements) => {
       resetAttempt += 1;
       return statements.map((_, index) => ({
-        success: true, meta: { changes: index === 0 && resetAttempt === 1 ? 1 : 0 },
+        success: true,
+        meta: { changes: resetAttempt === 1 && (index === 0 || index === 2) ? 1 : 0 },
       }));
     },
   });

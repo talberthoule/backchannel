@@ -561,7 +561,9 @@ async function resetPassword(env, email, dependencies, now) {
               AND a.password_expires_at = ?)
       `, email, now, email, hashed.hash, hashed.salt, expiresAt),
     ]);
-    if ((results[0]?.meta?.changes ?? 0) !== 1) return dbError(409);
+    if (results.length !== 3
+      || (results[0]?.meta?.changes ?? 0) !== 1
+      || (results[2]?.meta?.changes ?? 0) !== 1) return dbError(409);
     const item = await loadAdminUser(env, email, now);
     return privateJson(200, {
       ok: true,
@@ -633,6 +635,10 @@ export async function handleAdminMutation(request, env, action, dependencies = {
   if (!env.INTEREST_DB) return privateJson(503, { ok: false, message: 'Admin is unavailable.' });
   const parsed = await readAdminBody(request);
   if (parsed.response) return parsed.response;
+  if (action === 'approve'
+    && (Object.keys(parsed.body).length !== 1 || !Object.hasOwn(parsed.body, 'email'))) {
+    return privateJson(400, { ok: false, message: 'Request is invalid.' });
+  }
   const email = emailFrom(parsed.body);
   if (!email) return privateJson(400, { ok: false, message: 'Request is invalid.' });
   const now = (dependencies.now ? dependencies.now() : new Date()).toISOString();
