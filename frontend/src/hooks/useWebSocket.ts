@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import type { AudioSendStats, WSMessage } from "../types";
+import type { AudioTrack } from "./useAudioCapture";
 
 export type WSStatus = "disconnected" | "connecting" | "connected" | "error";
 
@@ -149,6 +150,12 @@ export function useWebSocket() {
     }
   }, []);
 
+  const sendTrackState = useCallback((track: AudioTrack, active: boolean) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "track_state", track, active }));
+    }
+  }, []);
+
   const sendStop = useCallback(() => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) {
       return Promise.resolve(false);
@@ -162,5 +169,5 @@ export function useWebSocket() {
     });
   }, [resolveStop]);
 
-  return { connect, disconnect, sendAudio, sendDirective, sendStop, status, messages, audioStats };
+  return { connect, disconnect, sendAudio, sendDirective, sendTrackState, sendStop, status, messages, audioStats };
 }

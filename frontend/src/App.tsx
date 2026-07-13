@@ -7,7 +7,7 @@ import KnowledgeManager from "./components/KnowledgeManager";
 import PreCallView from "./components/PreCall/PreCallView";
 import ActiveCallView from "./components/ActiveCall/ActiveCallView";
 import PostCallView from "./components/PostCall/PostCallView";
-import { useAudioCapture } from "./hooks/useAudioCapture";
+import { startSingleFlight, useAudioCapture } from "./hooks/useAudioCapture";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { useSession } from "./hooks/useSession";
 import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
@@ -182,7 +182,7 @@ export default function App() {
 
   const { startCapture, stopCapture, isCapturing, audioLevel, systemAudioLevel, systemAudioActive } = useAudioCapture();
   const [captureSystemAudio, setCaptureSystemAudio] = useState(true);
-  const { connect, disconnect, sendAudio, sendDirective, sendStop, status, messages, audioStats } =
+  const { connect, disconnect, sendAudio, sendDirective, sendTrackState, sendStop, status, messages, audioStats } =
     useWebSocket();
   const { startListening, stopListening } = useSpeechRecognition();
 
@@ -194,11 +194,17 @@ export default function App() {
   const [processingError, setProcessingError] = useState<string | null>(null);
   const [backendAudioStatus, setBackendAudioStatus] = useState<string | null>(null);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [audioStarting, setAudioStarting] = useState(false);
+  const [callStarting, setCallStarting] = useState(false);
   // Track when the current call segment started (resets on each start/resume)
   const [callSegmentStart, setCallSegmentStart] = useState<string | null>(null);
   const [postProcessing, setPostProcessing] = useState<PostProcessingProgress>(() => idlePostProcessing());
   const runtimeSessionIdRef = useRef(runtimeSessionId);
   const liveSessionIdRef = useRef(liveSessionId);
+  const audioStartPromiseRef = useRef<Promise<void> | null>(null);
+  const audioStartGenerationRef = useRef(0);
+  const beginCallPromiseRef = useRef<Promise<void> | null>(null);
+  const beginCallGenerationRef = useRef(0);
   runtimeSessionIdRef.current = runtimeSessionId;
   liveSessionIdRef.current = liveSessionId;
 
@@ -480,72 +486,110 @@ export default function App() {
     await refreshSessions();
   }, [activeSessionId, refreshSessions, resetSessionRuntimeState]);
 
-  const startAudioFeed = useCallback(async (sessionId: string, reconnect = false) => {
+  const startAudioFeed = useCallback((
+    sessionId: string,
+    reconnect = false,
+  ) => startSingleFlight(audioStartPromiseRef, async () => {
+    const generation = ++audioStartGenerationRef.current;
+    setAudioStarting(true);
     setCaptureError(null);
-    if (reconnect || status !== "connected") {
-      connect(sessionId);
-      await delay(500);
-    }
 
     try {
+      if (
+        generation !== audioStartGenerationRef.current
+        || liveSessionIdRef.current !== sessionId
+      ) return;
+      if (reconnect || status !== "connected") {
+        connect(sessionId);
+        await delay(500);
+      }
+      if (
+        generation !== audioStartGenerationRef.current
+        || liveSessionIdRef.current !== sessionId
+      ) return;
+
       // ponytail: getDisplayMedia needs a recent user gesture; if the prompt
       // is blocked or declined we proceed mic-only.
       await startCapture((chunk, track) => {
         sendAudio(chunk, track);
-      }, undefined, { systemAudio: captureSystemAudio });
+      }, undefined, {
+        systemAudio: captureSystemAudio,
+        onSystemAudioStateChange: (active) => sendTrackState(1, active),
+      });
     } catch (err) {
+      if (generation !== audioStartGenerationRef.current) return;
       const message = errorMessage(err, "Microphone capture failed.");
       setCaptureError(message);
       console.error("Failed to start audio capture", err);
+    } finally {
+      if (generation === audioStartGenerationRef.current) {
+        setAudioStarting(false);
+      }
     }
-  }, [connect, sendAudio, startCapture, status, captureSystemAudio]);
+  }), [connect, sendAudio, sendTrackState, startCapture, status, captureSystemAudio]);
 
-  const beginCall = useCallback(async () => {
-    if (!activeSessionId) return;
+  const beginCall = useCallback(() => {
+    if (!activeSessionId) return Promise.resolve();
     const sessionId = activeSessionId;
     if (liveSessionIdRef.current && liveSessionIdRef.current !== sessionId) {
       alert("End the current active call before starting another session.");
-      return;
+      return Promise.resolve();
     }
 
-    await api.updateSession(sessionId, { state: "active" });
-    await refreshSession();
-    await refreshSessions();
+    return startSingleFlight(beginCallPromiseRef, async () => {
+      const generation = ++beginCallGenerationRef.current;
+      const isCurrent = () => generation === beginCallGenerationRef.current;
+      setCallStarting(true);
 
-    runtimeSessionIdRef.current = sessionId;
-    liveSessionIdRef.current = sessionId;
-    setRuntimeSessionId(sessionId);
-    setLiveSessionId(sessionId);
+      try {
+        // Create defaults before publishing the active view, and only once.
+        if (speakers.length === 0) {
+          await api.createSpeaker(sessionId, { name: "Me / Team Member", role: "", color: "#0d9488", is_user: true, speaker_type: "team" });
+          if (!isCurrent()) return;
+          await api.createSpeaker(sessionId, { name: "Participant 1", role: "", color: "#f59e0b", is_user: false, speaker_type: "external" });
+          if (!isCurrent()) return;
+          await refreshSpeakers();
+        }
+        if (!isCurrent()) return;
 
-    setLiveQuestions([]);
-    setLiveTranscripts([]);
-    setInterimText("");
-    setRuntimeSynthesis(null);
-    setProcessingTranscript(false);
-    setProcessingError(null);
-    setBackendAudioStatus(null);
-    setCaptureError(null);
-    setCallSegmentStart(new Date().toISOString());
-    setPostProcessing(idlePostProcessing());
-    processedCount.current = messages.length;
+        await api.updateSession(sessionId, { state: "active" });
+        if (!isCurrent()) return;
 
-    // Auto-create default speakers if none exist
-    let currentSpeakers = speakers;
-    if (currentSpeakers.length === 0) {
-      await api.createSpeaker(sessionId, { name: "Me / Team Member", role: "", color: "#0d9488", is_user: true, speaker_type: "team" });
-      await api.createSpeaker(sessionId, { name: "Participant 1", role: "", color: "#f59e0b", is_user: false, speaker_type: "external" });
-      await refreshSpeakers();
-      currentSpeakers = await api.listSpeakers(sessionId);
-    }
+        runtimeSessionIdRef.current = sessionId;
+        liveSessionIdRef.current = sessionId;
+        setRuntimeSessionId(sessionId);
+        setLiveSessionId(sessionId);
+        setLiveQuestions([]);
+        setLiveTranscripts([]);
+        setInterimText("");
+        setRuntimeSynthesis(null);
+        setProcessingTranscript(false);
+        setProcessingError(null);
+        setBackendAudioStatus(null);
+        setCaptureError(null);
+        setCallSegmentStart(new Date().toISOString());
+        setPostProcessing(idlePostProcessing());
+        processedCount.current = messages.length;
 
-    // Connect WebSocket (audio → backend for diarization + Gemini for questions)
-    await startAudioFeed(sessionId, true);
-  }, [activeSessionId, startAudioFeed, startListening, refreshSession, refreshSessions, speakers, refreshSpeakers, messages.length]);
+        // Start capture before the active view exposes Resume and End.
+        await startAudioFeed(sessionId, true);
+        if (!isCurrent()) return;
+        await Promise.all([refreshSession(), refreshSessions()]);
+      } catch (err) {
+        if (!isCurrent()) return;
+        const message = errorMessage(err, "Call setup failed.");
+        setCaptureError(message);
+        console.error("Failed to start call", err);
+      } finally {
+        if (isCurrent()) setCallStarting(false);
+      }
+    });
+  }, [activeSessionId, messages.length, refreshSession, refreshSessions, refreshSpeakers, speakers, startAudioFeed]);
 
   const handleStartCall = useCallback(() => beginCall(), [beginCall]);
 
   const handleResumeAudio = useCallback(async () => {
-    if (!activeSessionId) return;
+    if (!activeSessionId || audioStarting) return;
     const reconnecting = status !== "connected" || liveSessionIdRef.current !== activeSessionId;
     if (isCapturing) {
       stopCapture();
@@ -563,7 +607,7 @@ export default function App() {
     setCallSegmentStart((current) => reconnecting ? new Date().toISOString() : current ?? new Date().toISOString());
     processedCount.current = messages.length;
     await startAudioFeed(activeSessionId, reconnecting);
-  }, [activeSessionId, isCapturing, messages.length, startAudioFeed, status, stopCapture]);
+  }, [activeSessionId, audioStarting, isCapturing, messages.length, startAudioFeed, status, stopCapture]);
 
   const handleProcessTranscript = useCallback(async () => {
     if (!activeSessionId) return;
@@ -600,6 +644,12 @@ export default function App() {
 
   const handleEndCall = useCallback(async () => {
     setPostProcessing(startPostProcessing());
+    beginCallGenerationRef.current += 1;
+    beginCallPromiseRef.current = null;
+    audioStartGenerationRef.current += 1;
+    audioStartPromiseRef.current = null;
+    setCallStarting(false);
+    setAudioStarting(false);
     stopCapture();
     stopListening();
     const backendCompleted = await sendStop();
@@ -716,6 +766,7 @@ export default function App() {
             transcriptCount={savedTranscripts.length}
             processingTranscript={processingTranscript}
             processingError={processingError}
+            isStarting={callStarting}
             onStartCall={handleStartCall}
             captureSystemAudio={captureSystemAudio}
             onToggleSystemAudio={setCaptureSystemAudio}
@@ -745,6 +796,7 @@ export default function App() {
             systemAudioLevel={liveSessionId === session.id ? systemAudioLevel : 0}
             systemAudioActive={liveSessionId === session.id && systemAudioActive}
             isCapturing={liveSessionId === session.id && isCapturing}
+            isStarting={liveSessionId === session.id && audioStarting}
             audioStats={audioStats}
             backendAudioStatus={runtimeMatchesView ? backendAudioStatus : null}
             captureError={runtimeMatchesView ? captureError : null}

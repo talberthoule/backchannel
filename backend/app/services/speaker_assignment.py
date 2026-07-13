@@ -12,6 +12,22 @@ def assignable_speakers(speakers: list[Speaker]) -> list[Speaker]:
     return [speaker for speaker in speakers if not speaker.is_user]
 
 
+def resolve_live_mic_speaker(
+    auto_id: str,
+    speakers: list[Speaker],
+    system_audio_active: bool,
+) -> Speaker | None:
+    """Return the known local user for mic audio in a split-track live call.
+
+    This policy is intentionally limited to sessions with exactly one user
+    row. Mic-only sessions keep normal diarization behavior.
+    """
+    if not system_audio_active or auto_id.startswith("sys_"):
+        return None
+    users = [speaker for speaker in speakers if speaker.is_user]
+    return users[0] if len(users) == 1 else None
+
+
 def auto_speaker_would_create_new_speaker(
     auto_id: str,
     auto_speaker_map: dict[str, str],

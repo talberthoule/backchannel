@@ -4,6 +4,22 @@ export type AudioTrack = 0 | 1; // 0 = mic, 1 = system audio
 
 interface CaptureOptions {
   systemAudio?: boolean;
+  onSystemAudioStateChange?: (active: boolean) => void;
+}
+
+export function startSingleFlight<T>(
+  inFlight: { current: Promise<T> | null },
+  operation: () => Promise<T>,
+): Promise<T> {
+  if (inFlight.current) return inFlight.current;
+
+  const pending = operation();
+  inFlight.current = pending;
+  const clear = () => {
+    if (inFlight.current === pending) inFlight.current = null;
+  };
+  pending.then(clear, clear);
+  return pending;
 }
 
 const WORKLET_CODE = `
@@ -47,7 +63,10 @@ export function useAudioCapture() {
   const analysersRef = useRef<{ analyser: AnalyserNode; track: AudioTrack }[]>([]);
   const levelFrameRef = useRef<number>(0);
   const onLevelRef = useRef<((level: number) => void) | null>(null);
+  const onSystemAudioStateChangeRef = useRef<((active: boolean) => void) | null>(null);
   const workletReadyRef = useRef(false);
+  const startPromiseRef = useRef<Promise<void> | null>(null);
+  const captureGenerationRef = useRef(0);
 
   useEffect(() => {
     const resumeContext = () => {
@@ -61,6 +80,32 @@ export function useAudioCapture() {
       document.removeEventListener("visibilitychange", resumeContext);
       window.removeEventListener("focus", resumeContext);
     };
+  }, []);
+
+  const releaseCapture = useCallback(() => {
+    cancelAnimationFrame(levelFrameRef.current);
+    setAudioLevel(0);
+    setSystemAudioLevel(0);
+    setSystemAudioActive(false);
+    onLevelRef.current = null;
+    onSystemAudioStateChangeRef.current = null;
+
+    for (const node of nodesRef.current) {
+      node.disconnect();
+    }
+    nodesRef.current = [];
+    analysersRef.current = [];
+
+    if (contextRef.current) {
+      void contextRef.current.close();
+      contextRef.current = null;
+    }
+    for (const stream of streamsRef.current) {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+    streamsRef.current = [];
+
+    setIsCapturing(false);
   }, []);
 
   const attachPipeline = useCallback(async (
@@ -119,95 +164,117 @@ export function useAudioCapture() {
     }
   }, []);
 
-  const startCapture = useCallback(async (
+  const startCapture = useCallback((
     onChunk: (chunk: ArrayBuffer, track: AudioTrack) => void,
     onLevel?: (level: number) => void,
     options?: CaptureOptions,
-  ) => {
+  ) => startSingleFlight(startPromiseRef, async () => {
+    if (contextRef.current) return;
+
+    const generation = ++captureGenerationRef.current;
     onLevelRef.current = onLevel || null;
-    const micStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: options?.systemAudio ?? false,
-        noiseSuppression: options?.systemAudio ?? false,
-        autoGainControl: true,
-      },
-    });
-    streamsRef.current.push(micStream);
+    onSystemAudioStateChangeRef.current = options?.onSystemAudioStateChange || null;
 
-    const ctx = new AudioContext({ sampleRate: 16000 });
-    contextRef.current = ctx;
-    workletReadyRef.current = false;
-
-    await attachPipeline(ctx, micStream, 0, onChunk);
-
-    if (options?.systemAudio) {
-      try {
-        // Chrome requires requesting video with display capture; we drop it.
-        const displayStream = await navigator.mediaDevices.getDisplayMedia({
-          audio: true,
-          video: true,
-        });
-        displayStream.getVideoTracks().forEach((t) => t.stop());
-        if (displayStream.getAudioTracks().length > 0) {
-          streamsRef.current.push(displayStream);
-          await attachPipeline(ctx, displayStream, 1, onChunk);
-          setSystemAudioActive(true);
-        }
-      } catch (err) {
-        // User declined the share prompt or no tab audio — mic-only is fine.
-        console.warn("System audio capture unavailable:", err);
+    try {
+      const micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: options?.systemAudio ?? false,
+          noiseSuppression: options?.systemAudio ?? false,
+          autoGainControl: true,
+        },
+      });
+      if (generation !== captureGenerationRef.current) {
+        micStream.getTracks().forEach((track) => track.stop());
+        return;
       }
-    }
+      streamsRef.current.push(micStream);
 
-    const levelBuf = new Uint8Array(128);
-    const updateLevel = () => {
-      let micRms = 0;
-      let sysRms = 0;
-      for (const { analyser, track } of analysersRef.current) {
-        analyser.getByteTimeDomainData(levelBuf);
-        let sum = 0;
-        for (let i = 0; i < levelBuf.length; i++) {
-          const v = (levelBuf[i] - 128) / 128;
-          sum += v * v;
+      let displayStream: MediaStream | null = null;
+      if (options?.systemAudio) {
+        try {
+          const candidate = await navigator.mediaDevices.getDisplayMedia({
+            audio: true,
+            video: true,
+          });
+          candidate.getVideoTracks().forEach((track) => track.stop());
+          if (generation !== captureGenerationRef.current) {
+            candidate.getTracks().forEach((track) => track.stop());
+            return;
+          }
+          if (candidate.getAudioTracks().length > 0) {
+            displayStream = candidate;
+            streamsRef.current.push(candidate);
+            const handleEnded = () => {
+              if (
+                generation === captureGenerationRef.current
+                && candidate.getAudioTracks().every((track) => track.readyState === "ended")
+              ) {
+                setSystemAudioActive(false);
+                onSystemAudioStateChangeRef.current?.(false);
+              }
+            };
+            candidate.getAudioTracks().forEach((track) => {
+              track.addEventListener("ended", handleEnded, { once: true });
+            });
+          }
+        } catch (err) {
+          if (generation !== captureGenerationRef.current) return;
+          // A declined or unavailable share falls back to mic-only capture.
+          console.warn("System audio capture unavailable:", err);
         }
-        const rms = Math.sqrt(sum / levelBuf.length);
-        if (track === 0) micRms = rms; else sysRms = rms;
       }
-      onLevelRef.current?.(micRms);
-      setAudioLevel(Math.min(1, micRms * 10));
-      setSystemAudioLevel(Math.min(1, sysRms * 10));
+      if (generation !== captureGenerationRef.current) return;
+
+      const ctx = new AudioContext({ sampleRate: 16000 });
+      contextRef.current = ctx;
+      workletReadyRef.current = false;
+
+      await attachPipeline(ctx, micStream, 0, onChunk);
+      if (displayStream) {
+        await attachPipeline(ctx, displayStream, 1, onChunk);
+      }
+      if (generation !== captureGenerationRef.current) return;
+      const systemActive = Boolean(
+        displayStream?.getAudioTracks().some((track) => track.readyState === "live")
+      );
+      setSystemAudioActive(systemActive);
+      onSystemAudioStateChangeRef.current?.(systemActive);
+
+      const levelBuf = new Uint8Array(128);
+      const updateLevel = () => {
+        let micRms = 0;
+        let sysRms = 0;
+        for (const { analyser, track } of analysersRef.current) {
+          analyser.getByteTimeDomainData(levelBuf);
+          let sum = 0;
+          for (let i = 0; i < levelBuf.length; i++) {
+            const v = (levelBuf[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / levelBuf.length);
+          if (track === 0) micRms = rms; else sysRms = rms;
+        }
+        onLevelRef.current?.(micRms);
+        setAudioLevel(Math.min(1, micRms * 10));
+        setSystemAudioLevel(Math.min(1, sysRms * 10));
+        levelFrameRef.current = requestAnimationFrame(updateLevel);
+      };
       levelFrameRef.current = requestAnimationFrame(updateLevel);
-    };
-    levelFrameRef.current = requestAnimationFrame(updateLevel);
 
-    setIsCapturing(true);
-  }, [attachPipeline]);
+      setIsCapturing(true);
+    } catch (err) {
+      if (generation !== captureGenerationRef.current) return;
+      releaseCapture();
+      throw err;
+    }
+  }), [attachPipeline, releaseCapture]);
 
   const stopCapture = useCallback(() => {
-    cancelAnimationFrame(levelFrameRef.current);
-    setAudioLevel(0);
-    setSystemAudioLevel(0);
-    setSystemAudioActive(false);
-    onLevelRef.current = null;
-
-    for (const node of nodesRef.current) {
-      node.disconnect();
-    }
-    nodesRef.current = [];
-    analysersRef.current = [];
-
-    if (contextRef.current) {
-      contextRef.current.close();
-      contextRef.current = null;
-    }
-    for (const stream of streamsRef.current) {
-      stream.getTracks().forEach((t) => t.stop());
-    }
-    streamsRef.current = [];
-
-    setIsCapturing(false);
-  }, []);
+    captureGenerationRef.current += 1;
+    startPromiseRef.current = null;
+    releaseCapture();
+  }, [releaseCapture]);
 
   return { startCapture, stopCapture, isCapturing, audioLevel, systemAudioLevel, systemAudioActive };
 }

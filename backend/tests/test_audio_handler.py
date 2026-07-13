@@ -55,6 +55,28 @@ class AudioFrameDecodingTests(unittest.TestCase):
             with self.subTest(raw_frame=raw_frame):
                 self.assertEqual(expected, decode_audio_frame(raw_frame))
 
+    def test_system_audio_track_state_is_current_not_sticky(self):
+        self.assertTrue(hasattr(audio_handler, "_system_audio_state_after_message"))
+        self.assertTrue(hasattr(audio_handler, "_system_audio_active_after_frame"))
+        update_state = audio_handler._system_audio_state_after_message
+        update_from_frame = audio_handler._system_audio_active_after_frame
+
+        self.assertEqual((True, True), update_state({"type": "track_state", "track": 1, "active": True}, False, False))
+        self.assertEqual((False, True), update_state({"type": "track_state", "track": 1, "active": False}, True, True))
+        self.assertEqual((True, False), update_state({"type": "directive", "text": "keep going"}, True, False))
+        self.assertTrue(update_from_frame(1, False, False))
+        self.assertFalse(update_from_frame(1, False, True))
+
+    def test_queued_mic_job_snapshots_split_track_state(self):
+        self.assertTrue(hasattr(audio_handler, "_queued_speaker_auto_id"))
+        self.assertTrue(hasattr(audio_handler, "_normalize_speaker_auto_id"))
+
+        queued = audio_handler._queued_speaker_auto_id("auto_1", 0, True)
+
+        self.assertEqual(("auto_1", True), audio_handler._normalize_speaker_auto_id(queued))
+        self.assertEqual("auto_1", audio_handler._queued_speaker_auto_id("auto_1", 0, False))
+        self.assertEqual("sys_auto_1", audio_handler._queued_speaker_auto_id("sys_auto_1", 1, True))
+
 
 class AudioReconnectTests(unittest.IsolatedAsyncioTestCase):
     async def test_flushes_both_tracks_and_reports_success(self):
@@ -80,12 +102,13 @@ class AudioReconnectTests(unittest.IsolatedAsyncioTestCase):
                 system_diarizer,
                 transcription_queue,
                 orchestrator,
+                True,
             )
 
         self.assertTrue(reconnected)
         flush_segments.assert_has_calls([call(diarizer), call(system_diarizer)])
         self.assertEqual(
-            [call("auto_1", b"mic"), call("sys_auto_2", b"system")],
+            [call("mic_auto_1", b"mic"), call("sys_auto_2", b"system")],
             transcription_queue.add.call_args_list,
         )
         diarizer.reset.assert_called_once_with()

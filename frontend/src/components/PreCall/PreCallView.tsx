@@ -18,6 +18,7 @@ interface Props {
   transcriptCount: number;
   processingTranscript?: boolean;
   processingError?: string | null;
+  isStarting?: boolean;
   onStartCall: () => void;
   captureSystemAudio?: boolean;
   onToggleSystemAudio?: (enabled: boolean) => void;
@@ -38,6 +39,7 @@ export default function PreCallView({
   transcriptCount,
   processingTranscript = false,
   processingError = null,
+  isStarting = false,
   onStartCall,
   captureSystemAudio,
   onToggleSystemAudio,
@@ -261,12 +263,14 @@ export default function PreCallView({
             </label>
             <button
               onClick={onStartCall}
+              disabled={isStarting}
               className="w-full py-3 rounded-lg font-display font-semibold text-white text-lg
                          bg-brand-teal hover:bg-brand-teal-dark transition-colors
                          shadow-md hover:shadow-lg focus:ring-2
-                         focus:ring-brand-teal-light focus:ring-offset-2"
+                         focus:ring-brand-teal-light focus:ring-offset-2
+                         disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Start Call
+              {isStarting ? "Starting..." : "Start Call"}
             </button>
           </div>
         )}

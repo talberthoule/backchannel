@@ -22,6 +22,7 @@ interface ActiveCallViewProps {
   systemAudioLevel?: number;
   systemAudioActive?: boolean;
   isCapturing: boolean;
+  isStarting: boolean;
   audioStats: AudioSendStats;
   backendAudioStatus: string | null;
   captureError: string | null;
@@ -89,6 +90,7 @@ export default function ActiveCallView({
   systemAudioLevel,
   systemAudioActive,
   isCapturing,
+  isStarting,
   audioStats,
   backendAudioStatus,
   captureError,
@@ -108,7 +110,11 @@ export default function ActiveCallView({
     audioStats.lastSentAt
       ? Math.max(0, Math.round((Date.now() - new Date(audioStats.lastSentAt).getTime()) / 1000))
       : null;
-  const captureStatus = isCapturing && status === "connected" ? "Listening" : status;
+  const captureStatus = isStarting
+    ? "Starting audio..."
+    : isCapturing && status === "connected"
+      ? "Listening"
+      : status;
 
   // Normalize questions: WS-sourced questions may lack starred/dismissed/created_at
   const normalizedQuestions = useMemo(
@@ -232,10 +238,10 @@ export default function ActiveCallView({
           {(!isCapturing || status !== "connected") && (
             <button
               onClick={onResumeAudio}
-              disabled={postProcessingActive}
+              disabled={postProcessingActive || isStarting}
               className="rounded-lg border border-brand-teal px-3 py-2 font-body text-sm font-semibold text-brand-teal transition-colors hover:bg-brand-teal/10 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Resume Audio
+              {isStarting ? "Starting..." : "Resume Audio"}
             </button>
           )}
           {/* Session timer */}
