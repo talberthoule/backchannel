@@ -158,6 +158,21 @@ test('PBKDF2 benchmarking follows a verified catalog and precedes link cutover',
   assert.match(deployment, /available.*true/i);
 });
 
+test('staged link cutover names the exact mechanically revertible hold', () => {
+  const hold = '57fc8d991b8101a2db5889df16ce5a26078baff2';
+  for (const path of ['../docs/deployment.md', '../docs/releasing.md']) {
+    const runbook = read(path);
+    assert.match(runbook, new RegExp(hold));
+    assert.match(runbook, new RegExp(`git revert ${hold}`));
+    assert.ok([...runbook.matchAll(/git revert ([0-9a-f]{40})/g)]
+      .every((match) => match[1] === hold));
+  }
+  const deployment = read('../docs/deployment.md');
+  assert.match(deployment, /master[^.\n]*auto-deploy/i);
+  assert.ok(deployment.indexOf('control-plane HEAD') < deployment.indexOf('live Task 7 acceptance'));
+  assert.ok(deployment.indexOf('live Task 7 acceptance') < deployment.indexOf(`git revert ${hold}`));
+});
+
 test('D1 exports require operator-supplied absolute paths outside the repository', () => {
   const deployment = read('../docs/deployment.md');
   assert.match(deployment, /BACKCHANNEL_D1_BACKUP_PATH/);

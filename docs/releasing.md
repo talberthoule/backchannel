@@ -16,6 +16,26 @@ delivered through `https://downloads.backchannel.page/`.
 publishes R2 objects, advances Latest, or creates a GitHub release. A normal
 `master` push does not rebuild desktop bundles.
 
+## Staged customer-link cutover
+
+Deploy the control-plane HEAD first with customer executable links held at
+their pre-cutover destinations by commit
+`57fc8d991b8101a2db5889df16ce5a26078baff2`. Because site and docs changes on
+`master` auto-deploy through the Site workflow, wait for that deployment before
+running live migration, account, catalog, and download acceptance.
+
+Only after live Task 7 acceptance, create the sole link-cutover revision:
+
+```powershell
+git revert 57fc8d991b8101a2db5889df16ce5a26078baff2
+git push origin master
+```
+
+That revert restores the exact portal links and site-test expectations. Do not
+hand-edit those links, squash unrelated changes into the revert, or use any
+other revision for link cutover. Wait for the resulting `master` auto-deploy to
+finish before announcing portal availability.
+
 ## R2 publication contract
 
 The private bucket is exactly `backchannel-desktop-releases`, bound to the site

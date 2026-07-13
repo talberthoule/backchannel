@@ -293,12 +293,28 @@ iterations.
 
 ### 10. Migrate, accept, then cut over customer links
 
+The `master` auto-deploy publishes every push that changes site or docs inputs.
+First merge and deploy the control-plane HEAD containing hold commit
+`57fc8d991b8101a2db5889df16ce5a26078baff2`; wait for the Site workflow to
+finish before migrating or accepting live state. Customer executable links
+must remain on their pre-cutover targets during this deployment.
+
 Follow [Releasing](releasing.md) to migrate `v0.1.0` through `v0.2.1`, verify
 every immutable manifest and asset, and advance Latest only after all intended
 objects verify. Test approved, expired, revoked, Latest-only, and explicitly
 granted operator accounts. Confirm portal downloads match manifest size and
-SHA-256 without GitHub cookies. Only then publish customer links to
-`https://downloads.backchannel.page/`.
+SHA-256 without GitHub cookies. After live Task 7 acceptance, make the only
+link-cutover revision by reverting that exact hold commit:
+
+```powershell
+git revert 57fc8d991b8101a2db5889df16ce5a26078baff2
+git push origin master
+```
+
+Do not hand-edit customer links or combine unrelated changes with the resulting
+revert commit. The push automatically builds and deploys the restored portal
+links and their exact site-test expectations; wait for the Site workflow before
+declaring cutover complete.
 
 Keep old private GitHub executable files for one full release cycle. Remove
 those executable files only after R2 and portal acceptance for the following
