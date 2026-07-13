@@ -1399,29 +1399,55 @@ test('admin API rejects mutations and redacts D1 failures', async () => {
 
 test('private host serves only mapped assets with security headers', async () => {
   const { env, assetRequests } = adminBindings();
-  const page = await workerModule.route(adminRequest('/'), env, allowOwner);
-  const sharedStyle = await workerModule.route(adminRequest('/style.css'), env, allowOwner);
-  const script = await workerModule.route(adminRequest('/admin.js'), env, allowOwner);
+  const paths = [
+    '/', '/users', '/early-access', '/authorization',
+    '/admin.js', '/admin-core.js', '/early-access.js', '/users.js',
+    '/authorization.js', '/admin.css', '/style.css',
+  ];
+  const responses = [];
+  for (const path of paths) {
+    responses.push(await workerModule.route(adminRequest(path), env, allowOwner));
+  }
   const missing = await workerModule.route(adminRequest('/not-found'), env, allowOwner);
 
-  assert.equal(page.status, 200);
-  assert.equal(sharedStyle.status, 200);
-  assert.equal(script.status, 200);
+  for (const response of responses) assert.equal(response.status, 200);
   assert.equal(missing.status, 404);
   assert.deepEqual(
     assetRequests.map((assetRequest) => new URL(assetRequest.url).pathname),
-    ['/admin/', '/style.css', '/admin/admin.js'],
+    [
+      '/admin/', '/admin/', '/admin/', '/admin/',
+      '/admin/admin.js', '/admin/admin-core.js', '/admin/early-access.js',
+      '/admin/users.js', '/admin/authorization.js', '/admin/admin.css', '/style.css',
+    ],
   );
-  assert.equal(page.headers.get('cache-control'), 'no-store');
-  assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
-  assert.equal(page.headers.get('referrer-policy'), 'no-referrer');
-  assert.equal(page.headers.get('x-content-type-options'), 'nosniff');
-  assert.equal(page.headers.get('x-frame-options'), 'DENY');
+  assert.equal(responses[0].headers.get('cache-control'), 'no-store');
+  assert.match(responses[0].headers.get('content-security-policy'), /frame-ancestors 'none'/);
+  assert.equal(responses[0].headers.get('referrer-policy'), 'no-referrer');
+  assert.equal(responses[0].headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(responses[0].headers.get('x-frame-options'), 'DENY');
+});
+
+test('admin router isolates every page and module behind Access', async () => {
+  const { env, assetRequests } = adminBindings();
+  const paths = [
+    '/', '/users', '/early-access', '/authorization',
+    '/admin.js', '/admin-core.js', '/early-access.js', '/users.js', '/authorization.js',
+  ];
+  for (const path of paths) {
+    const response = await workerModule.route(
+      adminRequest(path), env, async () => ({ email: 'other@example.com' }),
+    );
+    assert.equal(response.status, 403);
+  }
+  assert.equal(assetRequests.length, 0);
 });
 
 test('public host never serves private admin assets', async () => {
   const { env, assetRequests } = adminBindings();
-  for (const path of ['/admin', '/admin/', '/admin/admin.js']) {
+  for (const path of [
+    '/admin', '/admin/', '/admin/admin.js', '/admin.js', '/admin-core.js',
+    '/early-access.js', '/users.js', '/authorization.js', '/admin.css',
+  ]) {
     const response = await workerModule.route(
       new Request(`https://backchannel.page${path}`),
       env,
@@ -1522,15 +1548,21 @@ test('private page roots avoid Cloudflare index redirects', async () => {
     return cloudflareAsset(requestValue);
   };
 
-  const adminPage = await workerModule.route(adminRequest('/'), admin.env, allowOwner);
+  const adminPages = [];
+  for (const path of ['/', '/users', '/early-access', '/authorization']) {
+    adminPages.push(await workerModule.route(adminRequest(path), admin.env, allowOwner));
+  }
   const downloadPage = await workerModule.route(
     downloadRequest('/', undefined, { method: 'GET' }),
     download.env,
   );
 
-  assert.equal(adminPage.status, 200);
+  for (const page of adminPages) assert.equal(page.status, 200);
   assert.equal(downloadPage.status, 200);
-  assert.equal(new URL(admin.assetRequests[0].url).pathname, '/admin/');
+  assert.deepEqual(
+    admin.assetRequests.map((requestValue) => new URL(requestValue.url).pathname),
+    ['/admin/', '/admin/', '/admin/', '/admin/'],
+  );
   assert.equal(new URL(download.assetRequests[0].url).pathname, '/downloads/');
 });
 

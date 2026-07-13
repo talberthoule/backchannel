@@ -34,10 +34,16 @@ const ADMIN_MUTATIONS = new Map([
 ]);
 const ADMIN_ASSETS = new Map([
   ['/', '/admin/'],
-  ['/index.html', '/admin/'],
+  ['/users', '/admin/'],
+  ['/early-access', '/admin/'],
+  ['/authorization', '/admin/'],
   ['/style.css', '/style.css'],
   ['/admin.css', '/admin/admin.css'],
   ['/admin.js', '/admin/admin.js'],
+  ['/admin-core.js', '/admin/admin-core.js'],
+  ['/early-access.js', '/admin/early-access.js'],
+  ['/users.js', '/admin/users.js'],
+  ['/authorization.js', '/admin/authorization.js'],
 ]);
 const DOWNLOAD_ASSETS = new Map([
   ['/', '/downloads/'],
@@ -1462,7 +1468,8 @@ export async function route(request, env, verify = verifyAccessToken, dependenci
     return json(404, { ok: false, message: 'Not found.' });
   }
   if (publicPath === '/admin' || publicPath.startsWith('/admin/')
-    || publicPath === '/admin.js' || publicPath === '/admin.css'
+    || ['/admin.js', '/admin-core.js', '/early-access.js', '/users.js',
+      '/authorization.js', '/admin.css'].includes(publicPath)
     || publicPath === '/downloads' || publicPath.startsWith('/downloads/')
     || publicPath === '/downloads.js' || publicPath === '/downloads.css') {
     return json(404, { ok: false, message: 'Not found.' });
