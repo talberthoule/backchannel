@@ -21,7 +21,9 @@ sentrux gate .         # Compare current structure against .sentrux/baseline.jso
 sentrux gate --save .  # Refresh the structural baseline after intentional architecture changes
 ```
 
-Current baseline quality is `6142`, with coupling `0.54`, `0` cycles, and `0` god files. The rules are calibrated to the existing codebase; tighten `max_cc`, `max_fn_lines`, and `max_file_lines` after refactoring current hotspots.
+Current baseline quality is `6468`, with coupling `0.09`, `0` cycles, and `1` god file. The rules are calibrated to the existing codebase; tighten `max_cc`, `max_fn_lines`, and `max_file_lines` after refactoring current hotspots.
+
+The baseline records the Sentrux, plugin, and source revisions used to generate it. `sentrux check .` is expected to report only the two approved generated lockfile exceptions documented next to `max_file_lines` in `.sentrux/rules.toml`; any other finding must be fixed before the baseline is refreshed.
 
 ### Docker Compose (primary)
 
