@@ -18,7 +18,7 @@ except for the model API calls you configure.
 Key facts:
 - License: MIT, source at https://github.com/talberthoule/backchannel
 - Category: real-time meeting analysis / AI meeting assistant / meeting copilot
-- Desktop release: Windows x64, macOS Apple Silicon, and Linux x64 downloads at https://backchannel.page/releases/v0.2.1/
+- Desktop release: Windows x64, macOS Apple Silicon, and Linux x64 downloads at https://downloads.backchannel.page/ for approved Backchannel accounts; no GitHub identity or repository membership is required
 - Self-hosted alternative to cloud meeting assistants such as Otter.ai,
   Fireflies.ai, and Granola
 - Stack: React 18 + TypeScript frontend, FastAPI backend, PostgreSQL 16
@@ -31,7 +31,8 @@ Key facts:
 
 ## Docs
 
-- [Desktop release v0.2.1](https://backchannel.page/releases/v0.2.1/): Windows, macOS, and Linux executable downloads, install notes, and first-run guidance
+- [Download portal](https://downloads.backchannel.page/): authenticated Windows, macOS, and Linux executable delivery for approved Backchannel accounts
+- [Desktop release v0.2.1](https://backchannel.page/releases/v0.2.1/): public asset inventory, release notes, install notes, and first-run guidance
 - [Quickstart](https://backchannel.page/docs/quickstart/): Docker Compose setup, local development, migrations, tests
 - [Architecture](https://backchannel.page/docs/architecture/): the live call path end to end
 - [Agent System](https://backchannel.page/docs/agents/): each agent's trigger, purpose, and configuration
