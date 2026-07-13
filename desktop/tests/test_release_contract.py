@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -151,9 +152,10 @@ class ReleaseContractTests(unittest.TestCase):
             "R2_SECRET_ACCESS_KEY",
             "CLOUDFLARE_ACCOUNT_ID",
             "R2_RELEASES_BUCKET",
+            "scripts/r2-object.mjs",
             "--allow-legacy-partial",
             "--if-none-match",
-            "ContentLength",
+            "contentLength",
         ):
             with self.subTest(value=value):
                 self.assertIn(value, MIGRATION)
@@ -161,17 +163,29 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertNotIn("delete-object", MIGRATION)
         self.assertNotIn("D1", MIGRATION)
 
+    def test_owner_migration_has_no_aws_cli_or_credential_aliases(self):
+        self.assertNotRegex(MIGRATION, re.compile(r"(?i)(?:^|[&|;\s])aws(?:\s|$)"))
+        migration_lower = MIGRATION.lower()
+        for value in (
+            "AWS_DEFAULT_REGION",
+            "AWS_ACCESS_KEY_ID",
+            "Invoke-Aws",
+            '"s3", "cp"',
+            '"s3api"',
+        ):
+            with self.subTest(value=value):
+                self.assertNotIn(value.lower(), migration_lower)
+
     def test_owner_migration_writes_manifest_before_optional_latest(self):
         manifest = MIGRATION.index("releases/$Version/manifest.json")
-        remote_check = MIGRATION.index("$existing = Invoke-Aws", manifest)
+        remote_check = MIGRATION.index("$existing = Invoke-R2", manifest)
         latest_guard = MIGRATION.index("if ($SetLatest)")
         should_process = MIGRATION.index("$PSCmdlet.ShouldProcess")
         first_upload = MIGRATION.index("foreach ($asset in $manifest.assets)")
         self.assertLess(remote_check, should_process)
         self.assertLess(latest_guard, should_process)
         self.assertLess(should_process, first_upload)
-        self.assertNotIn('"s3", "cp"', MIGRATION[:should_process])
-        self.assertNotIn('"s3api", "put-object"', MIGRATION[:should_process])
+        self.assertNotIn('"put"', MIGRATION[:should_process])
         self.assertIn("recovery", MIGRATION.lower())
 
     def test_linux_tarball_is_created_inside_the_workspace(self):
