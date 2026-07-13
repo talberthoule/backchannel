@@ -48,7 +48,7 @@ const MAX_ADMIN_BODY_BYTES = 8192;
 const MAX_DOWNLOAD_BODY_BYTES = 8192;
 const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const VERSION = /^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
+const VERSION = /^(?=.{2,32}$)v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
 const ASSET_ID = /^[a-z0-9-]{1,32}$/;
 const ACCESS_HOST = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.cloudflareaccess\.com$/;
 const PRIVATE_HEADERS = {
@@ -207,11 +207,21 @@ export async function handleAdminReleases(request, env) {
   if (!env.RELEASES) return privateJson(503, { ok: false, message: 'Admin is unavailable.' });
   try {
     const catalog = await loadReleaseCatalog(env.RELEASES);
-    if (catalog.diagnostics.length || !catalog.latestVersion) throw new Error('catalog unavailable');
+    if (catalog.diagnostics.some((diagnostic) => diagnostic.endsWith('-unavailable'))) {
+      throw new Error('catalog unavailable');
+    }
+    if (catalog.diagnostics.length || !catalog.latestVersion || !catalog.manifests.size) {
+      return privateJson(200, {
+        items: [],
+        latest_version: null,
+        available: false,
+        diagnostic: 'Release catalog is not ready.',
+      });
+    }
     const items = [...catalog.manifests.values()]
       .map(({ version, published_at }) => ({ version, published_at }))
       .sort((left, right) => right.published_at.localeCompare(left.published_at));
-    return privateJson(200, { items, latest_version: catalog.latestVersion });
+    return privateJson(200, { items, latest_version: catalog.latestVersion, available: true });
   } catch {
     return privateJson(503, { ok: false, message: 'Release catalog could not be loaded.' });
   }
@@ -297,6 +307,20 @@ function credential(email, password, expiresAt, includeLatest, versions) {
   };
 }
 
+async function validateAccessCatalog(env, access) {
+  if (!env.RELEASES) return dbError();
+  try {
+    const catalog = await loadReleaseCatalog(env.RELEASES);
+    if (catalog.diagnostics.length || !catalog.latestVersion
+      || !catalog.manifests.has(catalog.latestVersion)) return dbError();
+    return access.versions.every((version) => catalog.manifests.has(version))
+      ? null
+      : dbError(409);
+  } catch {
+    return dbError();
+  }
+}
+
 async function approve(env, email, access, dependencies, now) {
   const randomBytes = dependencies.randomBytes
     || ((length) => globalThis.crypto.getRandomValues(new Uint8Array(length)));
@@ -351,17 +375,21 @@ async function reject(env, email, now) {
     const results = await env.INTEREST_DB.batch([
       statement(env, `
         UPDATE interest_subscribers
-        SET release_decision = 'rejected', release_reviewed_at = ? WHERE email = ?
-      `, now, email),
+        SET release_decision = 'rejected', release_reviewed_at = ?
+        WHERE email = ? AND release_decision = 'pending'
+          AND NOT EXISTS (SELECT 1 FROM release_accounts WHERE email = ?)
+      `, now, email, email),
       statement(env, `
         INSERT INTO release_access_events (email, action, version, created_at)
         SELECT ?, 'rejection', NULL, ?
-        WHERE EXISTS (SELECT 1 FROM interest_subscribers WHERE email = ?)
-      `, email, now, email),
+        WHERE EXISTS (SELECT 1 FROM interest_subscribers
+          WHERE email = ? AND release_decision = 'rejected' AND release_reviewed_at = ?)
+          AND NOT EXISTS (SELECT 1 FROM release_accounts WHERE email = ?)
+      `, email, now, email, now, email),
     ]);
     return (results[0]?.meta?.changes ?? 0) === 1
       ? privateJson(200, { ok: true })
-      : dbError(404);
+      : dbError(409);
   } catch {
     return dbError();
   }
@@ -370,6 +398,8 @@ async function reject(env, email, now) {
 async function activeAccount(env, email, withVersions = false) {
   return env.INTEREST_DB.prepare(`
     SELECT a.state, i.release_decision, a.include_latest${withVersions ? `,
+      a.password_hash, a.password_salt, a.password_iterations,
+      a.must_change_password, a.password_expires_at,
       COALESCE((SELECT json_group_array(version) FROM release_account_versions
         WHERE email = a.email), '[]') AS versions` : ''}
     FROM release_accounts a
@@ -437,18 +467,26 @@ async function resetPassword(env, email, dependencies, now) {
         WHERE email = ? AND state = 'active' AND EXISTS
           (SELECT 1 FROM interest_subscribers WHERE email = ?
             AND release_decision = 'approved')
-      `, hashed.hash, hashed.salt, PASSWORD_ITERATIONS, expiresAt, email, email),
+          AND password_hash = ? AND password_salt = ? AND password_iterations = ?
+          AND must_change_password = ? AND password_expires_at IS ?
+      `, hashed.hash, hashed.salt, PASSWORD_ITERATIONS, expiresAt, email, email,
+      account.password_hash, account.password_salt, account.password_iterations,
+      account.must_change_password, account.password_expires_at),
       statement(env, `
         DELETE FROM release_sessions WHERE email = ? AND EXISTS
           (SELECT 1 FROM release_accounts a JOIN interest_subscribers i ON i.email = a.email
-            WHERE a.email = ? AND a.state = 'active' AND i.release_decision = 'approved')
-      `, email, email),
+            WHERE a.email = ? AND a.state = 'active' AND i.release_decision = 'approved'
+              AND a.password_hash = ? AND a.password_salt = ?
+              AND a.password_expires_at = ?)
+      `, email, email, hashed.hash, hashed.salt, expiresAt),
       statement(env, `
         INSERT INTO release_access_events (email, action, version, created_at)
         SELECT ?, 'password_reset', NULL, ? WHERE EXISTS
           (SELECT 1 FROM release_accounts a JOIN interest_subscribers i ON i.email = a.email
-            WHERE a.email = ? AND a.state = 'active' AND i.release_decision = 'approved')
-      `, email, now, email),
+            WHERE a.email = ? AND a.state = 'active' AND i.release_decision = 'approved'
+              AND a.password_hash = ? AND a.password_salt = ?
+              AND a.password_expires_at = ?)
+      `, email, now, email, hashed.hash, hashed.salt, expiresAt),
     ]);
     if ((results[0]?.meta?.changes ?? 0) !== 1) return dbError(409);
   } catch {
@@ -491,6 +529,8 @@ export async function handleAdminMutation(request, env, action, dependencies = {
   if (action === 'approve' || action === 'grants') {
     const access = entitlementsFrom(parsed.body);
     if (!access) return privateJson(400, { ok: false, message: 'Request is invalid.' });
+    const catalogError = await validateAccessCatalog(env, access);
+    if (catalogError) return catalogError;
     return action === 'approve'
       ? approve(env, email, access, dependencies, now)
       : replaceGrants(env, email, access, now);
@@ -573,14 +613,17 @@ async function findDownloadSession(env, tokenHash, now) {
   if (!tokenHash) return null;
   const account = await env.INTEREST_DB.prepare(`
     SELECT s.email, s.password_change_only, s.expires_at, a.state, a.include_latest,
+      i.release_decision,
       COALESCE((SELECT json_group_array(version) FROM release_account_versions
         WHERE email = s.email), '[]') AS versions
     FROM release_sessions s
     JOIN release_accounts a ON a.email = s.email
+    JOIN interest_subscribers i ON i.email = s.email
     WHERE s.token_hash = ? AND s.expires_at > ? AND a.state = 'active'
+      AND i.release_decision = 'approved'
   `).bind(tokenHash, now.toISOString()).first();
   const expiresAt = Date.parse(account?.expires_at);
-  if (!account || account.state !== 'active'
+  if (!account || account.state !== 'active' || account.release_decision !== 'approved'
     || ![0, 1].includes(account.password_change_only)
     || typeof account.email !== 'string'
     || !Number.isFinite(expiresAt) || expiresAt <= now.getTime()) return null;

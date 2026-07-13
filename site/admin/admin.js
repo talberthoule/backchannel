@@ -25,6 +25,8 @@ const numberFormatter = new Intl.NumberFormat();
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 const statusClasses = new Set(['interested', 'invited', 'active', 'unsubscribed']);
 let releases = [];
+let records = null;
+let catalogAvailable = false;
 let selectedRecord = null;
 let dialogMode = 'approve';
 let returnFocus = null;
@@ -106,17 +108,25 @@ function actionButton(label, record, action) {
 function actionCell(record) {
   const cell = element('td');
   const actions = element('div', 'row-actions');
-  if (!record.account_state) {
-    actions.append(
-      actionButton('Approve', record, (item, button) => openAccess(item, 'approve', button)),
-      actionButton('Reject', record, (item, button) => runSimple(item, 'reject', button)),
-    );
+  if (!record.account_state && record.release_decision === 'pending') {
+    if (catalogAvailable) {
+      actions.append(actionButton(
+        'Approve', record, (item, button) => openAccess(item, 'approve', button),
+      ));
+    }
+    actions.append(actionButton('Reject', record, (item, button) => runSimple(item, 'reject', button)));
   } else if (record.account_state === 'active') {
-    actions.append(
-      actionButton('Edit grants', record, (item, button) => openAccess(item, 'grants', button)),
-      actionButton('Reset password', record, (item, button) => runSimple(item, 'reset-password', button)),
-      actionButton('Revoke', record, (item, button) => runSimple(item, 'revoke', button)),
-    );
+    if (catalogAvailable) {
+      actions.append(actionButton(
+        'Edit grants', record, (item, button) => openAccess(item, 'grants', button),
+      ));
+    }
+    if (record.release_decision === 'approved') {
+      actions.append(actionButton(
+        'Reset password', record, (item, button) => runSimple(item, 'reset-password', button),
+      ));
+    }
+    actions.append(actionButton('Revoke', record, (item, button) => runSimple(item, 'revoke', button)));
   }
   if (!actions.childElementCount) actions.append(element('span', 'cell-meta', 'No actions'));
   cell.append(actions);
@@ -293,34 +303,53 @@ async function load() {
   requestCount.textContent = '—';
   setStatus('Loading access requests…');
   rows.replaceChildren(messageRow('Loading access requests…'));
-  try {
-    const [releaseResponse, interestResponse] = await Promise.all([
-      fetch('/api/admin/releases', { headers: { accept: 'application/json' }, cache: 'no-store' }),
-      fetch('/api/admin/interests', { headers: { accept: 'application/json' }, cache: 'no-store' }),
-    ]);
-    if (!releaseResponse.ok || !interestResponse.ok) throw new Error('request failed');
-    const [releaseBody, interestBody] = await Promise.all([
-      releaseResponse.json(), interestResponse.json(),
-    ]);
-    if (!Array.isArray(releaseBody.items) || !Array.isArray(interestBody.items)) {
-      throw new Error('invalid response');
+  const loadReleases = async () => {
+    catalogAvailable = false;
+    releases = [];
+    try {
+      const response = await fetch('/api/admin/releases', {
+        headers: { accept: 'application/json' }, cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('request failed');
+      const body = await response.json();
+      if (!Array.isArray(body.items) || body.available !== true
+        || typeof body.latest_version !== 'string') throw new Error('catalog unavailable');
+      releases = body.items;
+      releases.latestVersion = body.latest_version;
+      catalogAvailable = true;
+    } catch {
+      releases = [];
     }
-    releases = releaseBody.items;
-    releases.latestVersion = releaseBody.latest_version;
-    render(interestBody.items);
-    requestCount.textContent = numberFormatter.format(interestBody.items.length);
+    if (records !== null) render(records);
+  };
+  const loadInterests = async () => {
+    const response = await fetch('/api/admin/interests', {
+      headers: { accept: 'application/json' }, cache: 'no-store',
+    });
+    if (!response.ok) throw new Error('request failed');
+    const body = await response.json();
+    if (!Array.isArray(body.items)) throw new Error('invalid response');
+    records = body.items;
+    render(records);
+    requestCount.textContent = numberFormatter.format(records.length);
     const now = new Date();
     lastRefreshed.textContent = dateFormatter.format(now);
     lastRefreshed.dateTime = now.toISOString();
-    setStatus(interestBody.items.length === 1 ? 'Loaded 1 access request.'
-      : 'Loaded ' + numberFormatter.format(interestBody.items.length) + ' access requests.');
-  } catch {
+    return true;
+  };
+  const [interestResult] = await Promise.allSettled([loadInterests(), loadReleases()]);
+  if (interestResult.status === 'fulfilled') {
+    const loaded = records.length === 1 ? 'Loaded 1 access request.'
+      : 'Loaded ' + numberFormatter.format(records.length) + ' access requests.';
+    setStatus(loaded + (catalogAvailable ? ''
+      : ' Release catalog is not ready. Approval and grant editing are unavailable.'));
+  } else {
+    records = null;
     rows.replaceChildren(messageRow('Access requests could not be loaded.'));
     setStatus('Access requests could not be loaded. Try Refresh.');
-  } finally {
-    refresh.disabled = false;
-    table.removeAttribute('aria-busy');
   }
+  refresh.disabled = false;
+  table.removeAttribute('aria-busy');
 }
 
 refresh.addEventListener('click', load);

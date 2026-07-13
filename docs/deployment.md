@@ -264,7 +264,24 @@ approve, reject, grant replacement, password reset, and revoke endpoints. It
 must remain private and `Cache-Control: no-store`; never log credentials,
 sessions, subscriber data, Access assertions, or R2 keys.
 
-### 7. Benchmark the real password work factor
+### 7. Configure an independent R2 writer
+
+Create bucket-scoped R2 S3 Object Read & Write credentials for
+`backchannel-desktop-releases`. Configure the GitHub production environment
+with secrets `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and
+`R2_SECRET_ACCESS_KEY`, plus variable
+`R2_RELEASES_BUCKET=backchannel-desktop-releases`. These credentials are
+separate from the site deployment token; do not expand that token.
+
+### 8. Seed and verify the release catalog
+
+Before benchmarking, create at least one verified test manifest and a valid
+`releases/latest.json` pointer by following [Releasing](releasing.md). Verify
+the manifest and every referenced object directly, then confirm the deployed
+admin `GET /api/admin/releases` response reports `available: true`. Do not
+approve a test recipient against an empty or diagnostic catalog.
+
+### 9. Benchmark the real password work factor
 
 On the deployed Worker plan, approve a disposable operator test recipient and
 perform repeated real login attempts through the hostname-bound Turnstile flow.
@@ -274,16 +291,7 @@ unknown-account dummy derivation. If the ceiling is insufficient, upgrade the
 Worker plan before enabling recipient accounts. Never lower the 600,000
 iterations.
 
-### 8. Configure an independent R2 writer
-
-Create bucket-scoped R2 S3 Object Read & Write credentials for
-`backchannel-desktop-releases`. Configure the GitHub production environment
-with secrets `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and
-`R2_SECRET_ACCESS_KEY`, plus variable
-`R2_RELEASES_BUCKET=backchannel-desktop-releases`. These credentials are
-separate from the site deployment token; do not expand that token.
-
-### 9. Migrate, accept, then cut over links
+### 10. Migrate, accept, then cut over customer links
 
 Follow [Releasing](releasing.md) to migrate `v0.1.0` through `v0.2.1`, verify
 every immutable manifest and asset, and advance Latest only after all intended

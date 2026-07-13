@@ -9,8 +9,8 @@ const LOWER = 'abcdefghijkmnopqrstuvwxyz';
 const NUMBER = '23456789';
 const SYMBOL = '!#$%&*+?@';
 const PASSWORD_ALPHABET = UPPER + LOWER + NUMBER + SYMBOL;
-const VERSION_PATTERN = /^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
-const MANIFEST_KEY_PATTERN = /^releases\/(v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))\/manifest\.json$/;
+const VERSION_PATTERN = /^(?=.{2,32}$)v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
+const MANIFEST_KEY_PATTERN = /^releases\/((?=.{2,32}\/manifest\.json$)v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))\/manifest\.json$/;
 const ASSET_TUPLES = new Map([
   ['windows-x64', ['Windows x64', 'Backchannel-windows-x64.zip', 'application/zip']],
   ['macos-arm64', ['macOS arm64', 'Backchannel-macos-arm64.zip', 'application/zip']],

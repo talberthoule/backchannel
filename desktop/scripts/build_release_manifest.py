@@ -9,7 +9,9 @@ from pathlib import Path
 
 
 CHUNK_SIZE = 1024 * 1024
-VERSION_RE = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+VERSION_RE = re.compile(
+    r"^(?=.{2,32}$)v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$"
+)
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 UTC_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:Z|\+00:00)$")
 ASSETS = (

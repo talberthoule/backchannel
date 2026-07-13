@@ -237,6 +237,35 @@ test('manifest validation rejects leading-zero version aliases', () => {
   assert.equal(parseManifest(baseManifest, version), null);
 });
 
+test('canonical versions enforce the 32-character boundary', () => {
+  const accepted = `v${'1'.repeat(10)}.${'2'.repeat(9)}.${'3'.repeat(10)}`;
+  const rejected = `${accepted}4`;
+  const manifest = (version) => ({
+    ...baseManifest,
+    version,
+    assets: [{ ...baseAsset, key: `releases/${version}/${baseAsset.filename}` }],
+  });
+
+  assert.equal(accepted.length, 32);
+  assert.equal(rejected.length, 33);
+  assert.deepEqual(parseManifest(manifest(accepted)), manifest(accepted));
+  assert.equal(parseManifest(manifest(rejected)), null);
+  assert.deepEqual(
+    resolveEntitlements({ include_latest: 0 }, [accepted], {
+      latestVersion: null,
+      manifests: new Map([[accepted, manifest(accepted)]]),
+    }),
+    [manifest(accepted)],
+  );
+  assert.deepEqual(
+    resolveEntitlements({ include_latest: 0 }, [rejected], {
+      latestVersion: null,
+      manifests: new Map([[rejected, manifest(rejected)]]),
+    }),
+    [],
+  );
+});
+
 test('release catalog paginates, ignores untrusted keys, and returns generic diagnostics', async () => {
   const calls = { list: [], get: [] };
   const valid = manifestFor('v1.2.3');

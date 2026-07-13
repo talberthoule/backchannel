@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 
 import worker, { handleInterest } from './worker.js';
@@ -68,6 +70,78 @@ const interestRecord = {
   versions: [],
 };
 
+const interestMigration = readFileSync(
+  new URL('./migrations/0001_interest_subscribers.sql', import.meta.url), 'utf8',
+);
+const releaseMigration = readFileSync(
+  new URL('./migrations/0002_release_access.sql', import.meta.url), 'utf8',
+);
+
+function sqliteD1() {
+  const database = new DatabaseSync(':memory:');
+  database.exec('PRAGMA foreign_keys = ON');
+  database.exec(interestMigration);
+  database.exec(releaseMigration);
+  const binding = {
+    prepare(sql) {
+      const prepared = database.prepare(sql);
+      let values = [];
+      const statementValue = {
+        bind(...bound) { values = bound; return statementValue; },
+        all() { return { results: prepared.all(...values) }; },
+        first() { return prepared.get(...values); },
+        run() {
+          const result = prepared.run(...values);
+          return { success: true, meta: { changes: Number(result.changes) } };
+        },
+      };
+      return statementValue;
+    },
+    batch(statements) {
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        const results = statements.map((statementValue) => statementValue.run());
+        database.exec('COMMIT');
+        return results;
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
+    },
+  };
+  return { database, binding };
+}
+
+function adminReleaseManifest(version) {
+  return {
+    version,
+    published_at: '2026-07-12T12:00:00Z',
+    commit: 'a'.repeat(40),
+    assets: [{
+      id: 'windows-x64', platform: 'Windows x64', filename: 'Backchannel-windows-x64.zip',
+      key: `releases/${version}/Backchannel-windows-x64.zip`, size: 1,
+      sha256: 'b'.repeat(64), content_type: 'application/zip',
+    }],
+  };
+}
+
+function adminCatalogBucket(
+  versions = ['v0.1.1', 'v0.2.0', 'v1.2.3'], latest = 'v1.2.3',
+) {
+  return {
+    async list() {
+      return {
+        objects: versions.map((version) => ({ key: `releases/${version}/manifest.json` })),
+      };
+    },
+    async get(key) {
+      if (key === 'releases/latest.json') return { json: async () => ({ version: latest }) };
+      const version = key.split('/')[1];
+      return versions.includes(version) ? { json: async () => adminReleaseManifest(version) } : null;
+    },
+  };
+}
+
 function adminRequest(path = '/api/admin/interests', init = {}) {
   return new Request(`https://admin.backchannel.page${path}`, {
     method: 'GET',
@@ -80,7 +154,7 @@ function adminBindings({
   all = async () => ({ results: [interestRecord] }),
   first = async () => ({ state: 'active', release_decision: 'approved' }),
   batch = async (statements) => statements.map(() => ({ success: true, meta: { changes: 1 } })),
-  releases,
+  releases = adminCatalogBucket(),
   asset = async () => new Response('private asset', {
     headers: { 'content-type': 'text/html; charset=utf-8' },
   }),
@@ -502,6 +576,65 @@ test('admin entitlement input rejects more than 100 unique canonical versions', 
   assert.equal(calls.length, 0);
 });
 
+test('admin entitlement input enforces the 32-character canonical version boundary', async () => {
+  const accepted = `v${'1'.repeat(10)}.${'2'.repeat(9)}.${'3'.repeat(10)}`;
+  const rejected = `${accepted}4`;
+  assert.equal(accepted.length, 32);
+  assert.equal(rejected.length, 33);
+
+  const invalid = adminBindings();
+  const response = await workerModule.route(adminJson('/api/admin/access/approve', {
+    email: 'person@example.com', include_latest: true, versions: [rejected],
+  }), invalid.env, allowOwner, fixedDependencies);
+  assert.equal(response.status, 400);
+  assert.equal(invalid.calls.length, 0);
+});
+
+test('approval and grant replacement validate the trusted catalog before D1 mutation', async () => {
+  for (const [path, method] of [
+    ['/api/admin/access/approve', 'POST'],
+    ['/api/admin/access/grants', 'PUT'],
+  ]) {
+    const unpublished = adminBindings({ releases: adminCatalogBucket(['v1.2.3']) });
+    const unpublishedResponse = await workerModule.route(adminJson(path, {
+      email: 'person@example.com', include_latest: false, versions: ['v9.9.9'],
+    }, { method }), unpublished.env, allowOwner, fixedDependencies);
+    assert.equal(unpublishedResponse.status, 409);
+    assert.equal(unpublished.calls.length, 0);
+    assert.equal(unpublished.batchCalls.length, 0);
+    assert.doesNotMatch(await unpublishedResponse.text(), /v9\.9\.9|credential|manifest/i);
+
+    const malformed = adminBindings({
+      releases: {
+        async list() { return { objects: [{ key: 'releases/v1.2.3/manifest.json' }] }; },
+        async get() { return { json: async () => ({ private_key: 'secret' }) }; },
+      },
+    });
+    const malformedResponse = await workerModule.route(adminJson(path, {
+      email: 'person@example.com', include_latest: true, versions: [],
+    }, { method }), malformed.env, allowOwner, fixedDependencies);
+    assert.equal(malformedResponse.status, 503);
+    assert.equal(malformed.calls.length, 0);
+    assert.equal(malformed.batchCalls.length, 0);
+    assert.doesNotMatch(await malformedResponse.text(), /secret|catalog|manifest/i);
+
+    const noLatest = adminBindings({
+      releases: {
+        async list() { return { objects: [{ key: 'releases/v1.2.3/manifest.json' }] }; },
+        async get(key) {
+          return key.endsWith('latest.json') ? null : { json: async () => adminReleaseManifest('v1.2.3') };
+        },
+      },
+    });
+    const noLatestResponse = await workerModule.route(adminJson(path, {
+      email: 'person@example.com', include_latest: true, versions: [],
+    }, { method }), noLatest.env, allowOwner, fixedDependencies);
+    assert.equal(noLatestResponse.status, 503);
+    assert.equal(noLatest.calls.length, 0);
+    assert.equal(noLatest.batchCalls.length, 0);
+  }
+});
+
 test('rejection preserves consent and never creates an account', async () => {
   const { env, calls, batchCalls } = adminBindings();
   const response = await workerModule.route(adminJson('/api/admin/access/reject', {
@@ -511,8 +644,75 @@ test('rejection preserves consent and never creates an account', async () => {
   assert.equal(batchCalls.length, 1);
   assert.equal(calls.length, 2);
   assert.match(calls[0].sql, /UPDATE interest_subscribers[\s\S]+release_decision/i);
-  assert.doesNotMatch(calls.map(({ sql }) => sql).join('\n'), /release_accounts/);
+  assert.match(calls[0].sql, /release_decision\s*=\s*'pending'/i);
+  assert.match(calls[0].sql, /NOT EXISTS[\s\S]+release_accounts/i);
   assert.match(calls[1].sql, /rejection/);
+  assert.match(calls[1].sql, /release_decision\s*=\s*'rejected'/i);
+  assert.match(calls[1].sql, /release_reviewed_at\s*=\s*\?/i);
+  assert.match(calls[1].sql, /NOT EXISTS[\s\S]+release_accounts/i);
+  assert.ok(calls[1].values.includes('2026-07-12T12:00:00.000Z'));
+
+  const conflict = adminBindings({
+    batch: async (statements) => statements.map(() => ({ success: true, meta: { changes: 0 } })),
+  });
+  const conflictResponse = await workerModule.route(adminJson('/api/admin/access/reject', {
+    email: 'person@example.com',
+  }), conflict.env, allowOwner, fixedDependencies);
+  assert.equal(conflictResponse.status, 409);
+  assert.deepEqual(await conflictResponse.json(), {
+    ok: false, message: 'Request could not be completed.',
+  });
+});
+
+test('approved account and session survive a rejected-state race in real SQLite', async (context) => {
+  const { database, binding } = sqliteD1();
+  context.after(() => database.close());
+  database.prepare(`
+    INSERT INTO interest_subscribers (email, consent_version)
+    VALUES (?, '2026-07-12')
+  `).run('person@example.com');
+  const env = {
+    ADMIN_EMAIL: 'owner@example.com',
+    ACCESS_TEAM_DOMAIN: 'backchannel.cloudflareaccess.com',
+    ACCESS_AUD: 'admin-audience',
+    INTEREST_DB: binding,
+    RELEASES: adminCatalogBucket(['v1.2.3']),
+  };
+
+  const approval = await workerModule.route(adminJson('/api/admin/access/approve', {
+    email: 'person@example.com', include_latest: true, versions: [],
+  }), env, allowOwner, fixedDependencies);
+  assert.equal(approval.status, 201);
+  const token = await createSessionToken((length) => new Uint8Array(length).fill(31));
+  database.prepare(`
+    INSERT INTO release_sessions
+      (token_hash, email, password_change_only, created_at, expires_at)
+    VALUES (?, 'person@example.com', 0, ?, ?)
+  `).run(token.tokenHash, '2026-07-12T12:00:00.000Z', '2026-07-19T12:00:00.000Z');
+
+  const rejection = await workerModule.route(adminJson('/api/admin/access/reject', {
+    email: 'person@example.com',
+  }), env, allowOwner, fixedDependencies);
+  assert.equal(rejection.status, 409);
+  assert.equal(database.prepare(`
+    SELECT release_decision FROM interest_subscribers WHERE email = ?
+  `).get('person@example.com').release_decision, 'approved');
+
+  const sessionRequest = () => downloadRequest('/api/download/session', undefined, {
+    headers: { cookie: `__Host-backchannel_release=${token.token}` },
+  });
+  const coherent = await workerModule.route(
+    sessionRequest(), env, undefined, downloadDependencies(),
+  );
+  assert.equal((await coherent.json()).authenticated, true);
+
+  database.prepare(`
+    UPDATE interest_subscribers SET release_decision = 'rejected' WHERE email = ?
+  `).run('person@example.com');
+  const inconsistent = await workerModule.route(
+    sessionRequest(), env, undefined, downloadDependencies(),
+  );
+  assert.deepEqual(await inconsistent.json(), { authenticated: false });
 });
 
 test('grant replacement checks active state and batches delete, inserts, update, and event', async () => {
@@ -540,7 +740,12 @@ test('grant replacement checks active state and batches delete, inserts, update,
 });
 
 test('password reset and revocation delete sessions atomically without reactivating accounts', async () => {
-  const reset = adminBindings();
+  const observed = {
+    state: 'active', release_decision: 'approved', include_latest: 1, versions: '[]',
+    password_hash: 'observed-hash', password_salt: 'observed-salt',
+    password_iterations: 600000, must_change_password: 0, password_expires_at: null,
+  };
+  const reset = adminBindings({ first: async () => observed });
   const resetResponse = await workerModule.route(adminJson('/api/admin/access/reset-password', {
     email: 'person@example.com',
   }), reset.env, allowOwner, fixedDependencies);
@@ -548,14 +753,51 @@ test('password reset and revocation delete sessions atomically without reactivat
   const resetCredential = (await resetResponse.json()).credential;
   assert.equal(resetCredential.password.length, 20);
   assert.equal(reset.batchCalls.length, 1);
+  for (const field of [
+    'password_hash', 'password_salt', 'password_iterations',
+    'must_change_password', 'password_expires_at',
+  ]) assert.match(reset.calls[0].sql, new RegExp(field));
   assert.match(reset.calls[1].sql, /UPDATE release_accounts[\s\S]+must_change_password[\s\S]+password_changed_at/i);
   assert.match(reset.calls[1].sql, /release_decision = 'approved'/i);
+  assert.match(reset.calls[1].sql, /password_hash\s*=\s*\?[\s\S]+password_salt\s*=\s*\?[\s\S]+password_iterations\s*=\s*\?[\s\S]+must_change_password\s*=\s*\?[\s\S]+password_expires_at IS \?/i);
+  for (const value of ['observed-hash', 'observed-salt', 600000, 0, null]) {
+    assert.ok(reset.calls[1].values.includes(value));
+  }
   assert.doesNotMatch(reset.calls[1].sql, /SET\s+state\s*=/i);
   assert.match(reset.calls[2].sql, /DELETE FROM release_sessions/i);
   assert.match(reset.calls[3].sql, /password_reset/);
-  assert.match(reset.calls[3].sql, /WHERE EXISTS[\s\S]+state = 'active'/i);
-  assert.match(reset.calls[3].sql, /release_decision = 'approved'/i);
+  const newHash = reset.calls[1].values[0];
+  const newSalt = reset.calls[1].values[1];
+  const newExpiry = reset.calls[1].values[3];
+  for (const call of reset.calls.slice(2, 4)) {
+    assert.match(call.sql, /EXISTS[\s\S]+state = 'active'/i);
+    assert.match(call.sql, /release_decision = 'approved'/i);
+    assert.match(call.sql, /password_hash = \?[\s\S]+password_salt = \?[\s\S]+password_expires_at = \?/i);
+    assert.ok(call.values.includes(newHash));
+    assert.ok(call.values.includes(newSalt));
+    assert.ok(call.values.includes(newExpiry));
+  }
   assert.equal(JSON.stringify(reset.calls).includes(resetCredential.password), false);
+
+  let resetAttempt = 0;
+  const race = adminBindings({
+    first: async () => observed,
+    batch: async (statements) => {
+      resetAttempt += 1;
+      return statements.map((_, index) => ({
+        success: true, meta: { changes: index === 0 && resetAttempt === 1 ? 1 : 0 },
+      }));
+    },
+  });
+  const firstRace = await workerModule.route(adminJson('/api/admin/access/reset-password', {
+    email: 'person@example.com',
+  }), race.env, allowOwner, fixedDependencies);
+  const secondRace = await workerModule.route(adminJson('/api/admin/access/reset-password', {
+    email: 'person@example.com',
+  }), race.env, allowOwner, fixedDependencies);
+  assert.equal(firstRace.status, 200);
+  assert.equal(secondRace.status, 409);
+  assert.doesNotMatch(await secondRace.text(), /password|credential|person@example/i);
 
   const revokedReset = adminBindings({ first: async () => ({ state: 'revoked', release_decision: 'approved' }) });
   const revokedResetResponse = await workerModule.route(adminJson('/api/admin/access/reset-password', {
@@ -575,30 +817,48 @@ test('password reset and revocation delete sessions atomically without reactivat
   assert.match(revoke.calls[2].sql, /revocation/);
 });
 
-test('admin release catalog returns summaries and keeps diagnostics generic', async () => {
-  const manifest = {
-    version: 'v1.2.3',
-    published_at: '2026-07-12T12:00:00Z',
-    commit: 'a'.repeat(40),
-    assets: [{
-      id: 'windows-x64', platform: 'Windows x64', filename: 'Backchannel-windows-x64.zip',
-      key: 'releases/v1.2.3/Backchannel-windows-x64.zip', size: 1,
-      sha256: 'b'.repeat(64), content_type: 'application/zip',
-    }],
-  };
-  const releases = {
-    async list() { return { objects: [{ key: 'releases/v1.2.3/manifest.json' }] }; },
-    async get(key) {
-      return { json: async () => key.endsWith('latest.json') ? { version: 'v1.2.3' } : manifest };
-    },
-  };
+test('admin release catalog returns summaries and bounded unavailable states', async () => {
+  const releases = adminCatalogBucket(['v1.2.3']);
   const good = adminBindings({ releases });
   const response = await workerModule.route(adminRequest('/api/admin/releases'), good.env, allowOwner);
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     items: [{ version: 'v1.2.3', published_at: '2026-07-12T12:00:00Z' }],
     latest_version: 'v1.2.3',
+    available: true,
   });
+
+  const unavailable = {
+    items: [],
+    latest_version: null,
+    available: false,
+    diagnostic: 'Release catalog is not ready.',
+  };
+  const empty = adminBindings({
+    releases: { async list() { return { objects: [] }; }, async get() { return null; } },
+  });
+  const emptyResponse = await workerModule.route(
+    adminRequest('/api/admin/releases'), empty.env, allowOwner,
+  );
+  assert.equal(emptyResponse.status, 200);
+  assert.deepEqual(await emptyResponse.json(), unavailable);
+
+  const malformed = adminBindings({
+    releases: {
+      async list() { return { objects: [{ key: 'releases/v1.2.3/manifest.json' }] }; },
+      async get(key) {
+        return { json: async () => key.endsWith('latest.json')
+          ? { version: 'v1.2.3' } : { private_key: 'do-not-expose' } };
+      },
+    },
+  });
+  const malformedResponse = await workerModule.route(
+    adminRequest('/api/admin/releases'), malformed.env, allowOwner,
+  );
+  assert.equal(malformedResponse.status, 200);
+  const malformedText = await malformedResponse.text();
+  assert.deepEqual(JSON.parse(malformedText), unavailable);
+  assert.doesNotMatch(malformedText, /private_key|manifest-invalid/i);
 
   const bad = adminBindings({
     releases: { async list() { throw new Error('secret R2 key'); }, async get() { return null; } },
@@ -698,7 +958,12 @@ function downloadBindings({ first = async () => undefined, run, batch } = {}) {
               call.values = values;
               return prepared;
             },
-            first,
+            async first(...values) {
+              const record = await first(...values);
+              return record && 'password_change_only' in record && !('release_decision' in record)
+                ? { ...record, release_decision: 'approved' }
+                : record;
+            },
             run: run || defaultRun,
           };
           return prepared;
@@ -983,6 +1248,8 @@ test('session status hashes only the named cookie and rechecks session and accou
     email: 'person@example.com',
   });
   assert.match(bindingsValue.calls[0].sql, /release_sessions[\s\S]+release_accounts/i);
+  assert.match(bindingsValue.calls[0].sql, /interest_subscribers/i);
+  assert.match(bindingsValue.calls[0].sql, /release_decision\s*=\s*'approved'/i);
   assert.match(bindingsValue.calls[0].sql, /expires_at/i);
   assert.match(bindingsValue.calls[0].sql, /state/i);
   assert.equal(bindingsValue.calls[0].values[0], token.tokenHash);
@@ -1003,6 +1270,15 @@ test('session status hashes only the named cookie and rechecks session and accou
     headers: { cookie: `__Host-backchannel_release=${token.token}` },
   }), malformed.env, undefined, downloadDependencies());
   assert.deepEqual(await malformedResponse.json(), { authenticated: false });
+
+  const inconsistent = downloadBindings({ first: async () => ({
+    email: 'person@example.com', state: 'active', release_decision: 'rejected',
+    password_change_only: 0, expires_at: '2026-07-19T12:00:00.000Z',
+  }) });
+  const inconsistentResponse = await workerModule.route(downloadRequest('/api/download/session', undefined, {
+    headers: { cookie: `__Host-backchannel_release=${token.token}` },
+  }), inconsistent.env, undefined, downloadDependencies());
+  assert.deepEqual(await inconsistentResponse.json(), { authenticated: false });
 });
 
 test('password change requires a change-only session and rotates it atomically', async () => {

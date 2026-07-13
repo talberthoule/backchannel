@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 
 function read(url) {
   try {
@@ -16,6 +17,64 @@ const adminCss = read(new URL('../site/admin/admin.css', import.meta.url));
 const css = `${sharedCss}\n${adminCss}`;
 const script = read(new URL('../site/admin/admin.js', import.meta.url));
 const config = JSON.parse(readFileSync(new URL('./wrangler.jsonc', import.meta.url), 'utf8'));
+
+class TestElement {
+  constructor(name = 'div') {
+    this.name = name;
+    this.children = [];
+    this.dataset = {};
+    this.textContent = '';
+    this.value = '';
+    this.checked = false;
+    this.disabled = false;
+    this.open = false;
+  }
+
+  append(...children) { this.children.push(...children); }
+  replaceChildren(...children) { this.children = children; }
+  addEventListener() {}
+  setAttribute(name, value) { this[name] = value; }
+  removeAttribute(name) { delete this[name]; }
+  querySelectorAll() { return []; }
+  showModal() { this.open = true; }
+  close() { this.open = false; }
+  focus() {}
+  click() {}
+  remove() {}
+  get childElementCount() { return this.children.filter((child) => child instanceof TestElement).length; }
+}
+
+function textOf(node) {
+  if (typeof node === 'string') return node;
+  return (node?.textContent || '') + (node?.children || []).map(textOf).join('');
+}
+
+async function runAdmin(fetch) {
+  const elements = new Map();
+  const document = {
+    body: new TestElement('body'),
+    createElement: (name) => new TestElement(name),
+    createTextNode: (value) => String(value),
+    getElementById(id) {
+      if (!elements.has(id)) elements.set(id, new TestElement());
+      return elements.get(id);
+    },
+  };
+  const executable = script.replace(
+    /refresh\.addEventListener\('click', load\);\s*load\(\);\s*$/,
+    'globalThis.__admin = { load, actionCell };',
+  );
+  assert.notEqual(executable, script);
+  const context = {
+    Blob, Date, Intl, Set, URL, document, fetch,
+    navigator: { clipboard: { async writeText() {} } },
+    window: { confirm: () => true },
+    addEventListener() {},
+  };
+  runInNewContext(executable, context);
+  await context.__admin.load();
+  return { ...context.__admin, elements };
+}
 
 test('private admin page has an accessible table and explicit states', () => {
   assert.match(html, /<html lang="en">/);
@@ -68,6 +127,41 @@ test('admin loads releases and interests and renders row actions with safe DOM A
     assert.match(script, new RegExp(action));
   }
   assert.doesNotMatch(script, /innerHTML|outerHTML|insertAdjacentHTML/);
+});
+
+test('admin renders interests independently when the release catalog is unavailable', async () => {
+  const calls = [];
+  const admin = await runAdmin(async (path) => {
+    calls.push(path);
+    if (path === '/api/admin/releases') {
+      return { ok: false, async json() { return { ok: false }; } };
+    }
+    return {
+      ok: true,
+      async json() {
+        return { items: [{
+          email: 'person@example.com', status: 'interested', source: 'homepage',
+          consent_version: '2026-07-11', consent_at: '2026-07-11 12:00:00',
+          created_at: '2026-07-11 12:00:00', invited_at: null, last_contacted_at: null,
+          release_decision: 'pending', account_state: null, include_latest: null, versions: [],
+        }] };
+      },
+    };
+  });
+
+  assert.deepEqual(calls.sort(), ['/api/admin/interests', '/api/admin/releases']);
+  const rowsText = textOf(admin.elements.get('interest-rows'));
+  assert.match(rowsText, /person@example\.com/);
+  assert.match(rowsText, /Reject/);
+  assert.doesNotMatch(rowsText, /Approve/);
+  assert.match(admin.elements.get('admin-status').textContent, /Release catalog is not ready\./);
+
+  const activeActions = textOf(admin.actionCell({
+    email: 'active@example.com', account_state: 'active', release_decision: 'approved',
+  }));
+  assert.match(activeActions, /Reset password/);
+  assert.match(activeActions, /Revoke/);
+  assert.doesNotMatch(activeActions, /Edit grants/);
 });
 
 test('private admin page uses CSP-compatible local assets and safe DOM rendering', () => {

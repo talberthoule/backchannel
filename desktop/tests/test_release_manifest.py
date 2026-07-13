@@ -177,6 +177,23 @@ class ReleaseManifestTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     self.manifest(**arguments)
 
+    def test_version_length_boundary_applies_to_helper_and_cli(self):
+        accepted = f"v{'1' * 10}.{'2' * 9}.{'3' * 10}"
+        rejected = accepted + "4"
+        self.assertEqual(len(accepted), 32)
+        self.assertEqual(len(rejected), 33)
+        self.assertEqual(self.manifest(tag=accepted)["version"], accepted)
+
+        manifest_out = self.metadata_dir / "manifest.json"
+        latest_out = self.metadata_dir / "latest.json"
+        result = self.run_cli(
+            tag=rejected, manifest_out=manifest_out, latest_out=latest_out
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("canonical tag", result.stderr)
+        self.assertFalse(manifest_out.exists())
+        self.assertFalse(latest_out.exists())
+
     def test_normalizes_explicit_utc_offset_to_z(self):
         manifest = self.manifest(published_at="2026-07-12T18:00:00+00:00")
         self.assertEqual(manifest["published_at"], PUBLISHED_AT)

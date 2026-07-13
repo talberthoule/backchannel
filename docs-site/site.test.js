@@ -158,6 +158,17 @@ test('production deployment always rebuilds immediately before Wrangler deploy',
   assert.match(deployment, /never deploy (?:a )?preexisting `dist-site`|fresh build immediately before deploy/i);
 });
 
+test('PBKDF2 benchmarking follows a verified catalog and precedes link cutover', () => {
+  const deployment = read('../docs/deployment.md');
+  const verifiedCatalog = deployment.indexOf('at least one verified test manifest');
+  const benchmark = deployment.indexOf('Benchmark the real password work factor');
+  const cutover = deployment.indexOf('cut over customer links');
+  assert.ok(verifiedCatalog >= 0);
+  assert.ok(verifiedCatalog < benchmark);
+  assert.ok(benchmark < cutover);
+  assert.match(deployment, /available.*true/i);
+});
+
 test('D1 exports require operator-supplied absolute paths outside the repository', () => {
   const deployment = read('../docs/deployment.md');
   assert.match(deployment, /BACKCHANNEL_D1_BACKUP_PATH/);
