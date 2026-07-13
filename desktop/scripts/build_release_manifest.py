@@ -104,7 +104,9 @@ def _validate_latest(path: Path, candidate: str) -> None:
     if not path.exists():
         return
     try:
-        latest = json.loads(path.read_text(encoding="utf-8"))
+        latest = json.loads(
+            path.read_text(encoding="utf-8"), object_pairs_hook=_unique_object
+        )
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise ValueError("current Latest is not valid JSON") from error
     if not isinstance(latest, dict) or set(latest) != {"version"}:
@@ -116,6 +118,15 @@ def _validate_latest(path: Path, candidate: str) -> None:
 
 def _json_bytes(value: dict) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict:
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"current Latest contains duplicate key: {key}")
+        value[key] = item
+    return value
 
 
 def main() -> None:

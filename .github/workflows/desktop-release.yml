@@ -83,14 +83,16 @@ jobs:
       group: backchannel-r2-publish
       cancel-in-progress: false
     env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: auto
       AWS_EC2_METADATA_DISABLED: "true"
       R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
       R2_BUCKET: ${{ vars.R2_RELEASES_BUCKET }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve release commit
+        shell: bash
+        run: echo "RELEASE_COMMIT=$(git rev-parse 'HEAD^{commit}')" >> "$GITHUB_ENV"
 
       - name: Download release assets
         uses: actions/download-artifact@v4
@@ -100,6 +102,9 @@ jobs:
           path: release-assets
 
       - name: Check immutable version
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -118,6 +123,9 @@ jobs:
           fi
 
       - name: Fetch current Latest
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -150,13 +158,16 @@ jobs:
           python desktop/scripts/build_release_manifest.py \
             --asset-dir release-assets \
             --tag "${{ github.ref_name }}" \
-            --commit "${{ github.sha }}" \
+            --commit "$RELEASE_COMMIT" \
             --published-at "$published_at" \
             --manifest-out release-metadata/manifest.json \
             --latest-out release-metadata/latest.json \
             "${current[@]}"
 
       - name: Upload release assets
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -174,6 +185,9 @@ jobs:
           done < release-metadata/assets.tsv
 
       - name: Verify release asset sizes
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -196,6 +210,9 @@ jobs:
           done < release-metadata/sizes.tsv
 
       - name: Create immutable manifest
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -210,6 +227,9 @@ jobs:
             >/dev/null
 
       - name: Verify immutable manifest
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -237,6 +257,9 @@ jobs:
           PY
 
       - name: Update Latest
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -265,7 +288,7 @@ jobs:
             python desktop/scripts/build_release_manifest.py \
               --asset-dir release-assets \
               --tag "${{ github.ref_name }}" \
-              --commit "${{ github.sha }}" \
+              --commit "$RELEASE_COMMIT" \
               --published-at "$(cat release-metadata/published-at)" \
               --manifest-out release-metadata/retry-manifest.json \
               --latest-out release-metadata/latest.json \

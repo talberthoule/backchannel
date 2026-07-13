@@ -21,8 +21,26 @@ $ErrorActionPreference = "Stop"
 function Invoke-Aws {
     param([Parameter(Mandatory = $true)][string[]]$Arguments)
 
-    $output = (& aws @Arguments --endpoint-url $script:Endpoint --region auto --no-cli-pager 2>&1 | Out-String).Trim()
-    [pscustomobject]@{ Code = $LASTEXITCODE; Output = $output }
+    $savedErrorActionPreference = $ErrorActionPreference
+    $hasNativePreference = Test-Path Variable:PSNativeCommandUseErrorActionPreference
+    if ($hasNativePreference) {
+        $savedNativePreference = $PSNativeCommandUseErrorActionPreference
+    }
+    try {
+        $ErrorActionPreference = "Continue"
+        if ($hasNativePreference) {
+            $PSNativeCommandUseErrorActionPreference = $false
+        }
+        $records = @(& aws @Arguments --endpoint-url $script:Endpoint --region auto --no-cli-pager 2>&1)
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedErrorActionPreference
+        if ($hasNativePreference) {
+            $PSNativeCommandUseErrorActionPreference = $savedNativePreference
+        }
+    }
+    $output = ($records | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+    [pscustomobject]@{ Code = $exitCode; Output = $output.Trim() }
 }
 
 function Test-NotFound {
@@ -115,6 +133,7 @@ $latestPath = Join-Path $temporary "latest.json"
 $currentLatestPath = Join-Path $temporary "current-latest.json"
 $remoteManifestPath = Join-Path $temporary "remote-manifest.json"
 New-Item -ItemType Directory -Path $temporary | Out-Null
+$manifestCreated = $false
 
 try {
     $helperArguments = @(
@@ -134,13 +153,6 @@ try {
         throw "Release manifest validation failed"
     }
     $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
-
-    if (-not $PSCmdlet.ShouldProcess(
-        "$script:Bucket/releases/$Version",
-        "Upload immutable release assets and manifest"
-    )) {
-        return
-    }
 
     $manifestKey = "releases/$Version/manifest.json"
     $existing = Invoke-Aws @(
@@ -164,6 +176,13 @@ try {
                 throw "Latest monotonicity validation failed"
             }
         }
+    }
+
+    if (-not $PSCmdlet.ShouldProcess(
+        "$script:Bucket/releases/$Version",
+        "Upload immutable release assets and manifest"
+    )) {
+        return
     }
 
     foreach ($asset in $manifest.assets) {
@@ -201,6 +220,7 @@ try {
         "--if-none-match", "*"
     )
     Assert-AwsSuccess $create "Creating immutable manifest"
+    $manifestCreated = $true
 
     $readback = Invoke-Aws @(
         "s3api", "get-object",
@@ -248,6 +268,11 @@ try {
             throw "Updating Latest failed: $($writeLatest.Output)"
         }
     }
+} catch {
+    if ($manifestCreated) {
+        Write-Warning "Recovery: immutable manifest $manifestKey was created before a later step failed. Do not overwrite it; verify the existing objects and follow the Task 6 release runbook."
+    }
+    throw
 } finally {
     if (Test-Path -LiteralPath $temporary) {
         Remove-Item -LiteralPath $temporary -Recurse -Force

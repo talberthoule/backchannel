@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from desktop.scripts.build_release_manifest import build_manifest
 
@@ -105,13 +106,38 @@ class ReleaseManifestTests(unittest.TestCase):
     def test_hashes_large_asset_and_records_positive_size(self):
         filename = ASSETS[0][2]
         payload = b"a" * (1024 * 1024) + b"tail"
-        (self.asset_dir / filename).write_bytes(payload)
+        target = self.asset_dir / filename
+        target.write_bytes(payload)
+        original_open = Path.open
+        read_sizes = []
 
-        asset = self.manifest()["assets"][0]
+        class BoundedReader:
+            def __init__(self, stream):
+                self.stream = stream
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *arguments):
+                self.stream.close()
+
+            def read(self, size=-1):
+                read_sizes.append(size)
+                if size < 0 or size > 1024 * 1024:
+                    raise AssertionError(f"unbounded read: {size}")
+                return self.stream.read(size)
+
+        def bounded_open(path, *arguments, **keywords):
+            stream = original_open(path, *arguments, **keywords)
+            return BoundedReader(stream) if path == target else stream
+
+        with mock.patch.object(Path, "open", bounded_open):
+            asset = self.manifest()["assets"][0]
 
         self.assertEqual(asset["size"], len(payload))
         self.assertEqual(asset["sha256"], hashlib.sha256(payload).hexdigest())
-        self.assertIn("1024 * 1024", SCRIPT.read_text(encoding="utf-8"))
+        self.assertGreaterEqual(len(read_sizes), 2)
+        self.assertTrue(all(0 <= size <= 1024 * 1024 for size in read_sizes))
 
     def test_rejects_missing_extra_symlink_and_empty_assets(self):
         missing = self.asset_dir / ASSETS[0][2]
@@ -195,6 +221,7 @@ class ReleaseManifestTests(unittest.TestCase):
             '{"version":"1.2.3"}',
             '{"version":"v01.2.3"}',
             '{"version":"v1.2.3","extra":true}',
+            '{"version":"v1.2.3","version":"v1.2.3"}',
         )
         for value in malformed:
             with self.subTest(value=value):

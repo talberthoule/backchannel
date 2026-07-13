@@ -72,6 +72,25 @@ class ReleaseContractTests(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertIn(value, publish)
         self.assertNotIn("D1", publish)
+        header, steps = publish.split("    steps:", 1)
+        release_notes = steps.split("name: Publish GitHub release notes", 1)[1]
+        self.assertNotIn("R2_ACCESS_KEY_ID", header)
+        self.assertNotIn("R2_SECRET_ACCESS_KEY", header)
+        self.assertNotIn("R2_ACCESS_KEY_ID", release_notes)
+        self.assertNotIn("R2_SECRET_ACCESS_KEY", release_notes)
+        for step in steps.split("      - name:"):
+            if "aws " in step:
+                with self.subTest(step=step.splitlines()[0]):
+                    self.assertIn("AWS_ACCESS_KEY_ID:", step)
+                    self.assertIn("AWS_SECRET_ACCESS_KEY:", step)
+
+    def test_publish_resolves_annotated_tag_to_checked_out_commit(self):
+        publish = WORKFLOW.split("  publish:", 1)[1]
+        self.assertIn("name: Resolve release commit", publish)
+        self.assertIn("git rev-parse 'HEAD^{commit}'", publish)
+        self.assertIn("RELEASE_COMMIT=", publish)
+        self.assertEqual(publish.count('--commit "$RELEASE_COMMIT"'), 2)
+        self.assertNotIn("github.sha", publish)
 
     def test_publish_calls_manifest_helper_without_legacy_mode(self):
         publish = WORKFLOW.split("  publish:", 1)[1]
@@ -82,7 +101,7 @@ class ReleaseContractTests(unittest.TestCase):
         for flag in (
             "--asset-dir release-assets",
             "--tag \"${{ github.ref_name }}\"",
-            "--commit \"${{ github.sha }}\"",
+            "--commit \"$RELEASE_COMMIT\"",
             "--published-at",
             "--manifest-out release-metadata/manifest.json",
             "--latest-out release-metadata/latest.json",
@@ -144,9 +163,16 @@ class ReleaseContractTests(unittest.TestCase):
 
     def test_owner_migration_writes_manifest_before_optional_latest(self):
         manifest = MIGRATION.index("releases/$Version/manifest.json")
+        remote_check = MIGRATION.index("$existing = Invoke-Aws", manifest)
         latest_guard = MIGRATION.index("if ($SetLatest)")
-        self.assertLess(manifest, latest_guard)
-        self.assertIn("ShouldProcess", MIGRATION[:manifest])
+        should_process = MIGRATION.index("$PSCmdlet.ShouldProcess")
+        first_upload = MIGRATION.index("foreach ($asset in $manifest.assets)")
+        self.assertLess(remote_check, should_process)
+        self.assertLess(latest_guard, should_process)
+        self.assertLess(should_process, first_upload)
+        self.assertNotIn('"s3", "cp"', MIGRATION[:should_process])
+        self.assertNotIn('"s3api", "put-object"', MIGRATION[:should_process])
+        self.assertIn("recovery", MIGRATION.lower())
 
     def test_linux_tarball_is_created_inside_the_workspace(self):
         # tar resolves -f against the original working directory, so a
