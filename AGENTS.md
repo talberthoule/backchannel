@@ -48,21 +48,24 @@ The checked-in `scripts/r2-object.mjs` client is the sole release object
 transport. Do not publish release objects with Amazon Web Services command-line
 tools or SDKs.
 
-### Docs site and private interest admin
+### Docs site and private admin
 
 `docs-site/` builds the public `backchannel.page` site and the private
-`admin.backchannel.page` review console and authenticated
-`downloads.backchannel.page` recipient portal. Every request to the private
-admin host is
-Cloudflare Access protected and then checked again by the Worker for a valid
-issuer, audience, and exact `ADMIN_EMAIL`; all three settings are Worker
-secrets. The D1 admin API provides interest review, release catalog, approval,
-rejection, grant replacement, password reset, and revocation endpoints. D1
-holds recipient accounts, grants, sessions, and access events; recipient
-identity is not the local application's PostgreSQL identity. Never add a public
-admin route, commit an operator identity, or log subscriber, credential,
-session, Access, or R2 data. Run all `docs-site` release-access, migration,
-Worker, admin, download, and site tests plus its build before release changes.
+`admin.backchannel.page` operator console and authenticated
+`downloads.backchannel.page` recipient portal. Early access owns request and
+consent review plus approve/reject only. Users owns recipient identity state,
+password reset, session sign-out, and revoke. Authorization owns Latest and
+explicit-version grants only, stored in `release_access_policies` and
+`release_account_versions`; the old `/api/admin/access/*` routes are removed.
+
+Every request to the private admin host is Cloudflare Access protected and
+then checked again by the Worker for a valid issuer, audience, and exact
+`ADMIN_EMAIL`; all three settings are Worker secrets. D1 holds recipient
+accounts, grants, sessions, and access events; recipient identity is not the
+local application's PostgreSQL identity. Never add a public admin route,
+commit an operator identity, or log subscriber, credential, session, Access,
+or R2 data. Run the six focused `docs-site` suites, aggregate suite, and build
+before release changes.
 
 ```bash
 cd docs-site
@@ -72,8 +75,13 @@ npm run test:worker
 npm run test:admin
 npm run test:download
 npm run test:site
+node --test *.test.js
 npm run build
 ```
+
+For local admin interaction checks, `npm run preview:admin` serves deterministic
+fake `.example` recipients on `http://127.0.0.1:4175`; the preview harness is
+source-only and must never enter `dist-site`.
 
 ### Local Development
 

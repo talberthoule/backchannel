@@ -13,6 +13,7 @@
     "test:worker": "node --test worker.test.js",
     "test:site": "node --test site.test.js",
     "preview": "astro preview",
+    "preview:admin": "node admin-preview.mjs",
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {

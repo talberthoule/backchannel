@@ -147,7 +147,31 @@ The site Worker owns three separate boundaries: public interest capture,
 Cloudflare Access-protected administration, and recipient-authenticated desktop
 delivery. Run this production gate in order and stop on any failed check.
 
-### 1. Export and back up production D1
+### Admin identity and authorization migration cutover
+
+The operator console has three strict ownership boundaries:
+
+- Early access: request and consent review plus approve/reject only.
+- Users: identity state, password reset, session sign-out, and revoke.
+- Authorization: Latest and explicit-version grants only.
+
+Authorization policy lives in `release_access_policies` plus
+`release_account_versions`. The old `/api/admin/access/*` routes are removed
+when the Worker and all admin assets deploy together.
+
+Rehearse the guarded cutover in preview first: freeze approval, rejection,
+password reset, session sign-out, revoke, and grant replacement; back up D1;
+apply migration `0003_release_access_policies.sql`; require both parity queries
+below to return zero; deploy the Worker and all admin assets together; unfreeze
+mutations; then smoke test. Recipient reads and downloads remain available
+during the mutation freeze. Repeat the same guarded sequence in production.
+
+### 1. Freeze mutations, then export and back up production D1
+
+Record the production admin-mutation freeze before taking the backup. Do not
+approve or reject requests, reset passwords, sign out sessions, revoke users,
+or replace grants until step 6 explicitly ends the freeze. Recipient reads and
+downloads may continue.
 
 From `docs-site/`, export the complete production database before applying any
 migration:
@@ -172,16 +196,18 @@ personal and authentication data; never create it in the repository first.
 Restrict it to the minimum operators and retain it through deployment
 acceptance.
 
-### 2. Apply migration 0002 and prove integrity
+### 2. Apply migration 0003 and prove integrity and policy parity
 
-Exercise the exact commands locally first:
+Migration `0002_release_access.sql` remains the prerequisite release-account
+schema. Exercise all pending migrations locally first:
 
 ```powershell
 npx wrangler d1 migrations apply INTEREST_DB --local
 npx wrangler d1 execute INTEREST_DB --local --command "PRAGMA foreign_key_check; PRAGMA integrity_check;"
 ```
 
-Then apply and check production:
+Then, while the production mutation freeze remains active, apply and check
+production:
 
 ```powershell
 npx wrangler d1 migrations apply INTEREST_DB --remote
@@ -189,9 +215,24 @@ npx wrangler d1 execute INTEREST_DB --remote --command "PRAGMA foreign_key_check
 ```
 
 Stop unless `foreign_key_check` returns no rows and `integrity_check` returns
-exactly `ok`. D1 is authoritative for recipient accounts, password metadata,
-version grants, sessions, and release-access events. Recipient identity is
-unrelated to the local application PostgreSQL database.
+exactly `ok`. Run these exact parity queries against the migrated database and
+stop unless each count is zero:
+
+```sql
+SELECT count(*) AS missing_policies
+FROM release_accounts a
+LEFT JOIN release_access_policies p ON p.email = a.email
+WHERE p.email IS NULL;
+
+SELECT count(*) AS latest_mismatches
+FROM release_accounts a
+JOIN release_access_policies p ON p.email = a.email
+WHERE p.include_latest <> a.include_latest;
+```
+
+D1 is authoritative for recipient accounts, password metadata, Latest policy,
+explicit-version grants, sessions, and release-access events. Recipient
+identity is unrelated to the local application PostgreSQL database.
 
 ### 3. Create and lock down private R2
 
@@ -233,7 +274,7 @@ Worker executes, use an operator-approved low per-IP threshold, and return a
 generic denial. Do not weaken the Worker's same-origin, body-size, generic
 authentication, or exact Turnstile hostname/action checks.
 
-### 6. Merge the control-plane branch and deploy
+### 6. Merge the control-plane branch and deploy Worker/assets together
 
 Retain the public-interest Turnstile secret separately as
 `TURNSTILE_SECRET_KEY`. Protect all of `admin.backchannel.page` with the
@@ -250,19 +291,30 @@ npm run deploy
 
 `npm run deploy` synchronizes and builds the site immediately before invoking
 Wrangler. Never deploy a preexisting `dist-site` or invoke Wrangler directly
-for production deployment.
+for production deployment. The Worker and complete admin shell (`admin.js`,
+`admin-core.js`, `early-access.js`, `users.js`, and `authorization.js`) are one
+cutover unit; never deploy either side separately.
 
 Do not add a broad group/domain Include, Bypass, or Service Auth rule. The
 Worker must independently validate the Access JWT signature, Cloudflare issuer,
 configured audience, and exact case-insensitive `ADMIN_EMAIL`; missing or
 invalid configuration fails closed.
 
-Deploy and test the Worker before uploading releases or enabling customer
-links. Signed-out and wrong-identity requests must not reach admin assets or
-APIs. The authenticated admin API provides interest review, release catalog,
-approve, reject, grant replacement, password reset, and revoke endpoints. It
-must remain private and `Cache-Control: no-store`; never log credentials,
-sessions, subscriber data, Access assertions, or R2 keys.
+Only after the atomic deployment succeeds may the recorded mutation freeze
+end. Smoke test Early access approve/reject and the one-time credential, Users
+password reset/session sign-out/revoke, and Authorization grant replacement
+with test recipients. Then confirm recipient login, forced password change,
+release visibility, revocation, session behavior, and downloads.
+
+Signed-out and wrong-identity requests must not reach admin assets or APIs. The
+admin surface must remain private and `Cache-Control: no-store`; never log
+credentials, sessions, subscriber data, Access assertions, or R2 keys.
+
+Rollback is unsafe after the first new policy mutation because the unused
+legacy `release_accounts.include_latest` value may be stale. After that point,
+recover with a forward fix or an explicit policy-to-legacy synchronization
+before restoring the previous Worker. Keep the previous Worker available only
+for rollback before the first new policy mutation.
 
 Merge this rollout to `master` with a merge commit that preserves hold commit
 `57fc8d991b8101a2db5889df16ce5a26078baff2`. Do not squash or rebase this
