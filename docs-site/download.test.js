@@ -248,6 +248,52 @@ test('recipient release rendering executes with safe fields, encoded links, and 
   }
 });
 
+test('logout buttons stay disabled during the logout request and ignore duplicate clicks', async () => {
+  const start = script.indexOf("for (const button of document.querySelectorAll('.logout')) {");
+  const end = script.indexOf('loadSession();', start);
+  assert.ok(start >= 0 && end > start);
+  const logoutLoop = script.slice(start, end);
+  const state = { alert: '', fetchCalls: [], focused: '', shown: '' };
+  const logoutButton = {
+    disabled: false,
+    handlers: new Map(),
+    addEventListener(name, handler) { this.handlers.set(name, handler); },
+    closest() { return null; },
+    focus() { state.focused = 'logout'; },
+  };
+  let resolveLogout;
+  const pendingLogout = new Promise((resolve) => { resolveLogout = resolve; });
+  const context = {
+    document: {
+      querySelector: (selector) => ({ id: selector.slice(1) }),
+      querySelectorAll: (selector) => (selector === '.logout' ? [logoutButton] : []),
+    },
+    email: { focus() { state.focused = 'email'; } },
+    password: { value: 'old' },
+    newPassword: { value: 'new' },
+    setAlert(id, message) { state.alert = `${id}:${message}`; },
+    show(panel, focusTarget) {
+      state.shown = panel.id;
+      focusTarget.focus();
+    },
+    fetch(url) {
+      state.fetchCalls.push(url);
+      return pendingLogout;
+    },
+    JSON,
+    Error,
+  };
+
+  vm.runInNewContext(logoutLoop, context);
+  const firstClick = logoutButton.handlers.get('click')();
+  const secondClick = logoutButton.handlers.get('click')();
+  assert.equal(logoutButton.disabled, true);
+  assert.equal(state.fetchCalls.filter((url) => url.endsWith('/logout')).length, 1);
+  resolveLogout({ ok: true });
+  await Promise.all([firstClick, secondClick]);
+  assert.equal(logoutButton.disabled, false);
+});
+
 test('Turnstile errors clear only challenge state and alert an already-active login', () => {
   const body = script.match(/globalThis\.onTurnstileError\s*=\s*\(\)\s*=>\s*\{([\s\S]*?)\n\};/)?.[1] || '';
   const run = ({ loginHidden, activePanel, focused, submitDisabled }) => {

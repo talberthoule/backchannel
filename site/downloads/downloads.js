@@ -192,6 +192,8 @@ changeForm.addEventListener('submit', async (event) => {
 
 for (const button of document.querySelectorAll('.logout')) {
   button.addEventListener('click', async () => {
+    if (button.disabled) return;
+    button.disabled = true;
     const alertId = button.closest('#change-panel') ? '#change-alert' : '#releases-alert';
     setAlert(alertId, '');
     try {
@@ -210,6 +212,8 @@ for (const button of document.querySelectorAll('.logout')) {
       newPassword.value = '';
       setAlert(alertId, genericError);
       button.focus();
+    } finally {
+      button.disabled = false;
     }
   });
 }
