@@ -233,7 +233,7 @@ Worker executes, use an operator-approved low per-IP threshold, and return a
 generic denial. Do not weaken the Worker's same-origin, body-size, generic
 authentication, or exact Turnstile hostname/action checks.
 
-### 6. Deploy the control plane first
+### 6. Merge the control-plane branch and deploy
 
 Retain the public-interest Turnstile secret separately as
 `TURNSTILE_SECRET_KEY`. Protect all of `admin.backchannel.page` with the
@@ -264,6 +264,21 @@ approve, reject, grant replacement, password reset, and revoke endpoints. It
 must remain private and `Cache-Control: no-store`; never log credentials,
 sessions, subscriber data, Access assertions, or R2 keys.
 
+Merge this rollout to `master` with a merge commit that preserves hold commit
+`57fc8d991b8101a2db5889df16ce5a26078baff2`. Do not squash or rebase this
+rollout. Push `master`, wait for the Site workflow to finish successfully, then
+fetch the deployed branch and prove the hold is present:
+
+```powershell
+git fetch origin master
+git merge-base --is-ancestor 57fc8d991b8101a2db5889df16ce5a26078baff2 origin/master
+if ($LASTEXITCODE -ne 0) { throw 'The download-link hold is not an ancestor of origin/master.' }
+```
+
+Stop unless the Site workflow is green and `git merge-base --is-ancestor`
+exits 0. Do not create or migrate any live R2 catalog object, benchmark PBKDF2,
+or approve a recipient before both checks pass.
+
 ### 7. Configure an independent R2 writer
 
 Create bucket-scoped R2 S3 Object Read & Write credentials for
@@ -273,13 +288,14 @@ with secrets `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and
 `R2_RELEASES_BUCKET=backchannel-desktop-releases`. These credentials are
 separate from the site deployment token; do not expand that token.
 
-### 8. Seed and verify the release catalog
+### 8. Seed and migrate the release catalog
 
-Before benchmarking, create at least one verified test manifest and a valid
-`releases/latest.json` pointer by following [Releasing](releasing.md). Verify
-the manifest and every referenced object directly, then confirm the deployed
-admin `GET /api/admin/releases` response reports `available: true`. Do not
-approve a test recipient against an empty or diagnostic catalog.
+Follow [Releasing](releasing.md) to migrate the historical catalog in version
+order. Migrate `v0.1.0` once as the seed, verify its immutable manifest and
+assets, and create the valid `releases/latest.json` pointer. Do not migrate the
+seed version again. Continue with `v0.1.1`, `v0.2.0`, and `v0.2.1`, verifying
+every immutable manifest and asset before advancing Latest. Confirm the
+deployed admin `GET /api/admin/releases` response reports `available: true`.
 
 ### 9. Benchmark the real password work factor
 
@@ -291,20 +307,12 @@ unknown-account dummy derivation. If the ceiling is insufficient, upgrade the
 Worker plan before enabling recipient accounts. Never lower the 600,000
 iterations.
 
-### 10. Migrate, accept, then cut over customer links
+### 10. Accept accounts and downloads, then cut over customer links
 
-The `master` auto-deploy publishes every push that changes site or docs inputs.
-First merge and deploy the control-plane HEAD containing hold commit
-`57fc8d991b8101a2db5889df16ce5a26078baff2`; wait for the Site workflow to
-finish before migrating or accepting live state. Customer executable links
-must remain on their pre-cutover targets during this deployment.
-
-Follow [Releasing](releasing.md) to migrate `v0.1.0` through `v0.2.1`, verify
-every immutable manifest and asset, and advance Latest only after all intended
-objects verify. Test approved, expired, revoked, Latest-only, and explicitly
-granted operator accounts. Confirm portal downloads match manifest size and
-SHA-256 without GitHub cookies. After live Task 7 acceptance, make the only
-link-cutover revision by reverting that exact hold commit:
+Test approved, expired, revoked, Latest-only, and explicitly granted operator
+accounts against the completed catalog. Confirm portal downloads match manifest
+size and SHA-256 without GitHub cookies. After live Task 7 acceptance, make the
+only link-cutover revision by reverting the exact hold commit:
 
 ```powershell
 git revert 57fc8d991b8101a2db5889df16ce5a26078baff2

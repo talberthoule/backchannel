@@ -382,7 +382,7 @@ async function reject(env, email, now) {
       statement(env, `
         INSERT INTO release_access_events (email, action, version, created_at)
         SELECT ?, 'rejection', NULL, ?
-        WHERE EXISTS (SELECT 1 FROM interest_subscribers
+        WHERE changes() = 1 AND EXISTS (SELECT 1 FROM interest_subscribers
           WHERE email = ? AND release_decision = 'rejected' AND release_reviewed_at = ?)
           AND NOT EXISTS (SELECT 1 FROM release_accounts WHERE email = ?)
       `, email, now, email, now, email),

@@ -147,15 +147,22 @@ test('production deployment always rebuilds immediately before Wrangler deploy',
   assert.match(deployment, /never deploy (?:a )?preexisting `dist-site`|fresh build immediately before deploy/i);
 });
 
-test('PBKDF2 benchmarking follows a verified catalog and precedes link cutover', () => {
+test('rollout order deploys the held branch before catalog, benchmark, acceptance, and cutover', () => {
   const deployment = read('../docs/deployment.md');
-  const verifiedCatalog = deployment.indexOf('at least one verified test manifest');
-  const benchmark = deployment.indexOf('Benchmark the real password work factor');
-  const cutover = deployment.indexOf('cut over customer links');
-  assert.ok(verifiedCatalog >= 0);
-  assert.ok(verifiedCatalog < benchmark);
-  assert.ok(benchmark < cutover);
+  const hold = '57fc8d991b8101a2db5889df16ce5a26078baff2';
+  const steps = [
+    'Merge the control-plane branch',
+    `git merge-base --is-ancestor ${hold} origin/master`,
+    'Seed and migrate the release catalog',
+    'Benchmark the real password work factor',
+    'Accept accounts and downloads',
+    `git revert ${hold}`,
+  ].map((step) => deployment.indexOf(step));
+  assert.ok(steps.every((position) => position >= 0));
+  assert.deepEqual(steps, [...steps].sort((left, right) => left - right));
   assert.match(deployment, /available.*true/i);
+  assert.match(deployment, /Migrate `v0\.1\.0` once as the seed/i);
+  assert.match(deployment, /Do not migrate the\s+seed version again/i);
 });
 
 test('staged link cutover names the exact mechanically revertible hold', () => {
@@ -164,13 +171,13 @@ test('staged link cutover names the exact mechanically revertible hold', () => {
     const runbook = read(path);
     assert.match(runbook, new RegExp(hold));
     assert.match(runbook, new RegExp(`git revert ${hold}`));
+    assert.match(runbook, new RegExp(`git merge-base --is-ancestor ${hold} origin/master`));
+    assert.match(runbook, /Do not squash or rebase/i);
     assert.ok([...runbook.matchAll(/git revert ([0-9a-f]{40})/g)]
       .every((match) => match[1] === hold));
   }
-  const deployment = read('../docs/deployment.md');
-  assert.match(deployment, /master[^.\n]*auto-deploy/i);
-  assert.ok(deployment.indexOf('control-plane HEAD') < deployment.indexOf('live Task 7 acceptance'));
-  assert.ok(deployment.indexOf('live Task 7 acceptance') < deployment.indexOf(`git revert ${hold}`));
+  const releasing = read('../docs/releasing.md');
+  assert.match(releasing, /Follow \[Deployment\]\(deployment\.md\).*ordered gate/is);
 });
 
 test('D1 exports require operator-supplied absolute paths outside the repository', () => {

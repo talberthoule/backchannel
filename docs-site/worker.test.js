@@ -647,6 +647,7 @@ test('rejection preserves consent and never creates an account', async () => {
   assert.match(calls[0].sql, /release_decision\s*=\s*'pending'/i);
   assert.match(calls[0].sql, /NOT EXISTS[\s\S]+release_accounts/i);
   assert.match(calls[1].sql, /rejection/);
+  assert.match(calls[1].sql, /changes\(\)\s*=\s*1/i);
   assert.match(calls[1].sql, /release_decision\s*=\s*'rejected'/i);
   assert.match(calls[1].sql, /release_reviewed_at\s*=\s*\?/i);
   assert.match(calls[1].sql, /NOT EXISTS[\s\S]+release_accounts/i);
@@ -662,6 +663,40 @@ test('rejection preserves consent and never creates an account', async () => {
   assert.deepEqual(await conflictResponse.json(), {
     ok: false, message: 'Request could not be completed.',
   });
+});
+
+test('same-timestamp rejection retry cannot emit a second event in real SQLite', async (context) => {
+  const { database, binding } = sqliteD1();
+  context.after(() => database.close());
+  database.prepare(`
+    INSERT INTO interest_subscribers (email, consent_version)
+    VALUES (?, '2026-07-12')
+  `).run('person@example.com');
+  const env = {
+    ADMIN_EMAIL: 'owner@example.com',
+    ACCESS_TEAM_DOMAIN: 'backchannel.cloudflareaccess.com',
+    ACCESS_AUD: 'admin-audience',
+    INTEREST_DB: binding,
+  };
+  const rejectRequest = () => adminJson('/api/admin/access/reject', {
+    email: 'person@example.com',
+  });
+
+  const accepted = await workerModule.route(
+    rejectRequest(), env, allowOwner, fixedDependencies,
+  );
+  const retried = await workerModule.route(
+    rejectRequest(), env, allowOwner, fixedDependencies,
+  );
+
+  assert.equal(accepted.status, 200);
+  assert.equal(retried.status, 409);
+  assert.equal(database.prepare(`
+    SELECT count(*) AS count FROM release_access_events WHERE action = 'rejection'
+  `).get().count, 1);
+  assert.equal(database.prepare(`
+    SELECT release_decision FROM interest_subscribers WHERE email = ?
+  `).get('person@example.com').release_decision, 'rejected');
 });
 
 test('approved account and session survive a rejected-state race in real SQLite', async (context) => {

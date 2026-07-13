@@ -18,11 +18,22 @@ publishes R2 objects, advances Latest, or creates a GitHub release. A normal
 
 ## Staged customer-link cutover
 
-Deploy the control-plane HEAD first with customer executable links held at
-their pre-cutover destinations by commit
-`57fc8d991b8101a2db5889df16ce5a26078baff2`. Because site and docs changes on
-`master` auto-deploy through the Site workflow, wait for that deployment before
-running live migration, account, catalog, and download acceptance.
+Follow [Deployment](deployment.md) as the ordered gate for this rollout. Merge
+the control-plane branch to `master` with a merge commit that preserves hold
+commit `57fc8d991b8101a2db5889df16ce5a26078baff2`. Do not squash or rebase this
+rollout. Wait for the Site workflow to finish successfully, then verify the
+deployed branch before any live R2 catalog write:
+
+```powershell
+git fetch origin master
+git merge-base --is-ancestor 57fc8d991b8101a2db5889df16ce5a26078baff2 origin/master
+if ($LASTEXITCODE -ne 0) { throw 'The download-link hold is not an ancestor of origin/master.' }
+```
+
+Stop unless the command exits 0. Then migrate `v0.1.0` once as the catalog
+seed, verify it, and continue with the remaining historical versions; do not
+migrate the seed a second time. Complete PBKDF2 and account/download acceptance
+in the order specified by Deployment.
 
 Only after live Task 7 acceptance, create the sole link-cutover revision:
 
