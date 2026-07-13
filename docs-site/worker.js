@@ -25,11 +25,12 @@ const ADMIN_USERS_PATH = '/api/admin/users';
 const ADMIN_AUTHORIZATION_PATH = '/api/admin/authorization';
 const ADMIN_RELEASES_PATH = '/api/admin/releases';
 const ADMIN_MUTATIONS = new Map([
-  ['/api/admin/access/approve', ['POST', 'approve']],
-  ['/api/admin/access/reject', ['POST', 'reject']],
-  ['/api/admin/access/grants', ['PUT', 'grants']],
-  ['/api/admin/access/reset-password', ['POST', 'reset']],
-  ['/api/admin/access/revoke', ['POST', 'revoke']],
+  ['/api/admin/interests/approve', ['POST', 'approve']],
+  ['/api/admin/interests/reject', ['POST', 'reject']],
+  ['/api/admin/users/reset-password', ['POST', 'reset']],
+  ['/api/admin/users/sign-out', ['POST', 'sign-out']],
+  ['/api/admin/users/revoke', ['POST', 'revoke']],
+  ['/api/admin/authorization/grants', ['PUT', 'grants']],
 ]);
 const ADMIN_ASSETS = new Map([
   ['/', '/admin/'],
@@ -211,14 +212,16 @@ export async function handleAdminUsers(request, env, dependencies = {}) {
       JOIN interest_subscribers i ON i.email = a.email
       ORDER BY a.approved_at DESC, a.email
     `).bind(now, now).all();
-    const items = (result.results || []).map((record) => {
-      if (![0, 1].includes(record.must_change_password)) throw new TypeError();
-      return { ...record, must_change_password: record.must_change_password === 1 };
-    });
+    const items = (result.results || []).map(adminUserRecord);
     return privateJson(200, { items });
   } catch {
     return dbError();
   }
+}
+
+function adminUserRecord(record) {
+  if (![0, 1].includes(record?.must_change_password)) throw new TypeError();
+  return { ...record, must_change_password: record.must_change_password === 1 };
 }
 
 export async function handleAdminAuthorization(request, env) {
@@ -345,14 +348,38 @@ function statement(env, sql, ...values) {
   return env.INTEREST_DB.prepare(sql).bind(...values);
 }
 
-function credential(email, password, expiresAt, includeLatest, versions) {
+function credential(email, password, expiresAt) {
   return {
     email,
     password,
     password_expires_at: expiresAt,
-    include_latest: includeLatest,
-    versions,
   };
+}
+
+async function loadAdminInterest(env, email) {
+  return env.INTEREST_DB.prepare(`
+    SELECT i.email, i.status, i.source, i.consent_version, i.consent_at, i.created_at,
+           i.invited_at, i.last_contacted_at, i.release_decision,
+           i.release_reviewed_at
+    FROM interest_subscribers i
+    WHERE i.email = ?
+  `).bind(email).first();
+}
+
+async function loadAdminUser(env, email, now) {
+  const record = await env.INTEREST_DB.prepare(`
+    SELECT a.email, a.state, i.source, i.created_at AS requested_at,
+           a.approved_at, a.must_change_password, a.password_expires_at,
+           a.password_changed_at, a.revoked_at,
+           COALESCE((SELECT count(*) FROM release_sessions s
+             WHERE s.email = a.email AND s.expires_at > ?), 0) AS active_session_count,
+           (SELECT max(s.expires_at) FROM release_sessions s
+             WHERE s.email = a.email AND s.expires_at > ?) AS latest_session_expires_at
+    FROM release_accounts a
+    JOIN interest_subscribers i ON i.email = a.email
+    WHERE a.email = ?
+  `).bind(now, now, email).first();
+  return adminUserRecord(record);
 }
 
 async function validateAccessCatalog(env, access) {
@@ -369,52 +396,57 @@ async function validateAccessCatalog(env, access) {
   }
 }
 
-async function approve(env, email, access, dependencies, now) {
+async function approve(env, email, dependencies, now) {
   const randomBytes = dependencies.randomBytes
     || ((length) => globalThis.crypto.getRandomValues(new Uint8Array(length)));
   const password = generateTemporaryPassword(randomBytes);
   const hashed = await hashPassword(password, { salt: randomBytes(16) });
   const expiresAt = new Date(Date.parse(now) + TEMPORARY_PASSWORD_TTL_SECONDS * 1000).toISOString();
-  const statements = [statement(env, `
-    INSERT INTO release_accounts
-      (email, state, password_hash, password_salt, password_iterations,
-       must_change_password, password_expires_at, include_latest, approved_at)
-    SELECT ?, 'active', ?, ?, ?, 1, ?, ?, ?
-    WHERE EXISTS (SELECT 1 FROM interest_subscribers WHERE email = ?)
-  `, email, hashed.hash, hashed.salt, PASSWORD_ITERATIONS, expiresAt,
-  access.includeLatest ? 1 : 0, now, email)];
-  for (const version of access.versions) {
-    statements.push(statement(env, `
-      INSERT INTO release_account_versions (email, version, granted_at)
-      SELECT ?, ?, ? WHERE EXISTS (
-        SELECT 1 FROM release_accounts a
-        JOIN interest_subscribers i ON i.email = a.email
-        WHERE a.email = ? AND a.state = 'active'
-      )
-    `, email, version, now, email));
-  }
-  statements.push(
+  const statements = [
+    statement(env, `
+      INSERT INTO release_accounts
+        (email, state, password_hash, password_salt, password_iterations,
+         must_change_password, password_expires_at, approved_at)
+      SELECT ?, 'active', ?, ?, ?, 1, ?, ?
+      WHERE EXISTS (SELECT 1 FROM interest_subscribers
+        WHERE email = ? AND release_decision = 'pending')
+    `, email, hashed.hash, hashed.salt, PASSWORD_ITERATIONS, expiresAt, now, email),
     statement(env, `
       UPDATE interest_subscribers
       SET status = 'active', release_decision = 'approved', release_reviewed_at = ?
-      WHERE email = ? AND EXISTS
-        (SELECT 1 FROM release_accounts WHERE email = ?)
-    `, now, email, email),
+      WHERE email = ? AND release_decision = 'pending' AND changes() = 1
+        AND EXISTS (SELECT 1 FROM release_accounts
+          WHERE email = ? AND state = 'active' AND approved_at = ?)
+    `, now, email, email, now),
+    statement(env, `
+      INSERT INTO release_access_policies (email, include_latest, updated_at)
+      SELECT ?, 1, ? WHERE changes() = 1 AND EXISTS (
+        SELECT 1 FROM release_accounts a
+        JOIN interest_subscribers i ON i.email = a.email
+        WHERE a.email = ? AND a.state = 'active' AND a.approved_at = ?
+          AND i.release_decision = 'approved' AND i.release_reviewed_at = ?
+      )
+    `, email, now, email, now, now),
     statement(env, `
       INSERT INTO release_access_events (email, action, version, created_at)
-      SELECT ?, 'approval', NULL, ?
-      WHERE EXISTS (SELECT 1 FROM release_accounts WHERE email = ?)
-    `, email, now, email),
-  );
+      SELECT ?, 'approval', NULL, ? WHERE changes() = 1 AND EXISTS (
+        SELECT 1 FROM release_access_policies p
+        JOIN interest_subscribers i ON i.email = p.email
+        WHERE p.email = ? AND p.updated_at = ?
+          AND i.release_decision = 'approved' AND i.release_reviewed_at = ?
+      )
+    `, email, now, email, now, now),
+  ];
   try {
     const results = await env.INTEREST_DB.batch(statements);
-    if ((results[0]?.meta?.changes ?? 0) !== 1) return dbError(409);
+    if (results.length !== 4
+      || results.some((result) => (result?.meta?.changes ?? 0) !== 1)) return dbError(409);
   } catch (error) {
     return dbError(/UNIQUE[\s\S]*release_accounts|FOREIGN KEY/i.test(String(error)) ? 409 : 503);
   }
   return privateJson(201, {
     ok: true,
-    credential: credential(email, password, expiresAt, access.includeLatest, access.versions),
+    credential: credential(email, password, expiresAt),
   });
 }
 
@@ -435,21 +467,19 @@ async function reject(env, email, now) {
           AND NOT EXISTS (SELECT 1 FROM release_accounts WHERE email = ?)
       `, email, now, email, now, email),
     ]);
-    return (results[0]?.meta?.changes ?? 0) === 1
-      ? privateJson(200, { ok: true })
-      : dbError(409);
+    if (results.length !== 2
+      || results.some((result) => (result?.meta?.changes ?? 0) !== 1)) return dbError(409);
+    const item = await loadAdminInterest(env, email);
+    return item ? privateJson(200, { ok: true, item }) : dbError();
   } catch {
     return dbError();
   }
 }
 
-async function activeAccount(env, email, withVersions = false) {
+async function activeIdentity(env, email) {
   return env.INTEREST_DB.prepare(`
-    SELECT a.state, i.release_decision, a.include_latest${withVersions ? `,
-      a.password_hash, a.password_salt, a.password_iterations,
-      a.must_change_password, a.password_expires_at,
-      COALESCE((SELECT json_group_array(version) FROM release_account_versions
-        WHERE email = a.email), '[]') AS versions` : ''}
+    SELECT a.state, i.release_decision, a.password_hash, a.password_salt,
+      a.password_iterations, a.must_change_password, a.password_expires_at
     FROM release_accounts a
     JOIN interest_subscribers i ON i.email = a.email
     WHERE a.email = ?
@@ -458,7 +488,7 @@ async function activeAccount(env, email, withVersions = false) {
 
 async function replaceGrants(env, email, access, now) {
   let account;
-  try { account = await activeAccount(env, email); } catch { return dbError(); }
+  try { account = await activeIdentity(env, email); } catch { return dbError(); }
   if (account?.state !== 'active') return dbError(409);
   const statements = [statement(env, `
     DELETE FROM release_account_versions WHERE email = ? AND EXISTS
@@ -494,13 +524,8 @@ async function replaceGrants(env, email, access, now) {
 
 async function resetPassword(env, email, dependencies, now) {
   let account;
-  try { account = await activeAccount(env, email, true); } catch { return dbError(); }
+  try { account = await activeIdentity(env, email); } catch { return dbError(); }
   if (account?.state !== 'active' || account.release_decision !== 'approved') return dbError(409);
-  let versions = account.versions;
-  if (typeof versions === 'string') {
-    try { versions = JSON.parse(versions); } catch { versions = []; }
-  }
-  if (!Array.isArray(versions)) versions = [];
   const randomBytes = dependencies.randomBytes
     || ((length) => globalThis.crypto.getRandomValues(new Uint8Array(length)));
   const password = generateTemporaryPassword(randomBytes);
@@ -537,31 +562,68 @@ async function resetPassword(env, email, dependencies, now) {
       `, email, now, email, hashed.hash, hashed.salt, expiresAt),
     ]);
     if ((results[0]?.meta?.changes ?? 0) !== 1) return dbError(409);
+    const item = await loadAdminUser(env, email, now);
+    return privateJson(200, {
+      ok: true,
+      item,
+      credential: credential(email, password, expiresAt),
+    });
   } catch {
     return dbError();
   }
-  return privateJson(200, {
-    ok: true,
-    credential: credential(email, password, expiresAt, account.include_latest === 1, versions),
-  });
+}
+
+async function signOutSessions(env, email, now) {
+  try {
+    const results = await env.INTEREST_DB.batch([
+      statement(env, `
+        DELETE FROM release_sessions WHERE email = ? AND EXISTS (
+          SELECT 1 FROM release_accounts a
+          JOIN interest_subscribers i ON i.email = a.email
+          WHERE a.email = ? AND a.state = 'active' AND i.release_decision = 'approved'
+        )
+      `, email, email),
+      statement(env, `
+        INSERT INTO release_access_events (email, action, version, created_at)
+        SELECT ?, 'session_sign_out', NULL, ? WHERE changes() > 0 AND EXISTS (
+          SELECT 1 FROM release_accounts a
+          JOIN interest_subscribers i ON i.email = a.email
+          WHERE a.email = ? AND a.state = 'active' AND i.release_decision = 'approved'
+        )
+      `, email, now, email),
+    ]);
+    if ((results[0]?.meta?.changes ?? 0) < 1
+      || (results[1]?.meta?.changes ?? 0) !== 1) return dbError(409);
+    return privateJson(200, { ok: true, item: await loadAdminUser(env, email, now) });
+  } catch {
+    return dbError();
+  }
 }
 
 async function revoke(env, email, now) {
   try {
     const results = await env.INTEREST_DB.batch([
       statement(env, `
-        UPDATE release_accounts SET state = 'revoked', revoked_at = ? WHERE email = ?
+        UPDATE release_accounts SET state = 'revoked', revoked_at = ?
+        WHERE email = ? AND state = 'active'
       `, now, email),
-      statement(env, 'DELETE FROM release_sessions WHERE email = ?', email),
       statement(env, `
         INSERT INTO release_access_events (email, action, version, created_at)
-        SELECT ?, 'revocation', NULL, ?
-        WHERE EXISTS (SELECT 1 FROM release_accounts WHERE email = ?)
-      `, email, now, email),
+        SELECT ?, 'revocation', NULL, ? WHERE changes() = 1 AND EXISTS (
+          SELECT 1 FROM release_accounts
+          WHERE email = ? AND state = 'revoked' AND revoked_at = ?
+        )
+      `, email, now, email, now),
+      statement(env, `
+        DELETE FROM release_sessions WHERE email = ? AND changes() = 1 AND EXISTS (
+          SELECT 1 FROM release_accounts
+          WHERE email = ? AND state = 'revoked' AND revoked_at = ?
+        )
+      `, email, email, now),
     ]);
-    return (results[0]?.meta?.changes ?? 0) === 1
-      ? privateJson(200, { ok: true })
-      : dbError(404);
+    if ((results[0]?.meta?.changes ?? 0) !== 1
+      || (results[1]?.meta?.changes ?? 0) !== 1) return dbError(409);
+    return privateJson(200, { ok: true, item: await loadAdminUser(env, email, now) });
   } catch {
     return dbError();
   }
@@ -574,18 +636,19 @@ export async function handleAdminMutation(request, env, action, dependencies = {
   const email = emailFrom(parsed.body);
   if (!email) return privateJson(400, { ok: false, message: 'Request is invalid.' });
   const now = (dependencies.now ? dependencies.now() : new Date()).toISOString();
-  if (action === 'approve' || action === 'grants') {
+  if (action === 'approve') return approve(env, email, dependencies, now);
+  if (action === 'grants') {
     const access = entitlementsFrom(parsed.body);
     if (!access) return privateJson(400, { ok: false, message: 'Request is invalid.' });
     const catalogError = await validateAccessCatalog(env, access);
     if (catalogError) return catalogError;
-    return action === 'approve'
-      ? approve(env, email, access, dependencies, now)
-      : replaceGrants(env, email, access, now);
+    return replaceGrants(env, email, access, now);
   }
   if (action === 'reject') return reject(env, email, now);
   if (action === 'reset') return resetPassword(env, email, dependencies, now);
-  return revoke(env, email, now);
+  if (action === 'sign-out') return signOutSessions(env, email, now);
+  if (action === 'revoke') return revoke(env, email, now);
+  return privateJson(404, { ok: false, message: 'Not found.' });
 }
 
 async function handleAdminAsset(request, env, assetPath) {
