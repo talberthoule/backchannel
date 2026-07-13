@@ -438,6 +438,19 @@ test('catalog failure preserves current policy, disables mutation, and never gue
   assert.equal(route.calls.length, 2);
 });
 
+test('malformed catalog items degrade grants without clearing loaded policy', async () => {
+  const route = harness((call) => call.path === '/api/admin/authorization'
+    ? jsonResponse({ items: [policy] })
+    : jsonResponse({ items: {}, latest_version: 'v0.3.0', available: true }));
+  await route.mounted.refresh();
+
+  assert.equal(route.shell.content.querySelectorAll('.row-select').length, 1);
+  assert.match(route.shell.status.textContent, /catalog could not be loaded/i);
+  await route.shell.content.querySelectorAll('.row-select')[0].click();
+  assert.match(textOf(route.shell.content), /v0\.2\.1/);
+  assert.equal(buttonNamed(route.shell.content, 'Save grants').disabled, true);
+});
+
 test('Authorization owns grants only and renders no identity lifecycle commands', async () => {
   const route = harness((call) => standardResponse(call));
   await openPolicy(route);

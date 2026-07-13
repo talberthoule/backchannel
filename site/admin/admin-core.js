@@ -51,12 +51,16 @@ export function formatCount(value) {
   return numberFormatter.format(value);
 }
 
+function defaultEventListener() {
+  return globalThis.addEventListener
+    ? globalThis.addEventListener.bind(globalThis)
+    : () => {};
+}
+
 export function createDialogController({
   document = globalThis.document,
   navigator = globalThis.navigator,
-  addEventListener = globalThis.addEventListener
-    ? globalThis.addEventListener.bind(globalThis)
-    : () => {},
+  addEventListener = defaultEventListener(),
   URL = globalThis.URL,
   Blob = globalThis.Blob,
 } = {}) {

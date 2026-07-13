@@ -28,61 +28,141 @@ function validTime(value, nullable = true) {
     || (typeof value === 'string' && value.trim() && Number.isFinite(Date.parse(value)));
 }
 
+function validIdentity(record, email) {
+  return [
+    record,
+    record?.email === email,
+    ['active', 'revoked'].includes(record?.state),
+    typeof record?.source === 'string',
+    validTime(record?.requested_at, false),
+    validTime(record?.approved_at, false),
+    record?.state === 'active' ? record?.revoked_at === null : validTime(record?.revoked_at, false),
+  ].every(Boolean);
+}
+
+function validPassword(record) {
+  if (record?.must_change_password === true) {
+    return validTime(record.password_expires_at, false) && record.password_changed_at === null;
+  }
+  return record?.must_change_password === false
+    && record.password_expires_at === null
+    && validTime(record.password_changed_at, false);
+}
+
+function validSessions(record) {
+  const count = record?.active_session_count;
+  if (!Number.isInteger(count) || count < 0) return false;
+  if (record.state !== 'active' && count !== 0) return false;
+  return count === 0
+    ? record.latest_session_expires_at === null
+    : validTime(record.latest_session_expires_at, false);
+}
+
 function validUserRecord(record, email) {
-  return record && record.email === email
-    && ['active', 'revoked'].includes(record.state)
-    && typeof record.source === 'string'
-    && validTime(record.requested_at, false)
-    && validTime(record.approved_at, false)
-    && typeof record.must_change_password === 'boolean'
-    && validTime(record.password_expires_at)
-    && validTime(record.password_changed_at)
-    && validTime(record.revoked_at)
-    && Number.isInteger(record.active_session_count)
-    && record.active_session_count >= 0
-    && validTime(record.latest_session_expires_at)
-    && (record.state === 'active' ? record.revoked_at === null : validTime(record.revoked_at, false))
-    && (record.must_change_password
-      ? validTime(record.password_expires_at, false) && record.password_changed_at === null
-      : record.password_expires_at === null && validTime(record.password_changed_at, false))
-    && (record.active_session_count === 0
-      ? record.latest_session_expires_at === null
-      : validTime(record.latest_session_expires_at, false))
-    && (record.state === 'active' || record.active_session_count === 0);
+  return [
+    validIdentity(record, email),
+    validPassword(record),
+    validSessions(record),
+    validTime(record?.password_expires_at),
+    validTime(record?.password_changed_at),
+    validTime(record?.revoked_at),
+    validTime(record?.latest_session_expires_at),
+  ].every(Boolean);
 }
 
 function preserves(record, current, fields) {
-  return fields.every((field) => Object.is(record[field], current[field]));
+  return Boolean(record && current)
+    && fields.every((field) => Object.is(record[field], current[field]));
 }
 
-function commandResult(action, value, current) {
-  const email = current?.email;
-  if (value?.ok !== true || !validUserRecord(value.item, email)
-    || !preserves(value.item, current, ['email', 'source', 'requested_at', 'approved_at'])) {
-    throw new Error('invalid response');
-  }
-  const { item } = value;
-  if (action === 'reset-password') {
-    const credential = value.credential;
-    if (item.state !== 'active' || item.revoked_at !== null || !item.must_change_password
-      || item.password_changed_at !== null
-      || item.active_session_count !== 0 || item.latest_session_expires_at !== null
-      || !credential || credential.email !== email
-      || typeof credential.password !== 'string' || !credential.password.length
-      || !validTime(credential.password_expires_at, false)
-      || credential.password_expires_at !== item.password_expires_at) throw new Error('invalid response');
-  } else if (action === 'sign-out') {
-    if (!preserves(item, current, [
+function validResetResult(value, current) {
+  const { item, credential } = value;
+  return [
+    item.state === 'active',
+    item.revoked_at === null,
+    item.must_change_password,
+    item.password_changed_at === null,
+    item.active_session_count === 0,
+    item.latest_session_expires_at === null,
+    credential,
+    credential?.email === current.email,
+    typeof credential?.password === 'string',
+    credential?.password.length > 0,
+    validTime(credential?.password_expires_at, false),
+    credential?.password_expires_at === item.password_expires_at,
+  ].every(Boolean);
+}
+
+function validSignOutResult({ item }, current) {
+  return [
+    preserves(item, current, [
       'state', 'revoked_at', 'must_change_password', 'password_expires_at', 'password_changed_at',
-    ]) || item.state !== 'active' || item.active_session_count !== 0
-      || item.latest_session_expires_at !== null) throw new Error('invalid response');
-  } else if (!preserves(item, current, [
-    'must_change_password', 'password_expires_at', 'password_changed_at',
-  ]) || item.state !== 'revoked' || !validTime(item.revoked_at, false)
-    || item.active_session_count !== 0 || item.latest_session_expires_at !== null) {
-    throw new Error('invalid response');
-  }
+    ]),
+    item.state === 'active',
+    item.active_session_count === 0,
+    item.latest_session_expires_at === null,
+  ].every(Boolean);
+}
+
+function validRevokeResult({ item }, current) {
+  return [
+    preserves(item, current, [
+      'must_change_password', 'password_expires_at', 'password_changed_at',
+    ]),
+    item.state === 'revoked',
+    validTime(item.revoked_at, false),
+    item.active_session_count === 0,
+    item.latest_session_expires_at === null,
+  ].every(Boolean);
+}
+
+const resultValidators = {
+  'reset-password': validResetResult,
+  'sign-out': validSignOutResult,
+  revoke: validRevokeResult,
+};
+
+function commandResult(action, value, current) {
+  const validBase = [
+    value?.ok === true,
+    validUserRecord(value?.item, current?.email),
+    preserves(value?.item, current, ['email', 'source', 'requested_at', 'approved_at']),
+  ].every(Boolean);
+  const validate = resultValidators[action];
+  if (!validBase || !validate?.(value, current)) throw new Error('invalid response');
   return value;
+}
+
+const commandCopy = {
+  'reset-password': {
+    label: 'Reset password',
+    description: ({ email }) => `Reset the password for ${email}? Active sessions will end and a one-time credential will be shown.`,
+    success: ({ email }) => `Reset the password for ${email}.`,
+  },
+  'sign-out': {
+    label: 'Sign out all sessions',
+    description: ({ email }) => `Sign out all active sessions for ${email}?`,
+    success: ({ email }) => `Signed out all sessions for ${email}.`,
+  },
+  revoke: {
+    label: 'Revoke',
+    description: ({ email }) => `Revoke access for ${email}? Sessions end immediately. Request and audit history remain.`,
+    success: ({ email }) => `Revoked access for ${email}.`,
+  },
+};
+
+function showResetCredential(dialogs, value, returnFocus) {
+  dialogs.showCredential({
+    text: [
+      'Backchannel desktop access',
+      `Account: ${value.credential.email}`,
+      `Temporary password: ${value.credential.password}`,
+      'Sign in: https://downloads.backchannel.page/',
+      `Password expires: ${value.credential.password_expires_at}`,
+    ].join('\n'),
+    email: value.credential.email,
+    returnFocus,
+  });
 }
 
 function cell(label, content, document) {
@@ -100,91 +180,177 @@ function detailField(label, content, document) {
   return group;
 }
 
-export function mount({ document, fetcher, shell, dialogs }) {
-  let items = [];
-  let selectedEmail = null;
-  let searchQuery = '';
-  let commandPending = false;
-  let refreshGeneration = 0;
+function textOr(value, fallback) {
+  return value || fallback;
+}
 
-  async function runCommand(record, action, button) {
-    if (commandPending || record.state !== 'active') return;
-    const label = action === 'reset-password'
-      ? 'Reset password'
-      : action === 'sign-out' ? 'Sign out all sessions' : 'Revoke';
-    const description = action === 'reset-password'
-      ? `Reset the password for ${record.email}? Active sessions will end and a one-time credential will be shown.`
-      : action === 'sign-out'
-        ? `Sign out all active sessions for ${record.email}?`
-        : `Revoke access for ${record.email}? Sessions end immediately. Request and audit history remain.`;
-    const confirmed = await dialogs.confirm({
-      title: label,
-      description,
-      label,
+function sessionCount(record) {
+  return Number(record.active_session_count) || 0;
+}
+
+function disableCommandButtons(buttons) {
+  for (const button of buttons) button.disabled = true;
+}
+
+function restoreCommandButtons(buttons) {
+  for (const button of buttons) {
+    if (button.isConnected) button.disabled = false;
+  }
+}
+
+async function runUserCommand(context, record, action, button) {
+    if (context.commandPending || record.state !== 'active') return;
+    const copy = commandCopy[action];
+    const confirmed = await context.dialogs.confirm({
+      title: copy.label,
+      description: copy.description(record),
+      label: copy.label,
       returnFocus: button,
     });
     if (!confirmed) return;
 
-    commandPending = true;
-    refreshGeneration += 1;
-    shell.content.removeAttribute('aria-busy');
+    context.commandPending = true;
+    context.refreshGeneration += 1;
+    context.shell.content.removeAttribute('aria-busy');
     const actionButtons = button.parentNode.querySelectorAll('button');
-    for (const actionButton of actionButtons) actionButton.disabled = true;
-    shell.status.textContent = `${label} in progress for ${record.email}.`;
+    disableCommandButtons(actionButtons);
+    context.shell.status.textContent = `${copy.label} in progress for ${record.email}.`;
     try {
       const response = await jsonRequest(
-        `${endpoint}/${action}`, 'POST', { email: record.email }, fetcher,
+        `${endpoint}/${action}`, 'POST', { email: record.email }, context.fetcher,
       );
-      const current = items.find(({ email }) => email === record.email);
+      const current = context.items.find(({ email }) => email === record.email);
       const value = commandResult(action, response, current);
-      items = replaceByEmail(items, value.item);
-      selectedEmail = record.email;
-      const returnFocus = render(action);
-      shell.status.textContent = action === 'reset-password'
-        ? `Reset the password for ${record.email}.`
-        : action === 'sign-out'
-          ? `Signed out all sessions for ${record.email}.`
-          : `Revoked access for ${record.email}.`;
-      if (action === 'reset-password') {
-        dialogs.showCredential({
-          text: [
-            'Backchannel desktop access',
-            `Account: ${value.credential.email}`,
-            `Temporary password: ${value.credential.password}`,
-            'Sign in: https://downloads.backchannel.page/',
-            `Password expires: ${value.credential.password_expires_at}`,
-          ].join('\n'),
-          email: value.credential.email,
-          returnFocus,
-        });
-      }
+      context.items = replaceByEmail(context.items, value.item);
+      context.selectedEmail = record.email;
+      const returnFocus = renderUsers(context, action);
+      context.shell.status.textContent = copy.success(record);
+      if (action === 'reset-password') showResetCredential(context.dialogs, value, returnFocus);
     } catch {
-      if (!button.isConnected) render(action);
-      shell.status.textContent = `${label} failed. Try again.`;
+      if (!button.isConnected) renderUsers(context, action);
+      context.shell.status.textContent = `${copy.label} failed. Try again.`;
     } finally {
-      commandPending = false;
-      for (const actionButton of actionButtons) {
-        if (actionButton.isConnected) actionButton.disabled = false;
-      }
+      context.commandPending = false;
+      restoreCommandButtons(actionButtons);
     }
-  }
+}
 
-  function state(message, retry = false) {
-    const region = element('section', 'route-state', undefined, document);
-    region.append(element('p', '', message, document));
+function showUsersState(context, message, retry = false) {
+    const region = element('section', 'route-state', undefined, context.document);
+    region.append(element('p', '', message, context.document));
     if (retry) {
-      const button = element('button', 'secondary-button', 'Retry', document);
+      const button = element('button', 'secondary-button', 'Retry', context.document);
       button.type = 'button';
-      button.addEventListener('click', refresh);
+      button.addEventListener('click', () => refreshUsers(context));
       region.append(button);
     }
-    shell.content.replaceChildren(region);
-  }
+    context.shell.content.replaceChildren(region);
+}
 
-  function render(focusAction) {
-    if (!items.length) {
-      selectedEmail = null;
-      state('No recipient users yet.');
+function showUserDetail(context, view, record, trigger, nextFocusAction) {
+      const { document } = context;
+      context.selectedEmail = record.email;
+      const heading = element('h2', 'mono', textOr(record.email, 'Unknown email'), document);
+      const identityTitle = element('h3', '', 'Identity', document);
+      const identity = element('dl', 'detail-fields', undefined, document);
+      identity.append(
+        detailField('State', element('span', 'status-text', textOr(record.state, 'Unknown'), document), document),
+        detailField('Source', element('span', '', textOr(record.source, 'Unknown'), document), document),
+        detailField('Requested', timeNode(record.requested_at, 'Not recorded', document), document),
+        detailField('Approved', timeNode(record.approved_at, 'Not recorded', document), document),
+        detailField('Revoked', timeNode(record.revoked_at, 'Not revoked', document), document),
+      );
+      const securityTitle = element('h3', '', 'Security', document);
+      const security = element('dl', 'detail-fields', undefined, document);
+      security.append(
+        detailField('Password', element('span', '', passwordState(record), document), document),
+        detailField('Temporary expiry', timeNode(record.password_expires_at, 'Not applicable', document), document),
+        detailField('Password changed', timeNode(record.password_changed_at, 'Not yet', document), document),
+        detailField('Active sessions', element(
+          'span', 'mono', formatCount(sessionCount(record)), document,
+        ), document),
+        detailField('Latest session expiry', timeNode(
+          record.latest_session_expires_at, 'No active sessions', document,
+        ), document),
+      );
+      const content = [view.back, heading, identityTitle, identity, securityTitle, security];
+      const commandButtons = new Map();
+      if (record.state === 'active') {
+        const commandTitle = element('h3', '', 'Security commands', document);
+        const actions = element('div', 'security-actions', undefined, document);
+        const reset = element('button', 'primary-button', 'Reset password', document);
+        reset.type = 'button';
+        reset.addEventListener('click', () => runUserCommand(context, record, 'reset-password', reset));
+        commandButtons.set('reset-password', reset);
+        actions.append(reset);
+        if (sessionCount(record) > 0) {
+          const signOut = element('button', 'secondary-button', 'Sign out all sessions', document);
+          signOut.type = 'button';
+          signOut.addEventListener('click', () => runUserCommand(context, record, 'sign-out', signOut));
+          commandButtons.set('sign-out', signOut);
+          actions.append(signOut);
+        }
+        const revoke = element('button', 'danger-button', 'Revoke', document);
+        revoke.type = 'button';
+        revoke.addEventListener('click', () => runUserCommand(context, record, 'revoke', revoke));
+        commandButtons.set('revoke', revoke);
+        actions.append(revoke);
+        content.push(commandTitle, actions);
+      }
+      view.detailPane.replaceChildren(...content);
+      view.controller.showDetail(trigger, heading);
+      const focusTarget = commandButtons.get(nextFocusAction);
+      focusTarget?.focus();
+      return focusTarget || heading;
+}
+
+function matchesEmail({ email }, query) {
+  return typeof email === 'string' && email.toLowerCase().includes(query);
+}
+
+function renderUserRows(context, view) {
+      const query = view.search.value.trim().toLowerCase();
+      const filtered = context.items.filter((record) => matchesEmail(record, query));
+      view.triggers.clear();
+      const rows = filtered.map((record) => {
+        const row = element('tr', '', undefined, context.document);
+        const select = element('button', 'row-select mono', record.email, context.document);
+        select.type = 'button';
+        select.addEventListener('click', () => showUserDetail(context, view, record, select));
+        view.triggers.set(record.email, select);
+        row.append(
+          cell('Email', select, context.document),
+          cell('Identity', element(
+            'span', 'status-text', textOr(record.state, 'Unknown'), context.document,
+          ), context.document),
+          cell('Password', element('span', '', passwordState(record), context.document), context.document),
+          cell('Sessions', element(
+            'span', 'mono', formatCount(sessionCount(record)), context.document,
+          ), context.document),
+        );
+        return row;
+      });
+      if (!rows.length) {
+        const row = element('tr', 'state-row', undefined, context.document);
+        const empty = element('td', '', 'No users match this email search.', context.document);
+        empty.colSpan = 4;
+        row.append(empty);
+        rows.push(row);
+      }
+      view.body.replaceChildren(...rows);
+      const count = filtered.length;
+      view.searchStatus.textContent = count === 1
+        ? '1 matching user.'
+        : `${formatCount(count)} matching users.`;
+      context.shell.count.textContent = formatCount(count);
+      view.controller.showList();
+}
+
+function renderUsers(context, focusAction) {
+    const { document, shell } = context;
+    if (!context.items.length) {
+      context.selectedEmail = null;
+      showUsersState(context, 'No recipient users yet.');
       return null;
     }
     const workspace = element('div', 'list-detail', undefined, document);
@@ -195,7 +361,7 @@ export function mount({ document, fetcher, shell, dialogs }) {
     searchLabel.setAttribute('for', 'user-search');
     const search = element('input', 'search-input', undefined, document);
     search.type = 'search';
-    search.value = searchQuery;
+    search.value = context.searchQuery;
     search.setAttribute('id', 'user-search');
     search.setAttribute('aria-label', 'Search by email');
     const searchStatus = element('p', 'search-status', '', document);
@@ -221,7 +387,15 @@ export function mount({ document, fetcher, shell, dialogs }) {
     detailPane.append(back, emptyHeading, element(
       'p', 'detail-empty', 'Choose a user to inspect identity and security state.', document,
     ));
-    const controller = createListDetailController({
+    const view = {
+      back,
+      body,
+      detailPane,
+      search,
+      searchStatus,
+      triggers: new Map(),
+    };
+    view.controller = createListDetailController({
       root: workspace,
       list: listPane,
       detail: detailPane,
@@ -229,147 +403,70 @@ export function mount({ document, fetcher, shell, dialogs }) {
       back,
     });
 
-    function showDetail(record, trigger, nextFocusAction) {
-      selectedEmail = record.email;
-      const heading = element('h2', 'mono', record.email || 'Unknown email', document);
-      const identityTitle = element('h3', '', 'Identity', document);
-      const identity = element('dl', 'detail-fields', undefined, document);
-      identity.append(
-        detailField('State', element('span', 'status-text', record.state || 'Unknown', document), document),
-        detailField('Source', element('span', '', record.source || 'Unknown', document), document),
-        detailField('Requested', timeNode(record.requested_at, 'Not recorded', document), document),
-        detailField('Approved', timeNode(record.approved_at, 'Not recorded', document), document),
-        detailField('Revoked', timeNode(record.revoked_at, 'Not revoked', document), document),
-      );
-      const securityTitle = element('h3', '', 'Security', document);
-      const security = element('dl', 'detail-fields', undefined, document);
-      security.append(
-        detailField('Password', element('span', '', passwordState(record), document), document),
-        detailField('Temporary expiry', timeNode(record.password_expires_at, 'Not applicable', document), document),
-        detailField('Password changed', timeNode(record.password_changed_at, 'Not yet', document), document),
-        detailField('Active sessions', element(
-          'span', 'mono', formatCount(Number(record.active_session_count) || 0), document,
-        ), document),
-        detailField('Latest session expiry', timeNode(
-          record.latest_session_expires_at, 'No active sessions', document,
-        ), document),
-      );
-      const content = [back, heading, identityTitle, identity, securityTitle, security];
-      const commandButtons = new Map();
-      if (record.state === 'active') {
-        const commandTitle = element('h3', '', 'Security commands', document);
-        const actions = element('div', 'security-actions', undefined, document);
-        const reset = element('button', 'primary-button', 'Reset password', document);
-        reset.type = 'button';
-        reset.addEventListener('click', () => runCommand(record, 'reset-password', reset));
-        commandButtons.set('reset-password', reset);
-        actions.append(reset);
-        if ((Number(record.active_session_count) || 0) > 0) {
-          const signOut = element('button', 'secondary-button', 'Sign out all sessions', document);
-          signOut.type = 'button';
-          signOut.addEventListener('click', () => runCommand(record, 'sign-out', signOut));
-          commandButtons.set('sign-out', signOut);
-          actions.append(signOut);
-        }
-        const revoke = element('button', 'danger-button', 'Revoke', document);
-        revoke.type = 'button';
-        revoke.addEventListener('click', () => runCommand(record, 'revoke', revoke));
-        commandButtons.set('revoke', revoke);
-        actions.append(revoke);
-        content.push(commandTitle, actions);
-      }
-      detailPane.replaceChildren(...content);
-      controller.showDetail(trigger, heading);
-      const focusTarget = commandButtons.get(nextFocusAction);
-      focusTarget?.focus();
-      return focusTarget || heading;
-    }
-
-    const triggers = new Map();
-    function renderRows() {
-      const query = search.value.trim().toLowerCase();
-      const filtered = items.filter(({ email }) => (
-        typeof email === 'string' && email.toLowerCase().includes(query)
-      ));
-      triggers.clear();
-      const rows = filtered.map((record) => {
-        const row = element('tr', '', undefined, document);
-        const select = element('button', 'row-select mono', record.email, document);
-        select.type = 'button';
-        select.addEventListener('click', () => showDetail(record, select));
-        triggers.set(record.email, select);
-        row.append(
-          cell('Email', select, document),
-          cell('Identity', element('span', 'status-text', record.state || 'Unknown', document), document),
-          cell('Password', element('span', '', passwordState(record), document), document),
-          cell('Sessions', element(
-            'span', 'mono', formatCount(Number(record.active_session_count) || 0), document,
-          ), document),
-        );
-        return row;
-      });
-      if (!rows.length) {
-        const row = element('tr', 'state-row', undefined, document);
-        const empty = element('td', '', 'No users match this email search.', document);
-        empty.colSpan = 4;
-        row.append(empty);
-        rows.push(row);
-      }
-      body.replaceChildren(...rows);
-      const count = filtered.length;
-      searchStatus.textContent = count === 1 ? '1 matching user.' : `${formatCount(count)} matching users.`;
-      shell.count.textContent = formatCount(count);
-      controller.showList();
-    }
-
     search.addEventListener('input', () => {
-      searchQuery = search.value;
-      renderRows();
+      context.searchQuery = search.value;
+      renderUserRows(context, view);
     });
-    renderRows();
+    renderUserRows(context, view);
     table.append(caption, head, body);
     tableWrap.append(table);
     listPane.append(listTitle, searchGroup, tableWrap);
     workspace.append(listPane, detailPane);
     shell.content.replaceChildren(workspace);
 
-    const selected = items.find(({ email }) => email === selectedEmail);
-    const selectedTrigger = triggers.get(selectedEmail);
-    return selected && selectedTrigger ? showDetail(selected, selectedTrigger, focusAction) : null;
-  }
+    const selected = context.items.find(({ email }) => email === context.selectedEmail);
+    const selectedTrigger = view.triggers.get(context.selectedEmail);
+    return selected && selectedTrigger
+      ? showUserDetail(context, view, selected, selectedTrigger, focusAction)
+      : null;
+}
 
-  async function refresh() {
-    if (commandPending) return;
-    const generation = ++refreshGeneration;
-    shell.content.setAttribute('aria-busy', 'true');
-    shell.count.textContent = '-';
-    shell.status.textContent = 'Loading users.';
-    state('Loading users.');
+async function refreshUsers(context) {
+    if (context.commandPending) return;
+    const generation = ++context.refreshGeneration;
+    context.shell.content.setAttribute('aria-busy', 'true');
+    context.shell.count.textContent = '-';
+    context.shell.status.textContent = 'Loading users.';
+    showUsersState(context, 'Loading users.');
     try {
-      const value = await jsonRequest(endpoint, undefined, undefined, fetcher);
-      if (generation !== refreshGeneration) return;
+      const value = await jsonRequest(endpoint, undefined, undefined, context.fetcher);
+      if (generation !== context.refreshGeneration) return;
       if (!Array.isArray(value.items)) throw new Error('invalid response');
-      items = value.items;
-      selectedEmail = null;
-      searchQuery = '';
-      render();
-      shell.count.textContent = formatCount(items.length);
-      shell.refreshed.replaceChildren(timeNode(new Date().toISOString(), 'Not yet', document));
-      shell.status.textContent = items.length === 1
+      context.items = value.items;
+      context.selectedEmail = null;
+      context.searchQuery = '';
+      renderUsers(context);
+      context.shell.count.textContent = formatCount(context.items.length);
+      context.shell.refreshed.replaceChildren(timeNode(
+        new Date().toISOString(), 'Not yet', context.document,
+      ));
+      context.shell.status.textContent = context.items.length === 1
         ? 'Loaded 1 user.'
-        : `Loaded ${formatCount(items.length)} users.`;
+        : `Loaded ${formatCount(context.items.length)} users.`;
     } catch {
-      if (generation !== refreshGeneration) return;
-      items = [];
-      selectedEmail = null;
-      searchQuery = '';
-      shell.count.textContent = '0';
-      shell.status.textContent = 'Users could not be loaded.';
-      state('Users could not be loaded. Try again.', true);
+      if (generation !== context.refreshGeneration) return;
+      context.items = [];
+      context.selectedEmail = null;
+      context.searchQuery = '';
+      context.shell.count.textContent = '0';
+      context.shell.status.textContent = 'Users could not be loaded.';
+      showUsersState(context, 'Users could not be loaded. Try again.', true);
     } finally {
-      if (generation === refreshGeneration) shell.content.removeAttribute('aria-busy');
+      if (generation === context.refreshGeneration) context.shell.content.removeAttribute('aria-busy');
     }
-  }
+}
 
-  return { refresh };
+export function mount({ document, fetcher, shell, dialogs }) {
+  const context = {
+    commandPending: false,
+    dialogs,
+    document,
+    fetcher,
+    items: [],
+    refreshGeneration: 0,
+    searchQuery: '',
+    selectedEmail: null,
+    shell,
+  };
+  return { refresh: () => refreshUsers(context) };
 }

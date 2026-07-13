@@ -352,6 +352,11 @@ function dbError(status = 503) {
   return privateJson(status, { ok: false, message: 'Request could not be completed.' });
 }
 
+function randomBytesFrom(dependencies) {
+  return dependencies.randomBytes
+    || ((length) => globalThis.crypto.getRandomValues(new Uint8Array(length)));
+}
+
 function statement(env, sql, ...values) {
   return env.INTEREST_DB.prepare(sql).bind(...values);
 }
@@ -417,8 +422,7 @@ async function validateAccessCatalog(env, access) {
 }
 
 async function approve(env, email, dependencies, now) {
-  const randomBytes = dependencies.randomBytes
-    || ((length) => globalThis.crypto.getRandomValues(new Uint8Array(length)));
+  const randomBytes = randomBytesFrom(dependencies);
   const password = generateTemporaryPassword(randomBytes);
   const hashed = await hashPassword(password, { salt: randomBytes(16) });
   const expiresAt = new Date(Date.parse(now) + TEMPORARY_PASSWORD_TTL_SECONDS * 1000).toISOString();
@@ -506,6 +510,17 @@ async function activeIdentity(env, email) {
   `).bind(email).first();
 }
 
+function validGrantBatch(results, statementCount) {
+  if (!Array.isArray(results)) return false;
+  const deleteChanges = results?.[0]?.meta?.changes;
+  return [
+    results.length === statementCount,
+    Number.isInteger(deleteChanges),
+    deleteChanges >= 0,
+    !results.slice(1).some((result) => result?.meta?.changes !== 1),
+  ].every(Boolean);
+}
+
 async function replaceGrants(env, email, access, now) {
   let account;
   try { account = await activeIdentity(env, email); } catch { return dbError(); }
@@ -536,10 +551,7 @@ async function replaceGrants(env, email, access, now) {
   );
   try {
     const results = await env.INTEREST_DB.batch(statements);
-    const deleteChanges = results?.[0]?.meta?.changes;
-    if (!Array.isArray(results) || results.length !== statements.length
-      || !Number.isInteger(deleteChanges) || deleteChanges < 0
-      || results.slice(1).some((result) => result?.meta?.changes !== 1)) return dbError(409);
+    if (!validGrantBatch(results, statements.length)) return dbError(409);
     return privateJson(200, { ok: true, item: await loadAdminAuthorization(env, email) });
   } catch {
     return dbError();
@@ -550,8 +562,7 @@ async function resetPassword(env, email, dependencies, now) {
   let account;
   try { account = await activeIdentity(env, email); } catch { return dbError(); }
   if (account?.state !== 'active' || account.release_decision !== 'approved') return dbError(409);
-  const randomBytes = dependencies.randomBytes
-    || ((length) => globalThis.crypto.getRandomValues(new Uint8Array(length)));
+  const randomBytes = randomBytesFrom(dependencies);
   const password = generateTemporaryPassword(randomBytes);
   const hashed = await hashPassword(password, { salt: randomBytes(16) });
   const expiresAt = new Date(Date.parse(now) + TEMPORARY_PASSWORD_TTL_SECONDS * 1000).toISOString();
@@ -655,30 +666,41 @@ async function revoke(env, email, now) {
   }
 }
 
+function exactApprovalBody(body) {
+  return Object.keys(body).length === 1 && Object.hasOwn(body, 'email');
+}
+
+async function replaceAdminGrants(env, email, body, dependencies, now) {
+  const access = entitlementsFrom(body);
+  if (!access) return privateJson(400, { ok: false, message: 'Request is invalid.' });
+  const catalogError = await validateAccessCatalog(env, access);
+  if (catalogError) return catalogError;
+  return replaceGrants(env, email, access, now);
+}
+
+const adminMutationHandlers = {
+  approve: (env, email, body, dependencies, now) => approve(env, email, dependencies, now),
+  grants: replaceAdminGrants,
+  reject: (env, email, body, dependencies, now) => reject(env, email, now),
+  reset: (env, email, body, dependencies, now) => resetPassword(env, email, dependencies, now),
+  'sign-out': (env, email, body, dependencies, now) => signOutSessions(env, email, now),
+  revoke: (env, email, body, dependencies, now) => revoke(env, email, now),
+};
+
 export async function handleAdminMutation(request, env, action, dependencies = {}) {
   if (!env.INTEREST_DB) return privateJson(503, { ok: false, message: 'Admin is unavailable.' });
   const parsed = await readAdminBody(request);
   if (parsed.response) return parsed.response;
-  if (action === 'approve'
-    && (Object.keys(parsed.body).length !== 1 || !Object.hasOwn(parsed.body, 'email'))) {
+  if (action === 'approve' && !exactApprovalBody(parsed.body)) {
     return privateJson(400, { ok: false, message: 'Request is invalid.' });
   }
   const email = emailFrom(parsed.body);
   if (!email) return privateJson(400, { ok: false, message: 'Request is invalid.' });
   const now = (dependencies.now ? dependencies.now() : new Date()).toISOString();
-  if (action === 'approve') return approve(env, email, dependencies, now);
-  if (action === 'grants') {
-    const access = entitlementsFrom(parsed.body);
-    if (!access) return privateJson(400, { ok: false, message: 'Request is invalid.' });
-    const catalogError = await validateAccessCatalog(env, access);
-    if (catalogError) return catalogError;
-    return replaceGrants(env, email, access, now);
-  }
-  if (action === 'reject') return reject(env, email, now);
-  if (action === 'reset') return resetPassword(env, email, dependencies, now);
-  if (action === 'sign-out') return signOutSessions(env, email, now);
-  if (action === 'revoke') return revoke(env, email, now);
-  return privateJson(404, { ok: false, message: 'Not found.' });
+  const handler = adminMutationHandlers[action];
+  return handler
+    ? handler(env, email, parsed.body, dependencies, now)
+    : privateJson(404, { ok: false, message: 'Not found.' });
 }
 
 async function handleAdminAsset(request, env, assetPath) {
@@ -1203,13 +1225,20 @@ async function handleDownloadSession(request, env, dependencies) {
   }
 }
 
-async function handleDownloadPassword(request, env, dependencies) {
+async function readPasswordChange(request) {
   const parsed = await readDownloadBody(request);
-  if (parsed.response) return parsed.response;
+  if (parsed.response) return parsed;
   const password = typeof parsed.body.password === 'string' ? parsed.body.password : '';
   if (password.length < 14 || password.length > 128) {
-    return downloadJson(400, { ok: false, error: 'Request is invalid.' });
+    return { response: downloadJson(400, { ok: false, error: 'Request is invalid.' }) };
   }
+  return { password };
+}
+
+async function handleDownloadPassword(request, env, dependencies) {
+  const parsed = await readPasswordChange(request);
+  if (parsed.response) return parsed.response;
+  const { password } = parsed;
   if (!env.INTEREST_DB) return downloadUnavailable();
   const now = downloadNow(dependencies);
   const tokenHash = await tokenHashFromRequest(request);
@@ -1237,8 +1266,7 @@ async function handleDownloadPassword(request, env, dependencies) {
     return downloadJson(400, { ok: false, error: 'Choose a different password.' });
   }
 
-  const randomBytes = dependencies.randomBytes
-    || ((length) => globalThis.crypto.getRandomValues(new Uint8Array(length)));
+  const randomBytes = randomBytesFrom(dependencies);
   let hashed;
   let session;
   try {
