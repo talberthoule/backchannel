@@ -39,19 +39,37 @@ docker-compose down -v
 
 Releases span source-built Docker images, the Cloudflare documentation site,
 and tag-built Linux x64, macOS arm64, and Windows x64 desktop bundles. Follow
-`docs/releasing.md` as the authoritative checklist. A `master` push does not
-update existing desktop downloads; do not mark a release complete until the
-tag workflow has published and verified all three platform assets and the site
-has been updated to the same version.
+`docs/releasing.md` and the private R2 manifests as the authoritative checklist
+and catalog. A `master` push does not update existing desktop downloads. The tag
+workflow publishes verified executables to R2; GitHub releases keep source tags
+and notes only, with no executable files.
 
 ### Docs site and private interest admin
 
 `docs-site/` builds the public `backchannel.page` site and the private
-`admin.backchannel.page` interest console. Every request to the private host is
+`admin.backchannel.page` review console and authenticated
+`downloads.backchannel.page` recipient portal. Every request to the private
+admin host is
 Cloudflare Access protected and then checked again by the Worker for a valid
 issuer, audience, and exact `ADMIN_EMAIL`; all three settings are Worker
-secrets. The D1 admin API is read-only. Never add a public admin route, commit
-an operator identity, or log subscriber or Access data.
+secrets. The D1 admin API provides interest review, release catalog, approval,
+rejection, grant replacement, password reset, and revocation endpoints. D1
+holds recipient accounts, grants, sessions, and access events; recipient
+identity is not the local application's PostgreSQL identity. Never add a public
+admin route, commit an operator identity, or log subscriber, credential,
+session, Access, or R2 data. Run all `docs-site` release-access, migration,
+Worker, admin, download, and site tests plus its build before release changes.
+
+```bash
+cd docs-site
+npm run test:release-access
+npm run test:migration
+npm run test:worker
+npm run test:admin
+npm run test:download
+npm run test:site
+npm run build
+```
 
 ### Local Development
 

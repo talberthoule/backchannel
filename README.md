@@ -69,7 +69,10 @@ Read more in [docs/architecture.md](docs/architecture.md).
 ### Option 1: Desktop app (easiest)
 
 Download the latest desktop release for your platform from the
-[Backchannel release page](https://backchannel.page/releases/v0.2.1/):
+[authenticated Backchannel download portal](https://downloads.backchannel.page/).
+An approved Backchannel account is required; no GitHub identity or repository
+membership is required. Public release notes remain on the
+[Backchannel v0.2.1 release page](https://backchannel.page/releases/v0.2.1/).
 
 - `Backchannel-windows-x64.zip` - unzip, run `Backchannel.exe`.
   Windows SmartScreen will warn on first run because the build is
@@ -79,10 +82,6 @@ Download the latest desktop release for your platform from the
 - `Backchannel-linux-x64.tar.gz` (x64) - a portable bundle, not a
   package-manager installer: `tar -xzf Backchannel-linux-x64.tar.gz`,
   then run `Backchannel/Backchannel`.
-
-Desktop assets are attached to releases in this private GitHub repository;
-downloading them requires authenticated access, and anonymous requests
-return 404.
 
 The app lives in your system tray / menu bar and opens Backchannel in your
 default browser. Data is stored per-user (`%LOCALAPPDATA%\Backchannel` on
