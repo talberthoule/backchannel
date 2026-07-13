@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -60,29 +61,54 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertIn("merge-multiple: true", publish)
         self.assertIn("path: release-assets", publish)
 
-    def test_publish_uses_separate_r2_configuration(self):
+    def test_publish_uses_only_the_checked_in_cloudflare_client(self):
         publish = WORKFLOW.split("  publish:", 1)[1]
+        self.assertRegex(
+            publish,
+            re.compile(
+                r"steps:\s*\n\s*- uses: actions/checkout@v4\s*\n\s*"
+                r"- uses: actions/setup-node@v4\s*\n\s*with:\s*\n"
+                r"\s*node-version: 24"
+            ),
+        )
+        for operation in ("head", "get", "put"):
+            with self.subTest(operation=operation):
+                self.assertIn(f"node scripts/r2-object.mjs {operation}", publish)
+        self.assertNotRegex(publish, re.compile(r"(?i)(?:^|[&|;\s])aws(?:\s|$)"))
         for value in (
-            "secrets.CLOUDFLARE_ACCOUNT_ID",
-            "secrets.R2_ACCESS_KEY_ID",
-            "secrets.R2_SECRET_ACCESS_KEY",
-            "vars.R2_RELEASES_BUCKET",
-            "AWS_DEFAULT_REGION: auto",
+            "AWS_DEFAULT_REGION",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "R2_ENDPOINT",
+            "Invoke-Aws",
+            "@aws-sdk",
         ):
             with self.subTest(value=value):
-                self.assertIn(value, publish)
+                self.assertNotIn(value, publish)
+
+    def test_publish_scopes_cloudflare_credentials_to_r2_steps(self):
+        publish = WORKFLOW.split("  publish:", 1)[1]
+        self.assertIn("R2_BUCKET: ${{ vars.R2_RELEASES_BUCKET }}", publish)
         self.assertNotIn("D1", publish)
         header, steps = publish.split("    steps:", 1)
         release_notes = steps.split("name: Publish GitHub release notes", 1)[1]
+        self.assertNotIn("CLOUDFLARE_ACCOUNT_ID", header)
         self.assertNotIn("R2_ACCESS_KEY_ID", header)
         self.assertNotIn("R2_SECRET_ACCESS_KEY", header)
+        self.assertNotIn("CLOUDFLARE_ACCOUNT_ID", release_notes)
         self.assertNotIn("R2_ACCESS_KEY_ID", release_notes)
         self.assertNotIn("R2_SECRET_ACCESS_KEY", release_notes)
         for step in steps.split("      - name:"):
-            if "aws " in step:
+            if "node scripts/r2-object.mjs" in step:
                 with self.subTest(step=step.splitlines()[0]):
-                    self.assertIn("AWS_ACCESS_KEY_ID:", step)
-                    self.assertIn("AWS_SECRET_ACCESS_KEY:", step)
+                    self.assertEqual(
+                        set(re.findall(r"^\s{10}([A-Z][A-Z0-9_]+):", step, re.M)),
+                        {
+                            "CLOUDFLARE_ACCOUNT_ID",
+                            "R2_ACCESS_KEY_ID",
+                            "R2_SECRET_ACCESS_KEY",
+                        },
+                    )
 
     def test_publish_resolves_annotated_tag_to_checked_out_commit(self):
         publish = WORKFLOW.split("  publish:", 1)[1]
@@ -94,6 +120,9 @@ class ReleaseContractTests(unittest.TestCase):
 
     def test_publish_calls_manifest_helper_without_legacy_mode(self):
         publish = WORKFLOW.split("  publish:", 1)[1]
+        self.assertEqual(
+            publish.count("python desktop/scripts/build_release_manifest.py"), 2
+        )
         helper = publish.split("name: Build release manifest", 1)[1].split(
             "      - name:", 1
         )[0]
@@ -125,18 +154,35 @@ class ReleaseContractTests(unittest.TestCase):
         )
         positions = [publish.index(step) for step in steps]
         self.assertEqual(positions, sorted(positions))
-        self.assertIn("head-object", publish)
-        self.assertIn("ContentLength", publish)
+        self.assertIn("json.load(sys.stdin)", publish)
+        self.assertIn('["contentLength"]', publish)
         self.assertIn("--if-none-match '*'", publish)
+        self.assertIn('--content-disposition "attachment; filename=\\"$filename\\""', publish)
+        self.assertGreaterEqual(publish.count("--cache-control no-store"), 2)
         self.assertIn("cmp", publish)
+        self.assertGreaterEqual(
+            len(re.findall(r"(?:-eq|==)\s+44", publish)), 3
+        )
+        for value in ("NoSuchKey", "NotFound", "PreconditionFailed", "grep -E", "412"):
+            with self.subTest(value=value):
+                self.assertNotIn(value, publish)
         latest = publish.split("name: Update Latest", 1)[1].split(
             "name: Publish GitHub release notes", 1
         )[0]
+        self.assertIn('["etag"]', latest)
         self.assertIn("--if-match", latest)
         self.assertIn("--if-none-match '*'", latest)
-        self.assertIn("412", latest)
+        self.assertRegex(latest, re.compile(r"(?:-eq|==)\s+42"))
         self.assertIn("retry", latest.lower())
         self.assertIn("--current-latest", latest)
+        self.assertEqual(latest.count("for attempt in 1 2; do"), 1)
+        latest_put = publish.index(
+            "node scripts/r2-object.mjs put", publish.index("name: Update Latest")
+        )
+        self.assertNotIn(
+            "node scripts/r2-object.mjs",
+            publish[latest_put + len("node scripts/r2-object.mjs put") :],
+        )
 
     def test_owner_migration_is_validated_and_opt_in_for_latest(self):
         for value in (
@@ -151,9 +197,10 @@ class ReleaseContractTests(unittest.TestCase):
             "R2_SECRET_ACCESS_KEY",
             "CLOUDFLARE_ACCOUNT_ID",
             "R2_RELEASES_BUCKET",
+            "scripts/r2-object.mjs",
             "--allow-legacy-partial",
             "--if-none-match",
-            "ContentLength",
+            "contentLength",
         ):
             with self.subTest(value=value):
                 self.assertIn(value, MIGRATION)
@@ -161,17 +208,29 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertNotIn("delete-object", MIGRATION)
         self.assertNotIn("D1", MIGRATION)
 
+    def test_owner_migration_has_no_aws_cli_or_credential_aliases(self):
+        self.assertNotRegex(MIGRATION, re.compile(r"(?i)(?:^|[&|;\s])aws(?:\s|$)"))
+        migration_lower = MIGRATION.lower()
+        for value in (
+            "AWS_DEFAULT_REGION",
+            "AWS_ACCESS_KEY_ID",
+            "Invoke-Aws",
+            '"s3", "cp"',
+            '"s3api"',
+        ):
+            with self.subTest(value=value):
+                self.assertNotIn(value.lower(), migration_lower)
+
     def test_owner_migration_writes_manifest_before_optional_latest(self):
         manifest = MIGRATION.index("releases/$Version/manifest.json")
-        remote_check = MIGRATION.index("$existing = Invoke-Aws", manifest)
+        remote_check = MIGRATION.index("$existing = Invoke-R2", manifest)
         latest_guard = MIGRATION.index("if ($SetLatest)")
         should_process = MIGRATION.index("$PSCmdlet.ShouldProcess")
         first_upload = MIGRATION.index("foreach ($asset in $manifest.assets)")
         self.assertLess(remote_check, should_process)
         self.assertLess(latest_guard, should_process)
         self.assertLess(should_process, first_upload)
-        self.assertNotIn('"s3", "cp"', MIGRATION[:should_process])
-        self.assertNotIn('"s3api", "put-object"', MIGRATION[:should_process])
+        self.assertNotIn('"put"', MIGRATION[:should_process])
         self.assertIn("recovery", MIGRATION.lower())
 
     def test_linux_tarball_is_created_inside_the_workspace(self):

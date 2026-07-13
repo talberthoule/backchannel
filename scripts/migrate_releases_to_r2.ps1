@@ -18,7 +18,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-function Invoke-Aws {
+function Invoke-R2 {
     param([Parameter(Mandatory = $true)][string[]]$Arguments)
 
     $savedErrorActionPreference = $ErrorActionPreference
@@ -31,7 +31,7 @@ function Invoke-Aws {
         if ($hasNativePreference) {
             $PSNativeCommandUseErrorActionPreference = $false
         }
-        $records = @(& aws @Arguments --endpoint-url $script:Endpoint --region auto --no-cli-pager 2>&1)
+        $records = @(& node $script:R2Client @Arguments 2>&1)
         $exitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $savedErrorActionPreference
@@ -40,20 +40,15 @@ function Invoke-Aws {
         }
     }
     $output = ($records | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
-    [pscustomobject]@{ Code = $exitCode; Output = $output.Trim() }
+    $output = $output.Trim()
+    $data = $null
+    if ($exitCode -eq 0) {
+        $data = $output | ConvertFrom-Json
+    }
+    [pscustomobject]@{ Code = $exitCode; Output = $output; Data = $data }
 }
 
-function Test-NotFound {
-    param(
-        [string]$Output,
-        [string]$Operation
-    )
-
-    $escaped = [regex]::Escape($Operation)
-    $Output -match "^An error occurred \((404|NoSuchKey|NotFound)\) when calling the $escaped operation: (Not Found|NoSuchKey|The specified key does not exist\.)$"
-}
-
-function Assert-AwsSuccess {
+function Assert-R2Success {
     param(
         [object]$Result,
         [string]$Action
@@ -70,18 +65,16 @@ function Get-RemoteLatest {
     if (Test-Path -LiteralPath $Destination) {
         Remove-Item -LiteralPath $Destination -Force
     }
-    $result = Invoke-Aws @(
-        "s3api", "get-object",
+    $result = Invoke-R2 @(
+        "get",
         "--bucket", $script:Bucket,
         "--key", "releases/latest.json",
-        $Destination,
-        "--query", "ETag",
-        "--output", "text"
+        "--output", $Destination
     )
     if ($result.Code -eq 0) {
-        return [pscustomobject]@{ Exists = $true; ETag = $result.Output }
+        return [pscustomobject]@{ Exists = $true; ETag = $result.Data.etag }
     }
-    if (Test-NotFound $result.Output "GetObject") {
+    if ($result.Code -eq 44) {
         return [pscustomobject]@{ Exists = $false; ETag = $null }
     }
     throw "Reading Latest failed: $($result.Output)"
@@ -118,14 +111,25 @@ if ($isLegacy -and $Version -notin @("v0.1.0", "v0.1.1")) {
     throw "Legacy two-asset migration is limited to v0.1.0 and v0.1.1"
 }
 
-$script:Endpoint = "https://$($env:CLOUDFLARE_ACCOUNT_ID).r2.cloudflarestorage.com"
 $script:Bucket = $env:R2_RELEASES_BUCKET
-$env:AWS_ACCESS_KEY_ID = $env:R2_ACCESS_KEY_ID
-$env:AWS_SECRET_ACCESS_KEY = $env:R2_SECRET_ACCESS_KEY
-$env:AWS_DEFAULT_REGION = "auto"
-$env:AWS_EC2_METADATA_DISABLED = "true"
-
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$script:R2Client = Join-Path $repoRoot "scripts/r2-object.mjs"
+if (-not (Test-Path -LiteralPath $script:R2Client -PathType Leaf)) {
+    throw "R2 client not found: $script:R2Client"
+}
+$node = Get-Command node -CommandType Application -ErrorAction SilentlyContinue
+if ($null -eq $node) {
+    throw "Node.js 24 or newer is required"
+}
+$nodeVersion = @(& $node.Source --version 2>&1)
+if ($LASTEXITCODE -ne 0 -or $nodeVersion.Count -ne 1 -or
+    $nodeVersion[0] -notmatch '^v(?<major>\d+)\.') {
+    throw "Unable to determine the Node.js version"
+}
+if ([int]$Matches.major -lt 24) {
+    throw "Node.js 24 or newer is required"
+}
+
 $helper = Join-Path $repoRoot "desktop/scripts/build_release_manifest.py"
 $temporary = Join-Path ([IO.Path]::GetTempPath()) "backchannel-r2-$([guid]::NewGuid())"
 $manifestPath = Join-Path $temporary "manifest.json"
@@ -155,15 +159,15 @@ try {
     $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
 
     $manifestKey = "releases/$Version/manifest.json"
-    $existing = Invoke-Aws @(
-        "s3api", "head-object",
+    $existing = Invoke-R2 @(
+        "head",
         "--bucket", $script:Bucket,
         "--key", $manifestKey
     )
     if ($existing.Code -eq 0) {
         throw "Release manifest already exists: $manifestKey"
     }
-    if (-not (Test-NotFound $existing.Output "HeadObject")) {
+    if ($existing.Code -ne 44) {
         throw "Checking immutable manifest failed: $($existing.Output)"
     }
 
@@ -187,48 +191,48 @@ try {
 
     foreach ($asset in $manifest.assets) {
         $source = Join-Path $AssetDirectory $asset.filename
-        $upload = Invoke-Aws @(
-            "s3", "cp", $source, "s3://$script:Bucket/$($asset.key)",
+        $upload = Invoke-R2 @(
+            "put",
+            "--bucket", $script:Bucket,
+            "--key", $asset.key,
+            "--file", $source,
             "--content-type", $asset.content_type,
-            "--content-disposition", "attachment; filename=`"$($asset.filename)`"",
-            "--only-show-errors"
+            "--content-disposition", "attachment; filename=`"$($asset.filename)`""
         )
-        Assert-AwsSuccess $upload "Uploading $($asset.filename)"
+        Assert-R2Success $upload "Uploading $($asset.filename)"
     }
 
     foreach ($asset in $manifest.assets) {
-        $head = Invoke-Aws @(
-            "s3api", "head-object",
+        $head = Invoke-R2 @(
+            "head",
             "--bucket", $script:Bucket,
-            "--key", $asset.key,
-            "--query", "ContentLength",
-            "--output", "text"
+            "--key", $asset.key
         )
-        Assert-AwsSuccess $head "Verifying $($asset.filename)"
-        if ([long]$head.Output -ne [long]$asset.size) {
+        Assert-R2Success $head "Verifying $($asset.filename)"
+        if ([long]$head.Data.contentLength -ne [long]$asset.size) {
             throw "ContentLength mismatch for $($asset.filename)"
         }
     }
 
-    $create = Invoke-Aws @(
-        "s3api", "put-object",
+    $create = Invoke-R2 @(
+        "put",
         "--bucket", $script:Bucket,
         "--key", $manifestKey,
-        "--body", $manifestPath,
+        "--file", $manifestPath,
         "--content-type", "application/json",
         "--cache-control", "no-store",
         "--if-none-match", "*"
     )
-    Assert-AwsSuccess $create "Creating immutable manifest"
+    Assert-R2Success $create "Creating immutable manifest"
     $manifestCreated = $true
 
-    $readback = Invoke-Aws @(
-        "s3api", "get-object",
+    $readback = Invoke-R2 @(
+        "get",
         "--bucket", $script:Bucket,
         "--key", $manifestKey,
-        $remoteManifestPath
+        "--output", $remoteManifestPath
     )
-    Assert-AwsSuccess $readback "Reading immutable manifest"
+    Assert-R2Success $readback "Reading immutable manifest"
     $localBytes = [Convert]::ToBase64String([IO.File]::ReadAllBytes($manifestPath))
     $remoteBytes = [Convert]::ToBase64String([IO.File]::ReadAllBytes($remoteManifestPath))
     if ($localBytes -cne $remoteBytes) {
@@ -250,18 +254,18 @@ try {
                 throw "Latest monotonicity validation failed"
             }
             $putLatestArguments = @(
-                "s3api", "put-object",
+                "put",
                 "--bucket", $script:Bucket,
                 "--key", "releases/latest.json",
-                "--body", $latestPath,
+                "--file", $latestPath,
                 "--content-type", "application/json",
                 "--cache-control", "no-store"
             ) + $condition
-            $writeLatest = Invoke-Aws $putLatestArguments
+            $writeLatest = Invoke-R2 $putLatestArguments
             if ($writeLatest.Code -eq 0) {
                 break
             }
-            if ($attempt -eq 1 -and $writeLatest.Output -match "(412|PreconditionFailed)") {
+            if ($attempt -eq 1 -and $writeLatest.Code -eq 42) {
                 Write-Host "Latest precondition conflict; retrying once"
                 continue
             }

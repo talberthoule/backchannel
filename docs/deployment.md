@@ -281,12 +281,18 @@ or approve a recipient before both checks pass.
 
 ### 7. Configure an independent R2 writer
 
-Create bucket-scoped R2 S3 Object Read & Write credentials for
-`backchannel-desktop-releases`. Configure the GitHub production environment
-with secrets `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and
-`R2_SECRET_ACCESS_KEY`, plus variable
+Create a bucket-scoped Cloudflare R2 API token with Object Read & Write
+permission for `backchannel-desktop-releases`. Cloudflare exposes its
+S3-compatible writer credentials as access-key and secret fields. Configure the
+GitHub production environment with secrets `CLOUDFLARE_ACCOUNT_ID`,
+`R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`, plus variable
 `R2_RELEASES_BUCKET=backchannel-desktop-releases`. These credentials are
 separate from the site deployment token; do not expand that token.
+
+The checked-in `scripts/r2-object.mjs` client calls Cloudflare R2 directly and
+is the only release object transport. `AWS4-HMAC-SHA256` and `x-amz-*` are the
+protocol field names Cloudflare requires for its S3-compatible API; they are
+not AWS credentials or services.
 
 ### 8. Seed and migrate the release catalog
 

@@ -44,6 +44,10 @@ and catalog. A `master` push does not update existing desktop downloads. The tag
 workflow publishes verified executables to R2; GitHub releases keep source tags
 and notes only, with no executable files.
 
+The checked-in `scripts/r2-object.mjs` client is the sole release object
+transport. Do not publish release objects with Amazon Web Services command-line
+tools or SDKs.
+
 ### Docs site and private interest admin
 
 `docs-site/` builds the public `backchannel.page` site and the private
