@@ -362,6 +362,69 @@ test('Refresh performs no GET or rerender while a command is pending', async () 
   await resetting;
 });
 
+test('failed commands recover retained detail before stale refresh success or error completes', async () => {
+  for (const staleFails of [false, true]) {
+    const staleRefresh = deferred();
+    let reads = 0;
+    const route = harness((call) => {
+      if (call.method === 'GET') return reads++ === 0
+        ? jsonResponse({ items: [user] })
+        : staleRefresh.promise;
+      return jsonResponse({}, { ok: false });
+    });
+    await openUser(route);
+    const oldReset = buttonNamed(route.shell.content, 'Reset password');
+    const resetting = oldReset.click();
+    const refreshing = route.mounted.refresh();
+    await route.document.getElementById('confirm-submit').click();
+    await resetting;
+
+    assert.equal(route.calls.length, 3);
+    assert.equal(oldReset.isConnected, false);
+    assert.match(route.shell.status.textContent, /Reset password failed\. Try again\./);
+    assert.equal(route.shell.content.querySelectorAll('.list-detail')[0].dataset.view, 'detail');
+    const successor = buttonNamed(route.shell.content, 'Reset password');
+    assert.equal(successor.isConnected, true);
+    assert.equal(successor.disabled, false);
+    assert.equal(route.document.activeElement, successor);
+    assert.equal(
+      route.shell.content.querySelectorAll('.row-select')[0].dataset.selected,
+      'true',
+    );
+
+    staleRefresh.resolve(staleFails
+      ? jsonResponse({}, { ok: false })
+      : jsonResponse({ items: [{ ...user, source: 'stale' }] }));
+    await refreshing;
+    assert.match(route.shell.status.textContent, /Reset password failed\. Try again\./);
+    assert.equal(route.shell.content.querySelectorAll('.list-detail')[0].dataset.view, 'detail');
+    assert.equal(buttonNamed(route.shell.content, 'Reset password'), successor);
+    assert.equal(route.document.activeElement, successor);
+    assert.doesNotMatch(textOf(route.shell.content), /stale/);
+  }
+});
+
+test('Reset accepts a matching parseable server expiry despite the client clock', async () => {
+  const pastItem = {
+    ...resetItem,
+    password_expires_at: '2000-01-01T00:00:00.000Z',
+  };
+  const pastCredential = {
+    ...credential,
+    password_expires_at: pastItem.password_expires_at,
+  };
+  const route = harness((call) => call.method === 'GET'
+    ? jsonResponse({ items: [user] })
+    : jsonResponse({ ok: true, item: pastItem, credential: pastCredential }));
+  await openUser(route);
+  await confirmCommand(route, 'Reset password');
+
+  assert.equal(route.calls.length, 2);
+  assert.match(textOf(route.shell.content), /Expired/);
+  assert.equal(route.document.getElementById('credential-dialog').open, true);
+  assert.match(route.document.getElementById('credential-text').value, /2000-01-01T00:00:00\.000Z/);
+});
+
 test('malformed command success bodies do not patch state or expose credentials', async () => {
   const revoked = {
     ...user,
@@ -379,11 +442,6 @@ test('malformed command success bodies do not patch state or expose credentials'
     ['Reset password', { ok: true, item: { ...resetItem, approved_at: '2026-07-10T12:00:00.000Z' }, credential }],
     ['Reset password', { ok: true, item: { ...resetItem, revoked_at: '2026-07-13T12:30:00.000Z' }, credential }],
     ['Reset password', { ok: true, item: { ...resetItem, password_changed_at: user.password_changed_at }, credential }],
-    ['Reset password', {
-      ok: true,
-      item: { ...resetItem, password_expires_at: '2000-01-01T00:00:00.000Z' },
-      credential: { ...credential, password_expires_at: '2000-01-01T00:00:00.000Z' },
-    }],
     ['Reset password', { ok: true, item: resetItem, credential: { ...credential, password: '' } }],
     ['Reset password', { ok: true, item: resetItem, credential: { ...credential, password_expires_at: 'not-a-date' } }],
     ['Sign out all sessions', { ok: true, item: { ...user, active_session_count: 1 } }],

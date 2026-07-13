@@ -65,7 +65,7 @@ function commandResult(action, value, current) {
   if (action === 'reset-password') {
     const credential = value.credential;
     if (item.state !== 'active' || item.revoked_at !== null || !item.must_change_password
-      || item.password_changed_at !== null || Date.parse(item.password_expires_at) <= Date.now()
+      || item.password_changed_at !== null
       || item.active_session_count !== 0 || item.latest_session_expires_at !== null
       || !credential || credential.email !== email
       || typeof credential.password !== 'string' || !credential.password.length
@@ -159,6 +159,7 @@ export function mount({ document, fetcher, shell, dialogs }) {
         });
       }
     } catch {
+      if (!button.isConnected) render(action);
       shell.status.textContent = `${label} failed. Try again.`;
     } finally {
       commandPending = false;
