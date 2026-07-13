@@ -530,8 +530,10 @@ async function replaceGrants(env, email, access, now) {
   );
   try {
     const results = await env.INTEREST_DB.batch(statements);
-    const updateIndex = statements.length - 2;
-    if ((results[updateIndex]?.meta?.changes ?? 0) !== 1) return dbError(409);
+    const deleteChanges = results?.[0]?.meta?.changes;
+    if (!Array.isArray(results) || results.length !== statements.length
+      || !Number.isInteger(deleteChanges) || deleteChanges < 0
+      || results.slice(1).some((result) => result?.meta?.changes !== 1)) return dbError(409);
     return privateJson(200, { ok: true, item: await loadAdminAuthorization(env, email) });
   } catch {
     return dbError();

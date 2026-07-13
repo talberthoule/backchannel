@@ -1048,6 +1048,9 @@ test('authorization grant replacement batches policy, versions, and event', asyn
     first: async () => (++readCount === 1
       ? { state: 'active', release_decision: 'approved' }
       : item),
+    batch: async (statements) => statements.map((_, index) => ({
+      success: true, meta: { changes: index === 0 ? 0 : 1 },
+    })),
   });
   const response = await workerModule.route(adminJson('/api/admin/authorization/grants', {
     email: 'person@example.com', include_latest: false, versions: ['v1.2.3'],
@@ -1074,6 +1077,41 @@ test('authorization grant replacement batches policy, versions, and event', asyn
   }, { method: 'PUT' }), denied.env, allowOwner, fixedDependencies);
   assert.equal(deniedResponse.status, 400);
   assert.equal(denied.calls.length, 0);
+});
+
+test('authorization grant replacement rejects incomplete batch outcomes', async () => {
+  const cases = [
+    (results) => { results[1].meta.changes = 0; },
+    (results) => { results[3].meta.changes = 0; },
+    (results) => { results.pop(); },
+    (results) => { results.push({ success: true, meta: { changes: 1 } }); },
+  ];
+
+  for (const alterResults of cases) {
+    let readCount = 0;
+    const bindings = adminBindings({
+      first: async () => (++readCount === 1
+        ? { state: 'active', release_decision: 'approved' }
+        : {
+          email: 'person@example.com', account_state: 'active', include_latest: 0,
+          updated_at: '2026-07-12T12:00:00.000Z', versions: '["v1.2.3"]',
+        }),
+      batch: async (statements) => {
+        const results = statements.map(() => ({ success: true, meta: { changes: 1 } }));
+        alterResults(results);
+        return results;
+      },
+    });
+    const response = await workerModule.route(adminJson('/api/admin/authorization/grants', {
+      email: 'person@example.com', include_latest: false, versions: ['v1.2.3'],
+    }, { method: 'PUT' }), bindings.env, allowOwner, fixedDependencies);
+
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), {
+      ok: false, message: 'Request could not be completed.',
+    });
+    assert.equal(bindings.batchCalls.length, 1);
+  }
 });
 
 test('revoked authorization remains readable but immutable', async (context) => {
