@@ -3,12 +3,12 @@ import { access } from 'node:fs/promises';
 import { once } from 'node:events';
 import test from 'node:test';
 
-import { createAdminPreviewServer } from './admin-preview.mjs';
+import { createAdminPreviewServer, listenAdminPreview } from './admin-preview.mjs';
 
 async function startPreview() {
   const server = createAdminPreviewServer();
   assert.equal(server.listening, false);
-  server.listen(0, '127.0.0.1');
+  listenAdminPreview(server, 0);
   await once(server, 'listening');
   const address = server.address();
   assert.equal(address.address, '127.0.0.1');
@@ -107,6 +107,12 @@ test('admin preview mutations match Worker shapes and update in-memory fixtures'
   assert.equal(reject.response.status, 200);
   assert.deepEqual(Object.keys(reject.value).sort(), ['item', 'ok']);
   assert.equal(reject.value.item.release_decision, 'rejected');
+  const interestsAfterReject = await requestJson(url, '/api/admin/interests');
+  assert.deepEqual(
+    interestsAfterReject.value.items.find(({ email }) => email === reject.value.item.email),
+    reject.value.item,
+    'reject persists to the next interests read',
+  );
 
   const reset = await requestJson(
     url,
@@ -117,6 +123,12 @@ test('admin preview mutations match Worker shapes and update in-memory fixtures'
   assert.deepEqual(Object.keys(reset.value).sort(), ['credential', 'item', 'ok']);
   assert.equal(reset.value.item.must_change_password, true);
   assert.equal(reset.value.item.active_session_count, 0);
+  const usersAfterReset = await requestJson(url, '/api/admin/users');
+  assert.deepEqual(
+    usersAfterReset.value.items.find(({ email }) => email === reset.value.item.email),
+    reset.value.item,
+    'password reset persists to the next users read',
+  );
 
   const signOut = await requestJson(
     url,
@@ -126,6 +138,12 @@ test('admin preview mutations match Worker shapes and update in-memory fixtures'
   assert.equal(signOut.response.status, 200);
   assert.deepEqual(Object.keys(signOut.value).sort(), ['item', 'ok']);
   assert.equal(signOut.value.item.active_session_count, 0);
+  const usersAfterSignOut = await requestJson(url, '/api/admin/users');
+  assert.deepEqual(
+    usersAfterSignOut.value.items.find(({ email }) => email === signOut.value.item.email),
+    signOut.value.item,
+    'session sign-out persists to the next users read',
+  );
 
   const revoke = await requestJson(
     url,
@@ -155,6 +173,12 @@ test('admin preview mutations match Worker shapes and update in-memory fixtures'
   assert.deepEqual(Object.keys(grants.value).sort(), ['item', 'ok']);
   assert.equal(grants.value.item.include_latest, false);
   assert.deepEqual(grants.value.item.versions, ['v0.2.0']);
+  const authorizationAfterGrants = await requestJson(url, '/api/admin/authorization');
+  assert.deepEqual(
+    authorizationAfterGrants.value.items.find(({ email }) => email === grants.value.item.email),
+    grants.value.item,
+    'grant replacement persists to the next authorization read',
+  );
 });
 
 test('admin preview source is not assembled into dist-site', async () => {

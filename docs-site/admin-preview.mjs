@@ -300,8 +300,12 @@ export function createAdminPreviewServer() {
   });
 }
 
+export function listenAdminPreview(server, port, onListening) {
+  return server.listen(port, '127.0.0.1', onListening);
+}
+
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
-  createAdminPreviewServer().listen(4175, '127.0.0.1', () => {
+  listenAdminPreview(createAdminPreviewServer(), 4175, () => {
     console.log('Admin preview: http://127.0.0.1:4175/users');
   });
 }
