@@ -35,7 +35,7 @@ language override therefore cannot create an honest lockfile exception.
 
 Keep `audio_websocket` as the FastAPI route and preserve the current protocol,
 ordering, database writes, reconnect behavior, and finalization behavior.
-Extract only two cohesive blocks into module-level helpers in
+Extract three cohesive blocks into module-level helpers in
 `backend/app/ws/audio_handler.py`:
 
 1. `async _start_call_segment(session_id: uuid.UUID, is_resume: bool) ->
@@ -45,11 +45,16 @@ Extract only two cohesive blocks into module-level helpers in
    sys_diarizer: Any | None, transcription_queue: OrderedTranscriptionQueue,
    orchestrator: AgentOrchestrator) -> bool` owns diarizer flushing and reset,
    gateway reconnect, active-status emission, and reconnect failure handling.
+3. `_decode_audio_frame(raw_frame: bytes) -> tuple[int, bytes]` owns the
+   existing odd-length track-prefix rule and legacy even-length microphone
+   fallback.
 
 The route will keep the speaker-resolution and transcript-emission closures
 because moving them would require a new state object and broad parameter
-plumbing. The two selected extractions are enough to move the route below both
-configured thresholds with margin while reducing its cyclomatic complexity.
+plumbing. The three selected extractions are enough to move the route below
+both configured thresholds with margin while reducing its cyclomatic
+complexity. The frame decoder provides that margin without deleting useful
+comments or compressing statements solely to lower the line metric.
 
 ### Keep generated lockfiles tracked and keep the 3000-line rule
 
@@ -97,7 +102,9 @@ The extracted reconnect helper will retain the existing broad reconnect
 boundary: it logs an exception and returns `False`, allowing the route to stop
 the receive loop and finalize the call. The call-segment helper will retain the
 current no-session behavior by returning no audio writer without creating a
-segment or resume marker.
+segment or resume marker. The frame decoder will preserve both accepted wire
+formats: odd frames may carry a one-byte microphone or system track prefix,
+while even frames remain legacy microphone PCM.
 
 No new exception swallowing, retry policy, protocol message, database schema,
 configuration value, or dependency is introduced.
