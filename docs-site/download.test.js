@@ -359,6 +359,10 @@ test('Wrangler disables public Worker URLs and binds private releases on four cu
     enabled: true,
     head_sampling_rate: 1,
   });
+  assert.deepEqual(wrangler.compatibility_flags, [
+    'nodejs_compat',
+    'nodejs_compat_do_not_populate_process_env',
+  ]);
   assert.deepEqual(wrangler.routes, [
     { pattern: 'backchannel.page', custom_domain: true },
     { pattern: 'www.backchannel.page', custom_domain: true },

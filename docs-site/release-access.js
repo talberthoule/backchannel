@@ -1,3 +1,5 @@
+import { pbkdf2Sync } from 'node:crypto';
+
 export const PASSWORD_ITERATIONS = 600_000;
 export const TEMPORARY_PASSWORD_TTL_SECONDS = 259_200;
 export const CHANGE_SESSION_TTL_SECONDS = 1_800;
@@ -62,20 +64,14 @@ function decodeBase64Url(value, expectedLength) {
   }
 }
 
-async function derivePassword(password, salt, iterations) {
-  const key = await globalThis.crypto.subtle.importKey(
-    'raw',
+async function derivePassword(password, salt, iterations, derive = pbkdf2Sync) {
+  return new Uint8Array(derive(
     new TextEncoder().encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits'],
-  );
-  return new Uint8Array(await globalThis.crypto.subtle.deriveBits({
-    name: 'PBKDF2',
-    hash: 'SHA-256',
     salt,
     iterations,
-  }, key, 256));
+    32,
+    'sha256',
+  ));
 }
 
 function equalBytes(left, right) {
@@ -122,14 +118,14 @@ export async function hashPassword(password, { salt, iterations = PASSWORD_ITERA
   };
 }
 
-export async function verifyPassword(password, record) {
+export async function verifyPassword(password, record, derive) {
   const salt = decodeBase64Url(record?.salt, 16);
   const expected = decodeBase64Url(record?.hash, 32);
   if (!salt || !expected || record?.iterations !== PASSWORD_ITERATIONS) {
-    await derivePassword(password, DUMMY_SALT, PASSWORD_ITERATIONS);
+    await derivePassword(password, DUMMY_SALT, PASSWORD_ITERATIONS, derive);
     return false;
   }
-  const actual = await derivePassword(password, salt, PASSWORD_ITERATIONS);
+  const actual = await derivePassword(password, salt, PASSWORD_ITERATIONS, derive);
   return equalBytes(actual, expected);
 }
 

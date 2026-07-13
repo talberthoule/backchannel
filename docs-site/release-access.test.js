@@ -128,6 +128,25 @@ test('PBKDF2-HMAC-SHA256 matches a known vector', async () => {
   assert.equal(record.iterations, 1);
 });
 
+test('600,000-iteration PBKDF2 does not use the capped Web Crypto implementation', async () => {
+  const originalDeriveBits = globalThis.crypto.subtle.deriveBits;
+  globalThis.crypto.subtle.deriveBits = async function cappedDeriveBits(algorithm, ...rest) {
+    if (algorithm.iterations > 100_000) {
+      throw new Error('Pbkdf2 failed: iteration counts above 100000 are not supported');
+    }
+    return originalDeriveBits.call(this, algorithm, ...rest);
+  };
+  try {
+    const record = await hashPassword('cloudflare-native', {
+      salt: new TextEncoder().encode('0123456789abcdef'),
+    });
+    assert.equal(record.hash, 'yYXBDzFSQhArwPC7oDV81iUdxV7zc6t7JfLedwugn0Y');
+    assert.equal(record.iterations, 600_000);
+  } finally {
+    globalThis.crypto.subtle.deriveBits = originalDeriveBits;
+  }
+});
+
 test('password hashes use unique 16-byte salts and verify only the right password', async () => {
   const first = await hashPassword('correct horse battery staple');
   const second = await hashPassword('correct horse battery staple');
@@ -150,33 +169,18 @@ test('password verification rejects malformed records after a fixed dummy deriva
     { ...valid, iterations: PASSWORD_ITERATIONS - 1 },
   ];
 
-  const nativeCrypto = globalThis.crypto;
   let derivations = 0;
-  Object.defineProperty(globalThis, 'crypto', {
-    configurable: true,
-    value: {
-      getRandomValues: nativeCrypto.getRandomValues.bind(nativeCrypto),
-      subtle: {
-        importKey: nativeCrypto.subtle.importKey.bind(nativeCrypto.subtle),
-        digest: nativeCrypto.subtle.digest.bind(nativeCrypto.subtle),
-        async deriveBits(...args) {
-          derivations += 1;
-          assert.equal(args[0].iterations, PASSWORD_ITERATIONS);
-          return nativeCrypto.subtle.deriveBits(...args);
-        },
-      },
-    },
-  });
-
-  try {
-    for (const record of malformed) {
-      assert.equal(await verifyPassword('secret', record), false);
-    }
-  } finally {
-    Object.defineProperty(globalThis, 'crypto', {
-      configurable: true,
-      value: nativeCrypto,
-    });
+  const derive = (password, salt, iterations, length, digest) => {
+    derivations += 1;
+    assert.equal(password instanceof Uint8Array, true);
+    assert.equal(salt.byteLength, 16);
+    assert.equal(iterations, PASSWORD_ITERATIONS);
+    assert.equal(length, 32);
+    assert.equal(digest, 'sha256');
+    return new Uint8Array(32);
+  };
+  for (const record of malformed) {
+    assert.equal(await verifyPassword('secret', record, derive), false);
   }
   assert.equal(derivations, malformed.length);
 });

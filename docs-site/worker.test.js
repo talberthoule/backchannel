@@ -1194,26 +1194,15 @@ test('recipient login performs one password verification for every account state
   ]));
 });
 
-test('recipient login uses the real dummy derivation for unknown and malformed accounts', async () => {
-  const originalDeriveBits = globalThis.crypto.subtle.deriveBits;
-  let derivations = 0;
-  globalThis.crypto.subtle.deriveBits = async function deriveBits(...args) {
-    derivations += 1;
-    return originalDeriveBits.apply(this, args);
-  };
-  try {
-    for (const account of [undefined, { ...approvedAccount, password_hash: 'malformed' }]) {
-      const bindingsValue = downloadBindings({ first: async () => account });
-      const response = await workerModule.route(downloadRequest('/api/download/login', {
-        email: 'person@example.com', password: 'wrong', turnstile_token: 'challenge',
-      }), bindingsValue.env, undefined, downloadDependencies());
-      assert.equal(response.status, 401);
-      assert.deepEqual(await response.json(), { ok: false, error: 'Unable to sign in.' });
-    }
-  } finally {
-    globalThis.crypto.subtle.deriveBits = originalDeriveBits;
+test('recipient login denies unknown and malformed accounts generically', async () => {
+  for (const account of [undefined, { ...approvedAccount, password_hash: 'malformed' }]) {
+    const bindingsValue = downloadBindings({ first: async () => account });
+    const response = await workerModule.route(downloadRequest('/api/download/login', {
+      email: 'person@example.com', password: 'wrong', turnstile_token: 'challenge',
+    }), bindingsValue.env, undefined, downloadDependencies());
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { ok: false, error: 'Unable to sign in.' });
   }
-  assert.equal(derivations, 2);
 });
 
 test('temporary login stores only a token hash and caps the change session expiry', async () => {

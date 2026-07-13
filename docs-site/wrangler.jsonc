@@ -2,6 +2,10 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "backchannel-site",
   "compatibility_date": "2026-07-01",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "nodejs_compat_do_not_populate_process_env"
+  ],
   "main": "worker.js",
   "workers_dev": false,
   "preview_urls": false,
