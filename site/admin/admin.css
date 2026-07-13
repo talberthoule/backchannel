@@ -387,6 +387,58 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.grant-options {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.grant-options legend {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.grant-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.grant-option:last-child {
+  border-bottom: 0;
+}
+
+.grant-option input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-strong);
+}
+
+.version-badge {
+  margin-inline-start: auto;
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.grant-error,
+.grant-notice {
+  min-height: 20px;
+  color: var(--muted);
+}
+
+.grant-error {
+  color: var(--danger);
+}
+
 .secondary-button,
 .primary-button,
 .danger-button,
@@ -424,6 +476,11 @@ textarea {
 .dialog-actions button:disabled,
 .security-actions button:disabled {
   cursor: wait;
+  opacity: 0.55;
+}
+
+.primary-button:disabled {
+  cursor: not-allowed;
   opacity: 0.55;
 }
 

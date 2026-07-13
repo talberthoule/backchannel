@@ -158,8 +158,24 @@ const routeCases = [
   }],
 ];
 
+const releaseCatalog = {
+  items: [{ version: 'v0.2.1', published_at: '2026-07-11 12:00:00' }],
+  latest_version: 'v0.2.1',
+  available: true,
+};
+
+function routeEndpoints(endpoint) {
+  return endpoint === '/api/admin/authorization'
+    ? [endpoint, '/api/admin/releases']
+    : [endpoint];
+}
+
+function routeRead(path, item) {
+  return path === '/api/admin/releases' ? releaseCatalog : { items: [item] };
+}
+
 for (const [name, module, endpoint, item] of routeCases) {
-  test(`${name} route loads only its read endpoint and renders a no-selection state`, async () => {
+  test(`${name} route loads only its owned read endpoints and renders a no-selection state`, async () => {
     assert.equal(module.meta.title, name);
     const calls = [];
     const { document, shell } = routeHarness();
@@ -169,12 +185,12 @@ for (const [name, module, endpoint, item] of routeCases) {
       dialogs: {},
       fetcher: async (path, init) => {
         calls.push({ path, init });
-        return jsonResponse({ items: [item] });
+        return jsonResponse(routeRead(path, item));
       },
     });
     assert.equal(typeof mounted.refresh, 'function');
     await mounted.refresh();
-    assert.deepEqual(calls.map(({ path }) => path), [endpoint]);
+    assert.deepEqual(calls.map(({ path }) => path), routeEndpoints(endpoint));
     assert.match(textOf(shell.content), new RegExp(item.email.replace('.', '\\.')));
     assert.match(textOf(shell.content), /Select/i);
     assert.equal(shell.count.textContent, '1');
@@ -209,8 +225,8 @@ test('read-only routes select a row, render detail, and restore focus on Back', 
       shell,
       dialogs: {},
       fetcher: async (path) => {
-        assert.equal(path, endpoint);
-        return jsonResponse({ items: [item] });
+        assert.ok(routeEndpoints(endpoint).includes(path));
+        return jsonResponse(routeRead(path, item));
       },
     });
     await mounted.refresh();
@@ -230,7 +246,7 @@ test('read-only routes select a row, render detail, and restore focus on Back', 
 test('read-only routes expose loading while their owned GET is pending', async () => {
   for (const [, module, endpoint] of routeCases) {
     const { document, shell } = routeHarness();
-    let resolveFetch;
+    const pendingReads = [];
     const calls = [];
     const mounted = module.mount({
       document,
@@ -238,14 +254,18 @@ test('read-only routes expose loading while their owned GET is pending', async (
       dialogs: {},
       fetcher(path, init) {
         calls.push({ path, init });
-        return new Promise((resolve) => { resolveFetch = resolve; });
+        return new Promise((resolve) => { pendingReads.push({ path, resolve }); });
       },
     });
     const pending = mounted.refresh();
     assert.equal(shell.content.getAttribute('aria-busy'), 'true');
     assert.match(textOf(shell.content), /Loading/);
-    assert.deepEqual(calls.map(({ path }) => path), [endpoint]);
-    resolveFetch(jsonResponse({ items: [] }));
+    assert.deepEqual(calls.map(({ path }) => path), routeEndpoints(endpoint));
+    for (const read of pendingReads) {
+      read.resolve(jsonResponse(read.path === '/api/admin/releases'
+        ? releaseCatalog
+        : { items: [] }));
+    }
     await pending;
     assert.equal(shell.content.getAttribute('aria-busy'), null);
   }
@@ -261,16 +281,20 @@ test('read-only route Retry performs a second owned GET', async () => {
       dialogs: {},
       fetcher: async (path, init) => {
         calls.push({ path, init });
-        return calls.length === 1
+        const ownedRead = calls.filter((call) => call.path === endpoint).length;
+        return ownedRead === 1 && path === endpoint
           ? jsonResponse({}, { ok: false })
-          : jsonResponse({ items: [] });
+          : jsonResponse(path === '/api/admin/releases' ? releaseCatalog : { items: [] });
       },
     });
     await mounted.refresh();
     const retry = shell.content.querySelectorAll('button')[0];
     assert.equal(retry.textContent, 'Retry');
     await retry.click();
-    assert.deepEqual(calls.map(({ path }) => path), [endpoint, endpoint]);
+    assert.deepEqual(
+      calls.map(({ path }) => path),
+      [...routeEndpoints(endpoint), ...routeEndpoints(endpoint)],
+    );
     assert.ok(calls.every(({ init }) => init.method === 'GET'));
     assert.match(textOf(shell.content), /No /i);
   }
@@ -287,10 +311,17 @@ test('Users and Authorization expose labelled case-insensitive email search', as
       shell,
       dialogs: {},
       fetcher: async (path) => {
+        if (path === '/api/admin/releases') return jsonResponse(releaseCatalog);
         assert.equal(path, endpoint);
+        const item = endpoint === '/api/admin/authorization'
+          ? {
+            account_state: 'active', include_latest: true, versions: [],
+            updated_at: '2026-07-11 12:00:00',
+          }
+          : { state: 'active' };
         return jsonResponse({ items: [
-          { email: 'Alpha@Example.com', state: 'active', account_state: 'active', versions: [] },
-          { email: 'beta@example.com', state: 'active', account_state: 'active', versions: [] },
+          { email: 'Alpha@Example.com', ...item },
+          { email: 'beta@example.com', ...item },
         ] });
       },
     });
