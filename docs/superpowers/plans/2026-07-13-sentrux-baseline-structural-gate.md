@@ -72,7 +72,7 @@ From the repository worktree root:
 ```powershell
 $backend = (Resolve-Path backend).Path
 $frontend = (Resolve-Path frontend).Path
-docker run --rm --mount "type=bind,source=$backend,target=/app" --mount "type=bind,source=$frontend,target=/frontend" -w /app backchannel-backend:latest python -m unittest tests.test_audio_handler.AudioFrameDecodingTests -v
+docker run --rm --mount "type=bind,source=$backend,target=/app" --mount "type=bind,source=$frontend,target=/frontend" -w /app backchannel-backend:latest python -m unittest discover -s tests -p test_audio_handler.py -k AudioFrameDecodingTests -v
 ```
 
 Expected: an assertion failure because `audio_handler` does not yet expose `_decode_audio_frame`. If the failure is unrelated, fix the test environment before proceeding.
@@ -236,7 +236,7 @@ class AudioReconnectTests(unittest.IsolatedAsyncioTestCase):
 
 - [ ] **Step 3: Run the reconnect tests and verify the intended failure**
 
-Use the Docker command from Task 1, changing the test selector to `tests.test_audio_handler.AudioReconnectTests`.
+Use the Docker command from Task 1, changing the `-k` selector to `AudioReconnectTests`.
 
 Expected: an assertion failure because `audio_handler` does not yet expose `_reconnect_audio_pipeline`.
 
@@ -295,7 +295,7 @@ Keep each call on one logical line so the route has safe margin below `max_fn_li
 
 - [ ] **Step 6: Run all audio-handler tests**
 
-Use the Task 1 Docker command with selector `tests.test_audio_handler`.
+Use the Task 1 Docker command without `-k` to run the full `test_audio_handler.py` file.
 
 Expected: `3` tests pass.
 
@@ -443,7 +443,7 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
 
 - [ ] **Step 3: Run the startup tests and verify the intended failure**
 
-Use the Task 1 Docker command with selector `tests.test_audio_handler.CallSegmentStartTests`.
+Use the Task 1 Docker command, changing the `-k` selector to `CallSegmentStartTests`.
 
 Expected: an assertion failure because `audio_handler` does not yet expose `_start_call_segment`.
 
@@ -508,7 +508,7 @@ Keep the existing pre-try initialization `audio_writer: SegmentAudioWriter | Non
 
 - [ ] **Step 6: Run the focused and full backend suites**
 
-First run `tests.test_audio_handler` using the Docker command from Task 1.
+First run the full `test_audio_handler.py` file using the Task 1 Docker command without `-k`.
 
 Expected: `5` tests pass.
 
