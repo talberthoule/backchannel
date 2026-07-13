@@ -17,6 +17,12 @@ body {
   letter-spacing: 0;
 }
 
+.skip-link {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+
 button,
 input,
 textarea {
@@ -120,12 +126,16 @@ textarea {
 }
 
 .route-header {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: 16px;
   padding-bottom: 16px;
   border-bottom: 1px solid var(--border);
+}
+
+.route-heading {
+  flex: 1 1 220px;
 }
 
 .route-heading h1 {
@@ -192,7 +202,7 @@ textarea {
 
 .list-detail {
   display: grid;
-  grid-template-columns: minmax(360px, 3fr) minmax(280px, 2fr);
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   min-height: 440px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -548,14 +558,6 @@ textarea {
 
   .admin-main {
     padding: 16px;
-  }
-
-  .route-header {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .route-heading {
-    grid-column: 1 / -1;
   }
 
   .list-detail {

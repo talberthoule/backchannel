@@ -1,5 +1,3 @@
-import assert from 'node:assert/strict';
-
 export class TestElement {
   constructor(name = 'div', ownerDocument = null) {
     this.name = name;
@@ -126,10 +124,4 @@ export function textOf(node) {
 
 export function jsonResponse(value, { ok = true, status = ok ? 200 : 500 } = {}) {
   return { ok, status, async json() { return value; } };
-}
-
-export function assertOnlyCall(calls, path) {
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].path, path);
-  assert.equal(calls[0].init.method, 'GET');
 }

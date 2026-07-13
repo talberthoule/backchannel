@@ -139,7 +139,7 @@ test('shared dialog and list-detail controllers clear plaintext and restore focu
   assert.equal(document.activeElement, row);
 });
 
-for (const [name, module, endpoint, item] of [
+const routeCases = [
   ['Early access', earlyAccess, '/api/admin/interests', {
     email: 'request@example.com', status: 'interested', source: 'homepage',
     consent_version: '2026-07-11', consent_at: '2026-07-11 12:00:00',
@@ -156,8 +156,10 @@ for (const [name, module, endpoint, item] of [
     email: 'person@example.com', account_state: 'active', include_latest: true,
     versions: ['v0.2.1'], updated_at: '2026-07-11 12:10:00',
   }],
-]) {
-  test(`${name} route loads only its read endpoint and renders selection states`, async () => {
+];
+
+for (const [name, module, endpoint, item] of routeCases) {
+  test(`${name} route loads only its read endpoint and renders a no-selection state`, async () => {
     assert.equal(module.meta.title, name);
     const calls = [];
     const { document, shell } = routeHarness();
@@ -179,7 +181,7 @@ for (const [name, module, endpoint, item] of [
     assert.equal(shell.content.getAttribute('aria-busy'), null);
   });
 
-  test(`${name} route renders empty and retryable error states`, async () => {
+  test(`${name} route renders empty and error states`, async () => {
     const { document, shell } = routeHarness();
     let fail = false;
     const mounted = module.mount({
@@ -198,6 +200,81 @@ for (const [name, module, endpoint, item] of [
     assert.match(textOf(shell.content), /Retry/);
   });
 }
+
+test('read-only routes select a row, render detail, and restore focus on Back', async () => {
+  for (const [, module, endpoint, item] of routeCases) {
+    const { document, shell } = routeHarness();
+    const mounted = module.mount({
+      document,
+      shell,
+      dialogs: {},
+      fetcher: async (path) => {
+        assert.equal(path, endpoint);
+        return jsonResponse({ items: [item] });
+      },
+    });
+    await mounted.refresh();
+    const row = shell.content.querySelectorAll('.row-select')[0];
+    await row.click();
+    assert.equal(shell.content.querySelectorAll('.list-detail')[0].dataset.view, 'detail');
+    assert.equal(document.activeElement.name, 'h2');
+    assert.equal(document.activeElement.textContent, item.email);
+    assert.match(textOf(shell.content), /Identity|Consent|Latest releases/);
+    const back = shell.content.querySelectorAll('.back-button')[0];
+    await back.click();
+    assert.equal(shell.content.querySelectorAll('.list-detail')[0].dataset.view, 'list');
+    assert.equal(document.activeElement, row);
+  }
+});
+
+test('read-only routes expose loading while their owned GET is pending', async () => {
+  for (const [, module, endpoint] of routeCases) {
+    const { document, shell } = routeHarness();
+    let resolveFetch;
+    const calls = [];
+    const mounted = module.mount({
+      document,
+      shell,
+      dialogs: {},
+      fetcher(path, init) {
+        calls.push({ path, init });
+        return new Promise((resolve) => { resolveFetch = resolve; });
+      },
+    });
+    const pending = mounted.refresh();
+    assert.equal(shell.content.getAttribute('aria-busy'), 'true');
+    assert.match(textOf(shell.content), /Loading/);
+    assert.deepEqual(calls.map(({ path }) => path), [endpoint]);
+    resolveFetch(jsonResponse({ items: [] }));
+    await pending;
+    assert.equal(shell.content.getAttribute('aria-busy'), null);
+  }
+});
+
+test('read-only route Retry performs a second owned GET', async () => {
+  for (const [, module, endpoint] of routeCases) {
+    const { document, shell } = routeHarness();
+    const calls = [];
+    const mounted = module.mount({
+      document,
+      shell,
+      dialogs: {},
+      fetcher: async (path, init) => {
+        calls.push({ path, init });
+        return calls.length === 1
+          ? jsonResponse({}, { ok: false })
+          : jsonResponse({ items: [] });
+      },
+    });
+    await mounted.refresh();
+    const retry = shell.content.querySelectorAll('button')[0];
+    assert.equal(retry.textContent, 'Retry');
+    await retry.click();
+    assert.deepEqual(calls.map(({ path }) => path), [endpoint, endpoint]);
+    assert.ok(calls.every(({ init }) => init.method === 'GET'));
+    assert.match(textOf(shell.content), /No /i);
+  }
+});
 
 test('Users and Authorization expose labelled case-insensitive email search', async () => {
   for (const [module, endpoint] of [
@@ -240,6 +317,15 @@ test('admin shell styles dense responsive list-detail without page overflow', ()
   assert.match(adminCss, /dialog::backdrop/);
   assert.match(adminCss, /:focus-visible/);
   assert.doesNotMatch(adminCss, /animation\s*:/);
+});
+
+test('admin shell uses fluid intermediate tracks beside the fixed rail', () => {
+  const listDetailRule = adminCss.match(/\.list-detail\s*\{([^}]*)\}/)?.[1] || '';
+  const headerRule = adminCss.match(/\.route-header\s*\{([^}]*)\}/)?.[1] || '';
+  assert.match(listDetailRule, /grid-template-columns:\s*minmax\(0, 3fr\) minmax\(0, 2fr\)/);
+  assert.doesNotMatch(listDetailRule, /minmax\((?:360|280)px/);
+  assert.match(headerRule, /flex-wrap:\s*wrap/);
+  assert.match(css, /\.skip-link\s*\{[^}]*min-height:\s*44px/s);
 });
 
 test('private admin assets contain no identity or Access configuration', () => {
