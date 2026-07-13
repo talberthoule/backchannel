@@ -3,6 +3,7 @@ import {
   element,
   formatCount,
   jsonRequest,
+  replaceByEmail,
   timeNode,
 } from './admin-core.js';
 
@@ -29,6 +30,61 @@ function detailField(label, content, document) {
 
 export function mount({ document, fetcher, shell, dialogs }) {
   let items = [];
+
+  async function decide(record, action, button) {
+    const verb = action === 'approve' ? 'Approve' : 'Reject';
+    const confirmed = await dialogs.confirm({
+      title: `${verb} early-access request`,
+      description: `${verb} the request from ${record.email}?`,
+      label: verb,
+      returnFocus: button,
+    });
+    if (!confirmed) return;
+
+    button.disabled = true;
+    shell.status.textContent = `${action === 'approve' ? 'Approving' : 'Rejecting'} ${record.email}.`;
+    try {
+      const value = await jsonRequest(
+        `${endpoint}/${action}`, 'POST', { email: record.email }, fetcher,
+      );
+      if (action === 'reject') {
+        if (!value.item || value.item.email !== record.email) throw new Error('invalid response');
+        items = replaceByEmail(items, value.item);
+        render();
+        shell.status.textContent = `Rejected the request from ${record.email}.`;
+        return;
+      }
+
+      const credential = value.credential;
+      if (!credential || credential.email !== record.email
+        || typeof credential.password !== 'string'
+        || typeof credential.password_expires_at !== 'string') throw new Error('invalid response');
+      const reviewedAt = value.item?.release_reviewed_at;
+      items = replaceByEmail(items, {
+        ...record,
+        status: 'active',
+        release_decision: 'approved',
+        ...(typeof reviewedAt === 'string' ? { release_reviewed_at: reviewedAt } : {}),
+      });
+      render();
+      shell.status.textContent = `Approved the request from ${record.email}.`;
+      dialogs.showCredential({
+        text: [
+          'Backchannel desktop access',
+          `Account: ${credential.email}`,
+          `Temporary password: ${credential.password}`,
+          'Sign in: https://downloads.backchannel.page/',
+          `Password expires: ${credential.password_expires_at}`,
+        ].join('\n'),
+        email: credential.email,
+        returnFocus: button,
+      });
+    } catch {
+      shell.status.textContent = `${verb} failed. Try again.`;
+    } finally {
+      button.disabled = false;
+    }
+  }
 
   function state(message, retry = false) {
     const region = element('section', 'route-state', undefined, document);
@@ -92,7 +148,20 @@ export function mount({ document, fetcher, shell, dialogs }) {
           'span', '', record.release_decision || 'pending', document,
         ), document),
       );
-      detailPane.replaceChildren(back, heading, fields);
+      const content = [back, heading, fields];
+      if (record.release_decision === 'pending') {
+        const actionTitle = element('h3', '', 'Decision', document);
+        const actions = element('div', 'dialog-actions', undefined, document);
+        const approve = element('button', 'primary-button', 'Approve', document);
+        approve.type = 'button';
+        approve.addEventListener('click', () => decide(record, 'approve', approve));
+        const reject = element('button', 'secondary-button', 'Reject', document);
+        reject.type = 'button';
+        reject.addEventListener('click', () => decide(record, 'reject', reject));
+        actions.append(approve, reject);
+        content.push(actionTitle, actions);
+      }
+      detailPane.replaceChildren(...content);
       controller.showDetail(trigger, heading);
     }
 
