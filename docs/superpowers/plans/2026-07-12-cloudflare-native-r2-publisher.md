@@ -13,7 +13,7 @@
 - Target Backchannel only; do not touch AIEngine or any `Install-AIEngine` material.
 - Send object requests only to `https://<CLOUDFLARE_ACCOUNT_ID>.r2.cloudflarestorage.com`; never install or invoke AWS CLI, an AWS SDK, Wrangler object commands, or an upload Worker.
 - Read only `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`; these are Cloudflare-issued credentials. Never print credentials, authorization headers, canonical requests, response bodies, or signed URLs.
-- The protocol literals `AWS4-HMAC-SHA256`, `AWS4`, `aws4_request`, and `x-amz-*` may appear only inside `scripts/r2-object.mjs` and its signer tests because Cloudflare's S3-compatible wire protocol requires them.
+- The protocol literals `AWS4-HMAC-SHA256`, `AWS4`, `aws4_request`, and `x-amz-*` may appear inside `scripts/r2-object.mjs`, signer tests, and explanatory operations documentation because Cloudflare's S3-compatible wire protocol requires them. They must never identify an AWS tool, SDK, credential, endpoint, account, or service dependency.
 - Use path-style object URLs, RFC 3986-encode every bucket/key segment, reject empty keys and `.`/`..` segments, and validate account IDs and bucket names before signing.
 - Stream every upload twice: first into SHA-256, then from disk into `fetch` with exact `Content-Length`; never buffer a desktop bundle.
 - A download writes to a unique sibling temporary file and renames it over the destination only after the full successful response; remove the temporary file on every failure.
@@ -173,11 +173,11 @@ Run:
 node --test scripts/tests/r2-object.test.mjs
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test_migrate_releases_to_r2.ps1
 python -m unittest desktop.tests.test_release_contract -v
-rg -n -i "aws cli|aws s3|aws s3api|AWS_DEFAULT_REGION|AWS_ACCESS_KEY_ID|Invoke-Aws" scripts/migrate_releases_to_r2.ps1 scripts/tests/test_migrate_releases_to_r2.ps1 desktop/tests/test_release_contract.py
+rg -n -i "(^|[&|;[:space:]])aws([[:space:]]|$)|AWS_DEFAULT_REGION|AWS_ACCESS_KEY_ID|Invoke-Aws" scripts/migrate_releases_to_r2.ps1
 git diff --check
 ```
 
-Expected: all tests pass; the search returns no matches; diff check is silent.
+Expected: all tests pass; the migration-source search returns no executable AWS CLI call, AWS credential alias, or old adapter; diff check is silent.
 
 ```powershell
 git add scripts/migrate_releases_to_r2.ps1 scripts/tests/test_migrate_releases_to_r2.ps1 desktop/tests/test_release_contract.py
@@ -232,12 +232,12 @@ npm run test:download
 npm run test:site
 npm run build
 cd ..
-rg -n -i "aws cli|aws s3|aws s3api|AWS_DEFAULT_REGION|AWS_ACCESS_KEY_ID|Invoke-Aws" .github/workflows/desktop-release.yml scripts docs/releasing.md docs/deployment.md AGENTS.md CLAUDE.md
+rg -n -i '(^|[&|;[:space:]])aws([[:space:]]|$)|AWS_DEFAULT_REGION|AWS_ACCESS_KEY_ID|Invoke-Aws|@aws-sdk' .github/workflows/desktop-release.yml scripts/migrate_releases_to_r2.ps1 AGENTS.md CLAUDE.md
 git diff --check
 git status --short
 ```
 
-Expected: all Node, PowerShell, Python, Worker, UI, and build gates pass; the forbidden dependency search returns no matches; only intended files are modified.
+Expected: all Node, PowerShell, Python, Worker, UI, and build gates pass; the scoped search returns no executable AWS CLI/SDK dependency, AWS credential alias, or old adapter while required Cloudflare protocol names remain allowed; only intended files are modified.
 
 - [ ] **Step 5: Commit Task 3**
 
@@ -273,6 +273,7 @@ Continue the remaining approved release-access gate from its current state: Clou
 
 - Spec coverage: direct Cloudflare endpoint, standard-library SigV4, all three object operations, stable JSON/exits, streaming PUT/GET, atomic destination replacement, conditional writes, PowerShell migration, workflow migration, redaction, and complete regression gates map to Tasks 1-4.
 - Placeholder scan: no deferred TODO/TBD, pseudocode-only implementation step, or unresolved file name remains; angle-bracketed CLI operands are explicit interface notation.
+- Conflict resolution: the user approved allowing Cloudflare-required `AWS4`/`x-amz-*` wire-protocol names in the client, signer tests, and explanatory docs while prohibiting AWS tools, SDKs, credentials, endpoints, accounts, and services; verification searches are scoped accordingly.
 - Type consistency: `etag`, `contentLength`, `contentType`, `output`, exit 44, and exit 42 are identical across Node, PowerShell, Bash, and tests.
 - Scope check: the amendment adds one transport file and one test file, replaces two callers, and updates their contracts/runbooks; it introduces no package, service, SDK, Worker, or storage provider.
 - Planning decision: the existing release-access plan does not restart. Completed production provisioning remains valid; only the publication transport and its downstream verification are amended before the live catalog write.
