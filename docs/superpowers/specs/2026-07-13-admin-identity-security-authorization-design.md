@@ -144,9 +144,14 @@ Approve uses one labelled native confirmation dialog. It does not contain a
 grant editor. On confirmation, one D1 batch:
 
 1. creates the release identity with a temporary password;
-2. creates its default Latest authorization policy;
-3. marks the request approved/active; and
+2. marks the still-pending request approved/active;
+3. creates its default Latest authorization policy; and
 4. records the approval event.
+
+Each statement after identity creation is conditional on the preceding
+statement changing exactly one row. A failed or repeated approval therefore
+cannot backfill a policy, change a decision, or record an event before the
+handler returns a conflict.
 
 The response contains the one-time identity credential only. The credential
 dialog supports Copy and Save, clears plaintext on close/pagehide, and offers
@@ -439,14 +444,33 @@ dark mode, reduced motion, and forced colors.
 
 ## Rollout
 
-1. Apply migration 0003 to the preview D1 database.
-2. Deploy the Worker and all admin shell modules together.
-3. Verify Early access approve/reject, one-time credentials, Users security
+1. Start an explicit admin-mutation freeze in preview; recipient reads and
+   downloads may continue, but no approval, rejection, password, session,
+   revoke, or grant command may run during the cutover.
+2. Back up preview D1, apply migration 0003, and require both policy parity
+   checks below to return zero before deploying:
+
+   ```sql
+   SELECT count(*) AS missing_policies
+   FROM release_accounts a
+   LEFT JOIN release_access_policies p ON p.email = a.email
+   WHERE p.email IS NULL;
+
+   SELECT count(*) AS latest_mismatches
+   FROM release_accounts a
+   JOIN release_access_policies p ON p.email = a.email
+   WHERE p.include_latest <> a.include_latest;
+   ```
+
+3. Deploy the Worker and all admin shell modules together, then end the
+   preview mutation freeze.
+4. Verify Early access approve/reject, one-time credentials, Users security
    actions, and Authorization grant replacement with test recipients.
-4. Confirm recipient login, forced password change, release visibility,
+5. Confirm recipient login, forced password change, release visibility,
    session sign-out, revocation, and downloads remain correct.
-5. Apply the migration and deploy to production.
-6. Keep the previous Worker deployment available only for rollback before the
+6. Repeat the mutation freeze, backup, migration, zero-count parity checks,
+   atomic Worker/assets deploy, and unfreeze in production.
+7. Keep the previous Worker deployment available only for rollback before the
    first production grant mutation. After the new Worker writes policy state,
    the legacy account column may be stale; recovery then requires a forward
    fix or an explicit policy-to-legacy data sync before rollback.
