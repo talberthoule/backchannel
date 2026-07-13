@@ -1,12 +1,28 @@
 {
-  "timestamp": 1778002651.138559,
-  "quality_signal": 0.6142217847381848,
-  "coupling_score": 0.5448717948717948,
+  "sentrux_version": "0.5.7",
+  "source_revision": "990999e9b68312c2466ff7db57c5b21002774407",
+  "plugin_versions": {
+    "python": "0.2.0",
+    "markdown": "0.2.0",
+    "typescript": "0.1.0",
+    "javascript": "0.1.0",
+    "html": "0.1.0",
+    "json": "0.1.0",
+    "css": "0.1.0",
+    "yaml": "0.2.0",
+    "sql": "0.2.0",
+    "powershell": "0.2.0",
+    "toml": "0.1.0",
+    "dockerfile": "0.2.0"
+  },
+  "timestamp": 1783959722.234183,
+  "quality_signal": 0.6467685627241014,
+  "coupling_score": 0.09166666666666666,
   "cycle_count": 0,
-  "god_file_count": 0,
+  "god_file_count": 1,
   "hotspot_count": 0,
-  "complex_fn_count": 8,
-  "max_depth": 5,
-  "total_import_edges": 156,
-  "cross_module_edges": 119
+  "complex_fn_count": 27,
+  "max_depth": 6,
+  "total_import_edges": 480,
+  "cross_module_edges": 335
 }

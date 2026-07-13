@@ -97,6 +97,13 @@ async def _would_create_new_speaker(
     return auto_speaker_would_create_new_speaker(auto_id, auto_speaker_map, speakers)
 
 
+def _decode_audio_frame(raw_frame: bytes) -> tuple[int, bytes]:
+    if len(raw_frame) % 2 == 0:
+        return 0, raw_frame
+    track = raw_frame[0] if raw_frame[0] in (0, 1) else 0
+    return track, raw_frame[1:]
+
+
 async def _flush_remaining_audio(
     diarizer: Any,
     transcription_queue: OrderedTranscriptionQueue,
@@ -107,6 +114,82 @@ async def _flush_remaining_audio(
             transcription_queue.add(f"{speaker_prefix}{seg.speaker_id}", seg.pcm_bytes)
         except Exception:
             pass
+
+
+async def _reconnect_audio_pipeline(
+    websocket: WebSocket,
+    diarizer: Any,
+    sys_diarizer: Any | None,
+    transcription_queue: OrderedTranscriptionQueue,
+    orchestrator: AgentOrchestrator,
+) -> bool:
+    for seg in await asyncio.to_thread(flush_diarizer_segments, diarizer):
+        transcription_queue.add(seg.speaker_id, seg.pcm_bytes)
+    diarizer.reset()
+    if sys_diarizer is not None:
+        for seg in await asyncio.to_thread(flush_diarizer_segments, sys_diarizer):
+            transcription_queue.add(f"sys_{seg.speaker_id}", seg.pcm_bytes)
+        sys_diarizer.reset()
+    try:
+        success = await orchestrator._reconnect_gateway()
+        if success:
+            await websocket.send_json(
+                {
+                    "type": "status",
+                    "data": {
+                        "state": "active",
+                        "message": "Reconnected to AI",
+                    },
+                }
+            )
+        return success
+    except Exception as exc:
+        logger.error(f"Reconnect failed: {exc}")
+        return False
+
+
+async def _start_call_segment(
+    session_id: uuid.UUID,
+    is_resume: bool,
+) -> SegmentAudioWriter | None:
+    async with async_session() as db:
+        session = await db.get(Session, session_id)
+        if session is None:
+            return None
+
+        result = await db.execute(
+            select(CallSegment.segment_number)
+            .where(CallSegment.session_id == session_id)
+            .order_by(CallSegment.segment_number.desc())
+            .limit(1)
+        )
+        last_segment_number = result.scalar_one_or_none()
+        segment_number = (last_segment_number or 0) + 1
+        segment = CallSegment(
+            session_id=session_id,
+            segment_number=segment_number,
+            started_at=datetime.now(timezone.utc),
+        )
+        db.add(segment)
+        audio_writer = SegmentAudioWriter(session_id, segment_number)
+
+        if is_resume:
+            sequence = await get_next_sequence(session_id, db)
+            marker = TranscriptEntry(
+                session_id=session_id,
+                text=f"--- Session Resumed (Call {segment_number}) ---",
+                sequence=sequence,
+            )
+            db.add(marker)
+
+        if session.state in ("pre_call", "completed"):
+            session.state = "active"
+            if not session.started_at:
+                session.started_at = datetime.now(timezone.utc)
+            session.ended_at = None
+
+        await db.commit()
+        return audio_writer
 
 
 async def _finalize_call(
@@ -389,29 +472,6 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
 
     audio_writer: SegmentAudioWriter | None = None
 
-    async def reconnect_orchestrator():
-        """Reconnect the audio gateway through the orchestrator."""
-        # Flush remaining diarized audio
-        for seg in await asyncio.to_thread(flush_diarizer_segments, diarizer):
-            transcription_queue.add(seg.speaker_id, seg.pcm_bytes)
-        diarizer.reset()
-        if sys_diarizer is not None:
-            for seg in await asyncio.to_thread(flush_diarizer_segments, sys_diarizer):
-                transcription_queue.add(f"sys_{seg.speaker_id}", seg.pcm_bytes)
-            sys_diarizer.reset()
-
-        try:
-            success = await orchestrator._reconnect_gateway()
-            if success:
-                await websocket.send_json({
-                    "type": "status",
-                    "data": {"state": "active", "message": "Reconnected to AI"}
-                })
-            return success
-        except Exception as e:
-            logger.error(f"Reconnect failed: {e}")
-            return False
-
     try:
         await websocket.send_json({"type": "status", "data": {"state": "connecting", "message": "Connecting to AI agents..."}})
         await orchestrator.start()
@@ -422,43 +482,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         )
         await websocket.send_json({"type": "status", "data": {"state": "active", "message": active_message}})
 
-        # Create a new call segment
-        async with async_session() as db:
-            session = await db.get(Session, session_id)
-            if session:
-                # Determine segment number
-                result = await db.execute(
-                    select(CallSegment.segment_number)
-                    .where(CallSegment.session_id == session_id)
-                    .order_by(CallSegment.segment_number.desc())
-                    .limit(1)
-                )
-                last_seg = result.scalar_one_or_none()
-                seg_num = (last_seg or 0) + 1
-
-                segment = CallSegment(
-                    session_id=session_id,
-                    segment_number=seg_num,
-                    started_at=datetime.now(timezone.utc),
-                )
-                db.add(segment)
-                audio_writer = SegmentAudioWriter(session_id, seg_num)
-
-                if is_resume:
-                    seq = await get_next_sequence(session_id, db)
-                    marker = TranscriptEntry(
-                        session_id=session_id,
-                        text=f"--- Session Resumed (Call {seg_num}) ---",
-                        sequence=seq,
-                    )
-                    db.add(marker)
-
-                if session.state in ("pre_call", "completed"):
-                    session.state = "active"
-                    if not session.started_at:
-                        session.started_at = datetime.now(timezone.utc)
-                    session.ended_at = None
-                await db.commit()
+        audio_writer = await _start_call_segment(session_id, is_resume)
 
         while not stopped:
             try:
@@ -468,15 +492,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                 break
 
             if "bytes" in message:
-                raw_frame = message["bytes"]
-                # 1-byte track prefix (0=mic, 1=system). PCM16 is even-length,
-                # so an odd frame is prefixed; even frames are legacy mic audio.
-                if len(raw_frame) % 2 == 1:
-                    track = raw_frame[0] if raw_frame[0] in (0, 1) else 0
-                    pcm_data = raw_frame[1:]
-                else:
-                    track = 0
-                    pcm_data = raw_frame
+                track, pcm_data = _decode_audio_frame(message["bytes"])
                 try:
                     audio_chunks_received += 1
                     audio_bytes_received += len(pcm_data)
@@ -543,7 +559,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
 
                 except Exception as e:
                     logger.warning(f"Audio send failed, reconnecting: {e}")
-                    if not await reconnect_orchestrator():
+                    if not await _reconnect_audio_pipeline(websocket, diarizer, sys_diarizer, transcription_queue, orchestrator):
                         break
 
             elif "text" in message:
@@ -562,7 +578,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
 
             # Check audio gateway health
             if not await orchestrator.check_health():
-                if not await reconnect_orchestrator():
+                if not await _reconnect_audio_pipeline(websocket, diarizer, sys_diarizer, transcription_queue, orchestrator):
                     break
 
     except Exception as e:
