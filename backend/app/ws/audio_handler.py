@@ -116,6 +116,38 @@ async def _flush_remaining_audio(
             pass
 
 
+async def _reconnect_audio_pipeline(
+    websocket: WebSocket,
+    diarizer: Any,
+    sys_diarizer: Any | None,
+    transcription_queue: OrderedTranscriptionQueue,
+    orchestrator: AgentOrchestrator,
+) -> bool:
+    for seg in await asyncio.to_thread(flush_diarizer_segments, diarizer):
+        transcription_queue.add(seg.speaker_id, seg.pcm_bytes)
+    diarizer.reset()
+    if sys_diarizer is not None:
+        for seg in await asyncio.to_thread(flush_diarizer_segments, sys_diarizer):
+            transcription_queue.add(f"sys_{seg.speaker_id}", seg.pcm_bytes)
+        sys_diarizer.reset()
+    try:
+        success = await orchestrator._reconnect_gateway()
+        if success:
+            await websocket.send_json(
+                {
+                    "type": "status",
+                    "data": {
+                        "state": "active",
+                        "message": "Reconnected to AI",
+                    },
+                }
+            )
+        return success
+    except Exception as exc:
+        logger.error(f"Reconnect failed: {exc}")
+        return False
+
+
 async def _finalize_call(
     session_id: uuid.UUID,
     websocket: WebSocket,
@@ -396,29 +428,6 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
 
     audio_writer: SegmentAudioWriter | None = None
 
-    async def reconnect_orchestrator():
-        """Reconnect the audio gateway through the orchestrator."""
-        # Flush remaining diarized audio
-        for seg in await asyncio.to_thread(flush_diarizer_segments, diarizer):
-            transcription_queue.add(seg.speaker_id, seg.pcm_bytes)
-        diarizer.reset()
-        if sys_diarizer is not None:
-            for seg in await asyncio.to_thread(flush_diarizer_segments, sys_diarizer):
-                transcription_queue.add(f"sys_{seg.speaker_id}", seg.pcm_bytes)
-            sys_diarizer.reset()
-
-        try:
-            success = await orchestrator._reconnect_gateway()
-            if success:
-                await websocket.send_json({
-                    "type": "status",
-                    "data": {"state": "active", "message": "Reconnected to AI"}
-                })
-            return success
-        except Exception as e:
-            logger.error(f"Reconnect failed: {e}")
-            return False
-
     try:
         await websocket.send_json({"type": "status", "data": {"state": "connecting", "message": "Connecting to AI agents..."}})
         await orchestrator.start()
@@ -542,7 +551,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
 
                 except Exception as e:
                     logger.warning(f"Audio send failed, reconnecting: {e}")
-                    if not await reconnect_orchestrator():
+                    if not await _reconnect_audio_pipeline(websocket, diarizer, sys_diarizer, transcription_queue, orchestrator):
                         break
 
             elif "text" in message:
@@ -561,7 +570,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
 
             # Check audio gateway health
             if not await orchestrator.check_health():
-                if not await reconnect_orchestrator():
+                if not await _reconnect_audio_pipeline(websocket, diarizer, sys_diarizer, transcription_queue, orchestrator):
                     break
 
     except Exception as e:
