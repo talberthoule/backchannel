@@ -40,24 +40,45 @@ function validUserRecord(record, email) {
     && validTime(record.revoked_at)
     && Number.isInteger(record.active_session_count)
     && record.active_session_count >= 0
-    && validTime(record.latest_session_expires_at);
+    && validTime(record.latest_session_expires_at)
+    && (record.state === 'active' ? record.revoked_at === null : validTime(record.revoked_at, false))
+    && (record.must_change_password
+      ? validTime(record.password_expires_at, false) && record.password_changed_at === null
+      : record.password_expires_at === null && validTime(record.password_changed_at, false))
+    && (record.active_session_count === 0
+      ? record.latest_session_expires_at === null
+      : validTime(record.latest_session_expires_at, false))
+    && (record.state === 'active' || record.active_session_count === 0);
 }
 
-function commandResult(action, value, email) {
-  if (value?.ok !== true || !validUserRecord(value.item, email)) throw new Error('invalid response');
+function preserves(record, current, fields) {
+  return fields.every((field) => Object.is(record[field], current[field]));
+}
+
+function commandResult(action, value, current) {
+  const email = current?.email;
+  if (value?.ok !== true || !validUserRecord(value.item, email)
+    || !preserves(value.item, current, ['email', 'source', 'requested_at', 'approved_at'])) {
+    throw new Error('invalid response');
+  }
   const { item } = value;
   if (action === 'reset-password') {
     const credential = value.credential;
-    if (item.state !== 'active' || !item.must_change_password
+    if (item.state !== 'active' || item.revoked_at !== null || !item.must_change_password
+      || item.password_changed_at !== null || Date.parse(item.password_expires_at) <= Date.now()
       || item.active_session_count !== 0 || item.latest_session_expires_at !== null
       || !credential || credential.email !== email
       || typeof credential.password !== 'string' || !credential.password.length
       || !validTime(credential.password_expires_at, false)
       || credential.password_expires_at !== item.password_expires_at) throw new Error('invalid response');
   } else if (action === 'sign-out') {
-    if (item.state !== 'active' || item.active_session_count !== 0
+    if (!preserves(item, current, [
+      'state', 'revoked_at', 'must_change_password', 'password_expires_at', 'password_changed_at',
+    ]) || item.state !== 'active' || item.active_session_count !== 0
       || item.latest_session_expires_at !== null) throw new Error('invalid response');
-  } else if (item.state !== 'revoked' || !validTime(item.revoked_at, false)
+  } else if (!preserves(item, current, [
+    'must_change_password', 'password_expires_at', 'password_changed_at',
+  ]) || item.state !== 'revoked' || !validTime(item.revoked_at, false)
     || item.active_session_count !== 0 || item.latest_session_expires_at !== null) {
     throw new Error('invalid response');
   }
@@ -84,6 +105,7 @@ export function mount({ document, fetcher, shell, dialogs }) {
   let selectedEmail = null;
   let searchQuery = '';
   let commandPending = false;
+  let refreshGeneration = 0;
 
   async function runCommand(record, action, button) {
     if (commandPending || record.state !== 'active') return;
@@ -104,13 +126,17 @@ export function mount({ document, fetcher, shell, dialogs }) {
     if (!confirmed) return;
 
     commandPending = true;
+    refreshGeneration += 1;
+    shell.content.removeAttribute('aria-busy');
     const actionButtons = button.parentNode.querySelectorAll('button');
     for (const actionButton of actionButtons) actionButton.disabled = true;
     shell.status.textContent = `${label} in progress for ${record.email}.`;
     try {
-      const value = commandResult(action, await jsonRequest(
+      const response = await jsonRequest(
         `${endpoint}/${action}`, 'POST', { email: record.email }, fetcher,
-      ), record.email);
+      );
+      const current = items.find(({ email }) => email === record.email);
+      const value = commandResult(action, response, current);
       items = replaceByEmail(items, value.item);
       selectedEmail = record.email;
       const returnFocus = render(action);
@@ -312,12 +338,15 @@ export function mount({ document, fetcher, shell, dialogs }) {
   }
 
   async function refresh() {
+    if (commandPending) return;
+    const generation = ++refreshGeneration;
     shell.content.setAttribute('aria-busy', 'true');
     shell.count.textContent = '-';
     shell.status.textContent = 'Loading users.';
     state('Loading users.');
     try {
       const value = await jsonRequest(endpoint, undefined, undefined, fetcher);
+      if (generation !== refreshGeneration) return;
       if (!Array.isArray(value.items)) throw new Error('invalid response');
       items = value.items;
       selectedEmail = null;
@@ -329,6 +358,7 @@ export function mount({ document, fetcher, shell, dialogs }) {
         ? 'Loaded 1 user.'
         : `Loaded ${formatCount(items.length)} users.`;
     } catch {
+      if (generation !== refreshGeneration) return;
       items = [];
       selectedEmail = null;
       searchQuery = '';
@@ -336,7 +366,7 @@ export function mount({ document, fetcher, shell, dialogs }) {
       shell.status.textContent = 'Users could not be loaded.';
       state('Users could not be loaded. Try again.', true);
     } finally {
-      shell.content.removeAttribute('aria-busy');
+      if (generation === refreshGeneration) shell.content.removeAttribute('aria-busy');
     }
   }
 

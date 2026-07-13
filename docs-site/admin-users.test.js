@@ -135,12 +135,27 @@ test('Users searches normalized email and owns complete identity and security de
   assert.equal(route.shell.content.querySelectorAll('.list-detail')[0].dataset.view, 'detail');
   assert.equal(route.document.activeElement.name, 'h2');
   assert.equal(route.document.activeElement.textContent, user.email);
-  const detail = textOf(route.shell.content.querySelectorAll('.detail-pane')[0]);
+  const pane = route.shell.content.querySelectorAll('.detail-pane')[0];
+  const detail = textOf(pane);
   for (const label of [
     'Identity', 'State', 'Source', 'Requested', 'Approved', 'Revoked',
     'Security', 'Password', 'Temporary expiry', 'Password changed',
     'Active sessions', 'Latest session expiry',
   ]) assert.match(detail, new RegExp(label));
+  const fields = pane.querySelectorAll('.detail-field');
+  assert.equal(textOf(fields[0]), 'Stateactive');
+  assert.equal(textOf(fields[1]), 'Sourcehomepage');
+  assert.equal(textOf(fields[5]), 'PasswordPermanent');
+  assert.equal(textOf(fields[8]), 'Active sessions2');
+  assert.deepEqual(
+    pane.querySelectorAll('time').map(({ dateTime }) => dateTime),
+    [
+      user.requested_at,
+      user.approved_at,
+      user.password_changed_at,
+      user.latest_session_expires_at,
+    ],
+  );
   for (const label of ['Reset password', 'Sign out all sessions', 'Revoke']) {
     assert.ok(buttonNamed(route.shell.content, label), label);
   }
@@ -271,6 +286,82 @@ test('one Users command runs at a time and failure restores every command', asyn
   assert.equal(route.shell.content.querySelectorAll('.list-detail')[0].dataset.view, 'detail');
 });
 
+test('a command result wins when it completes before an older refresh', async () => {
+  const staleRefresh = deferred();
+  const commandResponse = deferred();
+  let reads = 0;
+  const route = harness((call) => {
+    if (call.method === 'GET') return reads++ === 0
+      ? jsonResponse({ items: [user] })
+      : staleRefresh.promise;
+    return commandResponse.promise;
+  });
+  await openUser(route);
+  const resetting = buttonNamed(route.shell.content, 'Reset password').click();
+  const refreshing = route.mounted.refresh();
+  await route.document.getElementById('confirm-submit').click();
+
+  commandResponse.resolve(jsonResponse({ ok: true, item: resetItem, credential }));
+  await resetting;
+  assert.match(route.shell.status.textContent, /Reset the password/);
+  staleRefresh.resolve(jsonResponse({ items: [user] }));
+  await refreshing;
+
+  assert.equal(route.calls.length, 3);
+  assert.match(route.shell.status.textContent, /Reset the password/);
+  assert.match(textOf(route.shell.content), /Temporary/);
+  assert.doesNotMatch(textOf(route.shell.content), /Permanent/);
+  assert.equal(route.document.getElementById('credential-dialog').open, true);
+});
+
+test('an older refresh error cannot replace pending state when it completes before the command', async () => {
+  const staleRefresh = deferred();
+  const commandResponse = deferred();
+  let reads = 0;
+  const route = harness((call) => {
+    if (call.method === 'GET') return reads++ === 0
+      ? jsonResponse({ items: [user] })
+      : staleRefresh.promise;
+    return commandResponse.promise;
+  });
+  await openUser(route);
+  const resetting = buttonNamed(route.shell.content, 'Reset password').click();
+  const refreshing = route.mounted.refresh();
+  await route.document.getElementById('confirm-submit').click();
+  assert.match(route.shell.status.textContent, /in progress/);
+
+  staleRefresh.resolve(jsonResponse({}, { ok: false }));
+  await refreshing;
+  assert.match(route.shell.status.textContent, /in progress/);
+  assert.doesNotMatch(textOf(route.shell.content), /could not be loaded|Retry/);
+
+  commandResponse.resolve(jsonResponse({ ok: true, item: resetItem, credential }));
+  await resetting;
+  assert.match(route.shell.status.textContent, /Reset the password/);
+  assert.match(textOf(route.shell.content), /Temporary/);
+});
+
+test('Refresh performs no GET or rerender while a command is pending', async () => {
+  const commandResponse = deferred();
+  const route = harness((call) => call.method === 'GET'
+    ? jsonResponse({ items: [user] })
+    : commandResponse.promise);
+  await openUser(route);
+  const reset = buttonNamed(route.shell.content, 'Reset password');
+  const resetting = reset.click();
+  await route.document.getElementById('confirm-submit').click();
+  const status = route.shell.status.textContent;
+
+  await route.mounted.refresh();
+  assert.equal(route.calls.length, 2);
+  assert.equal(route.shell.status.textContent, status);
+  assert.equal(reset.isConnected, true);
+  assert.equal(reset.disabled, true);
+
+  commandResponse.resolve(jsonResponse({ ok: true, item: resetItem, credential }));
+  await resetting;
+});
+
 test('malformed command success bodies do not patch state or expose credentials', async () => {
   const revoked = {
     ...user,
@@ -283,12 +374,35 @@ test('malformed command success bodies do not patch state or expose credentials'
     ['Reset password', { ok: false, item: resetItem, credential }],
     ['Reset password', { ok: true, item: { ...resetItem, email: 'other@example.com' }, credential }],
     ['Reset password', { ok: true, item: { ...resetItem, active_session_count: 1 }, credential }],
+    ['Reset password', { ok: true, item: { ...resetItem, source: 'changed' }, credential }],
+    ['Reset password', { ok: true, item: { ...resetItem, requested_at: '2026-07-10T12:00:00.000Z' }, credential }],
+    ['Reset password', { ok: true, item: { ...resetItem, approved_at: '2026-07-10T12:00:00.000Z' }, credential }],
+    ['Reset password', { ok: true, item: { ...resetItem, revoked_at: '2026-07-13T12:30:00.000Z' }, credential }],
+    ['Reset password', { ok: true, item: { ...resetItem, password_changed_at: user.password_changed_at }, credential }],
+    ['Reset password', {
+      ok: true,
+      item: { ...resetItem, password_expires_at: '2000-01-01T00:00:00.000Z' },
+      credential: { ...credential, password_expires_at: '2000-01-01T00:00:00.000Z' },
+    }],
     ['Reset password', { ok: true, item: resetItem, credential: { ...credential, password: '' } }],
     ['Reset password', { ok: true, item: resetItem, credential: { ...credential, password_expires_at: 'not-a-date' } }],
     ['Sign out all sessions', { ok: true, item: { ...user, active_session_count: 1 } }],
+    ['Sign out all sessions', { ok: true, item: { ...user, active_session_count: 0 } }],
     ['Sign out all sessions', { ok: true, item: { ...user, state: 'revoked', active_session_count: 0 } }],
+    ['Sign out all sessions', { ok: true, item: {
+      ...user, must_change_password: true, password_expires_at: resetItem.password_expires_at,
+      password_changed_at: null, active_session_count: 0, latest_session_expires_at: null,
+    } }],
+    ['Sign out all sessions', { ok: true, item: {
+      ...user, source: 'changed', active_session_count: 0, latest_session_expires_at: null,
+    } }],
     ['Revoke', { ok: true, item: { ...revoked, state: 'active' } }],
     ['Revoke', { ok: true, item: { ...revoked, revoked_at: null } }],
+    ['Revoke', { ok: true, item: { ...revoked, source: 'changed' } }],
+    ['Revoke', { ok: true, item: {
+      ...revoked, must_change_password: true, password_expires_at: resetItem.password_expires_at,
+      password_changed_at: null,
+    } }],
   ];
 
   for (const [label, value] of cases) {
@@ -310,16 +424,34 @@ test('malformed command success bodies do not patch state or expose credentials'
 });
 
 test('revoked users expose identity and security history without any command path', async () => {
-  const route = harness(() => jsonResponse({ items: [{
+  const revoked = {
     ...user,
     state: 'revoked',
     revoked_at: '2026-07-13T12:30:00.000Z',
     active_session_count: 0,
     latest_session_expires_at: null,
-  }] }));
+  };
+  const route = harness(() => jsonResponse({ items: [revoked] }));
   await openUser(route);
-  const detail = textOf(route.shell.content.querySelectorAll('.detail-pane')[0]);
-  assert.match(detail, /Identity|Security/);
+  const pane = route.shell.content.querySelectorAll('.detail-pane')[0];
+  const detail = textOf(pane);
+  assert.match(detail, /Identity/);
+  assert.match(detail, /Security/);
+  const fields = pane.querySelectorAll('.detail-field');
+  assert.equal(textOf(fields[0]), 'Staterevoked');
+  assert.equal(textOf(fields[1]), 'Sourcehomepage');
+  assert.equal(textOf(fields[5]), 'PasswordPermanent');
+  assert.equal(textOf(fields[8]), 'Active sessions0');
+  assert.equal(textOf(fields[9]), 'Latest session expiryNo active sessions');
+  assert.deepEqual(
+    pane.querySelectorAll('time').map(({ dateTime }) => dateTime),
+    [
+      revoked.requested_at,
+      revoked.approved_at,
+      revoked.revoked_at,
+      revoked.password_changed_at,
+    ],
+  );
   for (const command of ['Reset password', 'Sign out all sessions', 'Revoke', 'Reactivate']) {
     assert.equal(buttonNamed(route.shell.content, command), undefined);
   }
