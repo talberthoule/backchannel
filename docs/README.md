@@ -15,10 +15,12 @@ This folder is the deeper technical reference behind the top-level
 
 For desktop operations, [Releasing](releasing.md) and the private R2 manifests
 are authoritative. GitHub releases retain public source tags and notes without
-executable files. The Cloudflare Access-protected admin API provides interest
-review plus approval, rejection, grant, password-reset, and revocation
-mutations. Recipient accounts, grants, sessions, and access events live in D1,
-not the local application's PostgreSQL database.
+executable files. The Cloudflare Access-protected operator console separates
+Early access request/consent approval and rejection, Users identity/security
+commands, and Authorization Latest/explicit-version grants. Authorization is
+stored in `release_access_policies` plus `release_account_versions`; the old
+`/api/admin/access/*` routes are removed. Recipient accounts, grants, sessions,
+and access events live in D1, not the local application's PostgreSQL database.
 
 ## Contents
 
@@ -51,5 +53,6 @@ npm run test:worker
 npm run test:admin
 npm run test:download
 npm run test:site
+node --test *.test.js
 npm run build
 ```

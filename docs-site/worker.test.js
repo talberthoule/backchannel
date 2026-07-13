@@ -65,9 +65,6 @@ const interestRecord = {
   last_contacted_at: null,
   release_decision: 'pending',
   release_reviewed_at: null,
-  account_state: null,
-  include_latest: null,
-  versions: [],
 };
 
 const interestMigration = readFileSync(
@@ -76,12 +73,16 @@ const interestMigration = readFileSync(
 const releaseMigration = readFileSync(
   new URL('./migrations/0002_release_access.sql', import.meta.url), 'utf8',
 );
+const policyMigration = readFileSync(
+  new URL('./migrations/0003_release_access_policies.sql', import.meta.url), 'utf8',
+);
 
 function sqliteD1() {
   const database = new DatabaseSync(':memory:');
   database.exec('PRAGMA foreign_keys = ON');
   database.exec(interestMigration);
   database.exec(releaseMigration);
+  database.exec(policyMigration);
   const binding = {
     prepare(sql) {
       const prepared = database.prepare(sql);
@@ -110,6 +111,53 @@ function sqliteD1() {
     },
   };
   return { database, binding };
+}
+
+function sqliteReleaseBindings() {
+  const { database, binding } = sqliteD1();
+  return {
+    db: database,
+    env: {
+      ADMIN_EMAIL: 'owner@example.com',
+      ACCESS_TEAM_DOMAIN: 'backchannel.cloudflareaccess.com',
+      ACCESS_AUD: 'admin-audience',
+      INTEREST_DB: binding,
+      RELEASES: adminCatalogBucket(),
+      ASSETS: { fetch: async () => new Response('private asset') },
+    },
+  };
+}
+
+function seedApprovedReleaseAccount(db, {
+  email,
+  includeLatest = 1,
+  version,
+  sessionExpiresAt,
+}) {
+  db.prepare(`
+    INSERT INTO interest_subscribers
+      (email, consent_version, release_decision, release_reviewed_at)
+    VALUES (?, '2026-07-12', 'approved', '2026-07-12T12:00:00.000Z')
+  `).run(email);
+  db.prepare(`
+    INSERT INTO release_accounts
+      (email, state, password_hash, password_salt, must_change_password,
+       password_expires_at, approved_at)
+    VALUES (?, 'active', 'hash', 'salt', 1,
+      '2026-07-15T12:00:00.000Z', '2026-07-12T12:00:00.000Z')
+  `).run(email);
+  db.prepare(`
+    INSERT INTO release_access_policies (email, include_latest, updated_at)
+    VALUES (?, ?, '2026-07-12T12:00:00.000Z')
+  `).run(email, includeLatest);
+  if (version) db.prepare(`
+    INSERT INTO release_account_versions (email, version) VALUES (?, ?)
+  `).run(email, version);
+  if (sessionExpiresAt) db.prepare(`
+    INSERT INTO release_sessions
+      (token_hash, email, password_change_only, created_at, expires_at)
+    VALUES ('seed-token', ?, 0, '2026-07-12T12:00:00.000Z', ?)
+  `).run(email, sessionExpiresAt);
 }
 
 function adminReleaseManifest(version) {
@@ -438,6 +486,100 @@ test('admin API selects only consent records in newest-first order', async () =>
   assert.match(calls[0].sql, /ORDER BY (?:i\.)?created_at DESC/);
 });
 
+test('separated admin read endpoints return disjoint route-specific records', async (context) => {
+  const env = sqliteReleaseBindings();
+  context.after(() => env.db.close());
+  seedApprovedReleaseAccount(env.db, {
+    email: 'person@example.com',
+    includeLatest: 1,
+    version: 'v0.2.1',
+    sessionExpiresAt: '2026-07-20T12:00:00.000Z',
+  });
+  const dependencies = { now: () => new Date('2026-07-13T12:00:00.000Z') };
+
+  const interests = await workerModule.route(
+    adminRequest('/api/admin/interests'), env.env, allowOwner, dependencies,
+  );
+  const users = await workerModule.route(
+    adminRequest('/api/admin/users'), env.env, allowOwner, dependencies,
+  );
+  const authorization = await workerModule.route(
+    adminRequest('/api/admin/authorization'), env.env, allowOwner, dependencies,
+  );
+
+  const interestItem = (await interests.json()).items[0];
+  const userItem = (await users.json()).items[0];
+  const authorizationItem = (await authorization.json()).items[0];
+
+  assert.deepEqual(Object.keys(interestItem).sort(), [
+    'consent_at', 'consent_version', 'created_at', 'email', 'invited_at',
+    'last_contacted_at', 'release_decision', 'release_reviewed_at', 'source', 'status',
+  ]);
+  assert.deepEqual(Object.keys(userItem).sort(), [
+    'active_session_count', 'approved_at', 'email', 'latest_session_expires_at',
+    'must_change_password', 'password_changed_at', 'password_expires_at',
+    'requested_at', 'revoked_at', 'source', 'state',
+  ]);
+  assert.equal(userItem.must_change_password, true);
+  assert.deepEqual(Object.keys(authorizationItem).sort(), [
+    'account_state', 'email', 'include_latest', 'updated_at', 'versions',
+  ]);
+  assert.equal(authorizationItem.include_latest, true);
+  assert.deepEqual(authorizationItem.versions, ['v0.2.1']);
+});
+
+test('admin authorization rejects malformed versions rows generically', async () => {
+  const { env } = adminBindings({
+    all: async () => ({ results: [{
+      email: 'person@example.com',
+      account_state: 'active',
+      include_latest: 1,
+      updated_at: '2026-07-12T12:00:00.000Z',
+      versions: ['v0.2.1'],
+    }] }),
+  });
+
+  const response = await workerModule.route(
+    adminRequest('/api/admin/authorization'), env, allowOwner,
+  );
+
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    ok: false,
+    message: 'Request could not be completed.',
+  });
+});
+
+test('worker has no active release_accounts Latest references', () => {
+  const source = readFileSync(new URL('./worker.js', import.meta.url), 'utf8');
+  for (const forbidden of [
+    /a\.include_latest/,
+    /account\.include_latest/,
+    /UPDATE release_accounts SET include_latest/i,
+    /INSERT INTO release_accounts\s*\([^)]*\binclude_latest\b/i,
+  ]) assert.doesNotMatch(source, forbidden);
+});
+
+test('admin read endpoints authorize before D1 reads', async () => {
+  let d1Calls = 0;
+  const env = {
+    ...adminBindings().env,
+    INTEREST_DB: {
+      prepare() {
+        d1Calls += 1;
+        throw new Error('D1 must not be reached');
+      },
+    },
+  };
+  const denyOwner = async () => ({ email: 'other@example.com' });
+
+  for (const path of ['/api/admin/users', '/api/admin/authorization']) {
+    const response = await workerModule.route(adminRequest(path), env, denyOwner);
+    assert.equal(response.status, 403);
+  }
+  assert.equal(d1Calls, 0);
+});
+
 function adminJson(path, body, init = {}) {
   return adminRequest(path, {
     method: init.method || 'POST',
@@ -456,10 +598,170 @@ const fixedDependencies = {
   randomBytes: (length) => new Uint8Array(length),
 };
 
+test('approval creates identity and default Latest policy without grant input', async (context) => {
+  const bindings = sqliteReleaseBindings();
+  context.after(() => bindings.db.close());
+  bindings.db.prepare(`
+    INSERT INTO interest_subscribers (email, consent_version)
+    VALUES ('person@example.com', '2026-07-12')
+  `).run();
+  const response = await workerModule.route(
+    adminJson('/api/admin/interests/approve', { email: ' Person@Example.com ' }),
+    bindings.env,
+    allowOwner,
+    fixedDependencies,
+  );
+  const body = await response.json();
+  assert.equal(response.status, 201);
+  assert.deepEqual(Object.keys(body.credential).sort(), [
+    'email', 'password', 'password_expires_at',
+  ]);
+  assert.deepEqual({ ...bindings.db.prepare(`
+    SELECT state, must_change_password FROM release_accounts WHERE email = ?
+  `).get('person@example.com') }, { state: 'active', must_change_password: 1 });
+  assert.equal(bindings.db.prepare(`
+    SELECT include_latest FROM release_access_policies WHERE email = ?
+  `).get('person@example.com').include_latest, 1);
+  assert.equal(bindings.db.prepare(`
+    SELECT count(*) AS count FROM release_account_versions WHERE email = ?
+  `).get('person@example.com').count, 0);
+});
+
+test('approval accepts exactly an email body', async () => {
+  let r2Calls = 0;
+  const bindings = adminBindings({
+    releases: {
+      async list() { r2Calls += 1; throw new Error('R2 must not be reached'); },
+      async get() { r2Calls += 1; throw new Error('R2 must not be reached'); },
+    },
+  });
+  const response = await workerModule.route(
+    adminJson('/api/admin/interests/approve', {
+      email: 'person@example.com',
+      include_latest: true,
+      versions: [],
+    }),
+    bindings.env,
+    allowOwner,
+    fixedDependencies,
+  );
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { ok: false, message: 'Request is invalid.' });
+  assert.equal(bindings.calls.length, 0);
+  assert.equal(bindings.batchCalls.length, 0);
+  assert.equal(r2Calls, 0);
+});
+
+test('approval rejects null and primitive bodies before D1 or R2', async () => {
+  let r2Calls = 0;
+  const releases = {
+    async list() { r2Calls += 1; throw new Error('R2 must not be reached'); },
+    async get() { r2Calls += 1; throw new Error('R2 must not be reached'); },
+  };
+
+  for (const body of ['null', '42', '"person@example.com"']) {
+    const bindings = adminBindings({ releases });
+    const response = await workerModule.route(
+      adminJson('/api/admin/interests/approve', body),
+      bindings.env,
+      allowOwner,
+      fixedDependencies,
+    );
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), {
+      ok: false,
+      message: 'Request is not valid JSON.',
+    });
+    assert.equal(bindings.calls.length, 0);
+    assert.equal(bindings.batchCalls.length, 0);
+  }
+  assert.equal(r2Calls, 0);
+});
+
+test('failed approval cannot backfill policy or emit an event', async (context) => {
+  const bindings = sqliteReleaseBindings();
+  context.after(() => bindings.db.close());
+  bindings.db.exec(`
+    INSERT INTO interest_subscribers
+      (email, consent_version, release_decision, release_reviewed_at)
+    VALUES
+      ('person@example.com', '2026-07-12', 'approved', '2026-07-12T12:00:00.000Z');
+    INSERT INTO release_accounts
+      (email, state, password_hash, password_salt, approved_at)
+    VALUES
+      ('person@example.com', 'active', 'hash', 'salt', '2026-07-12T12:00:00.000Z');
+  `);
+
+  const response = await workerModule.route(
+    adminJson('/api/admin/interests/approve', { email: 'person@example.com' }),
+    bindings.env,
+    allowOwner,
+    fixedDependencies,
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal(bindings.db.prepare(`
+    SELECT count(*) AS count FROM release_access_policies WHERE email = ?
+  `).get('person@example.com').count, 0);
+  assert.equal(bindings.db.prepare(`
+    SELECT count(*) AS count FROM release_access_events WHERE email = ?
+  `).get('person@example.com').count, 0);
+});
+
+test('sign-out deletes sessions without changing identity or authorization', async (context) => {
+  const bindings = sqliteReleaseBindings();
+  context.after(() => bindings.db.close());
+  seedApprovedReleaseAccount(bindings.db, {
+    email: 'person@example.com',
+    includeLatest: 0,
+    version: 'v0.2.1',
+    sessionExpiresAt: '2026-07-20T12:00:00.000Z',
+  });
+  const accountBefore = bindings.db.prepare(`
+    SELECT state, password_hash, password_salt FROM release_accounts WHERE email = ?
+  `).get('person@example.com');
+  const policyBefore = bindings.db.prepare(`
+    SELECT include_latest FROM release_access_policies WHERE email = ?
+  `).get('person@example.com');
+  const response = await workerModule.route(
+    adminJson('/api/admin/users/sign-out', { email: 'person@example.com' }),
+    bindings.env,
+    allowOwner,
+    fixedDependencies,
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.ok, true);
+  assert.deepEqual(Object.keys(body.item).sort(), [
+    'active_session_count', 'approved_at', 'email', 'latest_session_expires_at',
+    'must_change_password', 'password_changed_at', 'password_expires_at',
+    'requested_at', 'revoked_at', 'source', 'state',
+  ]);
+  assert.equal(body.item.active_session_count, 0);
+  assert.equal(bindings.db.prepare(`
+    SELECT count(*) AS count FROM release_sessions WHERE email = ?
+  `).get('person@example.com').count, 0);
+  assert.deepEqual(bindings.db.prepare(`
+    SELECT state, password_hash, password_salt FROM release_accounts WHERE email = ?
+  `).get('person@example.com'), accountBefore);
+  assert.deepEqual(bindings.db.prepare(`
+    SELECT include_latest FROM release_access_policies WHERE email = ?
+  `).get('person@example.com'), policyBefore);
+  assert.equal(bindings.db.prepare(`
+    SELECT count(*) AS count FROM release_account_versions WHERE email = ?
+  `).get('person@example.com').count, 1);
+  assert.equal(bindings.db.prepare(`
+    SELECT count(*) AS count FROM release_access_events
+    WHERE email = ? AND action = 'session_sign_out'
+  `).get('person@example.com').count, 1);
+});
+
 test('admin authorization runs before mutation body parsing', async () => {
   const { env, calls } = adminBindings();
   const response = await workerModule.route(
-    adminJson('/api/admin/access/approve', '{'),
+    adminJson('/api/admin/interests/approve', '{'),
     env,
     async () => ({ email: 'other@example.com' }),
     fixedDependencies,
@@ -470,13 +772,13 @@ test('admin authorization runs before mutation body parsing', async () => {
 
 test('admin mutations enforce exact origin, JSON media type, and bounded bodies', async () => {
   const cases = [
-    [adminJson('/api/admin/access/reject', { email: 'person@example.com' }, {
+    [adminJson('/api/admin/interests/reject', { email: 'person@example.com' }, {
       headers: { origin: 'https://attacker.example' },
     }), 403],
-    [adminJson('/api/admin/access/reject', { email: 'person@example.com' }, {
+    [adminJson('/api/admin/interests/reject', { email: 'person@example.com' }, {
       headers: { 'content-type': 'text/plain' },
     }), 415],
-    [adminJson('/api/admin/access/reject', 'x'.repeat(8193)), 413],
+    [adminJson('/api/admin/interests/reject', 'x'.repeat(8193)), 413],
   ];
   for (const [requestValue, expected] of cases) {
     const { env, calls } = adminBindings();
@@ -489,10 +791,8 @@ test('admin mutations enforce exact origin, JSON media type, and bounded bodies'
 
 test('approval normalizes input and creates a one-time credential without binding plaintext', async () => {
   const { env, calls, batchCalls } = adminBindings();
-  const response = await workerModule.route(adminJson('/api/admin/access/approve', {
+  const response = await workerModule.route(adminJson('/api/admin/interests/approve', {
     email: ' Person@Example.com ',
-    include_latest: true,
-    versions: ['v0.2.0', 'v0.1.1'],
   }), env, allowOwner, fixedDependencies);
 
   assert.equal(response.status, 201);
@@ -501,49 +801,25 @@ test('approval normalizes input and creates a one-time credential without bindin
     email: 'person@example.com',
     password: undefined,
     password_expires_at: '2026-07-15T12:00:00.000Z',
-    include_latest: true,
-    versions: ['v0.2.0', 'v0.1.1'],
   });
   assert.equal(credential.password.length, 20);
   assert.equal(batchCalls.length, 1);
   const batchSql = calls.map(({ sql }) => sql);
   assert.match(batchSql[0], /INSERT INTO release_accounts[\s\S]+SELECT[\s\S]+WHERE EXISTS/i);
-  assert.match(batchSql[1], /INSERT INTO release_account_versions/i);
-  assert.match(batchSql[2], /INSERT INTO release_account_versions/i);
-  for (const grantSql of batchSql.slice(1, 3)) {
-    assert.match(grantSql, /INSERT INTO release_account_versions[\s\S]+SELECT[\s\S]+WHERE EXISTS/i);
-    assert.match(grantSql, /release_accounts[\s\S]+state = 'active'/i);
-    assert.match(grantSql, /interest_subscribers/i);
-  }
-  assert.match(batchSql[3], /UPDATE interest_subscribers/i);
-  assert.match(batchSql[4], /INSERT INTO release_access_events/i);
-  assert.match(batchSql[4], /WHERE EXISTS[\s\S]+release_accounts/i);
+  assert.doesNotMatch(batchSql[0], /include_latest|release_account_versions/i);
+  assert.match(batchSql[1], /UPDATE interest_subscribers[\s\S]+changes\(\)\s*=\s*1/i);
+  assert.match(batchSql[2], /INSERT INTO release_access_policies[\s\S]+changes\(\)\s*=\s*1/i);
+  assert.match(batchSql[3], /INSERT INTO release_access_events[\s\S]+changes\(\)\s*=\s*1/i);
   assert.equal(JSON.stringify(calls.map(({ values }) => values)).includes(credential.password), false);
   assert.ok(calls.flatMap(({ values }) => values).includes('person@example.com'));
-});
-
-test('approval with explicit versions cannot create orphan grants when interest is absent', async () => {
-  const absent = adminBindings({
-    batch: async (statements) => statements.map((_, index) => ({
-      success: true,
-      meta: { changes: index === 0 ? 0 : 1 },
-    })),
-  });
-  const absentResponse = await workerModule.route(adminJson('/api/admin/access/approve', {
-    email: 'missing@example.com', include_latest: true, versions: ['v1.2.3'],
-  }), absent.env, allowOwner, fixedDependencies);
-  assert.ok([404, 409].includes(absentResponse.status));
-  assert.doesNotMatch(await absentResponse.text(), /missing@example|password/i);
-  assert.match(absent.calls[1].sql, /INSERT INTO release_account_versions[\s\S]+WHERE EXISTS/i);
-  assert.match(absent.calls[1].sql, /release_accounts[\s\S]+interest_subscribers/i);
 });
 
 test('approval fails generically when a concurrent account wins', async () => {
   const duplicate = adminBindings({
     batch: async () => { throw new Error('UNIQUE release_accounts.email'); },
   });
-  const duplicateResponse = await workerModule.route(adminJson('/api/admin/access/approve', {
-    email: 'person@example.com', include_latest: true, versions: [],
+  const duplicateResponse = await workerModule.route(adminJson('/api/admin/interests/approve', {
+    email: 'person@example.com',
   }), duplicate.env, allowOwner, fixedDependencies);
   assert.equal(duplicateResponse.status, 409);
   assert.doesNotMatch(await duplicateResponse.text(), /UNIQUE|person@example|password/i);
@@ -558,7 +834,10 @@ test('admin entitlement input requires a boolean and unique strict versions', as
   for (const body of invalidBodies) {
     const { env, calls } = adminBindings();
     const response = await workerModule.route(
-      adminJson('/api/admin/access/approve', body), env, allowOwner, fixedDependencies,
+      adminJson('/api/admin/authorization/grants', body, { method: 'PUT' }),
+      env,
+      allowOwner,
+      fixedDependencies,
     );
     assert.equal(response.status, 400);
     assert.equal(calls.length, 0);
@@ -568,9 +847,9 @@ test('admin entitlement input requires a boolean and unique strict versions', as
 test('admin entitlement input rejects more than 100 unique canonical versions', async () => {
   const { env, calls } = adminBindings();
   const versions = Array.from({ length: 101 }, (_, index) => `v1.2.${index}`);
-  const response = await workerModule.route(adminJson('/api/admin/access/approve', {
+  const response = await workerModule.route(adminJson('/api/admin/authorization/grants', {
     email: 'person@example.com', include_latest: true, versions,
-  }), env, allowOwner, fixedDependencies);
+  }, { method: 'PUT' }), env, allowOwner, fixedDependencies);
   assert.equal(new Set(versions).size, 101);
   assert.equal(response.status, 400);
   assert.equal(calls.length, 0);
@@ -583,17 +862,16 @@ test('admin entitlement input enforces the 32-character canonical version bounda
   assert.equal(rejected.length, 33);
 
   const invalid = adminBindings();
-  const response = await workerModule.route(adminJson('/api/admin/access/approve', {
+  const response = await workerModule.route(adminJson('/api/admin/authorization/grants', {
     email: 'person@example.com', include_latest: true, versions: [rejected],
-  }), invalid.env, allowOwner, fixedDependencies);
+  }, { method: 'PUT' }), invalid.env, allowOwner, fixedDependencies);
   assert.equal(response.status, 400);
   assert.equal(invalid.calls.length, 0);
 });
 
-test('approval and grant replacement validate the trusted catalog before D1 mutation', async () => {
+test('grant replacement validates the trusted catalog before D1 mutation', async () => {
   for (const [path, method] of [
-    ['/api/admin/access/approve', 'POST'],
-    ['/api/admin/access/grants', 'PUT'],
+    ['/api/admin/authorization/grants', 'PUT'],
   ]) {
     const unpublished = adminBindings({ releases: adminCatalogBucket(['v1.2.3']) });
     const unpublishedResponse = await workerModule.route(adminJson(path, {
@@ -635,14 +913,21 @@ test('approval and grant replacement validate the trusted catalog before D1 muta
   }
 });
 
-test('rejection preserves consent and never creates an account', async () => {
-  const { env, calls, batchCalls } = adminBindings();
-  const response = await workerModule.route(adminJson('/api/admin/access/reject', {
+test('interest and user mutations return a route-specific rejection item', async () => {
+  const rejectedItem = {
+    ...interestRecord,
+    email: 'person@example.com',
+    release_decision: 'rejected',
+    release_reviewed_at: '2026-07-12T12:00:00.000Z',
+  };
+  const { env, calls, batchCalls } = adminBindings({ first: async () => rejectedItem });
+  const response = await workerModule.route(adminJson('/api/admin/interests/reject', {
     email: ' Person@Example.com ',
   }), env, allowOwner, fixedDependencies);
   assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true, item: rejectedItem });
   assert.equal(batchCalls.length, 1);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.match(calls[0].sql, /UPDATE interest_subscribers[\s\S]+release_decision/i);
   assert.match(calls[0].sql, /release_decision\s*=\s*'pending'/i);
   assert.match(calls[0].sql, /NOT EXISTS[\s\S]+release_accounts/i);
@@ -656,7 +941,7 @@ test('rejection preserves consent and never creates an account', async () => {
   const conflict = adminBindings({
     batch: async (statements) => statements.map(() => ({ success: true, meta: { changes: 0 } })),
   });
-  const conflictResponse = await workerModule.route(adminJson('/api/admin/access/reject', {
+  const conflictResponse = await workerModule.route(adminJson('/api/admin/interests/reject', {
     email: 'person@example.com',
   }), conflict.env, allowOwner, fixedDependencies);
   assert.equal(conflictResponse.status, 409);
@@ -678,7 +963,7 @@ test('same-timestamp rejection retry cannot emit a second event in real SQLite',
     ACCESS_AUD: 'admin-audience',
     INTEREST_DB: binding,
   };
-  const rejectRequest = () => adminJson('/api/admin/access/reject', {
+  const rejectRequest = () => adminJson('/api/admin/interests/reject', {
     email: 'person@example.com',
   });
 
@@ -714,8 +999,8 @@ test('approved account and session survive a rejected-state race in real SQLite'
     RELEASES: adminCatalogBucket(['v1.2.3']),
   };
 
-  const approval = await workerModule.route(adminJson('/api/admin/access/approve', {
-    email: 'person@example.com', include_latest: true, versions: [],
+  const approval = await workerModule.route(adminJson('/api/admin/interests/approve', {
+    email: 'person@example.com',
   }), env, allowOwner, fixedDependencies);
   assert.equal(approval.status, 201);
   const token = await createSessionToken((length) => new Uint8Array(length).fill(31));
@@ -725,7 +1010,7 @@ test('approved account and session survive a rejected-state race in real SQLite'
     VALUES (?, 'person@example.com', 0, ?, ?)
   `).run(token.tokenHash, '2026-07-12T12:00:00.000Z', '2026-07-19T12:00:00.000Z');
 
-  const rejection = await workerModule.route(adminJson('/api/admin/access/reject', {
+  const rejection = await workerModule.route(adminJson('/api/admin/interests/reject', {
     email: 'person@example.com',
   }), env, allowOwner, fixedDependencies);
   assert.equal(rejection.status, 409);
@@ -750,42 +1035,215 @@ test('approved account and session survive a rejected-state race in real SQLite'
   assert.deepEqual(await inconsistent.json(), { authenticated: false });
 });
 
-test('grant replacement checks active state and batches delete, inserts, update, and event', async () => {
-  const { env, calls, batchCalls } = adminBindings();
-  const response = await workerModule.route(adminJson('/api/admin/access/grants', {
+test('authorization grant replacement batches policy, versions, and event', async () => {
+  let readCount = 0;
+  const item = {
+    email: 'person@example.com',
+    account_state: 'active',
+    include_latest: 0,
+    updated_at: '2026-07-12T12:00:00.000Z',
+    versions: '["v1.2.3"]',
+  };
+  const { env, calls, batchCalls } = adminBindings({
+    first: async () => (++readCount === 1
+      ? { state: 'active', release_decision: 'approved' }
+      : item),
+    batch: async (statements) => statements.map((_, index) => ({
+      success: true, meta: { changes: index === 0 ? 0 : 1 },
+    })),
+  });
+  const response = await workerModule.route(adminJson('/api/admin/authorization/grants', {
     email: 'person@example.com', include_latest: false, versions: ['v1.2.3'],
   }, { method: 'PUT' }), env, allowOwner, fixedDependencies);
   assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    item: { ...item, include_latest: false, versions: ['v1.2.3'] },
+  });
   assert.equal(batchCalls.length, 1);
   assert.match(calls[0].sql, /SELECT[\s\S]+release_accounts/i);
   assert.match(calls[1].sql, /DELETE FROM release_account_versions/i);
   assert.match(calls[1].sql, /EXISTS[\s\S]+state = 'active'/i);
   assert.match(calls[2].sql, /INSERT INTO release_account_versions/i);
   assert.match(calls[2].sql, /WHERE EXISTS[\s\S]+state = 'active'/i);
-  assert.match(calls[3].sql, /UPDATE release_accounts/i);
+  assert.match(calls[3].sql, /UPDATE release_access_policies/i);
+  assert.match(calls[3].sql, /include_latest[\s\S]+updated_at/i);
   assert.match(calls[4].sql, /grant_change/);
   assert.match(calls[4].sql, /WHERE EXISTS[\s\S]+state = 'active'/i);
 
   const denied = adminBindings();
-  const deniedResponse = await workerModule.route(adminJson('/api/admin/access/grants', {
+  const deniedResponse = await workerModule.route(adminJson('/api/admin/authorization/grants', {
     email: 'person@example.com', include_latest: false, versions: [],
   }, { method: 'PUT' }), denied.env, allowOwner, fixedDependencies);
   assert.equal(deniedResponse.status, 400);
   assert.equal(denied.calls.length, 0);
 });
 
-test('password reset and revocation delete sessions atomically without reactivating accounts', async () => {
+test('authorization grant replacement rejects incomplete batch outcomes', async () => {
+  const cases = [
+    (results) => { results[1].meta.changes = 0; },
+    (results) => { results[3].meta.changes = 0; },
+    (results) => { results.pop(); },
+    (results) => { results.push({ success: true, meta: { changes: 1 } }); },
+  ];
+
+  for (const alterResults of cases) {
+    let readCount = 0;
+    const bindings = adminBindings({
+      first: async () => (++readCount === 1
+        ? { state: 'active', release_decision: 'approved' }
+        : {
+          email: 'person@example.com', account_state: 'active', include_latest: 0,
+          updated_at: '2026-07-12T12:00:00.000Z', versions: '["v1.2.3"]',
+        }),
+      batch: async (statements) => {
+        const results = statements.map(() => ({ success: true, meta: { changes: 1 } }));
+        alterResults(results);
+        return results;
+      },
+    });
+    const response = await workerModule.route(adminJson('/api/admin/authorization/grants', {
+      email: 'person@example.com', include_latest: false, versions: ['v1.2.3'],
+    }, { method: 'PUT' }), bindings.env, allowOwner, fixedDependencies);
+
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), {
+      ok: false, message: 'Request could not be completed.',
+    });
+    assert.equal(bindings.batchCalls.length, 1);
+  }
+});
+
+test('revoked authorization remains readable but immutable', async (context) => {
+  const bindings = sqliteReleaseBindings();
+  context.after(() => bindings.db.close());
+  seedApprovedReleaseAccount(bindings.db, {
+    email: 'person@example.com', includeLatest: 1, version: 'v0.2.0',
+  });
+  bindings.db.prepare(`
+    UPDATE release_accounts SET state = 'revoked', revoked_at = ? WHERE email = ?
+  `).run('2026-07-12T12:00:00.000Z', 'person@example.com');
+
+  const read = await workerModule.route(
+    adminRequest('/api/admin/authorization'), bindings.env, allowOwner, fixedDependencies,
+  );
+  assert.equal(read.status, 200);
+  assert.deepEqual((await read.json()).items, [{
+    email: 'person@example.com',
+    account_state: 'revoked',
+    include_latest: true,
+    updated_at: '2026-07-12T12:00:00.000Z',
+    versions: ['v0.2.0'],
+  }]);
+
+  const mutation = await workerModule.route(adminJson('/api/admin/authorization/grants', {
+    email: 'person@example.com', include_latest: false, versions: ['v1.2.3'],
+  }, { method: 'PUT' }), bindings.env, allowOwner, fixedDependencies);
+  assert.equal(mutation.status, 409);
+  assert.deepEqual(await mutation.json(), {
+    ok: false, message: 'Request could not be completed.',
+  });
+  assert.deepEqual({ ...bindings.db.prepare(`
+    SELECT include_latest, updated_at FROM release_access_policies WHERE email = ?
+  `).get('person@example.com') }, {
+    include_latest: 1, updated_at: '2026-07-12T12:00:00.000Z',
+  });
+  assert.deepEqual(bindings.db.prepare(`
+    SELECT version FROM release_account_versions WHERE email = ? ORDER BY version
+  `).all('person@example.com').map(({ version }) => version), ['v0.2.0']);
+  assert.equal(bindings.db.prepare(`
+    SELECT count(*) AS count FROM release_access_events WHERE email = ?
+  `).get('person@example.com').count, 0);
+});
+
+test('old overloaded admin access routes return private 404', async () => {
+  for (const [path, method] of [
+    ['/api/admin/access/approve', 'POST'],
+    ['/api/admin/access/reject', 'POST'],
+    ['/api/admin/access/grants', 'PUT'],
+    ['/api/admin/access/reset-password', 'POST'],
+    ['/api/admin/access/revoke', 'POST'],
+  ]) {
+    const bindings = adminBindings();
+    const response = await workerModule.route(
+      adminJson(path, { email: 'person@example.com' }, { method }),
+      bindings.env,
+      allowOwner,
+      fixedDependencies,
+    );
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await response.json(), { ok: false, message: 'Not found.' });
+    assert.equal(bindings.calls.length, 0);
+    assert.equal(bindings.batchCalls.length, 0);
+  }
+});
+
+test('password reset requires its exact batch and audit event', async () => {
   const observed = {
-    state: 'active', release_decision: 'approved', include_latest: 1, versions: '[]',
+    state: 'active', release_decision: 'approved',
     password_hash: 'observed-hash', password_salt: 'observed-salt',
     password_iterations: 600000, must_change_password: 0, password_expires_at: null,
   };
-  const reset = adminBindings({ first: async () => observed });
-  const resetResponse = await workerModule.route(adminJson('/api/admin/access/reset-password', {
+  const cases = [
+    [
+      { success: true, meta: { changes: 1 } },
+      { success: true, meta: { changes: 0 } },
+      { success: true, meta: { changes: 0 } },
+    ],
+    [
+      { success: true, meta: { changes: 1 } },
+      { success: true, meta: { changes: 0 } },
+      { success: true, meta: { changes: 1 } },
+      { success: true, meta: { changes: 1 } },
+    ],
+  ];
+
+  for (const results of cases) {
+    const bindings = adminBindings({
+      first: async () => observed,
+      batch: async () => results,
+    });
+    const response = await workerModule.route(
+      adminJson('/api/admin/users/reset-password', { email: 'person@example.com' }),
+      bindings.env,
+      allowOwner,
+      fixedDependencies,
+    );
+    const text = await response.text();
+
+    assert.notEqual(response.status, 200);
+    assert.doesNotMatch(text, /credential|password|person@example\.com/i);
+  }
+});
+
+test('reset and revoke delete sessions atomically without reactivating accounts', async () => {
+  const observed = {
+    state: 'active', release_decision: 'approved',
+    password_hash: 'observed-hash', password_salt: 'observed-salt',
+    password_iterations: 600000, must_change_password: 0, password_expires_at: null,
+  };
+  const activeUser = {
+    email: 'person@example.com', state: 'active', source: 'homepage',
+    requested_at: '2026-07-12T11:00:00.000Z', approved_at: '2026-07-12T12:00:00.000Z',
+    must_change_password: 1, password_expires_at: '2026-07-15T12:00:00.000Z',
+    password_changed_at: null, revoked_at: null, active_session_count: 0,
+    latest_session_expires_at: null,
+  };
+  let resetReads = 0;
+  const reset = adminBindings({
+    first: async () => (resetReads++ === 0 ? observed : activeUser),
+  });
+  const resetResponse = await workerModule.route(adminJson('/api/admin/users/reset-password', {
     email: 'person@example.com',
   }), reset.env, allowOwner, fixedDependencies);
   assert.equal(resetResponse.status, 200);
-  const resetCredential = (await resetResponse.json()).credential;
+  const resetBody = await resetResponse.json();
+  const resetCredential = resetBody.credential;
+  assert.deepEqual(Object.keys(resetCredential).sort(), [
+    'email', 'password', 'password_expires_at',
+  ]);
+  assert.deepEqual(resetBody.item, { ...activeUser, must_change_password: true });
   assert.equal(resetCredential.password.length, 20);
   assert.equal(reset.batchCalls.length, 1);
   for (const field of [
@@ -813,6 +1271,10 @@ test('password reset and revocation delete sessions atomically without reactivat
     assert.ok(call.values.includes(newExpiry));
   }
   assert.equal(JSON.stringify(reset.calls).includes(resetCredential.password), false);
+  assert.doesNotMatch(
+    reset.calls.map(({ sql }) => sql).join('\n'),
+    /release_access_policies|release_account_versions/i,
+  );
 
   let resetAttempt = 0;
   const race = adminBindings({
@@ -820,14 +1282,15 @@ test('password reset and revocation delete sessions atomically without reactivat
     batch: async (statements) => {
       resetAttempt += 1;
       return statements.map((_, index) => ({
-        success: true, meta: { changes: index === 0 && resetAttempt === 1 ? 1 : 0 },
+        success: true,
+        meta: { changes: resetAttempt === 1 && (index === 0 || index === 2) ? 1 : 0 },
       }));
     },
   });
-  const firstRace = await workerModule.route(adminJson('/api/admin/access/reset-password', {
+  const firstRace = await workerModule.route(adminJson('/api/admin/users/reset-password', {
     email: 'person@example.com',
   }), race.env, allowOwner, fixedDependencies);
-  const secondRace = await workerModule.route(adminJson('/api/admin/access/reset-password', {
+  const secondRace = await workerModule.route(adminJson('/api/admin/users/reset-password', {
     email: 'person@example.com',
   }), race.env, allowOwner, fixedDependencies);
   assert.equal(firstRace.status, 200);
@@ -835,21 +1298,33 @@ test('password reset and revocation delete sessions atomically without reactivat
   assert.doesNotMatch(await secondRace.text(), /password|credential|person@example/i);
 
   const revokedReset = adminBindings({ first: async () => ({ state: 'revoked', release_decision: 'approved' }) });
-  const revokedResetResponse = await workerModule.route(adminJson('/api/admin/access/reset-password', {
+  const revokedResetResponse = await workerModule.route(adminJson('/api/admin/users/reset-password', {
     email: 'person@example.com',
   }), revokedReset.env, allowOwner, fixedDependencies);
   assert.equal(revokedResetResponse.status, 409);
   assert.equal(revokedReset.batchCalls.length, 0);
 
-  const revoke = adminBindings();
-  const revokeResponse = await workerModule.route(adminJson('/api/admin/access/revoke', {
+  const revokedUser = { ...activeUser, state: 'revoked', revoked_at: fixedDependencies.now().toISOString() };
+  const revoke = adminBindings({ first: async () => revokedUser });
+  const revokeResponse = await workerModule.route(adminJson('/api/admin/users/revoke', {
     email: 'person@example.com',
   }), revoke.env, allowOwner, fixedDependencies);
   assert.equal(revokeResponse.status, 200);
+  assert.deepEqual(await revokeResponse.json(), {
+    ok: true,
+    item: { ...revokedUser, must_change_password: true },
+  });
   assert.equal(revoke.batchCalls.length, 1);
-  assert.match(revoke.calls[0].sql, /UPDATE release_accounts[\s\S]+state\s*=\s*'revoked'/i);
-  assert.match(revoke.calls[1].sql, /DELETE FROM release_sessions/i);
-  assert.match(revoke.calls[2].sql, /revocation/);
+  assert.match(
+    revoke.calls[0].sql,
+    /UPDATE release_accounts[\s\S]+state\s*=\s*'revoked'[\s\S]+state\s*=\s*'active'/i,
+  );
+  assert.match(revoke.calls[1].sql, /revocation[\s\S]+changes\(\)\s*=\s*1/i);
+  assert.match(revoke.calls[2].sql, /DELETE FROM release_sessions[\s\S]+changes\(\)\s*=\s*1/i);
+  assert.doesNotMatch(
+    revoke.calls.map(({ sql }) => sql).join('\n'),
+    /release_access_policies|release_account_versions/i,
+  );
 });
 
 test('admin release catalog returns summaries and bounded unavailable states', async () => {
@@ -924,29 +1399,55 @@ test('admin API rejects mutations and redacts D1 failures', async () => {
 
 test('private host serves only mapped assets with security headers', async () => {
   const { env, assetRequests } = adminBindings();
-  const page = await workerModule.route(adminRequest('/'), env, allowOwner);
-  const sharedStyle = await workerModule.route(adminRequest('/style.css'), env, allowOwner);
-  const script = await workerModule.route(adminRequest('/admin.js'), env, allowOwner);
+  const paths = [
+    '/', '/users', '/early-access', '/authorization',
+    '/admin.js', '/admin-core.js', '/early-access.js', '/users.js',
+    '/authorization.js', '/admin.css', '/style.css',
+  ];
+  const responses = [];
+  for (const path of paths) {
+    responses.push(await workerModule.route(adminRequest(path), env, allowOwner));
+  }
   const missing = await workerModule.route(adminRequest('/not-found'), env, allowOwner);
 
-  assert.equal(page.status, 200);
-  assert.equal(sharedStyle.status, 200);
-  assert.equal(script.status, 200);
+  for (const response of responses) assert.equal(response.status, 200);
   assert.equal(missing.status, 404);
   assert.deepEqual(
     assetRequests.map((assetRequest) => new URL(assetRequest.url).pathname),
-    ['/admin/', '/style.css', '/admin/admin.js'],
+    [
+      '/admin/', '/admin/', '/admin/', '/admin/',
+      '/admin/admin.js', '/admin/admin-core.js', '/admin/early-access.js',
+      '/admin/users.js', '/admin/authorization.js', '/admin/admin.css', '/style.css',
+    ],
   );
-  assert.equal(page.headers.get('cache-control'), 'no-store');
-  assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
-  assert.equal(page.headers.get('referrer-policy'), 'no-referrer');
-  assert.equal(page.headers.get('x-content-type-options'), 'nosniff');
-  assert.equal(page.headers.get('x-frame-options'), 'DENY');
+  assert.equal(responses[0].headers.get('cache-control'), 'no-store');
+  assert.match(responses[0].headers.get('content-security-policy'), /frame-ancestors 'none'/);
+  assert.equal(responses[0].headers.get('referrer-policy'), 'no-referrer');
+  assert.equal(responses[0].headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(responses[0].headers.get('x-frame-options'), 'DENY');
+});
+
+test('admin router isolates every page and module behind Access', async () => {
+  const { env, assetRequests } = adminBindings();
+  const paths = [
+    '/', '/users', '/early-access', '/authorization',
+    '/admin.js', '/admin-core.js', '/early-access.js', '/users.js', '/authorization.js',
+  ];
+  for (const path of paths) {
+    const response = await workerModule.route(
+      adminRequest(path), env, async () => ({ email: 'other@example.com' }),
+    );
+    assert.equal(response.status, 403);
+  }
+  assert.equal(assetRequests.length, 0);
 });
 
 test('public host never serves private admin assets', async () => {
   const { env, assetRequests } = adminBindings();
-  for (const path of ['/admin', '/admin/', '/admin/admin.js']) {
+  for (const path of [
+    '/admin', '/admin/', '/admin/admin.js', '/admin.js', '/admin-core.js',
+    '/early-access.js', '/users.js', '/authorization.js', '/admin.css',
+  ]) {
     const response = await workerModule.route(
       new Request(`https://backchannel.page${path}`),
       env,
@@ -1047,15 +1548,21 @@ test('private page roots avoid Cloudflare index redirects', async () => {
     return cloudflareAsset(requestValue);
   };
 
-  const adminPage = await workerModule.route(adminRequest('/'), admin.env, allowOwner);
+  const adminPages = [];
+  for (const path of ['/', '/users', '/early-access', '/authorization']) {
+    adminPages.push(await workerModule.route(adminRequest(path), admin.env, allowOwner));
+  }
   const downloadPage = await workerModule.route(
     downloadRequest('/', undefined, { method: 'GET' }),
     download.env,
   );
 
-  assert.equal(adminPage.status, 200);
+  for (const page of adminPages) assert.equal(page.status, 200);
   assert.equal(downloadPage.status, 200);
-  assert.equal(new URL(admin.assetRequests[0].url).pathname, '/admin/');
+  assert.deepEqual(
+    admin.assetRequests.map((requestValue) => new URL(requestValue.url).pathname),
+    ['/admin/', '/admin/', '/admin/', '/admin/'],
+  );
   assert.equal(new URL(download.assetRequests[0].url).pathname, '/downloads/');
 });
 
@@ -1361,6 +1868,7 @@ test('password change requires a change-only session and rotates it atomically',
     password: 'a new permanent password',
   }, { headers: { cookie: `__Host-backchannel_release=${token.token}` } }),
   bindingsValue.env, undefined, downloadDependencies({
+    verifyPassword: async () => false,
     hashPassword: async () => ({ hash: 'new-hash', salt: 'new-salt', iterations: 600000 }),
     createSessionToken: async () => ({ token: 'new-raw-token', tokenHash: 'new-token-hash' }),
   }));
@@ -1373,6 +1881,42 @@ test('password change requires a change-only session and rotates it atomically',
   assert.equal(JSON.stringify(bindingsValue.calls).includes('new-raw-token'), false);
   assert.equal(response.headers.get('set-cookie'),
     '__Host-backchannel_release=new-raw-token; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=604800');
+});
+
+test('password change rejects reuse of the temporary credential without rotation', async () => {
+  const token = await createSessionToken((length) => new Uint8Array(length).fill(12));
+  let hashCalls = 0;
+  let sessionCalls = 0;
+  let batchCalls = 0;
+  const bindings = downloadBindings({
+    first: async () => ({
+      email: 'person@example.com', state: 'active', password_change_only: 1,
+      expires_at: '2026-07-13T12:30:00.000Z', password_hash: 'hash',
+      password_salt: 'salt', password_iterations: 600000,
+    }),
+    batch: async (statements) => {
+      batchCalls += 1;
+      return statements.map(() => ({ success: true, meta: { changes: 1 } }));
+    },
+  });
+  const response = await workerModule.route(
+    downloadRequest('/api/download/password', { password: 'Temporary-Password1!' }, {
+      headers: { cookie: `__Host-backchannel_release=${token.token}` },
+    }),
+    bindings.env,
+    undefined,
+    downloadDependencies({
+      now: () => new Date('2026-07-13T12:00:00.000Z'),
+      verifyPassword: async () => true,
+      hashPassword: async () => { hashCalls += 1; },
+      createSessionToken: async () => { sessionCalls += 1; },
+    }),
+  );
+  assert.equal(response.status, 400);
+  assert.equal(hashCalls, 0);
+  assert.equal(sessionCalls, 0);
+  assert.equal(batchCalls, 0);
+  assert.equal(response.headers.has('set-cookie'), false);
 });
 
 test('password change makes every write conditional on the exact presented session', async () => {
@@ -1388,6 +1932,7 @@ test('password change makes every write conditional on the exact presented sessi
     password: 'a new permanent password',
   }, { headers: { cookie: `__Host-backchannel_release=${token.token}` } }),
   bindingsValue.env, undefined, downloadDependencies({
+    verifyPassword: async () => false,
     hashPassword: async () => ({ hash: 'new-hash', salt: 'new-salt', iterations: 600000 }),
     createSessionToken: async () => ({ token: 'new-raw-token', tokenHash: 'new-token-hash' }),
   }));
@@ -1407,7 +1952,7 @@ test('password change makes every write conditional on the exact presented sessi
   }
 });
 
-test('logout deletes only the presented session and always clears the cookie', async () => {
+test('logout clears the cookie after presented session deletion or an invalid token', async () => {
   const token = await createSessionToken((length) => new Uint8Array(length).fill(9));
   const bindingsValue = downloadBindings({ first: async () => ({
     email: 'person@example.com', state: 'active', password_change_only: 0,
@@ -1420,7 +1965,7 @@ test('logout deletes only the presented session and always clears the cookie', a
   assert.equal(bindingsValue.batchCalls.length, 1);
   assert.match(bindingsValue.calls[1].sql, /DELETE FROM release_sessions WHERE token_hash = \?/i);
   assert.deepEqual(bindingsValue.calls[1].values, [token.tokenHash]);
-  assert.match(bindingsValue.calls[2].sql, /logout/i);
+  assert.match(bindingsValue.calls[2].sql, /logout[\s\S]+changes\(\) = 1/i);
   assert.equal(response.headers.get('set-cookie'),
     '__Host-backchannel_release=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0');
 
@@ -1431,6 +1976,27 @@ test('logout deletes only the presented session and always clears the cookie', a
   assert.deepEqual(await invalidResponse.json(), { ok: true });
   assert.equal(invalidResponse.headers.get('set-cookie'),
     '__Host-backchannel_release=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0');
+});
+
+test('logout D1 failure returns retryable error and preserves the cookie', async () => {
+  const token = await createSessionToken((length) => new Uint8Array(length).fill(13));
+  const bindings = downloadBindings({
+    first: async () => ({
+      email: 'person@example.com', state: 'active', password_change_only: 0,
+      expires_at: '2026-07-20T12:00:00.000Z',
+    }),
+    batch: async () => { throw new Error('offline'); },
+  });
+  const response = await workerModule.route(
+    downloadRequest('/api/download/logout', {}, {
+      headers: { cookie: `__Host-backchannel_release=${token.token}` },
+    }),
+    bindings.env,
+    undefined,
+    downloadDependencies(),
+  );
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.has('set-cookie'), false);
 });
 
 const releaseToken = await createSessionToken((length) => new Uint8Array(length).fill(11));

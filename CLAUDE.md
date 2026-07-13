@@ -64,17 +64,20 @@ tags (unsigned; Sortformer and ffmpeg are not bundled).
 (`backchannel-site`, same pattern as the quartermaster repo) by
 `.github/workflows/deploy-site.yml`: the `site/` landing page at
 https://backchannel.page/ and the docs at `/docs/`.
-The same Worker serves the D1 review/mutation console only on
+The same Worker serves the D1 operator console only on
 `https://admin.backchannel.page/` and the authenticated recipient portal on
 `https://downloads.backchannel.page/`. Cloudflare Access protects the complete
 admin hostname, and the Worker independently verifies the Access JWT issuer,
 audience, and exact `ADMIN_EMAIL`; those values are encrypted Worker secrets.
-The admin API reviews interests and releases and performs approval, rejection,
-grant replacement, password reset, and revocation. D1 owns recipient accounts,
-grants, sessions, and access events; recipient identity is not the local
-application's PostgreSQL identity. Never log subscriber, credential, session,
-Access, or R2 data. Run every `docs-site` release-access, migration, Worker,
-admin, download, and site test plus its build before release changes.
+Early access owns request and consent review plus approve/reject only. Users
+owns recipient identity state, password reset, session sign-out, and revoke.
+Authorization owns Latest and explicit-version grants only, stored in
+`release_access_policies` and `release_account_versions`; the old
+`/api/admin/access/*` routes are removed. D1 owns recipient accounts, grants,
+sessions, and access events; recipient identity is not the local application's
+PostgreSQL identity. Never log subscriber, credential, session, Access, or R2
+data. Run the six focused `docs-site` suites, aggregate suite, and build before
+release changes.
 
 ```bash
 cd docs-site
@@ -84,8 +87,13 @@ npm run test:worker
 npm run test:admin
 npm run test:download
 npm run test:site
+node --test *.test.js
 npm run build
 ```
+For local admin interaction checks, `npm run preview:admin` serves deterministic
+fake `.example` recipients on `http://127.0.0.1:4175`; the preview harness is
+source-only and must never enter `dist-site`.
+
 `docs/*.md` stays the source of truth: do not
 edit `docs-site/src/content/docs/` (generated, gitignored). At build time
 `docs-site/sync-docs.mjs` copies the docs in, derives frontmatter titles from

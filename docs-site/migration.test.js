@@ -5,12 +5,22 @@ import { DatabaseSync } from 'node:sqlite';
 
 const migration1 = readFileSync(new URL('./migrations/0001_interest_subscribers.sql', import.meta.url), 'utf8');
 const migration2 = readFileSync(new URL('./migrations/0002_release_access.sql', import.meta.url), 'utf8');
+const migration3 = readFileSync(
+  new URL('./migrations/0003_release_access_policies.sql', import.meta.url),
+  'utf8',
+);
 
-function database() {
+function databaseThrough2() {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON');
   db.exec(migration1);
   db.exec(migration2);
+  return db;
+}
+
+function database() {
+  const db = databaseThrough2();
+  db.exec(migration3);
   return db;
 }
 
@@ -157,6 +167,64 @@ test('account deletion cascades grants and sessions but retains audit events', (
     assert.equal(db.prepare('SELECT count(*) AS count FROM release_account_versions').get().count, 0);
     assert.equal(db.prepare('SELECT count(*) AS count FROM release_sessions').get().count, 0);
     assert.equal(db.prepare('SELECT count(*) AS count FROM release_access_events').get().count, 1);
+  } finally {
+    db.close();
+  }
+});
+
+test('migration 0003 backfills release access policies without changing explicit grants', () => {
+  const db = databaseThrough2();
+  try {
+    insertInterest(db, 'latest@example.com');
+    insertAccount(db, 'latest@example.com');
+    insertInterest(db, 'pinned@example.com');
+    db.prepare(`
+      INSERT INTO release_accounts
+        (email, state, password_hash, password_salt, include_latest, approved_at)
+      VALUES (?, 'active', 'hash', 'salt', 0, '2026-07-13 12:00:00')
+    `).run('pinned@example.com');
+    db.prepare(`
+      INSERT INTO release_account_versions (email, version)
+      VALUES ('pinned@example.com', 'v0.2.1')
+    `).run();
+
+    db.exec(migration3);
+
+    assert.deepEqual(
+      db.prepare(`SELECT email, include_latest FROM release_access_policies ORDER BY email`)
+        .all()
+        .map(({ email, include_latest }) => ({ email, include_latest })),
+      [
+        { email: 'latest@example.com', include_latest: 1 },
+        { email: 'pinned@example.com', include_latest: 0 },
+      ],
+    );
+    assert.equal(db.prepare('SELECT count(*) AS count FROM release_account_versions').get().count, 1);
+  } finally {
+    db.close();
+  }
+});
+
+test('release access policies enforce constraints and cascade with accounts', () => {
+  const db = database();
+  try {
+    insertInterest(db);
+    insertAccount(db);
+    db.prepare(`
+      INSERT INTO release_access_policies (email, include_latest)
+      VALUES ('person@example.com', 1)
+    `).run();
+    assert.throws(
+      () => db.exec(`UPDATE release_access_policies SET include_latest = 2`),
+      /CHECK constraint failed/,
+    );
+    assert.throws(
+      () => db.exec(`INSERT INTO release_access_policies (email) VALUES ('missing@example.com')`),
+      /FOREIGN KEY constraint failed/,
+    );
+    db.exec(`DELETE FROM release_accounts WHERE email = 'person@example.com'`);
+    assert.equal(db.prepare('SELECT count(*) AS count FROM release_access_policies').get().count, 0);
+    assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
   } finally {
     db.close();
   }

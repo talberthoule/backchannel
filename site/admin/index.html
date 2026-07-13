@@ -5,126 +5,85 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)" />
-  <title>Early access | Backchannel admin</title>
+  <title>Backchannel admin</title>
   <link rel="stylesheet" href="/style.css" />
   <link rel="stylesheet" href="/admin.css" />
-  <script src="/admin.js" defer></script>
+  <script type="module" src="/admin.js"></script>
 </head>
 <body>
-  <a class="skip-link" href="#main">Skip to access requests</a>
+  <a class="skip-link" href="#route-content">Skip to route content</a>
 
-  <header class="topbar">
-    <div class="shell topbar-inner">
-      <a class="brand" href="/" aria-label="Backchannel admin home">
-        <span class="brand-mark" aria-hidden="true"></span>
-        Backchannel
-      </a>
-      <p class="private-label">
-        <span class="private-dot" aria-hidden="true"></span>
-        Private admin
-      </p>
+  <div class="admin-shell">
+    <aside class="admin-rail">
+      <div class="rail-identity">
+        <a class="brand" href="/users" aria-label="Backchannel admin home">
+          <span class="brand-mark" aria-hidden="true"></span>
+          Backchannel
+        </a>
+        <p class="private-label">
+          <span class="private-dot" aria-hidden="true"></span>
+          Private admin
+        </p>
+      </div>
+      <nav class="route-nav" aria-label="Admin routes">
+        <a href="/early-access">Early access</a>
+        <a href="/users">Users</a>
+        <a href="/authorization">Authorization</a>
+      </nav>
+    </aside>
+
+    <main class="admin-main">
+      <header class="route-header">
+        <div class="route-heading">
+          <h1 id="route-title">Admin</h1>
+          <p id="route-description">Loading route.</p>
+        </div>
+        <dl class="route-summary" aria-label="Route summary">
+          <div>
+            <dt>Results</dt>
+            <dd id="result-count">-</dd>
+          </div>
+          <div>
+            <dt>Last refreshed</dt>
+            <dd id="last-refreshed">Not yet</dd>
+          </div>
+        </dl>
+        <button id="refresh" class="secondary-button" type="button">Refresh</button>
+      </header>
+
+      <p id="admin-status" class="admin-status" role="status" aria-live="polite">Loading route.</p>
+      <section id="route-content" class="route-content" aria-busy="true">
+        <section class="route-state"><p>Loading route.</p></section>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="confirm-dialog" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-description">
+    <h2 id="confirm-dialog-title">Confirm action</h2>
+    <p id="confirm-dialog-description"></p>
+    <div class="dialog-actions">
+      <button id="confirm-cancel" type="button">Cancel</button>
+      <button id="confirm-submit" class="primary-button" type="button">Confirm</button>
     </div>
-  </header>
-
-  <main id="main" class="shell">
-    <section class="page-head" aria-labelledby="page-title">
-      <div>
-        <h1 id="page-title">Early access</h1>
-        <p>Consent records from the private desktop preview.</p>
-      </div>
-      <dl class="summary" aria-label="Request summary">
-        <div>
-          <dt>Requests</dt>
-          <dd id="request-count">—</dd>
-        </div>
-        <div>
-          <dt>Last refreshed</dt>
-          <dd><time id="last-refreshed">Not yet</time></dd>
-        </div>
-      </dl>
-    </section>
-
-    <section class="data-region" aria-labelledby="requests-heading">
-      <div class="toolbar">
-        <div>
-          <h2 id="requests-heading">Access requests</h2>
-          <p id="admin-status" role="status" aria-live="polite">Loading access requests…</p>
-        </div>
-        <button id="refresh" class="refresh" type="button">Refresh</button>
-      </div>
-
-      <p id="table-hint" class="table-hint">Scroll horizontally to view all columns.</p>
-      <div
-        class="table-scroll"
-        role="region"
-        aria-labelledby="requests-heading"
-        aria-describedby="admin-status table-hint"
-        tabindex="0"
-      >
-        <table id="interest-table" aria-busy="true">
-          <caption>Early-access consent records, newest first</caption>
-          <thead>
-            <tr>
-              <th scope="col">Email</th>
-              <th scope="col">Status</th>
-              <th scope="col">Source</th>
-              <th scope="col">Requested</th>
-              <th scope="col">Consent</th>
-              <th scope="col">Invited</th>
-              <th scope="col">Last contacted</th>
-              <th scope="col">Decision</th>
-              <th scope="col">Account</th>
-              <th scope="col">Release access</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="interest-rows">
-            <tr class="state-row">
-              <td colspan="11">Loading access requests…</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </main>
-
-  <dialog id="access-dialog" aria-labelledby="access-dialog-title">
-    <form id="access-form">
-      <h2 id="access-dialog-title">Release access</h2>
-      <p id="access-account"></p>
-      <label class="check-row">
-        Latest
-        <input id="include-latest" type="checkbox" checked />
-      </label>
-      <fieldset>
-        <legend>Historical releases</legend>
-        <div id="version-options" class="version-options"></div>
-      </fieldset>
-      <p id="access-status" role="status" aria-live="polite"></p>
-      <div class="dialog-actions">
-        <button id="access-cancel" type="button">Cancel</button>
-        <button id="access-submit" type="submit">Approve access</button>
-      </div>
-    </form>
   </dialog>
 
   <dialog id="credential-dialog" aria-labelledby="credential-dialog-title">
-    <section class="credential-panel">
-      <h2 id="credential-dialog-title">One-time credential</h2>
-      <p>Copy or save this credential now. It will not be shown again.</p>
-      <label for="credential-text">Credential text</label>
-      <textarea id="credential-text" readonly></textarea>
-      <p id="credential-status" role="status" aria-live="polite"></p>
-      <div class="dialog-actions">
-        <button id="credential-copy" type="button">Copy credential</button>
-        <button id="credential-save" type="button">Save credential text file</button>
-        <button id="credential-close" type="button">Close</button>
-      </div>
-    </section>
+    <h2 id="credential-dialog-title">One-time credential</h2>
+    <p>Copy or save this credential now. It will not be shown again.</p>
+    <label for="credential-text">Credential text</label>
+    <textarea id="credential-text" readonly></textarea>
+    <p id="credential-status" class="dialog-status" role="status" aria-live="polite"></p>
+    <div class="dialog-actions">
+      <button id="credential-copy" type="button">Copy credential</button>
+      <button id="credential-save" type="button">Save credential</button>
+      <button id="credential-close" type="button">Close</button>
+    </div>
+    <div class="credential-links">
+      <a href="/users">Open Users</a>
+      <a href="/authorization">Open Authorization</a>
+    </div>
   </dialog>
 
-  <noscript>
-    <p class="noscript">JavaScript is required to load private access records.</p>
-  </noscript>
+  <noscript><p class="noscript">JavaScript is required to load the private admin pages.</p></noscript>
 </body>
 </html>

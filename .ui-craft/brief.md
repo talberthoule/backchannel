@@ -25,3 +25,38 @@ A visitor can distinguish private desktop access from public self-hosting and su
 - Does not collect a name, company, IP address, or free-text message.
 - Does not redesign the rest of the landing page.
 - Does not change the public Docker Compose self-hosting path.
+
+## Surface: Private admin console (2026-07-13)
+
+### Product purpose
+
+Let the single authorized Backchannel operator review early-access requests,
+manage recipient identity and security, and manage release authorization in
+separate, predictable work areas.
+
+### Primary user
+
+One trusted operator working repeatedly with download-recipient accounts.
+Recipient identity is normalized email; operator identity remains external in
+Cloudflare Access.
+
+### Principles
+
+1. Separate request, identity/security, and authorization ownership.
+2. Keep security state explicit and destructive actions deliberate.
+3. Prefer dense scan-and-detail workflows over wide command tables.
+4. Update the affected record immediately after a successful command.
+5. Preserve privacy: no identity or credential persistence, URLs, or logs.
+
+### Success metric
+
+At desktop and 320 CSS pixels, the operator can approve a request, inspect a
+user's identity/security state, reset credentials or sessions, and edit grants
+without password and authorization commands sharing a surface.
+
+### Out of scope
+
+- Admin accounts, roles, permissions, organizations, or generic policy rules.
+- Recipient reactivation, deletion, email changes, merge, or bulk operations.
+- Audit export, saved filters, server-side search, or pagination.
+- A frontend framework, component library, client router, or second Worker.

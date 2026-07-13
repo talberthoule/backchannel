@@ -1,204 +1,367 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { runInNewContext } from 'node:vm';
 
-function read(url) {
-  try {
-    return readFileSync(url, 'utf8');
-  } catch {
-    return '';
-  }
-}
+import {
+  createDialogController,
+  createListDetailController,
+  element,
+  jsonRequest,
+  replaceByEmail,
+  timeNode,
+} from '../site/admin/admin-core.js';
+import * as authorization from '../site/admin/authorization.js';
+import * as earlyAccess from '../site/admin/early-access.js';
+import * as users from '../site/admin/users.js';
+import { createDocument, jsonResponse, textOf } from './admin-test-helpers.js';
 
-const html = read(new URL('../site/admin/index.html', import.meta.url));
-const sharedCss = read(new URL('../site/style.css', import.meta.url));
-const adminCss = read(new URL('../site/admin/admin.css', import.meta.url));
+const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
+const html = read('../site/admin/index.html');
+const sharedCss = read('../site/style.css');
+const adminCss = read('../site/admin/admin.css');
 const css = `${sharedCss}\n${adminCss}`;
-const script = read(new URL('../site/admin/admin.js', import.meta.url));
-const config = JSON.parse(readFileSync(new URL('./wrangler.jsonc', import.meta.url), 'utf8'));
+const bootstrapSource = read('../site/admin/admin.js');
+const coreSource = read('../site/admin/admin-core.js');
+const routeSources = [
+  read('../site/admin/early-access.js'),
+  read('../site/admin/users.js'),
+  read('../site/admin/authorization.js'),
+];
+const config = JSON.parse(read('./wrangler.jsonc'));
 
-class TestElement {
-  constructor(name = 'div') {
-    this.name = name;
-    this.children = [];
-    this.dataset = {};
-    this.textContent = '';
-    this.value = '';
-    this.checked = false;
-    this.disabled = false;
-    this.open = false;
-  }
-
-  append(...children) { this.children.push(...children); }
-  replaceChildren(...children) { this.children = children; }
-  addEventListener() {}
-  setAttribute(name, value) { this[name] = value; }
-  removeAttribute(name) { delete this[name]; }
-  querySelectorAll() { return []; }
-  showModal() { this.open = true; }
-  close() { this.open = false; }
-  focus() {}
-  click() {}
-  remove() {}
-  get childElementCount() { return this.children.filter((child) => child instanceof TestElement).length; }
+function routeHarness() {
+  const document = createDocument();
+  const content = document.createElement('section');
+  const count = document.createElement('span');
+  const refreshed = document.createElement('time');
+  const status = document.createElement('p');
+  const shell = { content, count, refreshed, status };
+  return { document, shell };
 }
 
-function textOf(node) {
-  if (typeof node === 'string') return node;
-  return (node?.textContent || '') + (node?.children || []).map(textOf).join('');
-}
-
-async function runAdmin(fetch) {
-  const elements = new Map();
-  const document = {
-    body: new TestElement('body'),
-    createElement: (name) => new TestElement(name),
-    createTextNode: (value) => String(value),
-    getElementById(id) {
-      if (!elements.has(id)) elements.set(id, new TestElement());
-      return elements.get(id);
-    },
-  };
-  const executable = script.replace(
-    /refresh\.addEventListener\('click', load\);\s*load\(\);\s*$/,
-    'globalThis.__admin = { load, actionCell };',
-  );
-  assert.notEqual(executable, script);
-  const context = {
-    Blob, Date, Intl, Set, URL, document, fetch,
-    navigator: { clipboard: { async writeText() {} } },
-    window: { confirm: () => true },
-    addEventListener() {},
-  };
-  runInNewContext(executable, context);
-  await context.__admin.load();
-  return { ...context.__admin, elements };
-}
-
-test('private admin page has an accessible table and explicit states', () => {
+test('admin shell exposes protected native route navigation', () => {
   assert.match(html, /<html lang="en">/);
   assert.match(html, /class="skip-link"/);
-  assert.match(html, /<main id="main"/);
-  assert.match(html, /<h1[^>]*>Early access<\/h1>/);
-  assert.match(html, /id="request-count"/);
+  assert.equal((html.match(/<nav\b/g) || []).length, 1);
+  assert.match(html, /href="\/early-access"/);
+  assert.match(html, /href="\/users"/);
+  assert.match(html, /href="\/authorization"/);
+  assert.match(html, /<script[^>]+type="module"[^>]+src="\/admin\.js"/);
+  assert.match(html, /id="route-title"/);
+  assert.match(html, /id="route-content"/);
+  assert.match(html, /id="result-count"/);
   assert.match(html, /id="last-refreshed"/);
-  assert.match(html, /<button[^>]+id="refresh"[^>]+type="button"/);
+  assert.match(html, /id="refresh"/);
   assert.match(html, /id="admin-status"[^>]+role="status"[^>]+aria-live="polite"/);
-  assert.match(html, /<table[^>]+id="interest-table"/);
-  assert.match(html, /<caption>/);
-  assert.match(html, /<th scope="col">Email<\/th>/);
-  assert.match(html, /id="interest-rows"/);
-  for (const heading of ['Decision', 'Account', 'Release access', 'Actions']) {
-    assert.match(html, new RegExp(`<th scope="col">${heading}<\\/th>`));
-  }
 });
 
-test('admin actions use labelled native dialogs with cancellable focus-safe controls', () => {
-  assert.match(html, /<dialog[^>]+id="access-dialog"[^>]+aria-labelledby="access-dialog-title"/);
-  assert.match(html, /<dialog[^>]+id="credential-dialog"[^>]+aria-labelledby="credential-dialog-title"/);
-  assert.match(html, /<label[^>]*>[\s\S]*Latest[\s\S]*<input[^>]+id="include-latest"[^>]+type="checkbox"[^>]+checked/);
-  assert.match(html, /<textarea[^>]+id="credential-text"[^>]+readonly/);
-  assert.match(html, /<button[^>]+id="access-cancel"[^>]+type="button"[^>]*>Cancel<\/button>/);
-  assert.match(script, /\.showModal\(\)/);
-  assert.match(script, /\.focus\(\)/);
-  assert.match(script, /\.returnValue|addEventListener\('cancel'/);
+test('admin bootstrap is a small pathname module importer', () => {
+  assert.match(bootstrapSource, /const routes = new Map\(\[\s*\['\/', '\.\/users\.js'\],\s*\['\/users', '\.\/users\.js'\],\s*\['\/early-access', '\.\/early-access\.js'\],\s*\['\/authorization', '\.\/authorization\.js'\],\s*\]\);/);
+  assert.match(bootstrapSource, /location\.pathname/);
+  assert.match(bootstrapSource, /import\(modulePath\)/);
+  assert.doesNotMatch(bootstrapSource, /fetch\(['"]\/api\/admin/);
 });
 
-test('credential copy and save retain plaintext in one variable and clear it promptly', () => {
-  assert.equal((script.match(/let activeCredentialText\s*=\s*''/g) || []).length, 1);
-  assert.match(script, /navigator\.clipboard\.writeText\(activeCredentialText\)/);
-  assert.match(script, /new Blob\(\[activeCredentialText\],\s*\{\s*type:\s*'text\/plain;charset=utf-8'\s*\}\)/);
-  assert.match(script, /URL\.createObjectURL/);
-  assert.match(script, /URL\.revokeObjectURL/);
-  assert.match(script, /backchannel-access-/);
-  assert.match(script, /replace\(\/\[\^a-z0-9\]\+\/gi,\s*'-'\)/);
-  assert.match(script, /credentialDialog\.addEventListener\('close',\s*clearCredential\)/);
-  assert.match(script, /addEventListener\('pagehide',\s*clearCredential\)/);
-  assert.match(script, /credentialText\.value\s*=\s*''/);
-  assert.match(script, /activeCredentialText\s*=\s*''/);
-  assert.match(html, /id="credential-status"[^>]+role="status"[^>]+aria-live="polite"/);
+test('admin core uses safe ephemeral browser APIs', () => {
+  const assets = [coreSource, html, ...routeSources].join('\n');
+  assert.doesNotMatch(assets, /innerHTML|outerHTML|insertAdjacentHTML/);
+  assert.doesNotMatch(assets, /localStorage|sessionStorage|document\.cookie|console\./);
+  assert.match(coreSource, /navigator\.clipboard\.writeText/);
+  assert.match(coreSource, /addEventListener\('pagehide'/);
+  assert.doesNotMatch(coreSource, /Approve|Reject|Reset password|Sign out|Revoke|Save grants/);
 });
 
-test('admin loads releases and interests and renders row actions with safe DOM APIs', () => {
-  assert.match(script, /fetch\('\/api\/admin\/releases'/);
-  assert.match(script, /fetch\('\/api\/admin\/interests'/);
-  for (const action of ['Approve', 'Reject', 'Edit grants', 'Reset password', 'Revoke']) {
-    assert.match(script, new RegExp(action));
-  }
-  assert.doesNotMatch(script, /innerHTML|outerHTML|insertAdjacentHTML/);
-});
+test('admin core builds safe nodes and bounded JSON requests', async () => {
+  const document = createDocument();
+  const node = element('p', 'state', '<strong>plain</strong>', document);
+  assert.equal(node.name, 'p');
+  assert.equal(node.className, 'state');
+  assert.equal(node.textContent, '<strong>plain</strong>');
 
-test('admin renders interests independently when the release catalog is unavailable', async () => {
   const calls = [];
-  const admin = await runAdmin(async (path) => {
-    calls.push(path);
-    if (path === '/api/admin/releases') {
-      return { ok: false, async json() { return { ok: false }; } };
-    }
-    return {
-      ok: true,
-      async json() {
-        return { items: [{
-          email: 'person@example.com', status: 'interested', source: 'homepage',
-          consent_version: '2026-07-11', consent_at: '2026-07-11 12:00:00',
-          created_at: '2026-07-11 12:00:00', invited_at: null, last_contacted_at: null,
-          release_decision: 'pending', account_state: null, include_latest: null, versions: [],
-        }] };
+  const value = await jsonRequest('/api/admin/users', undefined, undefined, async (path, init) => {
+    calls.push({ path, init });
+    return jsonResponse({ items: [] });
+  });
+  assert.deepEqual(value, { items: [] });
+  assert.deepEqual(calls, [{
+    path: '/api/admin/users',
+    init: { method: 'GET', headers: { accept: 'application/json' }, cache: 'no-store' },
+  }]);
+  assert.deepEqual(
+    replaceByEmail([{ email: 'a@example.com' }], { email: 'a@example.com', state: 'active' }),
+    [{ email: 'a@example.com', state: 'active' }],
+  );
+  assert.deepEqual(replaceByEmail([], { email: 'a@example.com' }), []);
+  assert.equal(timeNode(null, 'Not yet', document).textContent, 'Not yet');
+});
+
+test('shared dialog and list-detail controllers clear plaintext and restore focus', async () => {
+  const ids = [
+    'confirm-dialog', 'confirm-dialog-title', 'confirm-dialog-description',
+    'confirm-cancel', 'confirm-submit', 'credential-dialog', 'credential-text',
+    'credential-status', 'credential-copy', 'credential-save', 'credential-close',
+  ];
+  const document = createDocument(ids);
+  const pageListeners = new Map();
+  const trigger = document.createElement('button');
+  const clipboard = [];
+  const dialogs = createDialogController({
+    document,
+    navigator: { clipboard: { async writeText(value) { clipboard.push(value); } } },
+    addEventListener(type, listener) { pageListeners.set(type, listener); },
+    URL: { createObjectURL: () => 'blob:value', revokeObjectURL() {} },
+    Blob,
+  });
+  dialogs.showCredential({ text: 'temporary secret', email: 'person@example.com', returnFocus: trigger });
+  assert.equal(document.getElementById('credential-text').value, 'temporary secret');
+  await document.getElementById('credential-copy').click();
+  assert.deepEqual(clipboard, ['temporary secret']);
+  await document.getElementById('credential-dialog').close();
+  assert.equal(document.getElementById('credential-text').value, '');
+  assert.equal(document.activeElement, trigger);
+  dialogs.showCredential({ text: 'another secret', email: 'person@example.com' });
+  pageListeners.get('pagehide')();
+  assert.equal(document.getElementById('credential-text').value, '');
+
+  const root = document.createElement('section');
+  const list = document.createElement('div');
+  const detail = document.createElement('div');
+  const heading = document.createElement('h2');
+  const back = document.createElement('button');
+  const row = document.createElement('button');
+  const controller = createListDetailController({ root, list, detail, heading, back });
+  controller.showDetail(row);
+  assert.equal(root.dataset.view, 'detail');
+  assert.equal(document.activeElement, heading);
+  await back.click();
+  assert.equal(root.dataset.view, 'list');
+  assert.equal(document.activeElement, row);
+});
+
+const routeCases = [
+  ['Early access', earlyAccess, '/api/admin/interests', {
+    email: 'request@example.com', status: 'interested', source: 'homepage',
+    consent_version: '2026-07-11', consent_at: '2026-07-11 12:00:00',
+    created_at: '2026-07-11 12:00:00', release_decision: 'pending',
+  }],
+  ['Users', users, '/api/admin/users', {
+    email: 'person@example.com', state: 'active', source: 'homepage',
+    requested_at: '2026-07-11 12:00:00', approved_at: '2026-07-11 12:05:00',
+    must_change_password: true, password_expires_at: '2026-07-14 12:05:00',
+    password_changed_at: null, revoked_at: null, active_session_count: 1,
+    latest_session_expires_at: '2026-07-11 13:00:00',
+  }],
+  ['Authorization', authorization, '/api/admin/authorization', {
+    email: 'person@example.com', account_state: 'active', include_latest: true,
+    versions: ['v0.2.1'], updated_at: '2026-07-11 12:10:00',
+  }],
+];
+
+const releaseCatalog = {
+  items: [{ version: 'v0.2.1', published_at: '2026-07-11 12:00:00' }],
+  latest_version: 'v0.2.1',
+  available: true,
+};
+
+function routeEndpoints(endpoint) {
+  return endpoint === '/api/admin/authorization'
+    ? [endpoint, '/api/admin/releases']
+    : [endpoint];
+}
+
+function routeRead(path, item) {
+  return path === '/api/admin/releases' ? releaseCatalog : { items: [item] };
+}
+
+for (const [name, module, endpoint, item] of routeCases) {
+  test(`${name} route loads only its owned read endpoints and renders a no-selection state`, async () => {
+    assert.equal(module.meta.title, name);
+    const calls = [];
+    const { document, shell } = routeHarness();
+    const mounted = module.mount({
+      document,
+      shell,
+      dialogs: {},
+      fetcher: async (path, init) => {
+        calls.push({ path, init });
+        return jsonResponse(routeRead(path, item));
       },
-    };
+    });
+    assert.equal(typeof mounted.refresh, 'function');
+    await mounted.refresh();
+    assert.deepEqual(calls.map(({ path }) => path), routeEndpoints(endpoint));
+    assert.match(textOf(shell.content), new RegExp(item.email.replace('.', '\\.')));
+    assert.match(textOf(shell.content), /Select/i);
+    assert.equal(shell.count.textContent, '1');
+    assert.equal(shell.content.getAttribute('aria-busy'), null);
   });
 
-  assert.deepEqual(calls.sort(), ['/api/admin/interests', '/api/admin/releases']);
-  const rowsText = textOf(admin.elements.get('interest-rows'));
-  assert.match(rowsText, /person@example\.com/);
-  assert.match(rowsText, /Reject/);
-  assert.doesNotMatch(rowsText, /Approve/);
-  assert.match(admin.elements.get('admin-status').textContent, /Release catalog is not ready\./);
+  test(`${name} route renders empty and error states`, async () => {
+    const { document, shell } = routeHarness();
+    let fail = false;
+    const mounted = module.mount({
+      document,
+      shell,
+      dialogs: {},
+      fetcher: async () => fail
+        ? jsonResponse({ message: 'private detail' }, { ok: false })
+        : jsonResponse({ items: [] }),
+    });
+    await mounted.refresh();
+    assert.match(textOf(shell.content), /No /i);
+    fail = true;
+    await mounted.refresh();
+    assert.match(textOf(shell.content), /could not be loaded/i);
+    assert.match(textOf(shell.content), /Retry/);
+  });
+}
 
-  const activeActions = textOf(admin.actionCell({
-    email: 'active@example.com', account_state: 'active', release_decision: 'approved',
-  }));
-  assert.match(activeActions, /Reset password/);
-  assert.match(activeActions, /Revoke/);
-  assert.doesNotMatch(activeActions, /Edit grants/);
+test('read-only routes select a row, render detail, and restore focus on Back', async () => {
+  for (const [, module, endpoint, item] of routeCases) {
+    const { document, shell } = routeHarness();
+    const mounted = module.mount({
+      document,
+      shell,
+      dialogs: {},
+      fetcher: async (path) => {
+        assert.ok(routeEndpoints(endpoint).includes(path));
+        return jsonResponse(routeRead(path, item));
+      },
+    });
+    await mounted.refresh();
+    const row = shell.content.querySelectorAll('.row-select')[0];
+    await row.click();
+    assert.equal(shell.content.querySelectorAll('.list-detail')[0].dataset.view, 'detail');
+    assert.equal(document.activeElement.name, 'h2');
+    assert.equal(document.activeElement.textContent, item.email);
+    assert.match(textOf(shell.content), /Identity|Consent|Latest releases/);
+    const back = shell.content.querySelectorAll('.back-button')[0];
+    await back.click();
+    assert.equal(shell.content.querySelectorAll('.list-detail')[0].dataset.view, 'list');
+    assert.equal(document.activeElement, row);
+  }
 });
 
-test('private admin page uses CSP-compatible local assets and safe DOM rendering', () => {
-  assert.match(html, /href="\/style\.css"/);
-  assert.match(html, /href="\/admin\.css"/);
-  assert.match(html, /src="\/admin\.js"/);
-  assert.doesNotMatch(html, /<style[\s>]/);
-  assert.doesNotMatch(html, /<script(?![^>]+src=)/);
-  assert.match(script, /fetch\('\/api\/admin\/interests'/);
-  assert.match(script, /document\.createElement/);
-  assert.match(script, /\.textContent\s*=/);
-  assert.match(script, /emailCell\.title\s*=\s*record\.email/);
-  assert.doesNotMatch(script, /innerHTML|outerHTML|insertAdjacentHTML/);
-  assert.doesNotMatch(script, /localStorage|sessionStorage|document\.cookie|console\./);
+test('read-only routes expose loading while their owned GET is pending', async () => {
+  for (const [, module, endpoint] of routeCases) {
+    const { document, shell } = routeHarness();
+    const pendingReads = [];
+    const calls = [];
+    const mounted = module.mount({
+      document,
+      shell,
+      dialogs: {},
+      fetcher(path, init) {
+        calls.push({ path, init });
+        return new Promise((resolve) => { pendingReads.push({ path, resolve }); });
+      },
+    });
+    const pending = mounted.refresh();
+    assert.equal(shell.content.getAttribute('aria-busy'), 'true');
+    assert.match(textOf(shell.content), /Loading/);
+    assert.deepEqual(calls.map(({ path }) => path), routeEndpoints(endpoint));
+    for (const read of pendingReads) {
+      read.resolve(jsonResponse(read.path === '/api/admin/releases'
+        ? releaseCatalog
+        : { items: [] }));
+    }
+    await pending;
+    assert.equal(shell.content.getAttribute('aria-busy'), null);
+  }
 });
 
-test('private admin page styles dense responsive data without hiding overflow', () => {
+test('read-only route Retry performs a second owned GET', async () => {
+  for (const [, module, endpoint] of routeCases) {
+    const { document, shell } = routeHarness();
+    const calls = [];
+    const mounted = module.mount({
+      document,
+      shell,
+      dialogs: {},
+      fetcher: async (path, init) => {
+        calls.push({ path, init });
+        const ownedRead = calls.filter((call) => call.path === endpoint).length;
+        return ownedRead === 1 && path === endpoint
+          ? jsonResponse({}, { ok: false })
+          : jsonResponse(path === '/api/admin/releases' ? releaseCatalog : { items: [] });
+      },
+    });
+    await mounted.refresh();
+    const retry = shell.content.querySelectorAll('button')[0];
+    assert.equal(retry.textContent, 'Retry');
+    await retry.click();
+    assert.deepEqual(
+      calls.map(({ path }) => path),
+      [...routeEndpoints(endpoint), ...routeEndpoints(endpoint)],
+    );
+    assert.ok(calls.every(({ init }) => init.method === 'GET'));
+    assert.match(textOf(shell.content), /No /i);
+  }
+});
+
+test('Users and Authorization expose labelled case-insensitive email search', async () => {
+  for (const [module, endpoint] of [
+    [users, '/api/admin/users'],
+    [authorization, '/api/admin/authorization'],
+  ]) {
+    const { document, shell } = routeHarness();
+    const mounted = module.mount({
+      document,
+      shell,
+      dialogs: {},
+      fetcher: async (path) => {
+        if (path === '/api/admin/releases') return jsonResponse(releaseCatalog);
+        assert.equal(path, endpoint);
+        const item = endpoint === '/api/admin/authorization'
+          ? {
+            account_state: 'active', include_latest: true, versions: [],
+            updated_at: '2026-07-11 12:00:00',
+          }
+          : { state: 'active' };
+        return jsonResponse({ items: [
+          { email: 'Alpha@Example.com', ...item },
+          { email: 'beta@example.com', ...item },
+        ] });
+      },
+    });
+    await mounted.refresh();
+    const search = shell.content.querySelectorAll('input')[0];
+    assert.equal(search.getAttribute('aria-label'), 'Search by email');
+    search.value = 'ALPHA@EXAMPLE';
+    await search.dispatchEvent({ type: 'input' });
+    assert.match(textOf(shell.content), /Alpha@Example\.com/);
+    assert.doesNotMatch(textOf(shell.content), /beta@example\.com/);
+  }
+});
+
+test('admin shell styles dense responsive list-detail without page overflow', () => {
   assert.match(css, /--accent:\s*#0d9488/);
-  assert.match(css, /font-variant-numeric:\s*tabular-nums/);
-  assert.match(css, /\.table-scroll[\s\S]*overflow-x:\s*auto/);
-  assert.match(css, /thead th[\s\S]*position:\s*sticky/);
-  assert.match(css, /:focus-visible/);
-  assert.match(css, /min-height:\s*44px/);
-  assert.match(css, /@media \(hover: hover\) and \(pointer: fine\)/);
-  assert.match(css, /@media \(prefers-color-scheme: dark\)/);
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(css, /dialog::backdrop/);
-  assert.match(css, /\.row-actions[\s\S]*flex-wrap:\s*wrap/);
-  assert.match(css, /textarea[\s\S]*min-height:/);
+  assert.match(adminCss, /grid-template-columns:\s*208px minmax\(0, 1fr\)/);
+  assert.match(adminCss, /font-variant-numeric:\s*tabular-nums/);
+  assert.match(adminCss, /min-height:\s*44px/);
+  assert.match(adminCss, /@media \(max-width: 760px\)/);
+  assert.match(adminCss, /@media \(max-width: 640px\)/);
+  assert.match(adminCss, /@media \(prefers-color-scheme: dark\)/);
+  assert.match(adminCss, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(adminCss, /@media \(forced-colors: active\)/);
+  assert.match(adminCss, /dialog::backdrop/);
+  assert.match(adminCss, /:focus-visible/);
+  assert.doesNotMatch(adminCss, /animation\s*:/);
+});
+
+test('admin shell uses fluid intermediate tracks beside the fixed rail', () => {
+  const listDetailRule = adminCss.match(/\.list-detail\s*\{([^}]*)\}/)?.[1] || '';
+  const headerRule = adminCss.match(/\.route-header\s*\{([^}]*)\}/)?.[1] || '';
+  assert.match(listDetailRule, /grid-template-columns:\s*minmax\(0, 3fr\) minmax\(0, 2fr\)/);
+  assert.doesNotMatch(listDetailRule, /minmax\((?:360|280)px/);
+  assert.match(headerRule, /flex-wrap:\s*wrap/);
+  assert.match(css, /\.skip-link\s*\{[^}]*min-height:\s*44px/s);
 });
 
 test('private admin assets contain no identity or Access configuration', () => {
-  const assets = [html, css, script].join('\n');
-  assert.doesNotMatch(
-    assets,
-    /ADMIN_EMAIL|ACCESS_AUD|ACCESS_TEAM_DOMAIN|cloudflareaccess\.com/i,
-  );
+  const assets = [html, css, bootstrapSource, coreSource, ...routeSources].join('\n');
+  assert.doesNotMatch(assets, /ADMIN_EMAIL|ACCESS_AUD|ACCESS_TEAM_DOMAIN|cloudflareaccess\.com/i);
 });
 
 test('Wrangler routes the complete private hostname', () => {

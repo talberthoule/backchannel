@@ -16,9 +16,19 @@ delivered through `https://downloads.backchannel.page/`.
 publishes R2 objects, advances Latest, or creates a GitHub release. A normal
 `master` push does not rebuild desktop bundles.
 
+Any site release containing the modular admin identity/authorization change
+must first complete the preview rehearsal and production mutation freeze,
+backup, migration `0003`, zero-count parity checks, atomic Worker/assets
+deployment, unfreeze, and smoke sequence in the
+[deployment migration cutover](deployment.md#admin-identity-and-authorization-migration-cutover).
+Do not roll back after the first new policy mutation without a forward fix or
+an explicit policy-to-legacy synchronization.
+
 ## Staged customer-link cutover
 
-Follow [Deployment](deployment.md) as the ordered gate for this rollout. Merge
+Follow [Deployment](deployment.md) as the ordered gate for this rollout, using
+its [admin migration cutover](deployment.md#admin-identity-and-authorization-migration-cutover).
+Merge
 the control-plane branch to `master` with a merge commit that preserves hold
 commit `57fc8d991b8101a2db5889df16ce5a26078baff2`. Do not squash or rebase this
 rollout. Wait for the Site workflow to finish successfully, then verify the
