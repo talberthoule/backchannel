@@ -170,13 +170,12 @@ test('password verification rejects malformed records after a fixed dummy deriva
   ];
 
   let derivations = 0;
-  const derive = (password, salt, iterations, length, digest) => {
+  const derive = (password, salt, iterations, length) => {
     derivations += 1;
     assert.equal(password instanceof Uint8Array, true);
     assert.equal(salt.byteLength, 16);
     assert.equal(iterations, PASSWORD_ITERATIONS);
     assert.equal(length, 32);
-    assert.equal(digest, 'sha256');
     return new Uint8Array(32);
   };
   for (const record of malformed) {

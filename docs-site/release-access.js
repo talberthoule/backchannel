@@ -1,4 +1,5 @@
-import { pbkdf2Sync } from 'node:crypto';
+import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 
 export const PASSWORD_ITERATIONS = 600_000;
 export const TEMPORARY_PASSWORD_TTL_SECONDS = 259_200;
@@ -64,13 +65,16 @@ function decodeBase64Url(value, expectedLength) {
   }
 }
 
-async function derivePassword(password, salt, iterations, derive = pbkdf2Sync) {
+function derivePbkdf2(password, salt, iterations, length) {
+  return pbkdf2(sha256, password, salt, { c: iterations, dkLen: length });
+}
+
+async function derivePassword(password, salt, iterations, derive = derivePbkdf2) {
   return new Uint8Array(derive(
     new TextEncoder().encode(password),
     salt,
     iterations,
     32,
-    'sha256',
   ));
 }
 
