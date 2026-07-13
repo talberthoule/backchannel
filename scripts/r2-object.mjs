@@ -39,6 +39,18 @@ export function buildObjectUrl(accountId, bucket, key) {
   return new URL(`https://${accountId}.r2.cloudflarestorage.com/${path}`);
 }
 
+function validObjectPath(url) {
+  try {
+    const [, encodedBucket, ...encodedKey] = url.pathname.split('/');
+    if (!encodedBucket || encodedKey.length === 0) return false;
+    const bucket = decodeURIComponent(encodedBucket);
+    const key = encodedKey.map(decodeURIComponent).join('/');
+    return buildObjectUrl(url.hostname.slice(0, 32), bucket, key).pathname === url.pathname;
+  } catch {
+    return false;
+  }
+}
+
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -64,6 +76,7 @@ export function signRequest({method, url, headers, payloadHash, credentials, now
       || url.port !== ''
       || url.username !== ''
       || url.password !== ''
+      || !validObjectPath(url)
       || !PAYLOAD_HASH_PATTERN.test(payloadHash)
       || !credentials?.accessKeyId
       || !credentials?.secretAccessKey

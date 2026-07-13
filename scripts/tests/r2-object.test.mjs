@@ -107,6 +107,10 @@ for (const [label, url] of [
   ['extra hostname labels', new URL(`https://${ACCOUNT_ID}.unexpected.r2.cloudflarestorage.com/${BUCKET}/releases/latest.json`)],
   ['explicit ports', new URL(`https://${ACCOUNT_ID}.r2.cloudflarestorage.com:8443/${BUCKET}/releases/latest.json`)],
   ['URL credentials', new URL(`https://user:password@${ACCOUNT_ID}.r2.cloudflarestorage.com/${BUCKET}/releases/latest.json`)],
+  ['invalid path bucket', new URL(`https://${ACCOUNT_ID}.r2.cloudflarestorage.com/Release-Bucket/releases/latest.json`)],
+  ['missing path key', new URL(`https://${ACCOUNT_ID}.r2.cloudflarestorage.com/${BUCKET}`)],
+  ['empty path key segments', new URL(`https://${ACCOUNT_ID}.r2.cloudflarestorage.com/${BUCKET}/releases//latest.json`)],
+  ['encoded relative path segments', new URL(`https://${ACCOUNT_ID}.r2.cloudflarestorage.com/${BUCKET}/releases/%2E%2E%2Flatest.json`)],
 ]) {
   test(`signRequest rejects ${label}`, () => {
     assert.throws(() => signRequest({
