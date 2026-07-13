@@ -550,6 +550,16 @@ test('admin authorization rejects malformed versions rows generically', async ()
   });
 });
 
+test('worker has no active release_accounts Latest references', () => {
+  const source = readFileSync(new URL('./worker.js', import.meta.url), 'utf8');
+  for (const forbidden of [
+    /a\.include_latest/,
+    /account\.include_latest/,
+    /UPDATE release_accounts SET include_latest/i,
+    /INSERT INTO release_accounts\s*\([^)]*\binclude_latest\b/i,
+  ]) assert.doesNotMatch(source, forbidden);
+});
+
 test('admin read endpoints authorize before D1 reads', async () => {
   let d1Calls = 0;
   const env = {
@@ -1025,19 +1035,36 @@ test('approved account and session survive a rejected-state race in real SQLite'
   assert.deepEqual(await inconsistent.json(), { authenticated: false });
 });
 
-test('grant replacement checks active state and batches delete, inserts, update, and event', async () => {
-  const { env, calls, batchCalls } = adminBindings();
+test('authorization grant replacement batches policy, versions, and event', async () => {
+  let readCount = 0;
+  const item = {
+    email: 'person@example.com',
+    account_state: 'active',
+    include_latest: 0,
+    updated_at: '2026-07-12T12:00:00.000Z',
+    versions: '["v1.2.3"]',
+  };
+  const { env, calls, batchCalls } = adminBindings({
+    first: async () => (++readCount === 1
+      ? { state: 'active', release_decision: 'approved' }
+      : item),
+  });
   const response = await workerModule.route(adminJson('/api/admin/authorization/grants', {
     email: 'person@example.com', include_latest: false, versions: ['v1.2.3'],
   }, { method: 'PUT' }), env, allowOwner, fixedDependencies);
   assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    item: { ...item, include_latest: false, versions: ['v1.2.3'] },
+  });
   assert.equal(batchCalls.length, 1);
   assert.match(calls[0].sql, /SELECT[\s\S]+release_accounts/i);
   assert.match(calls[1].sql, /DELETE FROM release_account_versions/i);
   assert.match(calls[1].sql, /EXISTS[\s\S]+state = 'active'/i);
   assert.match(calls[2].sql, /INSERT INTO release_account_versions/i);
   assert.match(calls[2].sql, /WHERE EXISTS[\s\S]+state = 'active'/i);
-  assert.match(calls[3].sql, /UPDATE release_accounts/i);
+  assert.match(calls[3].sql, /UPDATE release_access_policies/i);
+  assert.match(calls[3].sql, /include_latest[\s\S]+updated_at/i);
   assert.match(calls[4].sql, /grant_change/);
   assert.match(calls[4].sql, /WHERE EXISTS[\s\S]+state = 'active'/i);
 
@@ -1047,6 +1074,71 @@ test('grant replacement checks active state and batches delete, inserts, update,
   }, { method: 'PUT' }), denied.env, allowOwner, fixedDependencies);
   assert.equal(deniedResponse.status, 400);
   assert.equal(denied.calls.length, 0);
+});
+
+test('revoked authorization remains readable but immutable', async (context) => {
+  const bindings = sqliteReleaseBindings();
+  context.after(() => bindings.db.close());
+  seedApprovedReleaseAccount(bindings.db, {
+    email: 'person@example.com', includeLatest: 1, version: 'v0.2.0',
+  });
+  bindings.db.prepare(`
+    UPDATE release_accounts SET state = 'revoked', revoked_at = ? WHERE email = ?
+  `).run('2026-07-12T12:00:00.000Z', 'person@example.com');
+
+  const read = await workerModule.route(
+    adminRequest('/api/admin/authorization'), bindings.env, allowOwner, fixedDependencies,
+  );
+  assert.equal(read.status, 200);
+  assert.deepEqual((await read.json()).items, [{
+    email: 'person@example.com',
+    account_state: 'revoked',
+    include_latest: true,
+    updated_at: '2026-07-12T12:00:00.000Z',
+    versions: ['v0.2.0'],
+  }]);
+
+  const mutation = await workerModule.route(adminJson('/api/admin/authorization/grants', {
+    email: 'person@example.com', include_latest: false, versions: ['v1.2.3'],
+  }, { method: 'PUT' }), bindings.env, allowOwner, fixedDependencies);
+  assert.equal(mutation.status, 409);
+  assert.deepEqual(await mutation.json(), {
+    ok: false, message: 'Request could not be completed.',
+  });
+  assert.deepEqual({ ...bindings.db.prepare(`
+    SELECT include_latest, updated_at FROM release_access_policies WHERE email = ?
+  `).get('person@example.com') }, {
+    include_latest: 1, updated_at: '2026-07-12T12:00:00.000Z',
+  });
+  assert.deepEqual(bindings.db.prepare(`
+    SELECT version FROM release_account_versions WHERE email = ? ORDER BY version
+  `).all('person@example.com').map(({ version }) => version), ['v0.2.0']);
+  assert.equal(bindings.db.prepare(`
+    SELECT count(*) AS count FROM release_access_events WHERE email = ?
+  `).get('person@example.com').count, 0);
+});
+
+test('old overloaded admin access routes return private 404', async () => {
+  for (const [path, method] of [
+    ['/api/admin/access/approve', 'POST'],
+    ['/api/admin/access/reject', 'POST'],
+    ['/api/admin/access/grants', 'PUT'],
+    ['/api/admin/access/reset-password', 'POST'],
+    ['/api/admin/access/revoke', 'POST'],
+  ]) {
+    const bindings = adminBindings();
+    const response = await workerModule.route(
+      adminJson(path, { email: 'person@example.com' }, { method }),
+      bindings.env,
+      allowOwner,
+      fixedDependencies,
+    );
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await response.json(), { ok: false, message: 'Not found.' });
+    assert.equal(bindings.calls.length, 0);
+    assert.equal(bindings.batchCalls.length, 0);
+  }
 });
 
 test('password reset requires its exact batch and audit event', async () => {

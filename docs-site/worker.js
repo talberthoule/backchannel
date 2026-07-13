@@ -224,6 +224,14 @@ function adminUserRecord(record) {
   return { ...record, must_change_password: record.must_change_password === 1 };
 }
 
+function adminAuthorizationRecord(record) {
+  if (![0, 1].includes(record?.include_latest)
+    || typeof record.versions !== 'string') throw new TypeError();
+  const versions = JSON.parse(record.versions);
+  if (!Array.isArray(versions)) throw new TypeError();
+  return { ...record, include_latest: record.include_latest === 1, versions };
+}
+
 export async function handleAdminAuthorization(request, env) {
   if (request.method !== 'GET') {
     return privateJson(405, { ok: false, message: 'Method not allowed.' }, { allow: 'GET' });
@@ -238,13 +246,7 @@ export async function handleAdminAuthorization(request, env) {
       JOIN release_access_policies p ON p.email = a.email
       ORDER BY a.email
     `).all();
-    const items = (result.results || []).map((record) => {
-      if (![0, 1].includes(record.include_latest)
-        || typeof record.versions !== 'string') throw new TypeError();
-      const versions = JSON.parse(record.versions);
-      if (!Array.isArray(versions)) throw new TypeError();
-      return { ...record, include_latest: record.include_latest === 1, versions };
-    });
+    const items = (result.results || []).map(adminAuthorizationRecord);
     return privateJson(200, { items });
   } catch {
     return dbError();
@@ -382,6 +384,18 @@ async function loadAdminUser(env, email, now) {
   return adminUserRecord(record);
 }
 
+async function loadAdminAuthorization(env, email) {
+  const record = await env.INTEREST_DB.prepare(`
+    SELECT a.email, a.state AS account_state, p.include_latest, p.updated_at,
+           COALESCE((SELECT json_group_array(version)
+             FROM release_account_versions WHERE email = a.email), '[]') AS versions
+    FROM release_accounts a
+    JOIN release_access_policies p ON p.email = a.email
+    WHERE a.email = ?
+  `).bind(email).first();
+  return adminAuthorizationRecord(record);
+}
+
 async function validateAccessCatalog(env, access) {
   if (!env.RELEASES) return dbError();
   try {
@@ -503,8 +517,11 @@ async function replaceGrants(env, email, access, now) {
   }
   statements.push(
     statement(env, `
-      UPDATE release_accounts SET include_latest = ? WHERE email = ? AND state = 'active'
-    `, access.includeLatest ? 1 : 0, email),
+      UPDATE release_access_policies
+      SET include_latest = ?, updated_at = ?
+      WHERE email = ? AND EXISTS
+        (SELECT 1 FROM release_accounts WHERE email = ? AND state = 'active')
+    `, access.includeLatest ? 1 : 0, now, email, email),
     statement(env, `
       INSERT INTO release_access_events (email, action, version, created_at)
       SELECT ?, 'grant_change', NULL, ? WHERE EXISTS
@@ -514,9 +531,8 @@ async function replaceGrants(env, email, access, now) {
   try {
     const results = await env.INTEREST_DB.batch(statements);
     const updateIndex = statements.length - 2;
-    return (results[updateIndex]?.meta?.changes ?? 0) === 1
-      ? privateJson(200, { ok: true })
-      : dbError(409);
+    if ((results[updateIndex]?.meta?.changes ?? 0) !== 1) return dbError(409);
+    return privateJson(200, { ok: true, item: await loadAdminAuthorization(env, email) });
   } catch {
     return dbError();
   }
