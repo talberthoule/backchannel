@@ -42,11 +42,13 @@ Create `backend/tests/test_audio_handler.py` with:
 ```python
 import unittest
 
-from app.ws.audio_handler import _decode_audio_frame
+from app.ws import audio_handler
 
 
 class AudioFrameDecodingTests(unittest.TestCase):
     def test_decodes_prefixed_and_legacy_frames(self):
+        self.assertTrue(hasattr(audio_handler, "_decode_audio_frame"))
+        decode_audio_frame = audio_handler._decode_audio_frame
         cases = [
             (b"\x00\x01\x02", (0, b"\x01\x02")),
             (b"\x01\x03\x04", (1, b"\x03\x04")),
@@ -56,7 +58,7 @@ class AudioFrameDecodingTests(unittest.TestCase):
 
         for raw_frame, expected in cases:
             with self.subTest(raw_frame=raw_frame):
-                self.assertEqual(expected, _decode_audio_frame(raw_frame))
+                self.assertEqual(expected, decode_audio_frame(raw_frame))
 
 
 if __name__ == "__main__":
@@ -73,7 +75,7 @@ $frontend = (Resolve-Path frontend).Path
 docker run --rm --mount "type=bind,source=$backend,target=/app" --mount "type=bind,source=$frontend,target=/frontend" -w /app backchannel-backend:latest python -m unittest tests.test_audio_handler.AudioFrameDecodingTests -v
 ```
 
-Expected: failure while importing `_decode_audio_frame` because it does not exist yet. If the failure is unrelated, fix the test environment before proceeding.
+Expected: an assertion failure because `audio_handler` does not yet expose `_decode_audio_frame`. If the failure is unrelated, fix the test environment before proceeding.
 
 - [ ] **Step 3: Add the decoder and replace the inline branch**
 
@@ -145,7 +147,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
-from app.ws.audio_handler import _decode_audio_frame, _reconnect_audio_pipeline
+from app.ws import audio_handler
+from app.ws.audio_handler import _decode_audio_frame
 ```
 
 - [ ] **Step 2: Add reconnect success and failure tests**
@@ -155,6 +158,8 @@ Append this class before the `if __name__ == "__main__"` block:
 ```python
 class AudioReconnectTests(unittest.IsolatedAsyncioTestCase):
     async def test_flushes_both_tracks_and_reports_success(self):
+        self.assertTrue(hasattr(audio_handler, "_reconnect_audio_pipeline"))
+        reconnect_audio_pipeline = audio_handler._reconnect_audio_pipeline
         mic_segment = SimpleNamespace(speaker_id="auto_1", pcm_bytes=b"mic")
         system_segment = SimpleNamespace(speaker_id="auto_2", pcm_bytes=b"system")
         websocket = MagicMock()
@@ -169,7 +174,7 @@ class AudioReconnectTests(unittest.IsolatedAsyncioTestCase):
             "app.ws.audio_handler.flush_diarizer_segments",
             side_effect=[[mic_segment], [system_segment]],
         ) as flush_segments:
-            reconnected = await _reconnect_audio_pipeline(
+            reconnected = await reconnect_audio_pipeline(
                 websocket,
                 diarizer,
                 system_diarizer,
@@ -197,6 +202,8 @@ class AudioReconnectTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_returns_false_when_gateway_reconnect_raises(self):
+        self.assertTrue(hasattr(audio_handler, "_reconnect_audio_pipeline"))
+        reconnect_audio_pipeline = audio_handler._reconnect_audio_pipeline
         websocket = MagicMock()
         websocket.send_json = AsyncMock()
         diarizer = MagicMock()
@@ -213,7 +220,7 @@ class AudioReconnectTests(unittest.IsolatedAsyncioTestCase):
             ),
             self.assertLogs("app.ws.audio_handler", level="ERROR"),
         ):
-            reconnected = await _reconnect_audio_pipeline(
+            reconnected = await reconnect_audio_pipeline(
                 websocket,
                 diarizer,
                 None,
@@ -231,7 +238,7 @@ class AudioReconnectTests(unittest.IsolatedAsyncioTestCase):
 
 Use the Docker command from Task 1, changing the test selector to `tests.test_audio_handler.AudioReconnectTests`.
 
-Expected: failure while importing `_reconnect_audio_pipeline` because it does not exist yet.
+Expected: an assertion failure because `audio_handler` does not yet expose `_reconnect_audio_pipeline`.
 
 - [ ] **Step 4: Implement the module-level reconnect helper**
 
@@ -329,10 +336,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from app.models import CallSegment, TranscriptEntry
+from app.ws import audio_handler
 from app.ws.audio_handler import (
     _decode_audio_frame,
     _reconnect_audio_pipeline,
-    _start_call_segment,
 )
 ```
 
@@ -374,6 +381,8 @@ Append this class before the `if __name__ == "__main__"` block:
 ```python
 class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
     async def test_starts_next_segment_and_adds_resume_marker(self):
+        self.assertTrue(hasattr(audio_handler, "_start_call_segment"))
+        start_call_segment = audio_handler._start_call_segment
         session_id = uuid.uuid4()
         original_started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
         session = SimpleNamespace(
@@ -395,7 +404,7 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=41),
             ),
         ):
-            result = await _start_call_segment(session_id, is_resume=True)
+            result = await start_call_segment(session_id, is_resume=True)
 
         self.assertIs(writer, result)
         writer_class.assert_called_once_with(session_id, 3)
@@ -415,6 +424,8 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, db.commits)
 
     async def test_returns_none_when_session_does_not_exist(self):
+        self.assertTrue(hasattr(audio_handler, "_start_call_segment"))
+        start_call_segment = audio_handler._start_call_segment
         session_id = uuid.uuid4()
         db = FakeSessionContext(None)
 
@@ -422,7 +433,7 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
             patch("app.ws.audio_handler.async_session", return_value=db),
             patch("app.ws.audio_handler.SegmentAudioWriter") as writer_class,
         ):
-            result = await _start_call_segment(session_id, is_resume=False)
+            result = await start_call_segment(session_id, is_resume=False)
 
         self.assertIsNone(result)
         writer_class.assert_not_called()
@@ -434,7 +445,7 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
 
 Use the Task 1 Docker command with selector `tests.test_audio_handler.CallSegmentStartTests`.
 
-Expected: failure while importing `_start_call_segment` because it does not exist yet.
+Expected: an assertion failure because `audio_handler` does not yet expose `_start_call_segment`.
 
 - [ ] **Step 4: Implement the module-level startup helper**
 
