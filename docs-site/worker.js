@@ -30,15 +30,15 @@ const ADMIN_MUTATIONS = new Map([
   ['/api/admin/access/revoke', ['POST', 'revoke']],
 ]);
 const ADMIN_ASSETS = new Map([
-  ['/', '/admin/index.html'],
-  ['/index.html', '/admin/index.html'],
+  ['/', '/admin/'],
+  ['/index.html', '/admin/'],
   ['/style.css', '/style.css'],
   ['/admin.css', '/admin/admin.css'],
   ['/admin.js', '/admin/admin.js'],
 ]);
 const DOWNLOAD_ASSETS = new Map([
-  ['/', '/downloads/index.html'],
-  ['/index.html', '/downloads/index.html'],
+  ['/', '/downloads/'],
+  ['/index.html', '/downloads/'],
   ['/downloads.js', '/downloads/downloads.js'],
   ['/downloads.css', '/downloads/downloads.css'],
 ]);

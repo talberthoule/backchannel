@@ -935,7 +935,7 @@ test('private host serves only mapped assets with security headers', async () =>
   assert.equal(missing.status, 404);
   assert.deepEqual(
     assetRequests.map((assetRequest) => new URL(assetRequest.url).pathname),
-    ['/admin/index.html', '/style.css', '/admin/admin.js'],
+    ['/admin/', '/style.css', '/admin/admin.js'],
   );
   assert.equal(page.headers.get('cache-control'), 'no-store');
   assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
@@ -1031,6 +1031,34 @@ function downloadDependencies(overrides = {}) {
   };
 }
 
+test('private page roots avoid Cloudflare index redirects', async () => {
+  const cloudflareAsset = async (requestValue) => {
+    const url = new URL(requestValue.url);
+    if (url.pathname.endsWith('/index.html')) {
+      url.pathname = url.pathname.slice(0, -'index.html'.length);
+      return Response.redirect(url, 307);
+    }
+    return new Response('private asset');
+  };
+  const admin = adminBindings({ asset: cloudflareAsset });
+  const download = downloadBindings();
+  download.env.ASSETS.fetch = async (requestValue) => {
+    download.assetRequests.push(requestValue);
+    return cloudflareAsset(requestValue);
+  };
+
+  const adminPage = await workerModule.route(adminRequest('/'), admin.env, allowOwner);
+  const downloadPage = await workerModule.route(
+    downloadRequest('/', undefined, { method: 'GET' }),
+    download.env,
+  );
+
+  assert.equal(adminPage.status, 200);
+  assert.equal(downloadPage.status, 200);
+  assert.equal(new URL(admin.assetRequests[0].url).pathname, '/admin/');
+  assert.equal(new URL(download.assetRequests[0].url).pathname, '/downloads/');
+});
+
 const approvedAccount = {
   email: 'person@example.com',
   state: 'active',
@@ -1059,7 +1087,7 @@ test('recipient host serves only mapped assets with distinct private headers', a
   assert.ok(responses.every((response) => response.status === 200));
   assert.deepEqual(
     bindingsValue.assetRequests.map((requestValue) => new URL(requestValue.url).pathname),
-    ['/downloads/index.html', '/downloads/index.html', '/downloads/downloads.js', '/downloads/downloads.css'],
+    ['/downloads/', '/downloads/', '/downloads/downloads.js', '/downloads/downloads.css'],
   );
   const expectedCsp = "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
   for (const response of [...responses, missing]) {
