@@ -57,12 +57,13 @@ function trustedCatalog(value) {
 }
 
 function mutationItem(value, current, body) {
+  const submittedVersions = new Set(body.versions);
   if (!exactKeys(value, ['ok', 'item']) || value.ok !== true
     || !validRecord(value.item, current?.email)
     || value.item.account_state !== current.account_state
     || value.item.include_latest !== body.include_latest
     || value.item.versions.length !== body.versions.length
-    || value.item.versions.some((version, index) => version !== body.versions[index])) {
+    || value.item.versions.some((version) => !submittedVersions.has(version))) {
     throw new Error('invalid response');
   }
   return value.item;
@@ -90,6 +91,7 @@ function detailField(label, content, document) {
 export function mount({ document, fetcher, shell, dialogs }) {
   let items = [];
   let catalog = null;
+  let catalogPending = false;
   let selectedEmail = null;
   let searchQuery = '';
   let mutationPending = false;
@@ -107,7 +109,7 @@ export function mount({ document, fetcher, shell, dialogs }) {
     shell.content.replaceChildren(region);
   }
 
-  function render(focusSave = false) {
+  function render(focusSave = false, draft = null) {
     if (!items.length) {
       selectedEmail = null;
       state('No release authorization policies yet.');
@@ -180,7 +182,9 @@ export function mount({ document, fetcher, shell, dialogs }) {
       } else if (!catalog) {
         const title = element('h3', '', 'Release grants', document);
         const notice = element(
-          'p', 'grant-notice', 'Release catalog could not be loaded. Current policy is unchanged.', document,
+          'p', 'grant-notice', catalogPending
+            ? 'Release catalog is loading. Grant changes are disabled.'
+            : 'Release catalog could not be loaded. Current policy is unchanged.', document,
         );
         save = element('button', 'primary-button', 'Save grants', document);
         save.type = 'button';
@@ -198,7 +202,8 @@ export function mount({ document, fetcher, shell, dialogs }) {
         const latest = element('input', '', undefined, document);
         latest.type = 'checkbox';
         latest.setAttribute('name', 'include_latest');
-        latest.checked = record.include_latest;
+        const selectedDraft = draft?.email === record.email ? draft : null;
+        latest.checked = selectedDraft ? selectedDraft.include_latest : record.include_latest;
         latest.setAttribute('aria-describedby', 'grant-error');
         latestLabel.append(latest, element(
           'span', '', `Latest releases (${catalog.latest_version})`, document,
@@ -210,7 +215,7 @@ export function mount({ document, fetcher, shell, dialogs }) {
           input.type = 'checkbox';
           input.setAttribute('name', 'versions');
           input.value = release.version;
-          input.checked = versions.includes(release.version);
+          input.checked = (selectedDraft?.versions || versions).includes(release.version);
           input.setAttribute('aria-describedby', 'grant-error');
           label.append(input, element('span', 'mono', release.version, document));
           if (release.version === catalog.latest_version) {
@@ -253,6 +258,7 @@ export function mount({ document, fetcher, shell, dialogs }) {
             versions: selectedVersions,
           };
           let rerender = false;
+          let recoveryDraft = null;
           let status = 'Release authorization update failed. Try again.';
           try {
             const value = await jsonRequest(grantsEndpoint, 'PUT', bodyValue, fetcher);
@@ -263,9 +269,10 @@ export function mount({ document, fetcher, shell, dialogs }) {
             status = 'Release authorization updated.';
           } catch {
             rerender = !save.isConnected;
+            if (rerender) recoveryDraft = bodyValue;
           } finally {
             mutationPending = false;
-            if (rerender) render(true);
+            if (rerender) render(true, recoveryDraft);
             else {
               save.disabled = false;
               for (const input of inputs) input.disabled = false;
@@ -342,11 +349,16 @@ export function mount({ document, fetcher, shell, dialogs }) {
     state('Loading authorization.');
     const authorizationRead = jsonRequest(endpoint, undefined, undefined, fetcher);
     const catalogRead = jsonRequest(catalogEndpoint, undefined, undefined, fetcher);
-    const [authorizationResult, catalogResult] = await Promise.allSettled([
-      authorizationRead,
-      catalogRead,
-    ]);
+    const authorizationResultRead = authorizationRead.then(
+      (value) => ({ status: 'fulfilled', value }),
+      () => ({ status: 'rejected' }),
+    );
+    const catalogResultRead = catalogRead.then(
+      (value) => ({ status: 'fulfilled', value }),
+      () => ({ status: 'rejected' }),
+    );
     try {
+      const authorizationResult = await authorizationResultRead;
       if (generation !== refreshGeneration) return;
       if (authorizationResult.status !== 'fulfilled'
         || !exactKeys(authorizationResult.value, ['items'])
@@ -355,7 +367,8 @@ export function mount({ document, fetcher, shell, dialogs }) {
         throw new Error('invalid response');
       }
       items = authorizationResult.value.items;
-      catalog = catalogResult.status === 'fulfilled' ? trustedCatalog(catalogResult.value) : null;
+      catalog = null;
+      catalogPending = true;
       selectedEmail = null;
       searchQuery = '';
       render();
@@ -364,11 +377,19 @@ export function mount({ document, fetcher, shell, dialogs }) {
       const loaded = items.length === 1
         ? 'Loaded 1 authorization policy.'
         : `Loaded ${formatCount(items.length)} authorization policies.`;
+      shell.status.textContent = `${loaded} Release catalog is loading.`;
+
+      const catalogResult = await catalogResultRead;
+      if (generation !== refreshGeneration) return;
+      catalogPending = false;
+      catalog = catalogResult.status === 'fulfilled' ? trustedCatalog(catalogResult.value) : null;
+      render();
       shell.status.textContent = catalog ? loaded : `${loaded} Release catalog could not be loaded.`;
     } catch {
       if (generation !== refreshGeneration) return;
       items = [];
       catalog = null;
+      catalogPending = false;
       selectedEmail = null;
       searchQuery = '';
       shell.count.textContent = '0';

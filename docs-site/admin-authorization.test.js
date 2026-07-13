@@ -28,6 +28,10 @@ function deferred() {
   return { promise, resolve };
 }
 
+function nextTurn() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 function buttonNamed(root, label) {
   return root.querySelectorAll('button').find((button) => button.textContent === label);
 }
@@ -97,6 +101,39 @@ test('Authorization launches its policy and trusted catalog reads independently 
 
   assert.equal(route.shell.content.getAttribute('aria-busy'), null);
   assert.equal(route.shell.count.textContent, '1');
+});
+
+test('policy renders while the independent catalog read remains pending', async () => {
+  const authorizationRead = deferred();
+  const catalogRead = deferred();
+  const route = harness(({ path }) => path === '/api/admin/authorization'
+    ? authorizationRead.promise
+    : catalogRead.promise);
+  const refreshing = route.mounted.refresh();
+
+  authorizationRead.resolve(jsonResponse({ items: [policy] }));
+  await nextTurn();
+
+  assert.equal(route.shell.count.textContent, '1');
+  assert.match(textOf(route.shell.content), /Person@Example\.com/);
+  assert.match(route.shell.status.textContent, /catalog is loading/i);
+  const row = route.shell.content.querySelectorAll('.row-select')[0];
+  await row.click();
+  assert.match(textOf(route.shell.content), /catalog is loading/i);
+  assert.equal(buttonNamed(route.shell.content, 'Save grants').disabled, true);
+  assert.equal(route.shell.content.querySelectorAll('.version-input').length, 0);
+  assert.equal(route.calls.filter(({ path }) => path === '/api/admin/authorization').length, 1);
+
+  catalogRead.resolve(jsonResponse(catalog));
+  await refreshing;
+
+  assert.equal(route.shell.content.querySelectorAll('.list-detail')[0].dataset.view, 'detail');
+  assert.equal(buttonNamed(route.shell.content, 'Save grants').disabled, false);
+  assert.deepEqual(
+    route.shell.content.querySelectorAll('.version-input').map(({ value }) => value),
+    ['v0.3.0', 'v0.2.1'],
+  );
+  assert.equal(route.calls.filter(({ path }) => path === '/api/admin/authorization').length, 1);
 });
 
 test('Authorization searches normalized email and restores row focus from complete policy detail', async () => {
@@ -188,6 +225,29 @@ test('Save sends the exact full replacement and patches the returned policy with
   assert.equal(latestInput(route.shell.content).checked, false);
   assert.equal(route.shell.status.textContent, 'Release authorization updated.');
   assert.equal(route.document.activeElement, buttonNamed(route.shell.content, 'Save grants'));
+});
+
+test('Save accepts the same unique version set in server order', async () => {
+  const updated = {
+    ...policy,
+    include_latest: false,
+    versions: ['v0.2.1', 'v0.3.0'],
+    updated_at: '2026-07-13T13:00:00.000Z',
+  };
+  const route = harness((call) => call.method === 'PUT'
+    ? jsonResponse({ ok: true, item: updated })
+    : standardResponse(call));
+  await openPolicy(route);
+  latestInput(route.shell.content).checked = false;
+  versionInput(route.shell.content, 'v0.3.0').checked = true;
+
+  await buttonNamed(route.shell.content, 'Save grants').click();
+
+  assert.deepEqual(route.calls[2].body.versions, ['v0.3.0', 'v0.2.1']);
+  assert.equal(route.shell.status.textContent, 'Release authorization updated.');
+  assert.match(textOf(route.shell.content), /Historical versionsv0\.2\.1, v0\.3\.0/);
+  assert.equal(versionInput(route.shell.content, 'v0.3.0').checked, true);
+  assert.equal(versionInput(route.shell.content, 'v0.2.1').checked, true);
 });
 
 test('malformed grant successes cannot change unowned fields or patch local policy', async () => {
@@ -284,6 +344,44 @@ test('failed grants recover retained detail after an invalidated refresh detache
   staleCatalog.resolve(jsonResponse(catalog));
   await refreshing;
   assert.doesNotMatch(textOf(route.shell.content), /v9\.9\.9/);
+  assert.match(route.shell.status.textContent, /failed/i);
+});
+
+test('detached failed grants recover the submitted valid draft selection', async () => {
+  const staleAuthorization = deferred();
+  const staleCatalog = deferred();
+  let reads = 0;
+  const route = harness((call) => {
+    if (call.method === 'PUT') return jsonResponse({}, { ok: false });
+    if (call.path === '/api/admin/authorization') return reads++ === 0
+      ? jsonResponse({ items: [policy] })
+      : staleAuthorization.promise;
+    return reads === 1 ? jsonResponse(catalog) : staleCatalog.promise;
+  });
+  await openPolicy(route);
+  const oldSave = buttonNamed(route.shell.content, 'Save grants');
+  latestInput(route.shell.content).checked = false;
+  versionInput(route.shell.content, 'v0.2.1').checked = false;
+  versionInput(route.shell.content, 'v0.3.0').checked = true;
+  const refreshing = route.mounted.refresh();
+  await oldSave.click();
+
+  assert.deepEqual(route.calls[4].body, {
+    email: policy.email,
+    include_latest: false,
+    versions: ['v0.3.0'],
+  });
+  assert.equal(latestInput(route.shell.content).checked, false);
+  assert.equal(versionInput(route.shell.content, 'v0.2.1').checked, false);
+  assert.equal(versionInput(route.shell.content, 'v0.3.0').checked, true);
+  assert.equal(route.document.activeElement, buttonNamed(route.shell.content, 'Save grants'));
+
+  staleAuthorization.resolve(jsonResponse({ items: [{ ...policy, versions: ['v9.9.9'] }] }));
+  staleCatalog.resolve(jsonResponse(catalog));
+  await refreshing;
+  assert.equal(latestInput(route.shell.content).checked, false);
+  assert.equal(versionInput(route.shell.content, 'v0.2.1').checked, false);
+  assert.equal(versionInput(route.shell.content, 'v0.3.0').checked, true);
   assert.match(route.shell.status.textContent, /failed/i);
 });
 
