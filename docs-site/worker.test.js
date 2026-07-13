@@ -65,9 +65,6 @@ const interestRecord = {
   last_contacted_at: null,
   release_decision: 'pending',
   release_reviewed_at: null,
-  account_state: null,
-  include_latest: null,
-  versions: [],
 };
 
 const interestMigration = readFileSync(
@@ -76,12 +73,16 @@ const interestMigration = readFileSync(
 const releaseMigration = readFileSync(
   new URL('./migrations/0002_release_access.sql', import.meta.url), 'utf8',
 );
+const policyMigration = readFileSync(
+  new URL('./migrations/0003_release_access_policies.sql', import.meta.url), 'utf8',
+);
 
 function sqliteD1() {
   const database = new DatabaseSync(':memory:');
   database.exec('PRAGMA foreign_keys = ON');
   database.exec(interestMigration);
   database.exec(releaseMigration);
+  database.exec(policyMigration);
   const binding = {
     prepare(sql) {
       const prepared = database.prepare(sql);
@@ -110,6 +111,53 @@ function sqliteD1() {
     },
   };
   return { database, binding };
+}
+
+function sqliteReleaseBindings() {
+  const { database, binding } = sqliteD1();
+  return {
+    db: database,
+    env: {
+      ADMIN_EMAIL: 'owner@example.com',
+      ACCESS_TEAM_DOMAIN: 'backchannel.cloudflareaccess.com',
+      ACCESS_AUD: 'admin-audience',
+      INTEREST_DB: binding,
+      RELEASES: adminCatalogBucket(),
+      ASSETS: { fetch: async () => new Response('private asset') },
+    },
+  };
+}
+
+function seedApprovedReleaseAccount(db, {
+  email,
+  includeLatest = 1,
+  version,
+  sessionExpiresAt,
+}) {
+  db.prepare(`
+    INSERT INTO interest_subscribers
+      (email, consent_version, release_decision, release_reviewed_at)
+    VALUES (?, '2026-07-12', 'approved', '2026-07-12T12:00:00.000Z')
+  `).run(email);
+  db.prepare(`
+    INSERT INTO release_accounts
+      (email, state, password_hash, password_salt, must_change_password,
+       password_expires_at, approved_at)
+    VALUES (?, 'active', 'hash', 'salt', 1,
+      '2026-07-15T12:00:00.000Z', '2026-07-12T12:00:00.000Z')
+  `).run(email);
+  db.prepare(`
+    INSERT INTO release_access_policies (email, include_latest, updated_at)
+    VALUES (?, ?, '2026-07-12T12:00:00.000Z')
+  `).run(email, includeLatest);
+  if (version) db.prepare(`
+    INSERT INTO release_account_versions (email, version) VALUES (?, ?)
+  `).run(email, version);
+  if (sessionExpiresAt) db.prepare(`
+    INSERT INTO release_sessions
+      (token_hash, email, password_change_only, created_at, expires_at)
+    VALUES ('seed-token', ?, 0, '2026-07-12T12:00:00.000Z', ?)
+  `).run(email, sessionExpiresAt);
 }
 
 function adminReleaseManifest(version) {
@@ -436,6 +484,61 @@ test('admin API selects only consent records in newest-first order', async () =>
   assert.doesNotMatch(calls[0].sql, /SELECT\s+\*/i);
   for (const field of Object.keys(interestRecord)) assert.match(calls[0].sql, new RegExp(field));
   assert.match(calls[0].sql, /ORDER BY (?:i\.)?created_at DESC/);
+});
+
+test('separated admin read endpoints return disjoint route-specific records', async (context) => {
+  const env = sqliteReleaseBindings();
+  context.after(() => env.db.close());
+  seedApprovedReleaseAccount(env.db, {
+    email: 'person@example.com',
+    includeLatest: 1,
+    version: 'v0.2.1',
+    sessionExpiresAt: '2026-07-20T12:00:00.000Z',
+  });
+  const dependencies = { now: () => new Date('2026-07-13T12:00:00.000Z') };
+
+  const interests = await workerModule.route(
+    adminRequest('/api/admin/interests'), env.env, allowOwner, dependencies,
+  );
+  const users = await workerModule.route(
+    adminRequest('/api/admin/users'), env.env, allowOwner, dependencies,
+  );
+  const authorization = await workerModule.route(
+    adminRequest('/api/admin/authorization'), env.env, allowOwner, dependencies,
+  );
+
+  assert.deepEqual(Object.keys((await interests.json()).items[0]).sort(), [
+    'consent_at', 'consent_version', 'created_at', 'email', 'invited_at',
+    'last_contacted_at', 'release_decision', 'release_reviewed_at', 'source', 'status',
+  ]);
+  assert.deepEqual(Object.keys((await users.json()).items[0]).sort(), [
+    'active_session_count', 'approved_at', 'email', 'latest_session_expires_at',
+    'must_change_password', 'password_changed_at', 'password_expires_at',
+    'requested_at', 'revoked_at', 'source', 'state',
+  ]);
+  assert.deepEqual(Object.keys((await authorization.json()).items[0]).sort(), [
+    'account_state', 'email', 'include_latest', 'updated_at', 'versions',
+  ]);
+});
+
+test('admin read endpoints authorize before D1 reads', async () => {
+  let d1Calls = 0;
+  const env = {
+    ...adminBindings().env,
+    INTEREST_DB: {
+      prepare() {
+        d1Calls += 1;
+        throw new Error('D1 must not be reached');
+      },
+    },
+  };
+  const denyOwner = async () => ({ email: 'other@example.com' });
+
+  for (const path of ['/api/admin/users', '/api/admin/authorization']) {
+    const response = await workerModule.route(adminRequest(path), env, denyOwner);
+    assert.equal(response.status, 403);
+  }
+  assert.equal(d1Calls, 0);
 });
 
 function adminJson(path, body, init = {}) {
