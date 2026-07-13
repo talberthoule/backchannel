@@ -28,7 +28,6 @@ const customerFiles = [
 ];
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const customerContent = customerFiles.map((path) => [path, read(path)]);
-const portal = 'https://downloads.backchannel.page/';
 
 const html = readFileSync(new URL('../site/index.html', import.meta.url), 'utf8');
 const marker = 'var form = document.getElementById("interest-form")';
@@ -79,20 +78,13 @@ test('network failures keep the email valid and show an actionable retry', async
   assert.equal(button.disabled, false);
 });
 
-test('customer guidance never uses GitHub as the executable access boundary', () => {
-  const forbidden = [
-    /github\.com\/[^\s"'<>)]*\/releases\/download\//i,
-    /private GitHub repository/i,
-    /(?:assets|bundles|executables)[^.\n]{0,100}attach(?:ed|es)?[^.\n]{0,100}GitHub release/i,
-    /downloads?[^.\n]{0,120}(?:GitHub (?:login|account|membership)|authenticated GitHub access)/i,
-    /(?:GitHub (?:login|account|membership)|authenticated GitHub access)[^.\n]{0,120}(?:downloads?|install)/i,
-  ];
-  for (const [path, content] of customerContent) {
-    for (const pattern of forbidden) assert.doesNotMatch(content, pattern, path);
-  }
+test('customer guidance retains the pre-cutover GitHub executable boundary', () => {
+  assert.match(read('../README.md'), /private GitHub repository/i);
+  assert.match(read('../docs/quickstart.md'), /private GitHub repository/i);
+  assert.match(read('../site/index.html'), /releases\/download\/v0\.2\.1/i);
 });
 
-test('customer download entry points use the authenticated Backchannel portal', () => {
+test('customer download entry points stay on the public release page before cutover', () => {
   for (const path of [
     '../README.md',
     '../docs/quickstart.md',
@@ -102,22 +94,18 @@ test('customer download entry points use the authenticated Backchannel portal', 
     '../site/otter-alternative/index.html',
     '../site/vs-meetily/index.html',
     '../site/llms.txt',
-  ]) assert.match(read(path), new RegExp(portal.replaceAll('.', '\\.'), 'i'), path);
+  ]) {
+    assert.match(read(path), /(?:backchannel\.page\/|\/|")releases\/v0\.2\.1\//i, path);
+    assert.doesNotMatch(read(path), /downloads\.backchannel\.page/i, path);
+  }
 });
 
-test('historical release pages deep-link only their own entitled version', () => {
-  const releasePaths = new Set();
+test('historical release pages retain their own GitHub executable links', () => {
   for (const version of ['v0.1.0', 'v0.1.1', 'v0.2.0', 'v0.2.1']) {
     const path = `../site/releases/${version}/index.html`;
-    releasePaths.add(path);
     const content = read(path);
-    assert.match(content, new RegExp(`${portal.replaceAll('.', '\\.')}\\?version=${version}`, 'i'), path);
-    for (const other of ['v0.1.0', 'v0.1.1', 'v0.2.0', 'v0.2.1']) {
-      if (other !== version) assert.doesNotMatch(content, new RegExp(`downloads\\.backchannel\\.page/\\?version=${other}`, 'i'), path);
-    }
-  }
-  for (const [path, content] of customerContent) {
-    if (!releasePaths.has(path)) assert.doesNotMatch(content, /downloads\.backchannel\.page\/\?version=/i, path);
+    assert.match(content, new RegExp(`github\\.com/talberthoule/backchannel/releases/download/${version}/`, 'i'), path);
+    assert.doesNotMatch(content, /downloads\.backchannel\.page/i, path);
   }
 });
 
@@ -132,13 +120,14 @@ test('public GitHub source, issue, license, star, and release-note links remain'
   }
 });
 
-test('the sitemap remains a same-host index while public pages link to the portal', () => {
+test('the sitemap remains a same-host index while public pages stay pre-cutover', () => {
   const sitemap = read('../site/sitemap.xml');
   const locations = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]);
   assert.ok(locations.length > 0);
   assert.ok(locations.every((location) => location.startsWith('https://backchannel.page/')));
   assert.doesNotMatch(sitemap, /downloads\.backchannel\.page/i);
-  assert.match(read('../site/index.html'), /https:\/\/downloads\.backchannel\.page\//i);
+  assert.match(read('../site/index.html'), /releases\/v0\.2\.1\//i);
+  assert.doesNotMatch(read('../site/index.html'), /downloads\.backchannel\.page/i);
 });
 
 test('historical migration normalizes peeled commit timestamps to strict UTC', () => {
