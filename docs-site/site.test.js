@@ -20,11 +20,13 @@ const customerFiles = [
   '../site/releases/v0.1.1/index.html',
   '../site/releases/v0.2.0/index.html',
   '../site/releases/v0.2.1/index.html',
+  '../site/releases/v0.2.2/index.html',
   '../site/llms.txt',
   '../site/sitemap.xml',
   '../.github/release-notes/v0.1.1.md',
   '../.github/release-notes/v0.2.0.md',
   '../.github/release-notes/v0.2.1.md',
+  '../.github/release-notes/v0.2.2.md',
 ];
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const customerContent = customerFiles.map((path) => [path, read(path)]);
@@ -107,12 +109,12 @@ test('customer download entry points use the authenticated Backchannel portal', 
 
 test('historical release pages deep-link only their own entitled version', () => {
   const releasePaths = new Set();
-  for (const version of ['v0.1.0', 'v0.1.1', 'v0.2.0', 'v0.2.1']) {
+  for (const version of ['v0.1.0', 'v0.1.1', 'v0.2.0', 'v0.2.1', 'v0.2.2']) {
     const path = `../site/releases/${version}/index.html`;
     releasePaths.add(path);
     const content = read(path);
     assert.match(content, new RegExp(`${portal.replaceAll('.', '\\.')}\\?version=${version}`, 'i'), path);
-    for (const other of ['v0.1.0', 'v0.1.1', 'v0.2.0', 'v0.2.1']) {
+    for (const other of ['v0.1.0', 'v0.1.1', 'v0.2.0', 'v0.2.1', 'v0.2.2']) {
       if (other !== version) assert.doesNotMatch(content, new RegExp(`downloads\\.backchannel\\.page/\\?version=${other}`, 'i'), path);
     }
   }
@@ -127,7 +129,7 @@ test('public GitHub source, issue, license, star, and release-note links remain'
   assert.match(content, /https:\/\/github\.com\/talberthoule\/backchannel\/issues/i);
   assert.match(content, /https:\/\/github\.com\/talberthoule\/backchannel\/blob\/master\/LICENSE/i);
   assert.match(read('../site/index.html'), /href="https:\/\/github\.com\/talberthoule\/backchannel"[^>]*>Star on GitHub/i);
-  for (const version of ['v0.1.0', 'v0.1.1', 'v0.2.0', 'v0.2.1']) {
+  for (const version of ['v0.1.0', 'v0.1.1', 'v0.2.0', 'v0.2.1', 'v0.2.2']) {
     assert.match(content, new RegExp(`https://github\\.com/talberthoule/backchannel/releases/tag/${version}`));
   }
 });
