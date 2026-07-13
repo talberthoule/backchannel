@@ -15,16 +15,33 @@ export class TestElement {
     this.hidden = false;
     this.open = false;
     this.focused = false;
+    this.connected = true;
+  }
+
+  setConnected(value) {
+    this.connected = value;
+    for (const child of this.children) {
+      if (child instanceof TestElement) child.setConnected(value);
+    }
   }
 
   append(...children) {
     for (const child of children) {
-      if (child instanceof TestElement) child.parentNode = this;
+      if (child instanceof TestElement) {
+        child.parentNode = this;
+        child.setConnected(this.connected);
+      }
       this.children.push(child);
     }
   }
 
   replaceChildren(...children) {
+    for (const child of this.children) {
+      if (child instanceof TestElement) {
+        child.parentNode = null;
+        child.setConnected(false);
+      }
+    }
     this.children = [];
     this.append(...children);
   }
@@ -55,6 +72,7 @@ export class TestElement {
   removeAttribute(name) { this.attributes.delete(name); }
 
   focus() {
+    if (!this.isConnected) return;
     if (this.ownerDocument) {
       if (this.ownerDocument.activeElement) this.ownerDocument.activeElement.focused = false;
       this.ownerDocument.activeElement = this;
@@ -76,6 +94,7 @@ export class TestElement {
     if (!this.parentNode) return;
     this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
     this.parentNode = null;
+    this.setConnected(false);
   }
 
   querySelectorAll(selector) {
@@ -99,6 +118,8 @@ export class TestElement {
   get childElementCount() {
     return this.children.filter((child) => child instanceof TestElement).length;
   }
+
+  get isConnected() { return this.connected; }
 }
 
 export function createDocument(ids = []) {

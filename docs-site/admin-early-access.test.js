@@ -31,6 +31,12 @@ const expectedCredential = [
   'Password expires: 2026-07-16T12:00:00.000Z',
 ].join('\n');
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolveValue) => { resolve = resolveValue; });
+  return { promise, resolve };
+}
+
 function buttonNamed(root, label) {
   return root.querySelectorAll('button').find((button) => button.textContent === label);
 }
@@ -55,6 +61,7 @@ function harness(respond) {
     refreshed: document.createElement('time'),
     status: document.createElement('p'),
   };
+  document.body.append(shell.content, shell.count, shell.refreshed, shell.status);
   const calls = [];
   const clipboard = [];
   const saved = [];
@@ -139,6 +146,11 @@ test('Approve Cancel sends nothing, then posts only email and patches without re
   assert.match(textOf(route.shell.content), /approved/);
   assert.match(route.shell.status.textContent, /approved/i);
 
+  const successor = route.shell.content.querySelectorAll('.row-select')[0];
+  assert.notEqual(successor, approve);
+  assert.equal(approve.isConnected, false);
+  assert.equal(successor.isConnected, true);
+
   const credentialText = route.document.getElementById('credential-text');
   assert.equal(credentialText.value, expectedCredential);
   assert.doesNotMatch(credentialText.value, /Latest|version|grant/i);
@@ -152,7 +164,7 @@ test('Approve Cancel sends nothing, then posts only email and patches without re
   );
   await route.document.getElementById('credential-close').click();
   assert.equal(credentialText.value, '');
-  assert.equal(route.document.activeElement, approve);
+  assert.equal(route.document.activeElement, successor);
 
   route.dialogs.showCredential({ text: 'temporary secret', email: request.email });
   route.pageListeners.get('pagehide')();
@@ -182,6 +194,77 @@ test('Reject posts only email, consumes the returned item, and does not refetch'
   assert.equal(route.calls.length, 2);
   assert.match(textOf(route.shell.content), /rejected/);
   assert.match(route.shell.status.textContent, /rejected/i);
+});
+
+test('one decision runs at a time and a failed request restores both actions', async () => {
+  const response = deferred();
+  let mutations = 0;
+  const route = harness((call) => {
+    if (call.method === 'GET') return jsonResponse({ items: [request] });
+    mutations += 1;
+    return mutations === 1
+      ? response.promise
+      : jsonResponse({
+        ok: true,
+        item: { ...request, release_decision: 'rejected' },
+      });
+  });
+  await openRequest(route);
+  const approve = buttonNamed(route.shell.content, 'Approve');
+  const reject = buttonNamed(route.shell.content, 'Reject');
+
+  const approving = approve.click();
+  await route.document.getElementById('confirm-submit').click();
+  assert.equal(approve.disabled, true);
+  assert.equal(reject.disabled, true);
+
+  const opposing = reject.dispatchEvent({ type: 'click' });
+  if (route.document.getElementById('confirm-dialog').open) {
+    await route.document.getElementById('confirm-submit').click();
+  }
+  await opposing;
+  assert.equal(route.calls.length, 2);
+
+  response.resolve(jsonResponse({}, { ok: false }));
+  await approving;
+  assert.equal(approve.disabled, false);
+  assert.equal(reject.disabled, false);
+  assert.match(route.shell.status.textContent, /failed/i);
+});
+
+test('malformed success bodies preserve pending state and expose no credential', async () => {
+  const rejected = {
+    ...request,
+    release_decision: 'rejected',
+    release_reviewed_at: '2026-07-13T12:10:00.000Z',
+  };
+  const cases = [
+    ['approve', { ok: false, credential }],
+    ['approve', { ok: true, credential: { ...credential, email: 'other@example.com' } }],
+    ['approve', { ok: true, credential: { ...credential, password: '' } }],
+    ['approve', { ok: true, credential: { ...credential, password_expires_at: 'not-a-date' } }],
+    ['reject', { ok: false, item: rejected }],
+    ['reject', { ok: true, item: { ...request, release_decision: 'pending' } }],
+    ['reject', { ok: true, item: { ...rejected, email: 'other@example.com' } }],
+  ];
+
+  for (const [action, response] of cases) {
+    const route = harness((call) => call.method === 'GET'
+      ? jsonResponse({ items: [request] })
+      : jsonResponse(response));
+    await openRequest(route);
+    const pending = buttonNamed(route.shell.content, action === 'approve' ? 'Approve' : 'Reject').click();
+    await route.document.getElementById('confirm-submit').click();
+    await pending;
+
+    assert.equal(route.calls.length, 2, `${action} must not refetch`);
+    assert.equal(route.document.getElementById('credential-dialog').open, false, action);
+    assert.match(route.shell.status.textContent, /failed/i, action);
+    assert.match(textOf(route.shell.content), /interested/i, action);
+    assert.match(textOf(route.shell.content), /pending/i, action);
+    assert.equal(buttonNamed(route.shell.content, 'Approve').disabled, false, action);
+    assert.equal(buttonNamed(route.shell.content, 'Reject').disabled, false, action);
+  }
 });
 
 test('credential actions precede plain Users and Authorization route links', () => {

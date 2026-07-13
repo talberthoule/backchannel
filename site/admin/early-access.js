@@ -30,8 +30,10 @@ function detailField(label, content, document) {
 
 export function mount({ document, fetcher, shell, dialogs }) {
   let items = [];
+  let decisionPending = false;
 
   async function decide(record, action, button) {
+    if (decisionPending) return;
     const verb = action === 'approve' ? 'Approve' : 'Reject';
     const confirmed = await dialogs.confirm({
       title: `${verb} early-access request`,
@@ -41,24 +43,34 @@ export function mount({ document, fetcher, shell, dialogs }) {
     });
     if (!confirmed) return;
 
-    button.disabled = true;
+    decisionPending = true;
+    const actionButtons = button.parentNode.querySelectorAll('button');
+    for (const actionButton of actionButtons) actionButton.disabled = true;
     shell.status.textContent = `${action === 'approve' ? 'Approving' : 'Rejecting'} ${record.email}.`;
     try {
       const value = await jsonRequest(
         `${endpoint}/${action}`, 'POST', { email: record.email }, fetcher,
       );
+      if (value.ok !== true) throw new Error('invalid response');
       if (action === 'reject') {
-        if (!value.item || value.item.email !== record.email) throw new Error('invalid response');
+        if (!value.item || value.item.email !== record.email
+          || value.item.release_decision !== 'rejected') throw new Error('invalid response');
         items = replaceByEmail(items, value.item);
-        render();
+        const returnFocus = render(record.email);
         shell.status.textContent = `Rejected the request from ${record.email}.`;
+        returnFocus?.focus();
         return;
       }
 
       const credential = value.credential;
       if (!credential || credential.email !== record.email
         || typeof credential.password !== 'string'
-        || typeof credential.password_expires_at !== 'string') throw new Error('invalid response');
+        || !credential.password.length
+        || typeof credential.password_expires_at !== 'string'
+        || !credential.password_expires_at.trim()
+        || !Number.isFinite(Date.parse(credential.password_expires_at))) {
+        throw new Error('invalid response');
+      }
       const reviewedAt = value.item?.release_reviewed_at;
       items = replaceByEmail(items, {
         ...record,
@@ -66,7 +78,7 @@ export function mount({ document, fetcher, shell, dialogs }) {
         release_decision: 'approved',
         ...(typeof reviewedAt === 'string' ? { release_reviewed_at: reviewedAt } : {}),
       });
-      render();
+      const returnFocus = render(record.email);
       shell.status.textContent = `Approved the request from ${record.email}.`;
       dialogs.showCredential({
         text: [
@@ -77,12 +89,13 @@ export function mount({ document, fetcher, shell, dialogs }) {
           `Password expires: ${credential.password_expires_at}`,
         ].join('\n'),
         email: credential.email,
-        returnFocus: button,
+        returnFocus,
       });
     } catch {
       shell.status.textContent = `${verb} failed. Try again.`;
     } finally {
-      button.disabled = false;
+      decisionPending = false;
+      for (const actionButton of actionButtons) actionButton.disabled = false;
     }
   }
 
@@ -98,10 +111,10 @@ export function mount({ document, fetcher, shell, dialogs }) {
     shell.content.replaceChildren(region);
   }
 
-  function render() {
+  function render(focusEmail) {
     if (!items.length) {
       state('No early-access requests yet.');
-      return;
+      return null;
     }
     const workspace = element('div', 'list-detail', undefined, document);
     const listPane = element('section', 'list-pane', undefined, document);
@@ -165,11 +178,13 @@ export function mount({ document, fetcher, shell, dialogs }) {
       controller.showDetail(trigger, heading);
     }
 
+    let focusTarget = null;
     for (const record of items) {
       const row = element('tr', '', undefined, document);
       const select = element('button', 'row-select mono', record.email || 'Unknown email', document);
       select.type = 'button';
       select.addEventListener('click', () => showDetail(record, select));
+      if (record.email === focusEmail) focusTarget = select;
       row.append(
         cell('Email', select, document),
         cell('Status', element('span', 'status-text', record.status || 'Unknown', document), document),
@@ -186,6 +201,7 @@ export function mount({ document, fetcher, shell, dialogs }) {
     listPane.append(listTitle, tableWrap);
     workspace.append(listPane, detailPane);
     shell.content.replaceChildren(workspace);
+    return focusTarget;
   }
 
   async function refresh() {
