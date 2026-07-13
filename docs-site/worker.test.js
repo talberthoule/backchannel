@@ -1836,6 +1836,7 @@ test('password change requires a change-only session and rotates it atomically',
     password: 'a new permanent password',
   }, { headers: { cookie: `__Host-backchannel_release=${token.token}` } }),
   bindingsValue.env, undefined, downloadDependencies({
+    verifyPassword: async () => false,
     hashPassword: async () => ({ hash: 'new-hash', salt: 'new-salt', iterations: 600000 }),
     createSessionToken: async () => ({ token: 'new-raw-token', tokenHash: 'new-token-hash' }),
   }));
@@ -1848,6 +1849,42 @@ test('password change requires a change-only session and rotates it atomically',
   assert.equal(JSON.stringify(bindingsValue.calls).includes('new-raw-token'), false);
   assert.equal(response.headers.get('set-cookie'),
     '__Host-backchannel_release=new-raw-token; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=604800');
+});
+
+test('password change rejects reuse of the temporary credential without rotation', async () => {
+  const token = await createSessionToken((length) => new Uint8Array(length).fill(12));
+  let hashCalls = 0;
+  let sessionCalls = 0;
+  let batchCalls = 0;
+  const bindings = downloadBindings({
+    first: async () => ({
+      email: 'person@example.com', state: 'active', password_change_only: 1,
+      expires_at: '2026-07-13T12:30:00.000Z', password_hash: 'hash',
+      password_salt: 'salt', password_iterations: 600000,
+    }),
+    batch: async (statements) => {
+      batchCalls += 1;
+      return statements.map(() => ({ success: true, meta: { changes: 1 } }));
+    },
+  });
+  const response = await workerModule.route(
+    downloadRequest('/api/download/password', { password: 'Temporary-Password1!' }, {
+      headers: { cookie: `__Host-backchannel_release=${token.token}` },
+    }),
+    bindings.env,
+    undefined,
+    downloadDependencies({
+      now: () => new Date('2026-07-13T12:00:00.000Z'),
+      verifyPassword: async () => true,
+      hashPassword: async () => { hashCalls += 1; },
+      createSessionToken: async () => { sessionCalls += 1; },
+    }),
+  );
+  assert.equal(response.status, 400);
+  assert.equal(hashCalls, 0);
+  assert.equal(sessionCalls, 0);
+  assert.equal(batchCalls, 0);
+  assert.equal(response.headers.has('set-cookie'), false);
 });
 
 test('password change makes every write conditional on the exact presented session', async () => {
@@ -1863,6 +1900,7 @@ test('password change makes every write conditional on the exact presented sessi
     password: 'a new permanent password',
   }, { headers: { cookie: `__Host-backchannel_release=${token.token}` } }),
   bindingsValue.env, undefined, downloadDependencies({
+    verifyPassword: async () => false,
     hashPassword: async () => ({ hash: 'new-hash', salt: 'new-salt', iterations: 600000 }),
     createSessionToken: async () => ({ token: 'new-raw-token', tokenHash: 'new-token-hash' }),
   }));
@@ -1882,7 +1920,7 @@ test('password change makes every write conditional on the exact presented sessi
   }
 });
 
-test('logout deletes only the presented session and always clears the cookie', async () => {
+test('logout clears the cookie after presented session deletion or an invalid token', async () => {
   const token = await createSessionToken((length) => new Uint8Array(length).fill(9));
   const bindingsValue = downloadBindings({ first: async () => ({
     email: 'person@example.com', state: 'active', password_change_only: 0,
@@ -1895,7 +1933,7 @@ test('logout deletes only the presented session and always clears the cookie', a
   assert.equal(bindingsValue.batchCalls.length, 1);
   assert.match(bindingsValue.calls[1].sql, /DELETE FROM release_sessions WHERE token_hash = \?/i);
   assert.deepEqual(bindingsValue.calls[1].values, [token.tokenHash]);
-  assert.match(bindingsValue.calls[2].sql, /logout/i);
+  assert.match(bindingsValue.calls[2].sql, /logout[\s\S]+changes\(\) = 1/i);
   assert.equal(response.headers.get('set-cookie'),
     '__Host-backchannel_release=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0');
 
@@ -1906,6 +1944,27 @@ test('logout deletes only the presented session and always clears the cookie', a
   assert.deepEqual(await invalidResponse.json(), { ok: true });
   assert.equal(invalidResponse.headers.get('set-cookie'),
     '__Host-backchannel_release=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0');
+});
+
+test('logout D1 failure returns retryable error and preserves the cookie', async () => {
+  const token = await createSessionToken((length) => new Uint8Array(length).fill(13));
+  const bindings = downloadBindings({
+    first: async () => ({
+      email: 'person@example.com', state: 'active', password_change_only: 0,
+      expires_at: '2026-07-20T12:00:00.000Z',
+    }),
+    batch: async () => { throw new Error('offline'); },
+  });
+  const response = await workerModule.route(
+    downloadRequest('/api/download/logout', {}, {
+      headers: { cookie: `__Host-backchannel_release=${token.token}` },
+    }),
+    bindings.env,
+    undefined,
+    downloadDependencies(),
+  );
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.has('set-cookie'), false);
 });
 
 const releaseToken = await createSessionToken((length) => new Uint8Array(length).fill(11));

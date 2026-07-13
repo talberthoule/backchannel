@@ -1217,6 +1217,20 @@ async function handleDownloadPassword(request, env, dependencies) {
     return downloadJson(401, { ok: false, error: 'Unable to change password.' });
   }
 
+  let reused;
+  try {
+    reused = await (dependencies.verifyPassword || verifyPassword)(password, {
+      hash: account.password_hash,
+      salt: account.password_salt,
+      iterations: account.password_iterations,
+    });
+  } catch {
+    return downloadUnavailable();
+  }
+  if (reused) {
+    return downloadJson(400, { ok: false, error: 'Choose a different password.' });
+  }
+
   const randomBytes = dependencies.randomBytes
     || ((length) => globalThis.crypto.getRandomValues(new Uint8Array(length)));
   let hashed;
@@ -1282,23 +1296,32 @@ async function handleDownloadLogout(request, env, dependencies) {
   if (parsed.response) return parsed.response;
   const now = downloadNow(dependencies);
   const tokenHash = await tokenHashFromRequest(request);
-  if (env.INTEREST_DB && tokenHash) {
-    try {
-      const account = await findDownloadSession(env, tokenHash, now);
-      if (account) {
-        await env.INTEREST_DB.batch([
-          statement(env, 'DELETE FROM release_sessions WHERE token_hash = ?', tokenHash),
-          statement(env, `
-            INSERT INTO release_access_events (email, action, version, created_at)
-            VALUES (?, 'logout', NULL, ?)
-          `, account.email, now.toISOString()),
-        ]);
-      } else {
-        await statement(env, 'DELETE FROM release_sessions WHERE token_hash = ?', tokenHash).run();
-      }
-    } catch {
-      // Clearing the browser cookie is still a successful local logout.
+  if (!tokenHash) {
+    return downloadJson(200, { ok: true }, { 'set-cookie': clearSessionCookie() });
+  }
+  if (!env.INTEREST_DB) return downloadUnavailable();
+  try {
+    const account = await findDownloadSession(env, tokenHash, now);
+    if (account) {
+      const results = await env.INTEREST_DB.batch([
+        statement(env, 'DELETE FROM release_sessions WHERE token_hash = ?', tokenHash),
+        statement(env, `
+          INSERT INTO release_access_events (email, action, version, created_at)
+          SELECT ?, 'logout', NULL, ? WHERE changes() = 1
+        `, account.email, now.toISOString()),
+      ]);
+      if (results.length !== 2 || results.some((result) => result?.success !== true
+        || (result?.meta?.changes ?? 0) !== 1)) return downloadUnavailable();
+    } else {
+      const result = await statement(
+        env,
+        'DELETE FROM release_sessions WHERE token_hash = ?',
+        tokenHash,
+      ).run();
+      if (result?.success !== true) return downloadUnavailable();
     }
+  } catch {
+    return downloadUnavailable();
   }
   return downloadJson(200, { ok: true }, { 'set-cookie': clearSessionCookie() });
 }
