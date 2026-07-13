@@ -138,9 +138,10 @@ test('recipient release rendering executes with safe fields, encoded links, and 
       this.hidden = true;
       this.textContent = '';
       this.value = '';
+      this.handlers = new Map();
     }
 
-    addEventListener() {}
+    addEventListener(name, handler) { this.handlers.set(name, handler); }
     append(...children) { this.children.push(...children); }
     replaceChildren(...children) { this.children = [...children]; }
     setAttribute(name, value) { this.attributes.set(name, String(value)); }
@@ -237,6 +238,8 @@ test('recipient release rendering executes with safe fields, encoded links, and 
     assert.equal(article.children[1].textContent, 'Backchannel-windows-x64.zip - 2.0 KiB');
     assert.equal(article.children[2].textContent, `SHA-256: ${'a'.repeat(64)}`);
     assert.equal(link.href, '/api/download/releases/v1.2.3/windows%2Fx64');
+    link.handlers.get('click')();
+    assert.equal(releasesIntro.textContent, 'Starting download: Backchannel-windows-x64.zip');
     assert.equal(release.focused, true);
     assert.equal(release.scrolled, true);
   } finally {

@@ -89,6 +89,9 @@ function renderReleases(payload) {
       const link = document.createElement('a');
       link.href = `/api/download/releases/${encodeURIComponent(release.version)}/${encodeURIComponent(asset.id)}`;
       link.textContent = `Download ${asset.filename}`;
+      link.addEventListener('click', () => {
+        releasesIntro.textContent = `Starting download: ${asset.filename}`;
+      });
       item.append(platform, details, checksum, link);
       section.append(item);
     }
