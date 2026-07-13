@@ -643,6 +643,33 @@ test('approval accepts exactly an email body', async () => {
   assert.equal(r2Calls, 0);
 });
 
+test('approval rejects null and primitive bodies before D1 or R2', async () => {
+  let r2Calls = 0;
+  const releases = {
+    async list() { r2Calls += 1; throw new Error('R2 must not be reached'); },
+    async get() { r2Calls += 1; throw new Error('R2 must not be reached'); },
+  };
+
+  for (const body of ['null', '42', '"person@example.com"']) {
+    const bindings = adminBindings({ releases });
+    const response = await workerModule.route(
+      adminJson('/api/admin/interests/approve', body),
+      bindings.env,
+      allowOwner,
+      fixedDependencies,
+    );
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), {
+      ok: false,
+      message: 'Request is not valid JSON.',
+    });
+    assert.equal(bindings.calls.length, 0);
+    assert.equal(bindings.batchCalls.length, 0);
+  }
+  assert.equal(r2Calls, 0);
+});
+
 test('failed approval cannot backfill policy or emit an event', async (context) => {
   const bindings = sqliteReleaseBindings();
   context.after(() => bindings.db.close());
