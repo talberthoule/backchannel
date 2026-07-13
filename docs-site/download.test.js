@@ -355,6 +355,10 @@ test('download contract is runnable and static assets contain no secrets', () =>
 test('Wrangler disables public Worker URLs and binds private releases on four custom domains', () => {
   assert.equal(wrangler.workers_dev, false);
   assert.equal(wrangler.preview_urls, false);
+  assert.deepEqual(wrangler.observability, {
+    enabled: true,
+    head_sampling_rate: 1,
+  });
   assert.deepEqual(wrangler.routes, [
     { pattern: 'backchannel.page', custom_domain: true },
     { pattern: 'www.backchannel.page', custom_domain: true },
