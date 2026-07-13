@@ -39,10 +39,10 @@ docker-compose down -v
 
 Releases span source-built Docker images, the Cloudflare documentation site,
 and tag-built Linux x64, macOS arm64, and Windows x64 desktop bundles. Follow
-`docs/releasing.md` as the authoritative checklist. A `master` push does not
-update existing desktop downloads; do not mark a release complete until the
-tag workflow has published and verified all three platform assets and the site
-has been updated to the same version.
+`docs/releasing.md` and the private R2 manifests as the authoritative checklist
+and catalog. A `master` push does not update existing desktop downloads. The tag
+workflow publishes verified executables to R2; GitHub releases keep source tags
+and notes only, with no executable files.
 
 ### Desktop bundle (Linux/macOS/Windows)
 
@@ -60,10 +60,28 @@ tags (unsigned; Sortformer and ffmpeg are not bundled).
 (`backchannel-site`, same pattern as the quartermaster repo) by
 `.github/workflows/deploy-site.yml`: the `site/` landing page at
 https://backchannel.page/ and the docs at `/docs/`.
-The same Worker serves the read-only D1 interest console only on
-`https://admin.backchannel.page/`. Cloudflare Access protects the complete
-private hostname, and the Worker independently verifies the Access JWT issuer,
+The same Worker serves the D1 review/mutation console only on
+`https://admin.backchannel.page/` and the authenticated recipient portal on
+`https://downloads.backchannel.page/`. Cloudflare Access protects the complete
+admin hostname, and the Worker independently verifies the Access JWT issuer,
 audience, and exact `ADMIN_EMAIL`; those values are encrypted Worker secrets.
+The admin API reviews interests and releases and performs approval, rejection,
+grant replacement, password reset, and revocation. D1 owns recipient accounts,
+grants, sessions, and access events; recipient identity is not the local
+application's PostgreSQL identity. Never log subscriber, credential, session,
+Access, or R2 data. Run every `docs-site` release-access, migration, Worker,
+admin, download, and site test plus its build before release changes.
+
+```bash
+cd docs-site
+npm run test:release-access
+npm run test:migration
+npm run test:worker
+npm run test:admin
+npm run test:download
+npm run test:site
+npm run build
+```
 `docs/*.md` stays the source of truth: do not
 edit `docs-site/src/content/docs/` (generated, gitignored). At build time
 `docs-site/sync-docs.mjs` copies the docs in, derives frontmatter titles from

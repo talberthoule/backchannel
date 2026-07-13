@@ -3,10 +3,16 @@
   "name": "backchannel-site",
   "compatibility_date": "2026-07-01",
   "main": "worker.js",
+  "workers_dev": false,
+  "preview_urls": false,
   "routes": [
     { "pattern": "backchannel.page", "custom_domain": true },
     { "pattern": "www.backchannel.page", "custom_domain": true },
-    { "pattern": "admin.backchannel.page", "custom_domain": true }
+    { "pattern": "admin.backchannel.page", "custom_domain": true },
+    { "pattern": "downloads.backchannel.page", "custom_domain": true }
+  ],
+  "r2_buckets": [
+    { "binding": "RELEASES", "bucket_name": "backchannel-desktop-releases" }
   ],
   "d1_databases": [
     {

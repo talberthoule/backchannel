@@ -1,152 +1,222 @@
 # Releasing Backchannel
 
-Backchannel supports three delivery paths with different publication triggers.
-A release is complete only when all applicable paths have been updated and
-verified.
+This is the authoritative release checklist. GitHub keeps source tags and
+release notes; customer executables are published to private Cloudflare R2 and
+delivered through `https://downloads.backchannel.page/`.
 
 ## Delivery paths
 
 | Target | Publication trigger | Result |
 | --- | --- | --- |
-| Docker Compose | Source commit or tag; users rebuild locally | `backend` and `frontend` images are built from the checked-out source. No container registry image is published. |
-| Documentation site | Push to `master` that changes `site/`, `docs/`, `docs-site/`, `architecture.svg`, or the site workflow | Cloudflare deploy of `backchannel.page` and `/docs/` |
-| Linux, macOS, and Windows desktop | Push of a `v*` tag | GitHub Actions builds, smoke-tests, archives, and attaches Linux x64, macOS arm64, and Windows x64 bundles to the GitHub release |
+| Docker Compose | Source commit or tag; users rebuild locally | Public source-built `backend` and `frontend` images; no container registry image is published |
+| Documentation site | Push to `master` changing site/docs inputs | Cloudflare deploy of `backchannel.page`, `admin.backchannel.page`, and `downloads.backchannel.page` |
+| Desktop | Canonical `vX.Y.Z` tag | Three smoke-tested native assets published to private R2; GitHub receives notes without files |
 
-A normal push to `master` does not rebuild desktop downloads. Existing GitHub
-release assets are immutable release output and do not change when source code
-changes.
+`workflow_dispatch` builds and smoke-tests workflow artifacts only. It never
+publishes R2 objects, advances Latest, or creates a GitHub release. A normal
+`master` push does not rebuild desktop bundles.
 
-## Desktop bundle access policy
+## Staged customer-link cutover
 
-Desktop bundles remain in the repository's private GitHub releases. Creating
-a tag and verifying its assets does not authorize public access. Unless the
-repository owner gives explicit approval for that release:
+Follow [Deployment](deployment.md) as the ordered gate for this rollout. Merge
+the control-plane branch to `master` with a merge commit that preserves hold
+commit `57fc8d991b8101a2db5889df16ce5a26078baff2`. Do not squash or rebase this
+rollout. Wait for the Site workflow to finish successfully, then verify the
+deployed branch before any live R2 catalog write:
 
-- Keep the repository and release assets private.
-- Do not change repository visibility, mirror installers to another host,
-  create public sharing URLs, or otherwise enable anonymous downloads.
-- Verify release assets with authenticated GitHub access and confirm anonymous
-  release and download requests remain denied.
-
-An anonymous `404` from a private GitHub release is the expected access-control
-result, not a failed build. Record explicit approval before changing that state.
-
-## Versioned release files
-
-For each public version `vX.Y.Z`, update or add all of the following before
-tagging:
-
-- `.github/release-notes/vX.Y.Z.md` - GitHub release notes used by the desktop workflow
-- `site/releases/vX.Y.Z/index.html` - public release/download page
-- Current-version links in `README.md`, `docs/quickstart.md`, `site/index.html`,
-  comparison pages under `site/`, `site/llms.txt`, and `site/sitemap.xml`
-- Any version-specific installation or compatibility notes
-
-Keep older release pages and tags intact. Never move or replace a published
-tag; use a new patch version for a corrected build.
-
-## Release checklist
-
-### 1. Prepare
-
-1. Start from a clean `master` synchronized with `origin/master`.
-2. Confirm the version is unused locally and remotely.
-3. Review the complete diff since the previous tag.
-4. Write user-facing release notes and update every current-version link.
-5. Search for stale references:
-
-   ```bash
-   rg -n "vOLD" README.md docs site .github
-   ```
-
-Historical references inside the old version's release page are expected.
-
-### 2. Validate
-
-Run checks appropriate to the changes, with these as the release minimum:
-
-```bash
-cd frontend
-npm ci
-npm run build
-npm audit --omit=dev
-
-cd ../docs-site
-npm install
-npm run build
-
-cd ..
-docker compose config
-docker compose build frontend backend
+```powershell
+git fetch origin master
+git merge-base --is-ancestor 57fc8d991b8101a2db5889df16ce5a26078baff2 origin/master
+if ($LASTEXITCODE -ne 0) { throw 'The download-link hold is not an ancestor of origin/master.' }
 ```
 
-Also run the backend and desktop unit suites and `git diff --check`. The
-tag-triggered desktop workflow performs a clean build and bundle smoke test on
-Linux, macOS, and Windows; do not treat local tests as a replacement for those
-jobs.
+Stop unless the command exits 0. Then migrate `v0.1.0` once as the catalog
+seed, verify it, and continue with the remaining historical versions; do not
+migrate the seed a second time. Complete PBKDF2 and account/download acceptance
+in the order specified by Deployment.
 
-### 3. Commit and tag
+Only after live Task 7 acceptance, create the sole link-cutover revision:
 
-Commit all release metadata on `master`, then create an annotated tag on that
-exact commit:
-
-```bash
-git tag -a vX.Y.Z -m "Backchannel vX.Y.Z"
-```
-
-Push the tag first. This lets desktop assets finish before the website sends
-users to the new download URLs:
-
-```bash
-git push origin vX.Y.Z
-```
-
-Wait for every `Desktop release` matrix job to succeed. With authenticated
-GitHub access, confirm the release has all three exact assets:
-
-- `Backchannel-windows-x64.zip`
-- `Backchannel-macos-arm64.zip`
-- `Backchannel-linux-x64.tar.gz` (portable bundle, not a package-manager installer)
-
-The workflow's manual-dispatch mode uploads workflow artifacts for testing,
-but it does not attach them to a GitHub release because there is no tag.
-
-### 4. Publish the site and Docker source
-
-After all three desktop assets are downloadable, push the release commit to
-`master`:
-
-```bash
+```powershell
+git revert 57fc8d991b8101a2db5889df16ce5a26078baff2
 git push origin master
 ```
 
-This publishes the source used by Docker builders and triggers the site
-workflow when release pages or docs changed. Docker users receive the new code
-after pulling the commit or tag and rebuilding:
+That revert restores the exact portal links and site-test expectations. Do not
+hand-edit those links, squash unrelated changes into the revert, or use any
+other revision for link cutover. Wait for the resulting `master` auto-deploy to
+finish before announcing portal availability.
 
-```bash
-docker compose up -d --build
+## R2 publication contract
+
+The private bucket is exactly `backchannel-desktop-releases`, bound to the site
+Worker as `RELEASES`. Keep both its `r2.dev` URL and every bucket custom domain
+disabled. Objects use this layout:
+
+```text
+releases/latest.json
+releases/vX.Y.Z/manifest.json
+releases/vX.Y.Z/Backchannel-windows-x64.zip
+releases/vX.Y.Z/Backchannel-macos-arm64.zip
+releases/vX.Y.Z/Backchannel-linux-x64.tar.gz
 ```
 
-### 5. Verify public state
+Current tags contain exactly those three assets. The legacy `v0.1.0` and
+`v0.1.1` manifests contain only their original Windows and macOS pair.
 
-Do not call the release complete until all of these are true:
+`latest.json` is one-field JSON:
 
-- The GitHub tag points to the intended release commit.
-- All three desktop assets exist and are downloadable with authenticated access.
-- Anonymous desktop-asset access remains denied unless explicit approval to make
-  that release public has been recorded.
-- The Linux, macOS, and Windows workflow smoke tests passed.
-- The site deployment passed and the new release page returns HTTP 200.
-- Landing-page, README, quickstart, comparison-page, sitemap, and `llms.txt`
-  links resolve to the new version.
-- A Compose build from the released source succeeds.
-- `master` and `origin/master` are synchronized and the worktree is clean.
+```json
+{"version":"vX.Y.Z"}
+```
 
-## Recovery
+Each immutable manifest has exactly `version`, `published_at`, `commit`, and
+`assets`. Every asset has `id`, `platform`, `filename`, `key`, `size`,
+`sha256`, and `content_type`:
 
-- Re-run a failed workflow job when the source and tag are correct and the
-  failure is transient.
-- Fix site-only mistakes with another `master` commit and site deployment.
-- For code or bundle defects, make a new patch release. Do not force-push or
-  move an already published version tag.
+```json
+{
+  "assets": [
+    {
+      "content_type": "application/zip",
+      "filename": "Backchannel-windows-x64.zip",
+      "id": "windows-x64",
+      "key": "releases/vX.Y.Z/Backchannel-windows-x64.zip",
+      "platform": "Windows x64",
+      "sha256": "<64 lowercase hex characters>",
+      "size": 1
+    }
+  ],
+  "commit": "<40 lowercase hex characters>",
+  "published_at": "<strict UTC ISO-8601 timestamp>",
+  "version": "vX.Y.Z"
+}
+```
+
+Content types are `application/zip` for Windows and macOS,
+`application/gzip` for Linux, and `application/json` for both metadata files.
+Asset responses use attachment filenames. Metadata uses `Cache-Control:
+no-store`.
+
+## Publication credentials
+
+The production GitHub environment requires these repository secrets:
+
+- `CLOUDFLARE_ACCOUNT_ID`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+
+It also requires repository variable `R2_RELEASES_BUCKET` with value
+`backchannel-desktop-releases`. Create a separate bucket-scoped R2 S3 Object
+Read & Write credential for publication. Do not reuse or expand the site
+deployment token.
+
+## Release checklist
+
+### 1. Prepare and validate
+
+1. Start from clean `master`, synchronized with `origin/master`.
+2. Confirm `vX.Y.Z` is unused locally, remotely, and in R2.
+3. Update `.github/release-notes/vX.Y.Z.md`, the public release page, and
+   current-version references.
+4. Run the local test/build gate and `git diff --check`.
+5. Commit release metadata, then create and push an annotated canonical tag:
+
+   ```powershell
+   git tag -a vX.Y.Z -m "Backchannel vX.Y.Z"
+   git push origin vX.Y.Z
+   ```
+
+Never move or replace a published tag. Correct a bad release with a new patch
+tag.
+
+### 2. Verify the tag workflow
+
+The build matrix must build and smoke-test exactly the Windows x64 zip, macOS
+arm64 zip, and Linux x64 tarball. Its final publication job must then, in this
+order:
+
+1. Resolve the peeled tag commit and download the three workflow artifacts.
+2. Reject an existing `releases/vX.Y.Z/manifest.json`.
+3. Read the current Latest metadata and build the deterministic manifest.
+4. Upload all three assets with manifest-owned content types.
+5. verify every remote object size.
+6. Conditionally create the immutable manifest with `If-None-Match: *`.
+7. Read back and validate the manifest bytes and schema.
+8. Conditionally advance monotonic `releases/latest.json` last, using its ETag
+   or `If-None-Match: *`; an older version must never replace a newer Latest.
+9. Create GitHub release notes from the checked-in note file without attaching
+   executable files.
+
+Do not call the release complete until all three build jobs and the final job
+pass, the portal presents the new entitled version, downloads match manifest
+sizes and SHA-256 values, the public release page and notes are live, and a
+Compose build from the source tag succeeds.
+
+## Historical migration
+
+Use owner-authenticated local copies of the original assets. Each asset
+directory must contain only the files named below:
+
+| Version | Required files |
+| --- | --- |
+| `v0.1.0` | Windows zip, macOS zip |
+| `v0.1.1` | Windows zip, macOS zip |
+| `v0.2.0` | Windows zip, macOS zip, Linux tarball |
+| `v0.2.1` | Windows zip, macOS zip, Linux tarball |
+
+Set the four publication environment variables without printing their values,
+then resolve each original peeled tag commit and time and migrate in order:
+
+```powershell
+$env:R2_RELEASES_BUCKET = 'backchannel-desktop-releases'
+
+$v010Commit = (& git rev-parse 'v0.1.0^{commit}').Trim()
+$v010Time = [DateTimeOffset]::Parse(
+    (& git show -s --format=%cI 'v0.1.0^{commit}').Trim(),
+    [Globalization.CultureInfo]::InvariantCulture
+).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
+.\scripts\migrate_releases_to_r2.ps1 -Version v0.1.0 -Commit $v010Commit -PublishedAt $v010Time -AssetDirectory .\release-assets\v0.1.0
+
+$v011Commit = (& git rev-parse 'v0.1.1^{commit}').Trim()
+$v011Time = [DateTimeOffset]::Parse(
+    (& git show -s --format=%cI 'v0.1.1^{commit}').Trim(),
+    [Globalization.CultureInfo]::InvariantCulture
+).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
+.\scripts\migrate_releases_to_r2.ps1 -Version v0.1.1 -Commit $v011Commit -PublishedAt $v011Time -AssetDirectory .\release-assets\v0.1.1
+
+$v020Commit = (& git rev-parse 'v0.2.0^{commit}').Trim()
+$v020Time = [DateTimeOffset]::Parse(
+    (& git show -s --format=%cI 'v0.2.0^{commit}').Trim(),
+    [Globalization.CultureInfo]::InvariantCulture
+).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
+.\scripts\migrate_releases_to_r2.ps1 -Version v0.2.0 -Commit $v020Commit -PublishedAt $v020Time -AssetDirectory .\release-assets\v0.2.0
+
+$v021Commit = (& git rev-parse 'v0.2.1^{commit}').Trim()
+$v021Time = [DateTimeOffset]::Parse(
+    (& git show -s --format=%cI 'v0.2.1^{commit}').Trim(),
+    [Globalization.CultureInfo]::InvariantCulture
+).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
+.\scripts\migrate_releases_to_r2.ps1 -Version v0.2.1 -Commit $v021Commit -PublishedAt $v021Time -AssetDirectory .\release-assets\v0.2.1 -SetLatest
+```
+
+Use `-SetLatest` only on the final intended version and only after every older
+asset and manifest has verified. The migration script never grants an account
+and never deletes old assets.
+
+## Failure recovery and rollback
+
+- Any failure before the Update Latest step leaves Latest unchanged. Do not
+  point Latest at a partial release.
+- Never overwrite a published version prefix or manifest. Use a new patch tag.
+- If upload fails before a manifest exists, manually inspect the unpublished
+  prefix and delete only confirmed partial objects before retrying. Never let an
+  automated cleanup guess what to remove.
+- If a manifest was created, treat that version as published and immutable even
+  when a later step fails; repair with a patch release.
+- If only GitHub note creation fails after Latest advances, leave verified R2
+  metadata unchanged and repair the notes without attaching files.
+- Retain old private GitHub executable files for one full release cycle as a
+  rollback source. Remove those executable files manually only after R2 and
+  portal acceptance for the next release. Keep every GitHub source tag and
+  release-note page permanently.

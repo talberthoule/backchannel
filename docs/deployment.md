@@ -3,7 +3,8 @@
 The Backchannel app deploys as a self-hosted Docker Compose stack:
 nginx-served frontend, FastAPI backend, and PostgreSQL. Anything that runs
 Docker can host the app. The public documentation site is a separate
-Cloudflare Worker with static assets and a private D1 interest list.
+Cloudflare Worker with static assets, private D1 access records, and private R2
+desktop releases.
 
 ## Services (`docker-compose.yml`)
 
@@ -140,120 +141,237 @@ uvicorn (honoring `BACKEND_RELOAD`) after the database is reachable.
 | Credentials master key | `DATA_DIR/master.key` (unless `CREDENTIALS_MASTER_KEY` is set) |
 | VAD / speaker-embedding models | `backend/models/*.onnx` (baked into the image / fetched by `scripts/download_models.py`) |
 
-## Public-site interest list
+## Cloudflare release-access deployment gate
 
-The landing page sends early-access requests to `POST /api/interest` on the
-Cloudflare Worker. The Worker verifies Cloudflare Turnstile before storing the
-lowercased email and consent metadata in the private `backchannel-interest` D1
-database. It exposes no public list, export, update, or unsubscribe endpoint.
+The site Worker owns three separate boundaries: public interest capture,
+Cloudflare Access-protected administration, and recipient-authenticated desktop
+delivery. Run this production gate in order and stop on any failed check.
 
-### One-time Cloudflare setup
+### 1. Export and back up production D1
 
-From `docs-site/`, authenticate Wrangler with a narrowly scoped Cloudflare API
-token, then apply the checked-in schema:
+From `docs-site/`, export the complete production database before applying any
+migration:
 
 ```powershell
 cd docs-site
-npx wrangler d1 migrations apply INTEREST_DB --local
-npx wrangler d1 migrations apply INTEREST_DB --remote
-npx wrangler secret put TURNSTILE_SECRET_KEY
+$backupPath = $env:BACKCHANNEL_D1_BACKUP_PATH
+if ([string]::IsNullOrWhiteSpace($backupPath) -or -not [IO.Path]::IsPathRooted($backupPath)) {
+    throw 'BACKCHANNEL_D1_BACKUP_PATH must be an absolute path in approved encrypted storage outside the repository.'
+}
+$backupPath = [IO.Path]::GetFullPath($backupPath)
+$repoRoot = (Resolve-Path ..).Path
+if ($backupPath.StartsWith($repoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'BACKCHANNEL_D1_BACKUP_PATH must be outside the repository.'
+}
+npx wrangler d1 export INTEREST_DB --remote --output="$backupPath"
 ```
 
-The production Worker must have these bindings:
+Set `BACKCHANNEL_D1_BACKUP_PATH` to an operator-controlled absolute path in
+approved encrypted storage before running the command. The export contains
+personal and authentication data; never create it in the repository first.
+Restrict it to the minimum operators and retain it through deployment
+acceptance.
 
-- D1 database `backchannel-interest` as `INTEREST_DB`
-- encrypted secret `TURNSTILE_SECRET_KEY`
+### 2. Apply migration 0002 and prove integrity
 
-Create a managed Turnstile widget named `Backchannel early access`, allow only
-`backchannel.page`, use action `interest`, and leave pre-clearance disabled.
-The widget's site key is public and belongs in `site/index.html`; its secret
-belongs only in the Worker secret binding. The same setup can be completed in
-the authenticated Cloudflare dashboard when Wrangler is not authorized. Never
-paste the secret into source, documentation, command history, logs, or issue
-trackers.
-
-### Private interest admin
-
-The read-only interest console is available only at
-`https://admin.backchannel.page/`. Protect the complete hostname with one
-Cloudflare Access self-hosted application before routing production traffic to
-it; do not configure only a path. Add one Allow policy whose Include rule is
-the exact operator email, with no broad group, domain, Bypass, or Service Auth
-rule.
-
-Copy the application's Audience (AUD) tag and your Access team hostname, then
-enter all three values interactively as encrypted Worker secrets:
+Exercise the exact commands locally first:
 
 ```powershell
-cd docs-site
+npx wrangler d1 migrations apply INTEREST_DB --local
+npx wrangler d1 execute INTEREST_DB --local --command "PRAGMA foreign_key_check; PRAGMA integrity_check;"
+```
+
+Then apply and check production:
+
+```powershell
+npx wrangler d1 migrations apply INTEREST_DB --remote
+npx wrangler d1 execute INTEREST_DB --remote --command "PRAGMA foreign_key_check; PRAGMA integrity_check;"
+```
+
+Stop unless `foreign_key_check` returns no rows and `integrity_check` returns
+exactly `ok`. D1 is authoritative for recipient accounts, password metadata,
+version grants, sessions, and release-access events. Recipient identity is
+unrelated to the local application PostgreSQL database.
+
+### 3. Create and lock down private R2
+
+Create the bucket once:
+
+```powershell
+npx wrangler r2 bucket create backchannel-desktop-releases
+```
+
+In the R2 dashboard, disable the bucket's `r2.dev` development URL and remove
+or disable every bucket custom domain. Verify anonymous requests cannot reach
+either path. The only delivery path is the authenticated Worker binding.
+
+### 4. Bind R2 and configure Worker hosts
+
+`docs-site/wrangler.jsonc` must bind bucket `backchannel-desktop-releases` as
+`RELEASES`, include `downloads.backchannel.page` as a custom-domain route, and
+keep both `workers_dev` and `preview_urls` false. The existing public and admin
+custom domains remain. Confirm DNS and certificate activation before continuing.
+
+### 5. Configure recipient abuse controls
+
+Create a managed Turnstile widget for recipient login with exactly:
+
+- hostname: `downloads.backchannel.page`
+- action: `download_login`
+- pre-clearance: disabled
+
+Put its public site key in `site/downloads/index.html` and enter the secret
+interactively:
+
+```powershell
+npx wrangler secret put TURNSTILE_SECRET
+```
+
+Create a Cloudflare rate-limit rule matching method `POST` and path
+`/api/download/login` on `downloads.backchannel.page`. Rate limit before the
+Worker executes, use an operator-approved low per-IP threshold, and return a
+generic denial. Do not weaken the Worker's same-origin, body-size, generic
+authentication, or exact Turnstile hostname/action checks.
+
+### 6. Merge the control-plane branch and deploy
+
+Retain the public-interest Turnstile secret separately as
+`TURNSTILE_SECRET_KEY`. Protect all of `admin.backchannel.page` with the
+existing Cloudflare Access self-hosted application and one exact-email Allow
+policy. Enter its values interactively:
+
+```powershell
+npx wrangler secret put TURNSTILE_SECRET_KEY
 npx wrangler secret put ADMIN_EMAIL
 npx wrangler secret put ACCESS_TEAM_DOMAIN
 npx wrangler secret put ACCESS_AUD
+npm run deploy
 ```
 
-Use only the hostname (for example, `<team>.cloudflareaccess.com`) for
-`ACCESS_TEAM_DOMAIN`; omit the scheme and path. `ADMIN_EMAIL` must match the
-single email in the Access Allow policy. The Worker validates the
-`Cf-Access-Jwt-Assertion` signature, issuer, and audience against Access's JWKS,
-then requires an exact case-insensitive email match before serving any private
-asset or D1 row. Missing configuration fails closed. The endpoint supports only
-`GET`, returns only the existing consent fields, and sends `Cache-Control:
-no-store`; record changes remain an authenticated D1-console operation.
+`npm run deploy` synchronizes and builds the site immediately before invoking
+Wrangler. Never deploy a preexisting `dist-site` or invoke Wrangler directly
+for production deployment.
 
-After deployment, verify that the configured operator can load the page and
-refresh its table, while a signed-out browser and a different Access identity
-cannot load the page or `/api/admin/interests`. Never place any of these values
-in `wrangler.jsonc`, source, logs, screenshots, or issue trackers.
+Do not add a broad group/domain Include, Bypass, or Service Auth rule. The
+Worker must independently validate the Access JWT signature, Cloudflare issuer,
+configured audience, and exact case-insensitive `ADMIN_EMAIL`; missing or
+invalid configuration fails closed.
 
-### Review and track invites
+Deploy and test the Worker before uploading releases or enabling customer
+links. Signed-out and wrong-identity requests must not reach admin assets or
+APIs. The authenticated admin API provides interest review, release catalog,
+approve, reject, grant replacement, password reset, and revoke endpoints. It
+must remain private and `Cache-Control: no-store`; never log credentials,
+sessions, subscriber data, Access assertions, or R2 keys.
 
-List the structured records in creation order:
+Merge this rollout to `master` with a merge commit that preserves hold commit
+`57fc8d991b8101a2db5889df16ce5a26078baff2`. Do not squash or rebase this
+rollout. Push `master`, wait for the Site workflow to finish successfully, then
+fetch the deployed branch and prove the hold is present:
+
+```powershell
+git fetch origin master
+git merge-base --is-ancestor 57fc8d991b8101a2db5889df16ce5a26078baff2 origin/master
+if ($LASTEXITCODE -ne 0) { throw 'The download-link hold is not an ancestor of origin/master.' }
+```
+
+Stop unless the Site workflow is green and `git merge-base --is-ancestor`
+exits 0. Do not create or migrate any live R2 catalog object, benchmark PBKDF2,
+or approve a recipient before both checks pass.
+
+### 7. Configure an independent R2 writer
+
+Create bucket-scoped R2 S3 Object Read & Write credentials for
+`backchannel-desktop-releases`. Configure the GitHub production environment
+with secrets `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and
+`R2_SECRET_ACCESS_KEY`, plus variable
+`R2_RELEASES_BUCKET=backchannel-desktop-releases`. These credentials are
+separate from the site deployment token; do not expand that token.
+
+### 8. Seed and migrate the release catalog
+
+Follow [Releasing](releasing.md) to migrate the historical catalog in version
+order. Migrate `v0.1.0` once as the seed, verify its immutable manifest and
+assets, and create the valid `releases/latest.json` pointer. Do not migrate the
+seed version again. Continue with `v0.1.1`, `v0.2.0`, and `v0.2.1`, verifying
+every immutable manifest and asset before advancing Latest. Confirm the
+deployed admin `GET /api/admin/releases` response reports `available: true`.
+
+### 9. Benchmark the real password work factor
+
+On the deployed Worker plan, approve a disposable operator test recipient and
+perform repeated real login attempts through the hostname-bound Turnstile flow.
+Confirm Workers observability reports successful 600,000-iteration
+PBKDF2-HMAC-SHA256 derivations within the plan's request CPU ceiling, including
+unknown-account dummy derivation. If the ceiling is insufficient, upgrade the
+Worker plan before enabling recipient accounts. Never lower the 600,000
+iterations.
+
+### 10. Accept accounts and downloads, then cut over customer links
+
+Test approved, expired, revoked, Latest-only, and explicitly granted operator
+accounts against the completed catalog. Confirm portal downloads match manifest
+size and SHA-256 without GitHub cookies. After live Task 7 acceptance, make the
+only link-cutover revision by reverting the exact hold commit:
+
+```powershell
+git revert 57fc8d991b8101a2db5889df16ce5a26078baff2
+git push origin master
+```
+
+Do not hand-edit customer links or combine unrelated changes with the resulting
+revert commit. The push automatically builds and deploys the restored portal
+links and their exact site-test expectations; wait for the Site workflow before
+declaring cutover complete.
+
+Keep old private GitHub executable files for one full release cycle. Remove
+those executable files only after R2 and portal acceptance for the following
+release; keep all GitHub source tags and release notes.
+
+## Interest-list operations
+
+Public `POST /api/interest` remains Turnstile-protected and stores normalized
+consent records in D1. Its widget remains restricted to hostname
+`backchannel.page`, action `interest`, and no pre-clearance. There is no public
+list or mutation route.
+
+List consent records for an approved communication operation:
 
 ```powershell
 npx wrangler d1 execute INTEREST_DB --remote --command "SELECT email, status, source, consent_at, invited_at, last_contacted_at FROM interest_subscribers ORDER BY created_at;"
 ```
 
-After sending an invite, run this as a parameterized statement in the
-authenticated D1 console or an approved administrative client:
+Use parameterized statements in the authenticated D1 console to record an
+invite or unsubscribe:
 
 ```sql
 UPDATE interest_subscribers
-SET status = 'invited',
-    invited_at = datetime('now'),
-    last_contacted_at = datetime('now')
+SET status = 'invited', invited_at = datetime('now'), last_contacted_at = datetime('now')
 WHERE email = ?;
-```
 
-After any later release or news update, set `last_contacted_at` for the exact
-recipients. When someone unsubscribes, preserve the record so they are not
-silently re-added:
-
-```sql
 UPDATE interest_subscribers
 SET status = 'unsubscribed', last_contacted_at = datetime('now')
 WHERE email = ?;
 ```
 
-There is no mailing-service integration yet. If a sender is added later, it
-must include an unsubscribe option in every message and write unsubscribes back
-to D1 before another send.
-
-### Export and retention
-
-Export only when importing the list into an approved sender:
+If a mailing sender is added later, it must provide unsubscribe handling and
+write that state to D1 before another send. Export only the required consent
+table directly to an operator-controlled absolute path in approved encrypted
+storage, then delete it after the record-count check:
 
 ```powershell
-npx wrangler d1 export backchannel-interest --remote --table=interest_subscribers --output=interest-subscribers.sql
+$exportPath = $env:BACKCHANNEL_INTEREST_EXPORT_PATH
+if ([string]::IsNullOrWhiteSpace($exportPath) -or -not [IO.Path]::IsPathRooted($exportPath)) {
+    throw 'BACKCHANNEL_INTEREST_EXPORT_PATH must be an absolute path in approved encrypted storage outside the repository.'
+}
+$exportPath = [IO.Path]::GetFullPath($exportPath)
+$repoRoot = (Resolve-Path ..).Path
+if ($exportPath.StartsWith($repoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'BACKCHANNEL_INTEREST_EXPORT_PATH must be outside the repository.'
+}
+npx wrangler d1 export backchannel-interest --remote --table=interest_subscribers --output="$exportPath"
 ```
 
-The export contains personal data. Keep it outside Git and shared folders,
-limit access to the invite/update operator, and delete the local file after the
-approved sender has accepted it. `docs-site/.gitignore` blocks the standard
-export filename as a second line of defense.
-
-### Rotate Turnstile
-
-Rotate the widget secret in Cloudflare, immediately replace
-`TURNSTILE_SECRET_KEY` in the Worker, and verify a fresh production request.
-The public site key and application code do not change. Never retrieve or print
-the saved Worker secret; verify it by binding name only.
+Rotate either Turnstile secret by replacing only its encrypted Worker binding
+and verifying a fresh production request; never print saved secrets into
+source, logs, screenshots, or issue trackers.
