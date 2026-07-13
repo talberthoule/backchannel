@@ -135,13 +135,13 @@ git commit -m "feat: call Cloudflare R2 API directly"
 - `Get-RemoteLatest($Destination)` returns `{Exists,ETag}` and treats only exit 44 as absence.
 - `Assert-R2Success($Result,$Action)` rejects every nonzero exit.
 
-- [ ] **Step 1: Change the contract tests first and verify RED**
+- [ ] **Step 1: Change the owner-migration contract tests first and verify RED**
 
-Update `desktop/tests/test_release_contract.py` to require `scripts/r2-object.mjs` in both owner script and workflow, require the Cloudflare credential names, and reject case-insensitive command/dependency strings matching `aws`, `aws s3`, `aws s3api`, `AWS_DEFAULT_REGION`, or `AWS_ACCESS_KEY_ID` in the workflow and migration script. Update order assertions to locate `$existing = Invoke-R2` and ensure no `put` occurs before `ShouldProcess`.
+Update `desktop/tests/test_release_contract.py` to require `scripts/r2-object.mjs` in the owner script, require the Cloudflare credential names there, and reject AWS CLI commands, `AWS_DEFAULT_REGION`, `AWS_ACCESS_KEY_ID`, and `Invoke-Aws` in the migration script. Preserve the existing workflow assertions unchanged until Task 3 changes the workflow and its contracts together. Update owner order assertions to locate `$existing = Invoke-R2` and ensure no `put` occurs before `ShouldProcess`.
 
 Run: `python -m unittest desktop.tests.test_release_contract -v`
 
-Expected: failures report the current AWS CLI configuration and `Invoke-Aws` calls.
+Expected: failures report the current owner-script AWS CLI configuration and `Invoke-Aws` calls; workflow assertions remain at their pre-Task-3 baseline.
 
 - [ ] **Step 2: Adapt the PowerShell native-process harness and verify RED**
 
@@ -274,6 +274,7 @@ Continue the remaining approved release-access gate from its current state: Clou
 - Spec coverage: direct Cloudflare endpoint, standard-library SigV4, all three object operations, stable JSON/exits, streaming PUT/GET, atomic destination replacement, conditional writes, PowerShell migration, workflow migration, redaction, and complete regression gates map to Tasks 1-4.
 - Placeholder scan: no deferred TODO/TBD, pseudocode-only implementation step, or unresolved file name remains; angle-bracketed CLI operands are explicit interface notation.
 - Conflict resolution: the user approved allowing Cloudflare-required `AWS4`/`x-amz-*` wire-protocol names in the client, signer tests, and explanatory docs while prohibiting AWS tools, SDKs, credentials, endpoints, accounts, and services; verification searches are scoped accordingly.
+- Sequencing resolution: Task 2 changes only owner-migration contracts and implementation; workflow assertions and implementation move together in Task 3 so every task ends GREEN.
 - Type consistency: `etag`, `contentLength`, `contentType`, `output`, exit 44, and exit 42 are identical across Node, PowerShell, Bash, and tests.
 - Scope check: the amendment adds one transport file and one test file, replaces two callers, and updates their contracts/runbooks; it introduces no package, service, SDK, Worker, or storage provider.
 - Planning decision: the existing release-access plan does not restart. Completed production provisioning remains valid; only the publication transport and its downstream verification are amended before the live catalog write.
