@@ -148,6 +148,50 @@ async def _reconnect_audio_pipeline(
         return False
 
 
+async def _start_call_segment(
+    session_id: uuid.UUID,
+    is_resume: bool,
+) -> SegmentAudioWriter | None:
+    async with async_session() as db:
+        session = await db.get(Session, session_id)
+        if session is None:
+            return None
+
+        result = await db.execute(
+            select(CallSegment.segment_number)
+            .where(CallSegment.session_id == session_id)
+            .order_by(CallSegment.segment_number.desc())
+            .limit(1)
+        )
+        last_segment_number = result.scalar_one_or_none()
+        segment_number = (last_segment_number or 0) + 1
+        segment = CallSegment(
+            session_id=session_id,
+            segment_number=segment_number,
+            started_at=datetime.now(timezone.utc),
+        )
+        db.add(segment)
+        audio_writer = SegmentAudioWriter(session_id, segment_number)
+
+        if is_resume:
+            sequence = await get_next_sequence(session_id, db)
+            marker = TranscriptEntry(
+                session_id=session_id,
+                text=f"--- Session Resumed (Call {segment_number}) ---",
+                sequence=sequence,
+            )
+            db.add(marker)
+
+        if session.state in ("pre_call", "completed"):
+            session.state = "active"
+            if not session.started_at:
+                session.started_at = datetime.now(timezone.utc)
+            session.ended_at = None
+
+        await db.commit()
+        return audio_writer
+
+
 async def _finalize_call(
     session_id: uuid.UUID,
     websocket: WebSocket,
@@ -438,43 +482,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         )
         await websocket.send_json({"type": "status", "data": {"state": "active", "message": active_message}})
 
-        # Create a new call segment
-        async with async_session() as db:
-            session = await db.get(Session, session_id)
-            if session:
-                # Determine segment number
-                result = await db.execute(
-                    select(CallSegment.segment_number)
-                    .where(CallSegment.session_id == session_id)
-                    .order_by(CallSegment.segment_number.desc())
-                    .limit(1)
-                )
-                last_seg = result.scalar_one_or_none()
-                seg_num = (last_seg or 0) + 1
-
-                segment = CallSegment(
-                    session_id=session_id,
-                    segment_number=seg_num,
-                    started_at=datetime.now(timezone.utc),
-                )
-                db.add(segment)
-                audio_writer = SegmentAudioWriter(session_id, seg_num)
-
-                if is_resume:
-                    seq = await get_next_sequence(session_id, db)
-                    marker = TranscriptEntry(
-                        session_id=session_id,
-                        text=f"--- Session Resumed (Call {seg_num}) ---",
-                        sequence=seq,
-                    )
-                    db.add(marker)
-
-                if session.state in ("pre_call", "completed"):
-                    session.state = "active"
-                    if not session.started_at:
-                        session.started_at = datetime.now(timezone.utc)
-                    session.ended_at = None
-                await db.commit()
+        audio_writer = await _start_call_segment(session_id, is_resume)
 
         while not stopped:
             try:

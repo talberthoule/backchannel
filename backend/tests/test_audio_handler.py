@@ -1,9 +1,43 @@
 import unittest
+import uuid
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from app.models import CallSegment, TranscriptEntry
 from app.ws import audio_handler
-from app.ws.audio_handler import _decode_audio_frame
+from app.ws.audio_handler import (
+    _decode_audio_frame,
+    _reconnect_audio_pipeline,
+)
+
+
+class FakeSessionContext:
+    def __init__(self, session, last_segment_number=None):
+        self.session = session
+        self.last_segment_number = last_segment_number
+        self.added = []
+        self.commits = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+    async def get(self, model, item_id):
+        return self.session
+
+    async def execute(self, statement):
+        return SimpleNamespace(
+            scalar_one_or_none=lambda: self.last_segment_number
+        )
+
+    def add(self, item):
+        self.added.append(item)
+
+    async def commit(self):
+        self.commits += 1
 
 
 class AudioFrameDecodingTests(unittest.TestCase):
@@ -98,6 +132,68 @@ class AudioReconnectTests(unittest.IsolatedAsyncioTestCase):
         diarizer.reset.assert_called_once_with()
         orchestrator._reconnect_gateway.assert_awaited_once_with()
         websocket.send_json.assert_not_awaited()
+
+
+class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
+    async def test_starts_next_segment_and_adds_resume_marker(self):
+        self.assertTrue(hasattr(audio_handler, "_start_call_segment"))
+        start_call_segment = audio_handler._start_call_segment
+        session_id = uuid.uuid4()
+        original_started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        session = SimpleNamespace(
+            state="completed",
+            started_at=original_started_at,
+            ended_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        )
+        db = FakeSessionContext(session, last_segment_number=2)
+        writer = MagicMock()
+
+        with (
+            patch("app.ws.audio_handler.async_session", return_value=db),
+            patch(
+                "app.ws.audio_handler.SegmentAudioWriter",
+                return_value=writer,
+            ) as writer_class,
+            patch(
+                "app.ws.audio_handler.get_next_sequence",
+                new=AsyncMock(return_value=41),
+            ),
+        ):
+            result = await start_call_segment(session_id, is_resume=True)
+
+        self.assertIs(writer, result)
+        writer_class.assert_called_once_with(session_id, 3)
+        self.assertEqual(2, len(db.added))
+        segment, marker = db.added
+        self.assertIsInstance(segment, CallSegment)
+        self.assertEqual(session_id, segment.session_id)
+        self.assertEqual(3, segment.segment_number)
+        self.assertIsNotNone(segment.started_at.tzinfo)
+        self.assertIsInstance(marker, TranscriptEntry)
+        self.assertEqual(session_id, marker.session_id)
+        self.assertEqual("--- Session Resumed (Call 3) ---", marker.text)
+        self.assertEqual(41, marker.sequence)
+        self.assertEqual("active", session.state)
+        self.assertEqual(original_started_at, session.started_at)
+        self.assertIsNone(session.ended_at)
+        self.assertEqual(1, db.commits)
+
+    async def test_returns_none_when_session_does_not_exist(self):
+        self.assertTrue(hasattr(audio_handler, "_start_call_segment"))
+        start_call_segment = audio_handler._start_call_segment
+        session_id = uuid.uuid4()
+        db = FakeSessionContext(None)
+
+        with (
+            patch("app.ws.audio_handler.async_session", return_value=db),
+            patch("app.ws.audio_handler.SegmentAudioWriter") as writer_class,
+        ):
+            result = await start_call_segment(session_id, is_resume=False)
+
+        self.assertIsNone(result)
+        writer_class.assert_not_called()
+        self.assertEqual([], db.added)
+        self.assertEqual(0, db.commits)
 
 
 if __name__ == "__main__":
