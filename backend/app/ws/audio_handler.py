@@ -375,7 +375,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
             if slug in session_overrides:
                 config.enabled = session_overrides[slug]
 
-        runtime_config = await get_diarizer_runtime_config(db)
+        runtime_config = await get_diarizer_runtime_config(db, probe_sortformer=False)
         transcription_config = await get_transcription_runtime_config(db)
         local_only = await get_local_only(db)
 

@@ -46,11 +46,30 @@ class DiarizerRuntimeConfig:
 async def get_diarizer_runtime_config(
     db: AsyncSession,
     environment: SortformerEnvironment | None = None,
+    probe_sortformer: bool = True,
 ) -> DiarizerRuntimeConfig:
-    environment = environment or probe_sortformer_environment()
     selected = normalize_diarizer_mode(
         await get_app_setting(db, SETTING_SELECTED_DIARIZER, settings.LIVE_DIARIZER)
     )
+    if environment is None:
+        if probe_sortformer or selected != DIARIZER_LIGHTWEIGHT:
+            environment = probe_sortformer_environment()
+        else:
+            environment = SortformerEnvironment(
+                torch_available=False,
+                sortformer_available=False,
+                cuda_available=False,
+                device="cpu",
+                gpu_name=None,
+                gpu_memory_gb=None,
+                model_id="",
+                status="not_probed",
+                recommended_live_diarizer=DIARIZER_LIGHTWEIGHT,
+                reason=(
+                    "Lightweight diarization is active; Enhanced availability was not probed "
+                    "for this request."
+                ),
+            )
     benchmark_status = await get_app_setting(db, SETTING_SORTFORMER_BENCHMARK_STATUS, "")
     rtf = _parse_float(await get_app_setting(db, SETTING_SORTFORMER_BENCHMARK_RTF, ""))
     threshold = _parse_threshold(

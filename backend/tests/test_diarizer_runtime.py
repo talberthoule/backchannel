@@ -1,9 +1,11 @@
 import asyncio
 import unittest
+from unittest.mock import patch
 
 from app.models import AppSetting
 from app.services.diarization_diagnostics import SortformerEnvironment
 from app.services.diarizer_runtime import (
+    SETTING_SELECTED_DIARIZER,
     SETTING_SPEAKER_SIMILARITY_THRESHOLD,
     get_diarizer_runtime_config,
     set_speaker_similarity_threshold,
@@ -45,6 +47,38 @@ def _environment() -> SortformerEnvironment:
 
 
 class DiarizerRuntimeTests(unittest.TestCase):
+    def test_lightweight_runtime_can_skip_sortformer_probe(self):
+        db = FakeDb({
+            SETTING_SELECTED_DIARIZER: AppSetting(
+                key=SETTING_SELECTED_DIARIZER,
+                value="lightweight",
+            )
+        })
+
+        with patch(
+            "app.services.diarizer_runtime.probe_sortformer_environment",
+            side_effect=RuntimeError("Sortformer probe should be skipped"),
+        ):
+            runtime = asyncio.run(get_diarizer_runtime_config(db, probe_sortformer=False))
+
+        self.assertEqual("lightweight", runtime.effective_live_diarizer)
+
+    def test_sortformer_runtime_still_probes_when_probe_is_disabled(self):
+        db = FakeDb({
+            SETTING_SELECTED_DIARIZER: AppSetting(
+                key=SETTING_SELECTED_DIARIZER,
+                value="sortformer",
+            )
+        })
+
+        with patch(
+            "app.services.diarizer_runtime.probe_sortformer_environment",
+            return_value=_environment(),
+        ) as probe:
+            asyncio.run(get_diarizer_runtime_config(db, probe_sortformer=False))
+
+        probe.assert_called_once_with()
+
     def test_runtime_config_reads_stored_speaker_similarity_threshold(self):
         db = FakeDb({
             SETTING_SPEAKER_SIMILARITY_THRESHOLD: AppSetting(

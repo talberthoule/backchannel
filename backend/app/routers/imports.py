@@ -88,7 +88,7 @@ async def _transcribe_audio_diarized(
     if persist_audio:
         await _persist_import_audio(pcm_data, session_id, db)
 
-    runtime_config = await get_diarizer_runtime_config(db)
+    runtime_config = await get_diarizer_runtime_config(db, probe_sortformer=False)
     registry = SpeakerRegistry(threshold=runtime_config.speaker_similarity_threshold)
     diarizer = create_diarizer(runtime_config.effective_live_diarizer, registry=registry)
     transcription_config = await get_transcription_runtime_config(db)
