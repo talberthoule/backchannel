@@ -467,19 +467,26 @@ class SpeakerDiarizer:
         if not group_ends:
             return assign_full()
 
-        segments: list[DiarizedSegment] = []
+        groups: list[tuple[bytes, np.ndarray]] = []
         group_start = 0
         for group_end in [*group_ends, len(windows)]:
             group_pcm = b"".join(windows[group_start:group_end])
             group_embedding = np.mean(window_embeddings[group_start:group_end], axis=0)
             norm = np.linalg.norm(group_embedding)
             if norm == 0:
-                return assign_full()
-            group_embedding = group_embedding / norm
+                speaker_id = self._registry.match_or_create(
+                    full_embedding,
+                    allow_create=False,
+                )
+                return [DiarizedSegment(speaker_id=speaker_id, pcm_bytes=pcm_bytes)]
+            groups.append((group_pcm, group_embedding / norm))
+            group_start = group_end
+
+        segments: list[DiarizedSegment] = []
+        for group_pcm, group_embedding in groups:
             speaker_id = self._registry.match_or_create(group_embedding, allow_create=False)
             if segments and segments[-1].speaker_id == speaker_id:
                 segments[-1].pcm_bytes += group_pcm
             else:
                 segments.append(DiarizedSegment(speaker_id=speaker_id, pcm_bytes=group_pcm))
-            group_start = group_end
         return segments

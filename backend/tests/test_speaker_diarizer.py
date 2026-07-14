@@ -182,6 +182,32 @@ class SpeakerDiarizerTests(unittest.TestCase):
         self.assertEqual(audio, segments[0].pcm_bytes)
         self.assertEqual(2, registry.profile_count)
 
+    def test_invalid_mixed_group_fallback_is_non_mutating(self):
+        registry = SpeakerRegistry(threshold=0.90)
+        registry.enroll("auto_1", embedding(1.0, 0.0))
+        diarizer = SpeakerDiarizer(registry=registry)
+        audio = pcm(6.0)
+
+        segments, _ = finalize(
+            diarizer,
+            audio,
+            [
+                embedding(0.0, 1.0),
+                embedding(1.0, 0.0),
+                np.zeros(2, dtype=np.float32),
+            ],
+        )
+
+        self.assertEqual(
+            (1, 1, ["auto_1"]),
+            (
+                registry.profile_count,
+                registry._profiles[0].sample_count,
+                [segment.speaker_id for segment in segments],
+            ),
+        )
+        self.assertEqual(audio, b"".join(segment.pcm_bytes for segment in segments))
+
     def test_mixed_first_appearance_waits_for_clean_turn_before_enrolling(self):
         registry = SpeakerRegistry(threshold=0.90)
         first = embedding(1.0, 0.0)
@@ -224,6 +250,16 @@ class SpeakerDiarizerTests(unittest.TestCase):
 
         self.assertEqual(pieces, diarizer.feed_audio(bytes(VoiceActivityDetector.FRAME_SAMPLES * 2)))
 
+    def test_feed_audio_silence_gap_extends_all_finalized_pieces(self):
+        diarizer = SpeakerDiarizer()
+        diarizer._silence_gap_samples = VoiceActivityDetector.FRAME_SAMPLES
+        diarizer._vad.process_frame = Mock(side_effect=[1.0, 0.0])
+        pieces = [DiarizedSegment("auto_1", b"a"), DiarizedSegment("auto_2", b"b")]
+        diarizer._finalize_segment = Mock(return_value=pieces)
+        two_frames = bytes(VoiceActivityDetector.FRAME_SAMPLES * 2 * 2)
+
+        self.assertEqual(pieces, diarizer.feed_audio(two_frames))
+
     def test_flush_segments_returns_every_tail_piece(self):
         diarizer = SpeakerDiarizer()
         diarizer._current_segment.extend(pcm(1.0))
@@ -231,6 +267,18 @@ class SpeakerDiarizerTests(unittest.TestCase):
         diarizer._finalize_segment = Mock(return_value=pieces)
 
         self.assertEqual(pieces, diarizer.flush_segments())
+
+    def test_legacy_flush_returns_first_piece_while_batch_flush_is_lossless(self):
+        pieces = [DiarizedSegment("auto_1", b"a"), DiarizedSegment("auto_2", b"b")]
+        legacy = SpeakerDiarizer()
+        legacy._current_segment.extend(pcm(1.0))
+        legacy._finalize_segment = Mock(return_value=pieces)
+        batch = SpeakerDiarizer()
+        batch._current_segment.extend(pcm(1.0))
+        batch._finalize_segment = Mock(return_value=pieces)
+
+        self.assertEqual(pieces[0], legacy.flush())
+        self.assertEqual(pieces, batch.flush_segments())
 
 
 if __name__ == "__main__":
