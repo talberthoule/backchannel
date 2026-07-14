@@ -31,8 +31,13 @@ def _load_model(model_id: str):
             import onnx_asr
 
             name = LOCAL_MODEL_MAP[model_id]
-            path = data_dir() / "asr-models" / name
-            path.mkdir(parents=True, exist_ok=True)
+            models_dir = data_dir() / "asr-models"
+            models_dir.mkdir(parents=True, exist_ok=True)
+            path = models_dir / name
+            # onnx-asr 0.11 treats any existing local_dir as offline.
+            # ponytail: populated partial caches need manual deletion; add staged downloads if recovery matters.
+            if path.is_dir() and not any(path.iterdir()):
+                path.rmdir()
             logger.info(f"Loading local ASR model {name} (downloads on first use)")
             _loaded[model_id] = onnx_asr.load_model(name, path)
         return _loaded[model_id]
