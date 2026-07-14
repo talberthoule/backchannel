@@ -388,8 +388,12 @@ class SpeakerDiarizer:
     def flush(self) -> DiarizedSegment | None:
         """Legacy single-segment flush; production callers use flush_segments."""
         segments = self.flush_segments()
-        # ponytail: legacy API cannot represent split tails; remove after all external callers migrate.
-        return segments[0] if segments else None
+        # ponytail: legacy API loses split speaker attribution; remove after external callers migrate.
+        return (
+            DiarizedSegment(segments[0].speaker_id, b"".join(segment.pcm_bytes for segment in segments))
+            if segments
+            else None
+        )
 
     def flush_segments(self) -> list[DiarizedSegment]:
         """Finalize every remaining buffered segment in order."""

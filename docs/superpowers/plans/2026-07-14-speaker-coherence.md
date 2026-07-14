@@ -16,6 +16,7 @@
 - A successful `SpeakerRegistry.match()` probe must pass the same full embedding through `match_or_create()` so the existing centroid update still occurs.
 - Mixed-segment groups use the normalized mean of their already-computed window embeddings, call `match_or_create(..., allow_create=False)`, and never enroll a profile.
 - Concatenating output PCM in order must equal input PCM byte-for-byte; merge adjacent groups assigned to the same speaker.
+- The legacy single-segment `flush()` preserves every tail byte in order under the first speaker ID; only its split speaker attribution is lossy.
 - Preserve split-track-only local mic binding, mic-only diarization, zero/multiple-user fallback, capture lifecycle behavior, and the optional Sortformer path.
 - Add no dependency, exemplar bank, persistent enrollment, cross-track reconciliation, boundary search, or installer change.
 
@@ -222,6 +223,32 @@ class SpeakerDiarizerTests(unittest.TestCase):
         self.assertEqual(audio, segments[0].pcm_bytes)
         self.assertEqual(2, registry.profile_count)
 
+    def test_invalid_mixed_group_fallback_is_non_mutating(self):
+        registry = SpeakerRegistry(threshold=0.90)
+        registry.enroll("auto_1", embedding(1.0, 0.0))
+        diarizer = SpeakerDiarizer(registry=registry)
+        audio = pcm(6.0)
+
+        segments, _ = finalize(
+            diarizer,
+            audio,
+            [
+                embedding(0.0, 1.0),
+                embedding(1.0, 0.0),
+                np.zeros(2, dtype=np.float32),
+            ],
+        )
+
+        self.assertEqual(
+            (1, 1, ["auto_1"]),
+            (
+                registry.profile_count,
+                registry._profiles[0].sample_count,
+                [segment.speaker_id for segment in segments],
+            ),
+        )
+        self.assertEqual(audio, b"".join(segment.pcm_bytes for segment in segments))
+
     def test_mixed_first_appearance_waits_for_clean_turn_before_enrolling(self):
         registry = SpeakerRegistry(threshold=0.90)
         first = embedding(1.0, 0.0)
@@ -271,6 +298,18 @@ class SpeakerDiarizerTests(unittest.TestCase):
         diarizer._finalize_segment = Mock(return_value=pieces)
 
         self.assertEqual(pieces, diarizer.flush_segments())
+
+    def test_legacy_flush_preserves_every_tail_byte_in_one_segment(self):
+        pieces = [DiarizedSegment("auto_1", b"a"), DiarizedSegment("auto_2", b"b")]
+        legacy = SpeakerDiarizer()
+        legacy._current_segment.extend(pcm(1.0))
+        legacy._finalize_segment = Mock(return_value=pieces)
+        batch = SpeakerDiarizer()
+        batch._current_segment.extend(pcm(1.0))
+        batch._finalize_segment = Mock(return_value=pieces)
+
+        self.assertEqual(DiarizedSegment("auto_1", b"ab"), legacy.flush())
+        self.assertEqual(pieces, batch.flush_segments())
 
 
 if __name__ == "__main__":
@@ -323,8 +362,12 @@ Replace `flush()` and `_finalize_segment()` with:
     def flush(self) -> DiarizedSegment | None:
         """Legacy single-segment flush; production callers use flush_segments."""
         segments = self.flush_segments()
-        # ponytail: legacy API cannot represent split tails; remove after all external callers migrate.
-        return segments[0] if segments else None
+        # ponytail: legacy API loses split speaker attribution; remove after external callers migrate.
+        return (
+            DiarizedSegment(segments[0].speaker_id, b"".join(segment.pcm_bytes for segment in segments))
+            if segments
+            else None
+        )
 
     def flush_segments(self) -> list[DiarizedSegment]:
         """Finalize every remaining buffered segment in order."""
@@ -394,21 +437,28 @@ Replace `flush()` and `_finalize_segment()` with:
         if not group_ends:
             return assign_full()
 
-        segments: list[DiarizedSegment] = []
+        groups: list[tuple[bytes, np.ndarray]] = []
         group_start = 0
         for group_end in [*group_ends, len(windows)]:
             group_pcm = b"".join(windows[group_start:group_end])
             group_embedding = np.mean(window_embeddings[group_start:group_end], axis=0)
             norm = np.linalg.norm(group_embedding)
             if norm == 0:
-                return assign_full()
-            group_embedding = group_embedding / norm
+                speaker_id = self._registry.match_or_create(
+                    full_embedding,
+                    allow_create=False,
+                )
+                return [DiarizedSegment(speaker_id=speaker_id, pcm_bytes=pcm_bytes)]
+            groups.append((group_pcm, group_embedding / norm))
+            group_start = group_end
+
+        segments: list[DiarizedSegment] = []
+        for group_pcm, group_embedding in groups:
             speaker_id = self._registry.match_or_create(group_embedding, allow_create=False)
             if segments and segments[-1].speaker_id == speaker_id:
                 segments[-1].pcm_bytes += group_pcm
             else:
                 segments.append(DiarizedSegment(speaker_id=speaker_id, pcm_bytes=group_pcm))
-            group_start = group_end
         return segments
 ```
 

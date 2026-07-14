@@ -268,7 +268,7 @@ class SpeakerDiarizerTests(unittest.TestCase):
 
         self.assertEqual(pieces, diarizer.flush_segments())
 
-    def test_legacy_flush_returns_first_piece_while_batch_flush_is_lossless(self):
+    def test_legacy_flush_preserves_every_tail_byte_in_one_segment(self):
         pieces = [DiarizedSegment("auto_1", b"a"), DiarizedSegment("auto_2", b"b")]
         legacy = SpeakerDiarizer()
         legacy._current_segment.extend(pcm(1.0))
@@ -277,7 +277,7 @@ class SpeakerDiarizerTests(unittest.TestCase):
         batch._current_segment.extend(pcm(1.0))
         batch._finalize_segment = Mock(return_value=pieces)
 
-        self.assertEqual(pieces[0], legacy.flush())
+        self.assertEqual(DiarizedSegment("auto_1", b"ab"), legacy.flush())
         self.assertEqual(pieces, batch.flush_segments())
 
 
