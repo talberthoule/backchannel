@@ -80,6 +80,7 @@ async def _transcribe_audio_diarized(
     db: AsyncSession,
     model_id: str | None = None,
     persist_audio: bool = False,
+    probe_sortformer: bool = True,
 ) -> int:
     """Transcribe audio using diarization pipeline. Returns count of entries created."""
     # Convert to PCM16 16kHz mono
@@ -88,7 +89,7 @@ async def _transcribe_audio_diarized(
     if persist_audio:
         await _persist_import_audio(pcm_data, session_id, db)
 
-    runtime_config = await get_diarizer_runtime_config(db, probe_sortformer=False)
+    runtime_config = await get_diarizer_runtime_config(db, probe_sortformer=probe_sortformer)
     registry = SpeakerRegistry(threshold=runtime_config.speaker_similarity_threshold)
     diarizer = create_diarizer(runtime_config.effective_live_diarizer, registry=registry)
     transcription_config = await get_transcription_runtime_config(db)
@@ -217,7 +218,14 @@ async def import_audio(
     content = await file.read()
     source_format = ext.lstrip(".")
 
-    count = await _transcribe_audio_diarized(content, source_format, session_id, db, persist_audio=True)
+    count = await _transcribe_audio_diarized(
+        content,
+        source_format,
+        session_id,
+        db,
+        persist_audio=True,
+        probe_sortformer=False,
+    )
     if count == 0:
         raise HTTPException(400, "No speech detected in audio file")
 
