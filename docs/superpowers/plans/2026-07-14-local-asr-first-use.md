@@ -103,7 +103,7 @@ docker run --rm -e PYTHONDONTWRITEBYTECODE=1 `
   -v "${PWD}\backend\app:/app/app" `
   -v "${PWD}\backend\tests:/app/tests" `
   -w /app r2-master-rollout-backend:latest `
-  python -m unittest tests.test_local_transcriber
+  python -m unittest discover -s tests -p test_local_transcriber.py
 ```
 
 Expected: FAIL for absent and empty states because `_load_model()` creates the child before the fake loader observes it.
@@ -134,7 +134,7 @@ docker run --rm -e PYTHONDONTWRITEBYTECODE=1 `
   -v "${PWD}\backend\app:/app/app" `
   -v "${PWD}\backend\tests:/app/tests" `
   -w /app r2-master-rollout-backend:latest `
-  python -m unittest tests.test_local_transcriber
+  python -m unittest discover -s tests -p test_local_transcriber.py
 
 docker run --rm -e PYTHONDONTWRITEBYTECODE=1 `
   -v "${PWD}\backend\app:/app/app" `

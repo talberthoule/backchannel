@@ -325,7 +325,7 @@ docker run --rm -e PYTHONDONTWRITEBYTECODE=1 `
   -v "${PWD}\backend\app:/app/app" `
   -v "${PWD}\backend\tests:/app/tests" `
   -w /app r2-master-rollout-backend:latest `
-  python -m unittest tests.test_speaker_diarizer
+  python -m unittest discover -s tests -p test_speaker_diarizer.py
 ```
 
 Expected: FAIL because `_finalize_segment()` returns one segment, `feed_audio()` appends instead of extending, and `flush_segments()` does not exist.
@@ -481,11 +481,11 @@ Replace its direct tail handling with:
 Run:
 
 ```powershell
-docker run --rm -e PYTHONDONTWRITEBYTECODE=1 `
+docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/app:/app/tests `
   -v "${PWD}\backend\app:/app/app" `
   -v "${PWD}\backend\tests:/app/tests" `
   -w /app r2-master-rollout-backend:latest `
-  python -m unittest tests.test_speaker_diarizer tests.test_speaker_registry tests.test_diarizer_selection tests.test_audio_handler
+  python -m unittest test_speaker_diarizer test_speaker_registry test_diarizer_selection test_audio_handler
 ```
 
 Expected: PASS with no failure or error.
