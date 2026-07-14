@@ -254,6 +254,8 @@ class SpeakerRegistry:
             return best_profile.speaker_id
 
         # New speaker
+        while any(profile.speaker_id == f"auto_{self._next_id}" for profile in self._profiles):
+            self._next_id += 1
         new_id = f"auto_{self._next_id}"
         self._next_id += 1
         self.enroll(new_id, embedding)
@@ -311,6 +313,10 @@ class SpeakerDiarizer:
         self._max_segment_samples = int(settings.MAX_SEGMENT_MS * self._sample_rate / 1000)
         self._min_segment_samples = int(settings.MIN_SEGMENT_MS * self._sample_rate / 1000)
         self._min_new_speaker_samples = int(settings.MIN_NEW_SPEAKER_MS * self._sample_rate / 1000)
+        self._coherence_window_samples = int(
+            settings.SPEAKER_COHERENCE_WINDOW_MS * self._sample_rate / 1000
+        )
+        self._coherence_threshold = settings.SPEAKER_COHERENCE_THRESHOLD
 
         # State
         self._pending_audio = bytearray()  # unprocessed PCM16 bytes
@@ -366,9 +372,7 @@ class SpeakerDiarizer:
                 # Check max segment length
                 segment_samples = len(self._current_segment) // self._bytes_per_sample
                 if segment_samples >= self._max_segment_samples:
-                    seg = self._finalize_segment()
-                    if seg:
-                        completed.append(seg)
+                    completed.extend(self._finalize_segment())
             else:
                 if self._in_speech:
                     self._silence_count += VoiceActivityDetector.FRAME_SAMPLES
@@ -377,17 +381,19 @@ class SpeakerDiarizer:
 
                     if self._silence_count >= self._silence_gap_samples:
                         # Turn boundary detected
-                        seg = self._finalize_segment()
-                        if seg:
-                            completed.append(seg)
+                        completed.extend(self._finalize_segment())
 
         return completed
 
     def flush(self) -> DiarizedSegment | None:
-        """Finalize any remaining buffered audio."""
-        if self._current_segment:
-            return self._finalize_segment()
-        return None
+        """Legacy single-segment flush; production callers use flush_segments."""
+        segments = self.flush_segments()
+        # ponytail: legacy API cannot represent split tails; remove after all external callers migrate.
+        return segments[0] if segments else None
+
+    def flush_segments(self) -> list[DiarizedSegment]:
+        """Finalize every remaining buffered segment in order."""
+        return self._finalize_segment() if self._current_segment else []
 
     def reset(self):
         """Clear all state."""
@@ -397,8 +403,8 @@ class SpeakerDiarizer:
         self._silence_count = 0
         self._in_speech = False
 
-    def _finalize_segment(self) -> DiarizedSegment | None:
-        """Extract embedding, match speaker, return segment."""
+    def _finalize_segment(self) -> list[DiarizedSegment]:
+        """Extract embeddings, split internally mixed audio, and assign speakers."""
         pcm_bytes = bytes(self._current_segment)
         self._current_segment.clear()
         self._silence_count = 0
@@ -406,18 +412,74 @@ class SpeakerDiarizer:
 
         segment_samples = len(pcm_bytes) // self._bytes_per_sample
         if segment_samples < self._min_segment_samples:
-            return None
+            return []
 
-        # Extract embedding
         pcm_float = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
         try:
-            embedding = _extract_embedding(pcm_float, self._sample_rate)
-            speaker_id = self._registry.match_or_create(
-                embedding,
-                allow_create=segment_samples >= self._min_new_speaker_samples,
-            )
+            full_embedding = _extract_embedding(pcm_float, self._sample_rate)
         except Exception as e:
             logger.warning(f"Embedding extraction failed: {e}")
-            speaker_id = "auto_unknown"
+            return [DiarizedSegment(speaker_id="auto_unknown", pcm_bytes=pcm_bytes)]
 
-        return DiarizedSegment(speaker_id=speaker_id, pcm_bytes=pcm_bytes)
+        allow_create = segment_samples >= self._min_new_speaker_samples
+
+        def assign_full() -> list[DiarizedSegment]:
+            speaker_id = self._registry.match_or_create(
+                full_embedding,
+                allow_create=allow_create,
+            )
+            return [DiarizedSegment(speaker_id=speaker_id, pcm_bytes=pcm_bytes)]
+
+        matched_id, _ = self._registry.match(full_embedding)
+        if matched_id or not allow_create or self._registry.profile_count == 0:
+            return assign_full()
+
+        window_bytes = self._coherence_window_samples * self._bytes_per_sample
+        windows = [
+            pcm_bytes[start:start + window_bytes]
+            for start in range(0, len(pcm_bytes), window_bytes)
+        ]
+        min_bytes = self._min_segment_samples * self._bytes_per_sample
+        if len(windows) > 1 and len(windows[-1]) < min_bytes:
+            tail = windows.pop()
+            windows[-1] += tail
+        if len(windows) < 2:
+            return assign_full()
+
+        try:
+            window_embeddings = [
+                _extract_embedding(
+                    np.frombuffer(window, dtype=np.int16).astype(np.float32) / 32768.0,
+                    self._sample_rate,
+                )
+                for window in windows
+            ]
+        except Exception as e:
+            logger.warning(f"Coherence embedding extraction failed: {e}")
+            return assign_full()
+
+        group_ends = [
+            index + 1
+            for index in range(len(window_embeddings) - 1)
+            if float(np.dot(window_embeddings[index], window_embeddings[index + 1]))
+            < self._coherence_threshold
+        ]
+        if not group_ends:
+            return assign_full()
+
+        segments: list[DiarizedSegment] = []
+        group_start = 0
+        for group_end in [*group_ends, len(windows)]:
+            group_pcm = b"".join(windows[group_start:group_end])
+            group_embedding = np.mean(window_embeddings[group_start:group_end], axis=0)
+            norm = np.linalg.norm(group_embedding)
+            if norm == 0:
+                return assign_full()
+            group_embedding = group_embedding / norm
+            speaker_id = self._registry.match_or_create(group_embedding, allow_create=False)
+            if segments and segments[-1].speaker_id == speaker_id:
+                segments[-1].pcm_bytes += group_pcm
+            else:
+                segments.append(DiarizedSegment(speaker_id=speaker_id, pcm_bytes=group_pcm))
+            group_start = group_end
+        return segments

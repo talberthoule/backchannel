@@ -25,6 +25,7 @@ import onnxruntime as ort  # noqa: E402
 import soundfile as sf  # noqa: E402
 
 from app.services import speaker_diarizer as sd  # noqa: E402
+from app.services.diarizer_selection import flush_diarizer_segments  # noqa: E402
 from app.services.speaker_diarizer import SpeakerDiarizer, SpeakerRegistry  # noqa: E402
 
 CANDIDATES = [
@@ -88,9 +89,7 @@ def run_model(label: str, model_path: str, audio_files: list[str], threshold: fl
         chunk = 32000  # 1s of PCM16 @16k
         for i in range(0, len(pcm), chunk):
             segments.extend(diarizer.feed_audio(pcm[i:i + chunk]))
-        tail = diarizer.flush()
-        if tail:
-            segments.append(tail)
+        segments.extend(flush_diarizer_segments(diarizer))
 
         speakers = sorted({s.speaker_id for s in segments})
         print(f"  {os.path.basename(path)}: {len(segments)} segments, {len(speakers)} speakers {speakers}")
