@@ -1,323 +1,160 @@
 name: Desktop release
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release_ref:
+        description: Canonical annotated release tag
+        required: true
+        type: string
+      expected_commit:
+        description: Expected peeled release commit
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            asset: Backchannel-windows-x64.zip
-          - os: macos-latest
-            asset: Backchannel-macos-arm64.zip
-          - os: ubuntu-latest
-            asset: Backchannel-linux-x64.tar.gz
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Build frontend
-        working-directory: frontend
-        run: |
-          npm ci
-          npm run build
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install Python dependencies
-        run: pip install -r backend/requirements.txt -r desktop/requirements.txt
-
-      - name: Download ONNX models
-        working-directory: backend
-        run: python scripts/download_models.py
-
-      - name: Download embedded Postgres
-        run: python desktop/scripts/download_pg.py
-
-      - name: Build bundle
-        run: pyinstaller desktop/backchannel.spec --distpath dist --workpath build --noconfirm
-
-      - name: Smoke test bundle
-        run: python desktop/scripts/smoke_test.py
-
-      - name: Zip (Windows)
-        if: runner.os == 'Windows'
-        run: Compress-Archive -Path dist/Backchannel -DestinationPath ${{ matrix.asset }}
-
-      - name: Zip (macOS)
-        if: runner.os == 'macOS'
-        run: ditto -c -k --keepParent dist/Backchannel.app ${{ matrix.asset }}
-
-      - name: Archive (Linux)
-        if: runner.os == 'Linux'
-        run: tar -C dist -czf "${{ matrix.asset }}" Backchannel
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset }}
-          path: ${{ matrix.asset }}
-
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    environment: production
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+  build-macos:
+    runs-on: macos-latest
     permissions:
-      contents: write
-    concurrency:
-      group: backchannel-r2-publish
-      cancel-in-progress: false
-    env:
-      R2_BUCKET: ${{ vars.R2_RELEASES_BUCKET }}
+      contents: read
+    outputs:
+      published_at: ${{ steps.release.outputs.published_at }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout controller
+        uses: actions/checkout@v4
+        with:
+          path: controller
+
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_ref }}
+          fetch-depth: 0
+          path: source
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      - name: Resolve release commit
-        shell: bash
-        run: echo "RELEASE_COMMIT=$(git rev-parse 'HEAD^{commit}')" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Download release assets
+      - name: Verify annotated release tag
+        id: release
+        working-directory: source
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_REF" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git cat-file -t "refs/tags/$RELEASE_REF")" == tag ]]
+          actual_commit="$(git rev-parse "refs/tags/$RELEASE_REF^{commit}")"
+          [[ "$actual_commit" == "$EXPECTED_COMMIT" ]]
+          tagger_date="$(git for-each-ref --format='%(taggerdate:iso-strict)' "refs/tags/$RELEASE_REF")"
+          [[ -n "$tagger_date" ]]
+          published_at="$(python - "$tagger_date" <<'PY'
+          import sys
+          from datetime import datetime, timezone
+
+          value = datetime.fromisoformat(sys.argv[1])
+          if value.tzinfo is None:
+              raise SystemExit("annotated tag timestamp has no timezone")
+          print(value.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"))
+          PY
+          )"
+          echo "published_at=$published_at" >> "$GITHUB_OUTPUT"
+
+      - name: Build frontend
+        working-directory: source/frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install Python dependencies
+        run: pip install -r source/backend/requirements.txt -r source/desktop/requirements.txt
+
+      - name: Download ONNX models
+        working-directory: source/backend
+        run: python scripts/download_models.py
+
+      - name: Download embedded Postgres
+        run: python source/desktop/scripts/download_pg.py
+
+      - name: Build bundle
+        working-directory: source
+        run: pyinstaller desktop/backchannel.spec --distpath dist --workpath build --noconfirm
+
+      - name: Smoke test bundle
+        working-directory: source
+        run: python desktop/scripts/smoke_test.py
+
+      - name: Zip macOS bundle
+        working-directory: source
+        run: ditto -c -k --keepParent dist/Backchannel.app ../controller/Backchannel-macos-arm64.zip
+
+      - name: Upload macOS handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: Backchannel-macos-arm64.zip
+          path: controller/Backchannel-macos-arm64.zip
+          retention-days: 1
+
+  publish-macos:
+    needs: build-macos
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      actions: write
+    concurrency:
+      group: backchannel-r2-publish
+      cancel-in-progress: false
+    steps:
+      - name: Checkout controller
+        uses: actions/checkout@v4
+        with:
+          path: controller
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download macOS handoff
         uses: actions/download-artifact@v4
         with:
-          pattern: Backchannel-*
-          merge-multiple: true
-          path: release-assets
+          name: Backchannel-macos-arm64.zip
+          path: controller/release-assets
 
-      - name: Check immutable version
+      - name: Publish verified macOS platform
+        working-directory: controller
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          set +e
-          node scripts/r2-object.mjs head \
-            --bucket "$R2_BUCKET" \
-            --key "releases/${{ github.ref_name }}/manifest.json" \
-            >/dev/null
-          status=$?
-          set -e
-          if [[ $status -eq 0 ]]; then
-            echo "Release manifest already exists" >&2
-            exit 1
-          fi
-          [[ $status -eq 44 ]] || exit "$status"
+          R2_RELEASES_BUCKET: ${{ vars.R2_RELEASES_BUCKET }}
+          RELEASE_REF: ${{ inputs.release_ref }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          PUBLISHED_AT: ${{ needs.build-macos.outputs.published_at }}
+        shell: pwsh
+        run: ./scripts/publish_release_platform.ps1 -Version $env:RELEASE_REF -Commit $env:EXPECTED_COMMIT -PublishedAt $env:PUBLISHED_AT -PlatformId macos-arm64 -AssetPath release-assets/Backchannel-macos-arm64.zip -Confirm:$false
 
-      - name: Fetch current Latest
+      - name: Delete exact macOS handoff
+        working-directory: controller
         env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p release-metadata
-          set +e
-          node scripts/r2-object.mjs get \
-            --bucket "$R2_BUCKET" \
-            --key releases/latest.json \
-            --output release-metadata/current-latest.json \
-            >/dev/null
-          status=$?
-          set -e
-          if [[ $status -eq 0 ]]; then
-            exit 0
-          fi
-          rm -f release-metadata/current-latest.json
-          [[ $status -eq 44 ]] || exit "$status"
-
-      - name: Build release manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          published_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          printf '%s\n' "$published_at" > release-metadata/published-at
-          current=()
-          if [[ -f release-metadata/current-latest.json ]]; then
-            current=(--current-latest release-metadata/current-latest.json)
-          fi
-          python desktop/scripts/build_release_manifest.py \
-            --asset-dir release-assets \
-            --tag "${{ github.ref_name }}" \
-            --commit "$RELEASE_COMMIT" \
-            --published-at "$published_at" \
-            --manifest-out release-metadata/manifest.json \
-            --latest-out release-metadata/latest.json \
-            "${current[@]}"
-
-      - name: Upload release assets
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY' > release-metadata/assets.tsv
-          import json
-          for asset in json.load(open("release-metadata/manifest.json", encoding="utf-8"))["assets"]:
-              print(asset["filename"], asset["key"], asset["content_type"], sep="\t")
-          PY
-          while IFS=$'\t' read -r filename key content_type; do
-            node scripts/r2-object.mjs put \
-              --bucket "$R2_BUCKET" \
-              --key "$key" \
-              --file "release-assets/$filename" \
-              --content-type "$content_type" \
-              --content-disposition "attachment; filename=\"$filename\"" \
-              >/dev/null
-          done < release-metadata/assets.tsv
-
-      - name: Verify release asset sizes
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY' > release-metadata/sizes.tsv
-          import json
-          for asset in json.load(open("release-metadata/manifest.json", encoding="utf-8"))["assets"]:
-              print(asset["key"], asset["size"], sep="\t")
-          PY
-          while IFS=$'\t' read -r key expected; do
-            metadata="$(node scripts/r2-object.mjs head \
-              --bucket "$R2_BUCKET" \
-              --key "$key")"
-            actual="$(python -c 'import json, sys; print(json.load(sys.stdin)["contentLength"])' <<<"$metadata")"
-            [[ "$actual" == "$expected" ]] || {
-              echo "Size mismatch for $key: expected $expected, got $actual" >&2
-              exit 1
-            }
-          done < release-metadata/sizes.tsv
-
-      - name: Create immutable manifest
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/r2-object.mjs put \
-            --bucket "$R2_BUCKET" \
-            --key "releases/${{ github.ref_name }}/manifest.json" \
-            --file release-metadata/manifest.json \
-            --content-type application/json \
-            --cache-control no-store \
-            --if-none-match '*' \
-            >/dev/null
-
-      - name: Verify immutable manifest
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/r2-object.mjs get \
-            --bucket "$R2_BUCKET" \
-            --key "releases/${{ github.ref_name }}/manifest.json" \
-            --output release-metadata/remote-manifest.json \
-            >/dev/null
-          cmp release-metadata/manifest.json release-metadata/remote-manifest.json
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          from desktop.scripts.build_release_manifest import build_manifest
-
-          remote = json.loads(Path("release-metadata/remote-manifest.json").read_text())
-          expected = build_manifest(
-              Path("release-assets"),
-              remote["version"],
-              remote["commit"],
-              remote["published_at"],
-          )
-          if remote != expected:
-              raise SystemExit("remote manifest failed helper validation")
-          PY
-
-      - name: Update Latest
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          for attempt in 1 2; do
-            rm -f release-metadata/retry-current-latest.json
-            set +e
-            read_metadata="$(node scripts/r2-object.mjs get \
-              --bucket "$R2_BUCKET" \
-              --key releases/latest.json \
-              --output release-metadata/retry-current-latest.json)"
-            status=$?
-            set -e
-            if [[ $status -eq 0 ]]; then
-              etag="$(python -c 'import json, sys; print(json.load(sys.stdin)["etag"])' <<<"$read_metadata")"
-              condition=(--if-match "$etag")
-              current=(--current-latest release-metadata/retry-current-latest.json)
-            elif [[ $status -eq 44 ]]; then
-              condition=(--if-none-match '*')
-              current=()
-            else
-              exit "$status"
-            fi
-
-            python desktop/scripts/build_release_manifest.py \
-              --asset-dir release-assets \
-              --tag "${{ github.ref_name }}" \
-              --commit "$RELEASE_COMMIT" \
-              --published-at "$(cat release-metadata/published-at)" \
-              --manifest-out release-metadata/retry-manifest.json \
-              --latest-out release-metadata/latest.json \
-              "${current[@]}"
-
-            set +e
-            node scripts/r2-object.mjs put \
-              --bucket "$R2_BUCKET" \
-              --key releases/latest.json \
-              --file release-metadata/latest.json \
-              --content-type application/json \
-              --cache-control no-store \
-              "${condition[@]}" \
-              >/dev/null
-            status=$?
-            set -e
-            if [[ $status -eq 0 ]]; then
-              exit 0
-            fi
-            if [[ $attempt -eq 1 && $status -eq 42 ]]; then
-              echo "Latest precondition conflict; retrying once"
-              continue
-            fi
-            exit "$status"
-          done
-
-      - name: Publish GitHub release notes
-        uses: softprops/action-gh-release@v2
-        with:
-          body_path: .github/release-notes/${{ github.ref_name }}.md
+          artifact_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --jq '[.artifacts[] | select(.name == "Backchannel-macos-arm64.zip")] | if length == 1 then .[0].id else error("expected one macOS artifact") end')"
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id"
