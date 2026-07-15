@@ -60,6 +60,12 @@ $emptyOutput = @(Invoke-Checked "empty output" {
 })
 Assert-True ($emptyOutput.Count -eq 0) `
     "Empty command output gained a synthetic element"
+$stderrOutput = Invoke-Checked "successful stderr" {
+    & powershell -NoProfile -Command `
+        "[Console]::Error.WriteLine('native progress'); exit 0"
+}
+Assert-True ($stderrOutput[-1] -eq "native progress") `
+    "Successful native stderr output was not captured"
 
 . ([scriptblock]::Create($definitions["Get-AndClearR2Credentials"]))
 . ([scriptblock]::Create($definitions["Invoke-WithR2Credentials"]))

@@ -15,8 +15,15 @@ function Invoke-Checked {
         [Parameter(Mandatory = $true)][scriptblock]$Command
     )
 
-    $output = @(& $Command 2>&1)
-    if ($LASTEXITCODE -ne 0) {
+    $savedErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = @(& $Command 2>&1)
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedErrorActionPreference
+    }
+    if ($exitCode -ne 0) {
         throw "$Action failed"
     }
     $result = @($output | ForEach-Object { $_.ToString() })
