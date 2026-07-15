@@ -8,6 +8,10 @@ SPEC = (ROOT / "desktop" / "backchannel.spec").read_text()
 WORKFLOW = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text()
 MIGRATION_PATH = ROOT / "scripts" / "migrate_releases_to_r2.ps1"
 MIGRATION = MIGRATION_PATH.read_text() if MIGRATION_PATH.exists() else ""
+PLATFORM_PUBLISHER_PATH = ROOT / "scripts" / "publish_release_platform.ps1"
+PLATFORM_PUBLISHER = (
+    PLATFORM_PUBLISHER_PATH.read_text() if PLATFORM_PUBLISHER_PATH.exists() else ""
+)
 
 
 class ReleaseContractTests(unittest.TestCase):
@@ -129,6 +133,28 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertLess(should_process, first_upload)
         self.assertNotIn('"put"', MIGRATION[:should_process])
         self.assertIn("recovery", MIGRATION.lower())
+
+    def test_platform_publisher_is_conditional_verified_and_latest_last(self):
+        for value in (
+            "SupportsShouldProcess",
+            "build_platform_manifest.py",
+            "r2-release-common.ps1",
+            "--if-none-match",
+            "contentLength",
+            "platforms/$PlatformId.json",
+            "--if-match",
+            "Updating Latest",
+        ):
+            with self.subTest(value=value):
+                self.assertIn(value, PLATFORM_PUBLISHER)
+        self.assertNotRegex(
+            PLATFORM_PUBLISHER, re.compile(r"(?i)(?:^|[&|;\s])aws(?:\s|$)")
+        )
+        self.assertLess(
+            PLATFORM_PUBLISHER.index("Creating immutable platform manifest"),
+            PLATFORM_PUBLISHER.index("Updating Latest"),
+        )
+        self.assertNotIn("delete", PLATFORM_PUBLISHER.lower())
 
     def test_spec_bundles_brand_icons(self):
         self.assertIn('"assets"', SPEC)
