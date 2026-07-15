@@ -4,6 +4,7 @@ __pycache__/
 node_modules/
 dist/
 build/
+release-assets/
 .vite/
 *.log
 .DS_Store

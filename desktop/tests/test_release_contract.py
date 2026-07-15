@@ -13,9 +13,26 @@ PLATFORM_PUBLISHER = (
     PLATFORM_PUBLISHER_PATH.read_text() if PLATFORM_PUBLISHER_PATH.exists() else ""
 )
 LINUX_DOCKERFILE = (ROOT / "desktop" / "Dockerfile.release-linux").read_text()
+COORDINATOR = (ROOT / "scripts" / "release_desktop.ps1").read_text()
 
 
 class ReleaseContractTests(unittest.TestCase):
+    def test_local_coordinator_is_tag_pinned_progressive_and_failure_isolated(self):
+        for value in (
+            "SupportsShouldProcess", "worktree add --detach", "^{commit}",
+            "taggerdate", "Get-ReleasePublicationState", "Remove-StaleMacArtifacts",
+            "workflow run desktop-release.yml", "Build-WindowsRelease",
+            "Build-LinuxRelease", "publish_release_platform.ps1",
+            "Backchannel-windows-x64.zip", "Backchannel-linux-x64.tar.gz",
+            "run watch", "release view", "$failures", "finally",
+        ):
+            self.assertIn(value, COORDINATOR)
+        main = COORDINATOR[COORDINATOR.index("$localPending") :]
+        self.assertLess(
+            main.index("Build-WindowsRelease"), main.index("Build-LinuxRelease")
+        )
+        self.assertLess(main.index("Build-LinuxRelease"), main.index("run watch"))
+
     def test_linux_release_container_builds_smokes_and_exports_one_tarball(self):
         for value in (
             "FROM node:24", "npm ci", "npm run build", "FROM python:3.12",
