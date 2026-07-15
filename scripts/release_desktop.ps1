@@ -19,7 +19,10 @@ function Invoke-Checked {
     if ($LASTEXITCODE -ne 0) {
         throw "$Action failed"
     }
-    return @($output | ForEach-Object { $_.ToString() })
+    $result = @($output | ForEach-Object { $_.ToString() })
+    if ($result.Count -gt 0) {
+        Write-Output -NoEnumerate $result
+    }
 }
 
 function Get-AndClearR2Credentials {

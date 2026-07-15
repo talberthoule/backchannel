@@ -46,6 +46,21 @@ foreach ($name in $requiredFunctions) {
     $definitions[$name] = $definition.Extent.Text
 }
 
+. ([scriptblock]::Create($definitions["Invoke-Checked"]))
+$singleOutput = Invoke-Checked "single output" {
+    $global:LASTEXITCODE = 0
+    "master"
+}
+Assert-True ($singleOutput -is [array]) `
+    "Single command output collapsed to a scalar"
+Assert-True ($singleOutput[-1] -eq "master") `
+    "Single command output was not preserved"
+$emptyOutput = @(Invoke-Checked "empty output" {
+    $global:LASTEXITCODE = 0
+})
+Assert-True ($emptyOutput.Count -eq 0) `
+    "Empty command output gained a synthetic element"
+
 . ([scriptblock]::Create($definitions["Get-AndClearR2Credentials"]))
 . ([scriptblock]::Create($definitions["Invoke-WithR2Credentials"]))
 $credentialNames = @(
