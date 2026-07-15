@@ -19,6 +19,7 @@ ASSETS = (
     ("macos-arm64", "macOS arm64", "Backchannel-macos-arm64.zip", "application/zip"),
     ("linux-x64", "Linux x64", "Backchannel-linux-x64.tar.gz", "application/gzip"),
 )
+ASSETS_BY_ID = {asset[0]: asset for asset in ASSETS}
 
 
 def _version(value: str, label: str = "tag") -> tuple[int, int, int]:
@@ -39,12 +40,61 @@ def _timestamp(value: str) -> str:
     return canonical
 
 
+def _commit(value: str) -> str:
+    if not isinstance(value, str) or not COMMIT_RE.fullmatch(value):
+        raise ValueError("commit must be lowercase 40-hex")
+    return value
+
+
 def _hash(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         while chunk := stream.read(CHUNK_SIZE):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def build_release_identity(tag: str, commit: str, published_at: str) -> dict:
+    _version(tag)
+    return {
+        "version": tag,
+        "published_at": _timestamp(published_at),
+        "commit": _commit(commit),
+    }
+
+
+def build_platform_manifest(
+    asset_path: Path, tag: str, commit: str, platform_id: str
+) -> dict:
+    _version(tag)
+    commit = _commit(commit)
+    trusted = ASSETS_BY_ID.get(platform_id)
+    if trusted is None:
+        raise ValueError(f"invalid platform id: {platform_id!r}")
+    asset_id, platform, filename, content_type = trusted
+    path = Path(asset_path)
+    if path.name != filename:
+        raise ValueError(f"platform asset must use trusted filename: {filename}")
+    if path.is_symlink():
+        raise ValueError(f"release asset cannot be a symlink: {filename}")
+    if not path.is_file():
+        raise ValueError(f"release asset must be a regular file: {filename}")
+    size = path.stat().st_size
+    if size <= 0:
+        raise ValueError(f"release asset cannot be empty: {filename}")
+    return {
+        "version": tag,
+        "commit": commit,
+        "asset": {
+            "id": asset_id,
+            "platform": platform,
+            "filename": filename,
+            "key": f"releases/{tag}/{filename}",
+            "size": size,
+            "sha256": _hash(path),
+            "content_type": content_type,
+        },
+    }
 
 
 def build_manifest(
@@ -56,8 +106,7 @@ def build_manifest(
 ) -> dict:
     """Validate release assets and return their trusted manifest."""
     _version(tag)
-    if not isinstance(commit, str) or not COMMIT_RE.fullmatch(commit):
-        raise ValueError("commit must be lowercase 40-hex")
+    _commit(commit)
     published_at = _timestamp(published_at)
     asset_dir = Path(asset_dir)
     if not asset_dir.is_dir():
