@@ -438,6 +438,22 @@ class SpeakerDiarizer:
         if matched_id or not allow_create or self._registry.profile_count == 0:
             return assign_full()
 
+        try:
+            groups = self._coherence_groups(pcm_bytes, full_embedding)
+        except Exception as e:
+            logger.warning(f"Coherence embedding extraction failed: {e}")
+            return assign_full()
+        if groups is None:
+            return assign_full()
+
+        return self._assign_coherence_groups(groups)
+
+    def _coherence_groups(
+        self,
+        pcm_bytes: bytes,
+        full_embedding: np.ndarray,
+    ) -> list[tuple[bytes, np.ndarray]] | None:
+        """Return adjacent coherence groups, or None when no split is justified."""
         window_bytes = self._coherence_window_samples * self._bytes_per_sample
         windows = [
             pcm_bytes[start:start + window_bytes]
@@ -448,19 +464,15 @@ class SpeakerDiarizer:
             tail = windows.pop()
             windows[-1] += tail
         if len(windows) < 2:
-            return assign_full()
+            return None
 
-        try:
-            window_embeddings = [
-                _extract_embedding(
-                    np.frombuffer(window, dtype=np.int16).astype(np.float32) / 32768.0,
-                    self._sample_rate,
-                )
-                for window in windows
-            ]
-        except Exception as e:
-            logger.warning(f"Coherence embedding extraction failed: {e}")
-            return assign_full()
+        window_embeddings = [
+            _extract_embedding(
+                np.frombuffer(window, dtype=np.int16).astype(np.float32) / 32768.0,
+                self._sample_rate,
+            )
+            for window in windows
+        ]
 
         group_ends = [
             index + 1
@@ -469,7 +481,7 @@ class SpeakerDiarizer:
             < self._coherence_threshold
         ]
         if not group_ends:
-            return assign_full()
+            return None
 
         groups: list[tuple[bytes, np.ndarray]] = []
         group_start = 0
@@ -478,14 +490,16 @@ class SpeakerDiarizer:
             group_embedding = np.mean(window_embeddings[group_start:group_end], axis=0)
             norm = np.linalg.norm(group_embedding)
             if norm == 0:
-                speaker_id = self._registry.match_or_create(
-                    full_embedding,
-                    allow_create=False,
-                )
-                return [DiarizedSegment(speaker_id=speaker_id, pcm_bytes=pcm_bytes)]
+                return [(pcm_bytes, full_embedding)]
             groups.append((group_pcm, group_embedding / norm))
             group_start = group_end
+        return groups
 
+    def _assign_coherence_groups(
+        self,
+        groups: list[tuple[bytes, np.ndarray]],
+    ) -> list[DiarizedSegment]:
+        """Assign non-enrolling speaker IDs and merge adjacent identical groups."""
         segments: list[DiarizedSegment] = []
         for group_pcm, group_embedding in groups:
             speaker_id = self._registry.match_or_create(group_embedding, allow_create=False)
