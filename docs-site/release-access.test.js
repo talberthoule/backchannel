@@ -12,6 +12,8 @@ import {
   hashPassword,
   loadReleaseCatalog,
   parseManifest,
+  parsePlatformManifest,
+  parseReleaseIdentity,
   parseSingleRange,
   releaseSummary,
   resolveEntitlements,
@@ -33,6 +35,18 @@ const baseManifest = {
   published_at: '2026-07-12T18:00:00Z',
   commit: 'b'.repeat(40),
   assets: [baseAsset],
+};
+
+const releaseIdentity = {
+  version: 'v1.2.3',
+  published_at: '2026-07-15T18:00:00Z',
+  commit: 'b'.repeat(40),
+};
+
+const platformManifest = {
+  version: 'v1.2.3',
+  commit: releaseIdentity.commit,
+  asset: baseAsset,
 };
 
 const trustedAssets = [
@@ -82,6 +96,34 @@ function manifestFor(version, overrides = {}) {
       key: `releases/${version}/${baseAsset.filename}`,
     }],
     ...overrides,
+  };
+}
+
+function progressiveBucket({ platformIds, invalidId, includeLegacy = false }) {
+  const objects = new Map([
+    [`releases/${releaseIdentity.version}/release.json`, jsonObject(releaseIdentity)],
+    ...platformIds.map((platformId) => {
+      const asset = trustedAssets.find(({ id }) => id === platformId);
+      const value = {
+        version: releaseIdentity.version,
+        commit: platformId === invalidId ? 'c'.repeat(40) : releaseIdentity.commit,
+        asset,
+      };
+      return [`releases/${releaseIdentity.version}/platforms/${platformId}.json`, jsonObject(value)];
+    }),
+    ...(includeLegacy ? [[
+      `releases/${releaseIdentity.version}/manifest.json`, jsonObject(baseManifest),
+    ]] : []),
+    ['releases/latest.json', jsonObject({ version: releaseIdentity.version })],
+  ]);
+  return {
+    async list() {
+      return {
+        objects: [...objects.keys()].map((key) => ({ key })),
+        truncated: false,
+      };
+    },
+    async get(key) { return objects.get(key) ?? null; },
   };
 }
 
@@ -200,6 +242,24 @@ test('manifest validation accepts every trusted release asset tuple', () => {
   assert.deepEqual(parseManifest(baseManifest, 'v1.2.3'), baseManifest);
 });
 
+test('progressive metadata is exact and commit-pinned', () => {
+  assert.deepEqual(parseReleaseIdentity(releaseIdentity, 'v1.2.3'), releaseIdentity);
+  assert.deepEqual(
+    parsePlatformManifest(platformManifest, 'v1.2.3', releaseIdentity.commit, 'windows-x64'),
+    platformManifest,
+  );
+  assert.equal(parseReleaseIdentity({ ...releaseIdentity, extra: true }), null);
+  assert.equal(parseReleaseIdentity({ ...releaseIdentity, version: 'v01.2.3' }), null);
+  assert.equal(parsePlatformManifest(
+    { ...platformManifest, commit: 'c'.repeat(40) },
+    'v1.2.3', releaseIdentity.commit, 'windows-x64',
+  ), null);
+  assert.equal(parsePlatformManifest(
+    { ...platformManifest, asset: { ...baseAsset, id: 'linux-x64' } },
+    'v1.2.3', releaseIdentity.commit, 'windows-x64',
+  ), null);
+});
+
 test('manifest validation rejects malformed or untrusted content', () => {
   const cases = [
     null,
@@ -314,6 +374,39 @@ test('release catalog paginates, ignores untrusted keys, and returns generic dia
   assert.deepEqual([...catalog.manifests.keys()], ['v1.2.3']);
   assert.deepEqual(catalog.diagnostics, ['manifest-invalid']);
   assert.ok(catalog.diagnostics.every((value) => !value.includes('releases/')));
+});
+
+test('progressive catalog exposes one, two, or three completed platforms', async () => {
+  for (const platformIds of [
+    ['windows-x64'],
+    ['windows-x64', 'linux-x64'],
+    ['macos-arm64', 'linux-x64', 'windows-x64'],
+  ]) {
+    const catalog = await loadReleaseCatalog(progressiveBucket({ platformIds }));
+    assert.equal(catalog.latestVersion, 'v1.2.3');
+    assert.deepEqual(
+      catalog.manifests.get('v1.2.3').assets.map(({ id }) => id).sort(),
+      [...platformIds].sort(),
+    );
+  }
+});
+
+test('anchor alone is hidden and invalid sibling does not hide valid assets', async () => {
+  const empty = await loadReleaseCatalog(progressiveBucket({ platformIds: [] }));
+  assert.equal(empty.manifests.has('v1.2.3'), false);
+  const partial = await loadReleaseCatalog(progressiveBucket({
+    platformIds: ['windows-x64', 'linux-x64'], invalidId: 'linux-x64',
+  }));
+  assert.deepEqual(partial.manifests.get('v1.2.3').assets.map(({ id }) => id), ['windows-x64']);
+  assert.ok(partial.diagnostics.includes('platform-invalid'));
+});
+
+test('legacy and progressive metadata conflict fails closed for the version', async () => {
+  const catalog = await loadReleaseCatalog(progressiveBucket({
+    platformIds: ['windows-x64'], includeLegacy: true,
+  }));
+  assert.equal(catalog.manifests.has('v1.2.3'), false);
+  assert.ok(catalog.diagnostics.includes('manifest-conflict'));
 });
 
 test('release catalog follows Latest changes while retaining valid history', async () => {

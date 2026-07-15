@@ -2075,6 +2075,51 @@ function releaseBucket({
   };
 }
 
+function progressiveReleaseBucket() {
+  const calls = [];
+  const version = 'v2.0.0';
+  const commit = 'a'.repeat(40);
+  const asset = {
+    ...defaultReleaseAsset,
+    key: `releases/${version}/${defaultReleaseAsset.filename}`,
+    size: 100,
+    sha256: 'b'.repeat(64),
+  };
+  const objects = new Map([
+    [`releases/${version}/release.json`, {
+      version, published_at: '2026-07-12T18:00:00Z', commit,
+    }],
+    [`releases/${version}/platforms/windows-x64.json`, { version, commit, asset }],
+    ['releases/latest.json', { version }],
+  ]);
+  return {
+    calls,
+    async list(options) {
+      calls.push({ operation: 'list', options });
+      return {
+        objects: [...objects.keys()].map((key) => ({ key })),
+        truncated: false,
+      };
+    },
+    async get(key, options) {
+      calls.push({ operation: 'get', key, options });
+      if (objects.has(key)) return { json: async () => structuredClone(objects.get(key)) };
+      if (key === asset.key) return {
+        body: new ReadableStream(), size: asset.size, httpEtag: '"progressive-etag"',
+      };
+      return null;
+    },
+    async head(key) {
+      calls.push({ operation: 'head', key });
+      return key === asset.key ? {
+        size: asset.size,
+        httpEtag: '"progressive-etag"',
+        uploaded: new Date('2026-07-12T12:00:00.900Z'),
+      } : null;
+    },
+  };
+}
+
 function releaseGet(path, headers = {}) {
   return downloadRequest(path, undefined, {
     method: 'GET',
@@ -2112,6 +2157,35 @@ test('recipient release listing resolves Latest plus explicit grants without lea
   assert.deepEqual(Object.keys(body.items[0].assets[0]),
     ['id', 'platform', 'filename', 'size', 'sha256']);
   assert.doesNotMatch(JSON.stringify(body), /releases\/|content_type|commit/);
+});
+
+test('progressive release authorization exposes and downloads only completed platforms', async () => {
+  const bucket = progressiveReleaseBucket();
+  const bindingsValue = releaseBindings(bucket);
+  const listing = await workerModule.route(
+    releaseGet('/api/download/releases'), bindingsValue.env, undefined, downloadDependencies(),
+  );
+  assert.equal(listing.status, 200);
+  const body = await listing.json();
+  assert.equal(body.latest_version, 'v2.0.0');
+  assert.deepEqual(body.items[0].assets.map(({ id }) => id), ['windows-x64']);
+  assert.doesNotMatch(JSON.stringify(body), /releases\/|content_type|commit/);
+
+  const windows = await workerModule.route(
+    releaseGet('/api/download/releases/v2.0.0/windows-x64'),
+    bindingsValue.env, undefined, downloadDependencies(),
+  );
+  assert.equal(windows.status, 200);
+
+  const callCount = bucket.calls.length;
+  const linux = await workerModule.route(
+    releaseGet('/api/download/releases/v2.0.0/linux-x64'),
+    bindingsValue.env, undefined, downloadDependencies(),
+  );
+  assert.equal(linux.status, 404);
+  assert.equal(bucket.calls.slice(callCount).some(({ operation, key }) => (
+    operation === 'head' || (operation === 'get' && !key.endsWith('.json'))
+  )), false);
 });
 
 test('release APIs reject invalid sessions and paths before catalog or object access', async () => {

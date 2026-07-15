@@ -14,6 +14,8 @@ const SYMBOL = '!#$%&*+?@';
 const PASSWORD_ALPHABET = UPPER + LOWER + NUMBER + SYMBOL;
 const VERSION_PATTERN = /^(?=.{2,32}$)v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
 const MANIFEST_KEY_PATTERN = /^releases\/((?=.{2,32}\/manifest\.json$)v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))\/manifest\.json$/;
+const RELEASE_KEY_PATTERN = /^releases\/((?=.{2,32}\/release\.json$)v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))\/release\.json$/;
+const PLATFORM_KEY_PATTERN = /^releases\/((?=.{2,32}\/platforms\/)v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))\/platforms\/(windows-x64|macos-arm64|linux-x64)\.json$/;
 const ASSET_TUPLES = new Map([
   ['windows-x64', ['Windows x64', 'Backchannel-windows-x64.zip', 'application/zip']],
   ['macos-arm64', ['macOS arm64', 'Backchannel-macos-arm64.zip', 'application/zip']],
@@ -171,20 +173,7 @@ export function parseManifest(value, expectedVersion) {
   const ids = new Set();
   const filenames = new Set();
   for (const asset of value.assets) {
-    if (!asset || typeof asset !== 'object' || Array.isArray(asset)
-      || !exactKeys(asset, ['id', 'platform', 'filename', 'key', 'size', 'sha256', 'content_type'])
-      || !/^[a-z0-9-]{1,32}$/.test(asset.id)) {
-      return null;
-    }
-    const tuple = ASSET_TUPLES.get(asset.id);
-    if (!tuple
-      || asset.platform !== tuple[0]
-      || asset.filename !== tuple[1]
-      || asset.content_type !== tuple[2]
-      || asset.key !== `releases/${value.version}/${asset.filename}`
-      || !Number.isSafeInteger(asset.size)
-      || asset.size <= 0
-      || !/^[0-9a-f]{64}$/.test(asset.sha256)
+    if (!parseAsset(asset, value.version)
       || ids.has(asset.id)
       || filenames.has(asset.filename)) {
       return null;
@@ -193,6 +182,39 @@ export function parseManifest(value, expectedVersion) {
     filenames.add(asset.filename);
   }
   return value;
+}
+
+function parseAsset(asset, version) {
+  if (!asset || typeof asset !== 'object' || Array.isArray(asset)
+    || !exactKeys(asset, ['id', 'platform', 'filename', 'key', 'size', 'sha256', 'content_type'])
+    || !/^[a-z0-9-]{1,32}$/.test(asset.id)) return null;
+  const tuple = ASSET_TUPLES.get(asset.id);
+  return tuple
+    && asset.platform === tuple[0]
+    && asset.filename === tuple[1]
+    && asset.content_type === tuple[2]
+    && asset.key === `releases/${version}/${asset.filename}`
+    && Number.isSafeInteger(asset.size)
+    && asset.size > 0
+    && /^[0-9a-f]{64}$/.test(asset.sha256) ? asset : null;
+}
+
+export function parseReleaseIdentity(value, expectedVersion) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || !exactKeys(value, ['version', 'published_at', 'commit'])
+    || !VERSION_PATTERN.test(value.version)
+    || (expectedVersion !== undefined && value.version !== expectedVersion)
+    || !validUtcTimestamp(value.published_at)
+    || !/^[0-9a-f]{40}$/.test(value.commit)) return null;
+  return value;
+}
+
+export function parsePlatformManifest(value, version, commit, platformId) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || !exactKeys(value, ['version', 'commit', 'asset'])
+    || value.version !== version || value.commit !== commit) return null;
+  const asset = parseAsset(value.asset, version);
+  return asset?.id === platformId ? value : null;
 }
 
 async function readJson(bucket, key) {
@@ -204,6 +226,9 @@ async function readJson(bucket, key) {
 export async function loadReleaseCatalog(bucket) {
   const manifests = new Map();
   const diagnostics = [];
+  const legacyKeys = new Map();
+  const releaseKeys = new Map();
+  const platformKeys = new Map();
   let cursor;
   do {
     let page;
@@ -214,14 +239,20 @@ export async function loadReleaseCatalog(bucket) {
       break;
     }
     for (const { key } of page.objects ?? []) {
-      const match = MANIFEST_KEY_PATTERN.exec(key);
-      if (!match) continue;
-      try {
-        const manifest = parseManifest(await readJson(bucket, key), match[1]);
-        if (manifest) manifests.set(manifest.version, manifest);
-        else diagnostics.push('manifest-invalid');
-      } catch {
-        diagnostics.push('manifest-unavailable');
+      let match = MANIFEST_KEY_PATTERN.exec(key);
+      if (match) {
+        legacyKeys.set(match[1], key);
+        continue;
+      }
+      match = RELEASE_KEY_PATTERN.exec(key);
+      if (match) {
+        releaseKeys.set(match[1], key);
+        continue;
+      }
+      match = PLATFORM_KEY_PATTERN.exec(key);
+      if (match) {
+        if (!platformKeys.has(match[1])) platformKeys.set(match[1], new Map());
+        platformKeys.get(match[1]).set(match[2], key);
       }
     }
     cursor = page.truncated ? page.cursor : undefined;
@@ -230,6 +261,54 @@ export async function loadReleaseCatalog(bucket) {
       break;
     }
   } while (cursor);
+
+  const progressiveVersions = new Set([...releaseKeys.keys(), ...platformKeys.keys()]);
+  for (const [version, key] of legacyKeys) {
+    if (progressiveVersions.has(version)) {
+      diagnostics.push('manifest-conflict');
+      continue;
+    }
+    try {
+      const manifest = parseManifest(await readJson(bucket, key), version);
+      if (manifest) manifests.set(manifest.version, manifest);
+      else diagnostics.push('manifest-invalid');
+    } catch {
+      diagnostics.push('manifest-unavailable');
+    }
+  }
+
+  for (const version of progressiveVersions) {
+    if (legacyKeys.has(version)) continue;
+    const releaseKey = releaseKeys.get(version);
+    if (!releaseKey) {
+      diagnostics.push('release-unavailable');
+      continue;
+    }
+    let identity;
+    try {
+      identity = parseReleaseIdentity(await readJson(bucket, releaseKey), version);
+      if (!identity) diagnostics.push('release-invalid');
+    } catch {
+      diagnostics.push('release-unavailable');
+    }
+    if (!identity) continue;
+
+    const assets = [];
+    for (const platformId of ASSET_TUPLES.keys()) {
+      const key = platformKeys.get(version)?.get(platformId);
+      if (!key) continue;
+      try {
+        const platform = parsePlatformManifest(
+          await readJson(bucket, key), version, identity.commit, platformId,
+        );
+        if (platform) assets.push(platform.asset);
+        else diagnostics.push('platform-invalid');
+      } catch {
+        diagnostics.push('platform-unavailable');
+      }
+    }
+    if (assets.length > 0) manifests.set(version, { ...identity, assets });
+  }
 
   let latestVersion = null;
   try {
