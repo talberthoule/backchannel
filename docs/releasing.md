@@ -202,7 +202,9 @@ Every platform publisher performs this fail-closed sequence:
    back and require byte-equivalent metadata.
 2. Reject a conflicting platform manifest or accept an identical one as an
    idempotent completed publication.
-3. Upload the asset with its trusted content type and attachment filename.
+3. Conditionally create the asset with `If-None-Match: *`, its trusted content
+   type, and attachment filename. On a retry, download an existing object and
+   require byte-equivalence instead of overwriting it.
 4. Verify the remote object size.
 5. Conditionally create the platform manifest with `If-None-Match: *`.
 6. Read back and validate the platform manifest.

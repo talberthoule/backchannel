@@ -1,4 +1,5 @@
 name: Desktop release
+run-name: Desktop release ${{ inputs.release_ref }} (${{ inputs.correlation_id }})
 
 on:
   workflow_dispatch:
@@ -9,6 +10,10 @@ on:
         type: string
       expected_commit:
         description: Expected peeled release commit
+        required: true
+        type: string
+      correlation_id:
+        description: Unique coordinator dispatch correlation
         required: true
         type: string
 
@@ -49,11 +54,13 @@ jobs:
         env:
           RELEASE_REF: ${{ inputs.release_ref }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          CORRELATION_ID: ${{ inputs.correlation_id }}
         shell: bash
         run: |
           set -euo pipefail
           [[ "$RELEASE_REF" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CORRELATION_ID" =~ ^[0-9a-f]{32}$ ]]
           [[ "$(git cat-file -t "refs/tags/$RELEASE_REF")" == tag ]]
           actual_commit="$(git rev-parse "refs/tags/$RELEASE_REF^{commit}")"
           [[ "$actual_commit" == "$EXPECTED_COMMIT" ]]

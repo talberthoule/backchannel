@@ -22,6 +22,8 @@ Assert-True ($errors.Count -eq 0) "Release coordinator did not parse"
 
 $requiredFunctions = @(
     "Invoke-Checked",
+    "Get-AndClearR2Credentials",
+    "Invoke-WithR2Credentials",
     "Test-ExactProperties",
     "Resolve-ReleaseTag",
     "Get-ReleasePublicationState",
@@ -44,6 +46,50 @@ foreach ($name in $requiredFunctions) {
     $definitions[$name] = $definition.Extent.Text
 }
 
+. ([scriptblock]::Create($definitions["Get-AndClearR2Credentials"]))
+. ([scriptblock]::Create($definitions["Invoke-WithR2Credentials"]))
+$credentialNames = @(
+    "CLOUDFLARE_ACCOUNT_ID", "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY", "R2_RELEASES_BUCKET"
+)
+$oldCredentials = @{}
+try {
+    foreach ($name in $credentialNames) {
+        $oldCredentials[$name] = [Environment]::GetEnvironmentVariable($name)
+        [Environment]::SetEnvironmentVariable($name, "test-$name")
+    }
+    $credentials = Get-AndClearR2Credentials -Names $credentialNames
+    foreach ($name in $credentialNames) {
+        Assert-True ([string]::IsNullOrEmpty(
+            [Environment]::GetEnvironmentVariable($name)
+        )) "Credential was not cleared from the build environment: $name"
+    }
+    $childResult = & powershell -NoProfile -Command `
+        "if ([string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable('R2_SECRET_ACCESS_KEY'))) { 'absent' } else { 'present' }"
+    Assert-True ($childResult -eq "absent") "A build child inherited R2 credentials"
+    $inside = Invoke-WithR2Credentials -Credentials $credentials -Command {
+        [Environment]::GetEnvironmentVariable("R2_SECRET_ACCESS_KEY")
+    }
+    Assert-True ($inside -eq "test-R2_SECRET_ACCESS_KEY") `
+        "R2 publication did not receive scoped credentials"
+    $threw = $false
+    try {
+        Invoke-WithR2Credentials -Credentials $credentials -Command {
+            throw "simulated publication failure"
+        }
+    } catch {
+        $threw = $_.Exception.Message.Contains("simulated publication failure")
+    }
+    Assert-True $threw "Scoped publication failure did not propagate"
+    Assert-True ([string]::IsNullOrEmpty(
+        [Environment]::GetEnvironmentVariable("R2_SECRET_ACCESS_KEY")
+    )) "Publication failure left R2 credentials in the environment"
+} finally {
+    foreach ($name in $credentialNames) {
+        [Environment]::SetEnvironmentVariable($name, $oldCredentials[$name])
+    }
+}
+
 $source = [IO.File]::ReadAllText($coordinator)
 $gitignore = [IO.File]::ReadAllText(
     (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) ".gitignore")
@@ -56,12 +102,15 @@ foreach ($value in @(
     "^{commit}",
     "taggerdate",
     "workflow run desktop-release.yml",
+    "correlation_id",
+    "displayTitle",
     "desktop-release.yml",
     "publish_release_platform.ps1",
     "Backchannel-windows-x64.zip",
     "Backchannel-linux-x64.tar.gz",
     "run watch",
     "release view",
+    "Windows x64 host is required",
     "finally"
 )) {
     Assert-True $source.Contains($value) "Coordinator is missing contract text: $value"
@@ -73,6 +122,10 @@ Assert-True ($main.IndexOf("Build-LinuxRelease") -lt $main.IndexOf("run watch"))
     "Local publication must not wait for macOS"
 Assert-True $main.Contains('-Dockerfile (Join-Path $repoRoot "desktop\Dockerfile.release-linux")') `
     "Linux must use controller tooling while building the exact tagged source"
+Assert-True $main.Contains('worktree add --detach $sourceRoot $tag.Commit') `
+    "Release worktree must use the already-verified peeled commit"
+Assert-True $main.Contains('Verifying release worktree commit') `
+    "Release worktree HEAD is not verified after creation"
 foreach ($platformId in @("windows-x64", "linux-x64")) {
     Assert-True $main.Contains('elseif ($state["' + $platformId + '"] -eq "Pending")') `
         "Completed $platformId metadata does not skip its build"

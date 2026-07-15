@@ -22,6 +22,43 @@ function Invoke-Checked {
     return @($output | ForEach-Object { $_.ToString() })
 }
 
+function Get-AndClearR2Credentials {
+    param([Parameter(Mandatory = $true)][string[]]$Names)
+
+    $credentials = @{}
+    foreach ($name in $Names) {
+        $value = [Environment]::GetEnvironmentVariable($name)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            throw "Missing required environment variable: $name"
+        }
+        $credentials[$name] = $value
+    }
+    foreach ($name in $Names) {
+        [Environment]::SetEnvironmentVariable($name, $null)
+    }
+    return $credentials
+}
+
+function Invoke-WithR2Credentials {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Credentials,
+        [Parameter(Mandatory = $true)][scriptblock]$Command
+    )
+
+    $previous = @{}
+    foreach ($name in $Credentials.Keys) {
+        $previous[$name] = [Environment]::GetEnvironmentVariable($name)
+        [Environment]::SetEnvironmentVariable($name, $Credentials[$name])
+    }
+    try {
+        return & $Command
+    } finally {
+        foreach ($name in $Credentials.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $previous[$name])
+        }
+    }
+}
+
 function Test-ExactProperties {
     param(
         [object]$Value,
@@ -359,6 +396,11 @@ function Resolve-Python312 {
     throw "Python 3.12 is required"
 }
 
+$releaseCredentialNames = @(
+    "CLOUDFLARE_ACCOUNT_ID", "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY", "R2_RELEASES_BUCKET"
+)
+$releaseCredentials = $null
 $hasNativeErrorPreference = Test-Path Variable:PSNativeCommandUseErrorActionPreference
 if ($hasNativeErrorPreference) {
     $savedNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
@@ -366,6 +408,14 @@ if ($hasNativeErrorPreference) {
 try {
 if ($hasNativeErrorPreference) {
     $PSNativeCommandUseErrorActionPreference = $false
+}
+$releaseCredentials = Get-AndClearR2Credentials -Names $releaseCredentialNames
+if (-not [Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [Runtime.InteropServices.OSPlatform]::Windows
+    ) -or
+    [Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne
+        [Runtime.InteropServices.Architecture]::X64) {
+    throw "Windows x64 host is required"
 }
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $script:Git = Resolve-RequiredApplication "git.exe"
@@ -412,14 +462,6 @@ try {
     if ($dockerPlatform -cne "linux/x86_64") {
         throw "Docker must provide a linux/x86_64 engine"
     }
-    foreach ($name in @(
-        "CLOUDFLARE_ACCOUNT_ID", "R2_ACCESS_KEY_ID",
-        "R2_SECRET_ACCESS_KEY", "R2_RELEASES_BUCKET"
-    )) {
-        if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-            throw "Missing required environment variable: $name"
-        }
-    }
     $tag = Resolve-ReleaseTag -Version $Version -Git $script:Git
     $r2Client = Join-Path $repoRoot "scripts\r2-object.mjs"
     $publisher = Join-Path $repoRoot "scripts\publish_release_platform.ps1"
@@ -428,9 +470,11 @@ try {
             throw "Required release file is missing: $path"
         }
     }
-    $state = Get-ReleasePublicationState `
-        -Version $Version -Commit $tag.Commit -PublishedAt $tag.PublishedAt `
-        -Bucket $env:R2_RELEASES_BUCKET -Client $r2Client
+    $state = Invoke-WithR2Credentials -Credentials $releaseCredentials -Command {
+        Get-ReleasePublicationState `
+            -Version $Version -Commit $tag.Commit -PublishedAt $tag.PublishedAt `
+            -Bucket $env:R2_RELEASES_BUCKET -Client $r2Client
+    }
 
     if (-not $PSCmdlet.ShouldProcess($Version, "Build and publish desktop release platforms")) {
         return
@@ -443,18 +487,22 @@ try {
         try {
             Remove-StaleMacArtifacts -Repository $repository
             $dispatchTime = [DateTimeOffset]::UtcNow
+            $dispatchCorrelation = [guid]::NewGuid().ToString("N")
+            $expectedDisplayTitle = "Desktop release $Version ($dispatchCorrelation)"
             Invoke-Checked "Dispatching macOS release" {
                 & $script:Gh workflow run desktop-release.yml --ref master `
-                    -f "release_ref=$Version" -f "expected_commit=$($tag.Commit)"
+                    -f "release_ref=$Version" -f "expected_commit=$($tag.Commit)" `
+                    -f "correlation_id=$dispatchCorrelation"
             } | Out-Null
             foreach ($attempt in 1..60) {
                 $runs = @(Invoke-GhJson -Arguments @(
                     "run", "list", "--workflow", "desktop-release.yml",
                     "--event", "workflow_dispatch", "--limit", "50",
-                    "--json", "databaseId,headSha,createdAt,status"
+                    "--json", "databaseId,headSha,createdAt,status,displayTitle"
                 ))
                 $match = @($runs | Where-Object {
                     $_.headSha -ceq $head -and
+                    $_.displayTitle -ceq $expectedDisplayTitle -and
                     [DateTimeOffset]::Parse($_.createdAt) -ge $dispatchTime.AddSeconds(-5)
                 } | Sort-Object { [DateTimeOffset]::Parse($_.createdAt) } | Select-Object -First 1)
                 if ($match.Count -eq 1) {
@@ -477,9 +525,15 @@ try {
     if ($localPending) {
         New-Item -ItemType Directory -Path $temporary | Out-Null
         Invoke-Checked "Creating release worktree" {
-            & $script:Git worktree add --detach $sourceRoot $Version
+            & $script:Git worktree add --detach $sourceRoot $tag.Commit
         } | Out-Null
         $worktreeAdded = $true
+        $sourceCommit = (Invoke-Checked "Verifying release worktree commit" {
+            & $script:Git -C $sourceRoot rev-parse HEAD
+        })[-1].Trim()
+        if ($sourceCommit -cne $tag.Commit) {
+            throw "Release worktree does not match the verified peeled commit"
+        }
         $assetDirectory = Join-Path $repoRoot "release-assets\$Version"
         New-Item -ItemType Directory -Force -Path $assetDirectory | Out-Null
     }
@@ -491,9 +545,11 @@ try {
             $windowsAsset = Join-Path $assetDirectory "Backchannel-windows-x64.zip"
             $windowsAsset = Build-WindowsRelease `
                 -Source $sourceRoot -AssetPath $windowsAsset -Python $python
-            & $publisher `
-                -Version $Version -Commit $tag.Commit -PublishedAt $tag.PublishedAt `
-                -PlatformId "windows-x64" -AssetPath $windowsAsset -Confirm:$false
+            Invoke-WithR2Credentials -Credentials $releaseCredentials -Command {
+                & $publisher `
+                    -Version $Version -Commit $tag.Commit -PublishedAt $tag.PublishedAt `
+                    -PlatformId "windows-x64" -AssetPath $windowsAsset -Confirm:$false
+            }
         } catch {
             Write-Warning $_.Exception.Message
             $failures.Add("windows-x64")
@@ -510,9 +566,11 @@ try {
                 -Dockerfile (Join-Path $repoRoot "desktop\Dockerfile.release-linux") `
                 -OutputDirectory (Join-Path $temporary "linux-output") `
                 -AssetPath $linuxAsset
-            & $publisher `
-                -Version $Version -Commit $tag.Commit -PublishedAt $tag.PublishedAt `
-                -PlatformId "linux-x64" -AssetPath $linuxAsset -Confirm:$false
+            Invoke-WithR2Credentials -Credentials $releaseCredentials -Command {
+                & $publisher `
+                    -Version $Version -Commit $tag.Commit -PublishedAt $tag.PublishedAt `
+                    -PlatformId "linux-x64" -AssetPath $linuxAsset -Confirm:$false
+            }
         } catch {
             Write-Warning $_.Exception.Message
             $failures.Add("linux-x64")
@@ -572,6 +630,11 @@ try {
     Pop-Location
 }
 } finally {
+    if ($null -ne $releaseCredentials) {
+        foreach ($name in $releaseCredentials.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $releaseCredentials[$name])
+        }
+    }
     if ($hasNativeErrorPreference) {
         $PSNativeCommandUseErrorActionPreference = $savedNativeErrorPreference
     }

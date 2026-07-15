@@ -21,7 +21,8 @@ class ReleaseContractTests(unittest.TestCase):
         for value in (
             "SupportsShouldProcess", "worktree add --detach", "^{commit}",
             "taggerdate", "Get-ReleasePublicationState", "Remove-StaleMacArtifacts",
-            "workflow run desktop-release.yml", "Build-WindowsRelease",
+            "workflow run desktop-release.yml", "correlation_id", "displayTitle",
+            "Build-WindowsRelease",
             "Build-LinuxRelease", "publish_release_platform.ps1",
             "Backchannel-windows-x64.zip", "Backchannel-linux-x64.tar.gz",
             "run watch", "release view", "$failures", "finally",
@@ -53,6 +54,8 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertNotIn("tags:", WORKFLOW)
         self.assertIn("release_ref:", WORKFLOW)
         self.assertIn("expected_commit:", WORKFLOW)
+        self.assertIn("correlation_id:", WORKFLOW)
+        self.assertIn("run-name: Desktop release", WORKFLOW)
         self.assertIn("runs-on: macos-latest", WORKFLOW)
         self.assertNotIn("windows-latest", WORKFLOW)
         self.assertNotIn("ubuntu-latest\n            asset:", WORKFLOW)

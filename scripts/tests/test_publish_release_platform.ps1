@@ -298,6 +298,24 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
     ) "Unexpected new publication operation order"
 
     Reset-FakeR2
+    $asset = New-Asset
+    Put-Object "releases/v1.2.3/Backchannel-windows-x64.zip" "bundle"
+    $result = Invoke-Publisher -AssetPath $asset
+    Assert-True (-not $result.Failed) "Matching orphan asset was not reusable: $($result.Output)"
+    Assert-True ((Read-Log) -contains "get releases/v1.2.3/Backchannel-windows-x64.zip") `
+        "Existing orphan asset was not read back"
+
+    Reset-FakeR2
+    Put-Object "releases/v1.2.3/Backchannel-windows-x64.zip" "different"
+    $result = Invoke-Publisher -AssetPath (New-Asset)
+    Assert-True $result.Failed "Conflicting orphan asset was overwritten"
+    $joinedLog = (Read-Log) -join "`n"
+    Assert-True (-not $joinedLog.Contains("head releases/v1.2.3/Backchannel-windows-x64.zip")) `
+        "Conflicting orphan asset reached remote-size verification"
+    Assert-True (-not $joinedLog.Contains("put releases/v1.2.3/platforms/windows-x64.json")) `
+        "Conflicting orphan asset created immutable metadata"
+
+    Reset-FakeR2
     Put-Object "releases/v1.2.3/release.json" ((Release-Json -CommitValue ("b" * 40)) + "`n")
     $result = Invoke-Publisher -AssetPath (New-Asset)
     Assert-True $result.Failed "Conflicting identity was accepted"
@@ -347,6 +365,13 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
     $result = Invoke-Publisher -AssetPath (New-Asset)
     Assert-True (-not $result.Failed) "Newer Latest failed: $($result.Output)"
     Assert-True (-not ((Read-Log) -contains "put releases/latest.json")) "Newer Latest regressed"
+
+    Reset-FakeR2
+    Put-Object "releases/latest.json" '{"extra":true,"version":"v9.0.0"}'
+    $result = Invoke-Publisher -AssetPath (New-Asset)
+    Assert-True $result.Failed "Non-canonical Latest metadata was accepted"
+    Assert-True ($result.Output.Contains("Latest metadata is invalid")) `
+        "Invalid Latest error was unclear"
 
     Write-Output "Immutable platform publisher classification: OK"
 } finally {

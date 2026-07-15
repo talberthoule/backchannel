@@ -24,9 +24,14 @@ $ErrorActionPreference = "Stop"
 
 function Assert-ExactBytes {
     param([string]$Expected, [string]$Actual, [string]$Label)
-    if (-not (Test-Path -LiteralPath $Actual -PathType Leaf) -or
-        [Convert]::ToBase64String([IO.File]::ReadAllBytes($Expected)) -cne
-        [Convert]::ToBase64String([IO.File]::ReadAllBytes($Actual))) {
+    if (-not (Test-Path -LiteralPath $Actual -PathType Leaf)) {
+        throw "$Label readback did not match"
+    }
+    $expectedFile = Get-Item -LiteralPath $Expected
+    $actualFile = Get-Item -LiteralPath $Actual
+    if ($expectedFile.Length -ne $actualFile.Length -or
+        (Get-FileHash -Algorithm SHA256 -LiteralPath $Expected).Hash -cne
+        (Get-FileHash -Algorithm SHA256 -LiteralPath $Actual).Hash) {
         throw "$Label readback did not match"
     }
 }
@@ -81,8 +86,18 @@ function Set-Latest {
     foreach ($attempt in 1..2) {
         $remoteLatest = Get-R2Latest $CurrentLatestPath $script:Bucket $script:R2Client
         if ($remoteLatest.Exists) {
-            $current = Get-Content -Raw -LiteralPath $CurrentLatestPath | ConvertFrom-Json
-            if ($null -eq $current.version) {
+            try {
+                $current = Get-Content -Raw -LiteralPath $CurrentLatestPath | ConvertFrom-Json
+            } catch {
+                throw "Latest metadata is invalid"
+            }
+            if ($current -isnot [pscustomobject]) {
+                throw "Latest metadata is invalid"
+            }
+            $properties = @($current.PSObject.Properties.Name)
+            if ($properties.Count -ne 1 -or
+                $properties[0] -cne "version" -or
+                $current.version -isnot [string]) {
                 throw "Latest metadata is invalid"
             }
             $comparison = Compare-ReleaseVersion $Version $current.version
@@ -150,6 +165,7 @@ $platformPath = Join-Path $temporary "$PlatformId.json"
 $latestPath = Join-Path $temporary "latest.json"
 $currentReleasePath = Join-Path $temporary "current-release.json"
 $currentPlatformPath = Join-Path $temporary "current-platform.json"
+$currentAssetPath = Join-Path $temporary "current-asset"
 $currentLatestPath = Join-Path $temporary "current-latest.json"
 New-Item -ItemType Directory -Path $temporary | Out-Null
 
@@ -222,9 +238,21 @@ try {
         "--key", $platform.asset.key,
         "--file", $AssetPath,
         "--content-type", $platform.asset.content_type,
-        "--content-disposition", "attachment; filename=`"$($platform.asset.filename)`""
+        "--content-disposition", "attachment; filename=`"$($platform.asset.filename)`"",
+        "--if-none-match", "*"
     )
-    Assert-R2Success $upload "Uploading $($platform.asset.filename)"
+    if ($upload.Code -eq 42) {
+        $existingAsset = Invoke-R2Object -Client $script:R2Client -Arguments @(
+            "get",
+            "--bucket", $script:Bucket,
+            "--key", $platform.asset.key,
+            "--output", $currentAssetPath
+        )
+        Assert-R2Success $existingAsset "Reading existing $($platform.asset.filename)"
+        Assert-ExactBytes $AssetPath $currentAssetPath "platform asset"
+    } else {
+        Assert-R2Success $upload "Uploading $($platform.asset.filename)"
+    }
 
     $head = Invoke-R2Object -Client $script:R2Client -Arguments @(
         "head",
