@@ -15,70 +15,10 @@ param(
     [switch]$SetLatest
 )
 
+. (Join-Path $PSScriptRoot "r2-release-common.ps1")
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-
-function Invoke-R2 {
-    param([Parameter(Mandatory = $true)][string[]]$Arguments)
-
-    $savedErrorActionPreference = $ErrorActionPreference
-    $hasNativePreference = Test-Path Variable:PSNativeCommandUseErrorActionPreference
-    if ($hasNativePreference) {
-        $savedNativePreference = $PSNativeCommandUseErrorActionPreference
-    }
-    try {
-        $ErrorActionPreference = "Continue"
-        if ($hasNativePreference) {
-            $PSNativeCommandUseErrorActionPreference = $false
-        }
-        $records = @(& node $script:R2Client @Arguments 2>&1)
-        $exitCode = $LASTEXITCODE
-    } finally {
-        $ErrorActionPreference = $savedErrorActionPreference
-        if ($hasNativePreference) {
-            $PSNativeCommandUseErrorActionPreference = $savedNativePreference
-        }
-    }
-    $output = ($records | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
-    $output = $output.Trim()
-    $data = $null
-    if ($exitCode -eq 0) {
-        $data = $output | ConvertFrom-Json
-    }
-    [pscustomobject]@{ Code = $exitCode; Output = $output; Data = $data }
-}
-
-function Assert-R2Success {
-    param(
-        [object]$Result,
-        [string]$Action
-    )
-
-    if ($Result.Code -ne 0) {
-        throw "$Action failed: $($Result.Output)"
-    }
-}
-
-function Get-RemoteLatest {
-    param([string]$Destination)
-
-    if (Test-Path -LiteralPath $Destination) {
-        Remove-Item -LiteralPath $Destination -Force
-    }
-    $result = Invoke-R2 @(
-        "get",
-        "--bucket", $script:Bucket,
-        "--key", "releases/latest.json",
-        "--output", $Destination
-    )
-    if ($result.Code -eq 0) {
-        return [pscustomobject]@{ Exists = $true; ETag = $result.Data.etag }
-    }
-    if ($result.Code -eq 44) {
-        return [pscustomobject]@{ Exists = $false; ETag = $null }
-    }
-    throw "Reading Latest failed: $($result.Output)"
-}
 
 function Test-ExactSet {
     param([string[]]$Actual, [string[]]$Expected)
@@ -165,11 +105,9 @@ try {
     $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
 
     $manifestKey = "releases/$Version/manifest.json"
-    $existing = Invoke-R2 @(
-        "head",
-        "--bucket", $script:Bucket,
-        "--key", $manifestKey
-    )
+    $existing = Invoke-R2Object `
+        -Client $script:R2Client `
+        -Arguments @("head", "--bucket", $script:Bucket, "--key", $manifestKey)
     if ($existing.Code -eq 0) {
         throw "Release manifest already exists: $manifestKey"
     }
@@ -178,7 +116,7 @@ try {
     }
 
     if ($SetLatest) {
-        $remoteLatest = Get-RemoteLatest $currentLatestPath
+        $remoteLatest = Get-R2Latest $currentLatestPath $script:Bucket $script:R2Client
         if ($remoteLatest.Exists) {
             $validationArguments = @($helperArguments) + @("--current-latest", $currentLatestPath)
             & python @validationArguments
@@ -197,7 +135,7 @@ try {
 
     foreach ($asset in $manifest.assets) {
         $source = Join-Path $AssetDirectory $asset.filename
-        $upload = Invoke-R2 @(
+        $upload = Invoke-R2Object -Client $script:R2Client -Arguments @(
             "put",
             "--bucket", $script:Bucket,
             "--key", $asset.key,
@@ -209,18 +147,16 @@ try {
     }
 
     foreach ($asset in $manifest.assets) {
-        $head = Invoke-R2 @(
-            "head",
-            "--bucket", $script:Bucket,
-            "--key", $asset.key
-        )
+        $head = Invoke-R2Object `
+            -Client $script:R2Client `
+            -Arguments @("head", "--bucket", $script:Bucket, "--key", $asset.key)
         Assert-R2Success $head "Verifying $($asset.filename)"
         if ([long]$head.Data.contentLength -ne [long]$asset.size) {
             throw "ContentLength mismatch for $($asset.filename)"
         }
     }
 
-    $create = Invoke-R2 @(
+    $create = Invoke-R2Object -Client $script:R2Client -Arguments @(
         "put",
         "--bucket", $script:Bucket,
         "--key", $manifestKey,
@@ -232,7 +168,7 @@ try {
     Assert-R2Success $create "Creating immutable manifest"
     $manifestCreated = $true
 
-    $readback = Invoke-R2 @(
+    $readback = Invoke-R2Object -Client $script:R2Client -Arguments @(
         "get",
         "--bucket", $script:Bucket,
         "--key", $manifestKey,
@@ -247,7 +183,7 @@ try {
 
     if ($SetLatest) {
         foreach ($attempt in 1..2) {
-            $remoteLatest = Get-RemoteLatest $currentLatestPath
+            $remoteLatest = Get-R2Latest $currentLatestPath $script:Bucket $script:R2Client
             $retryArguments = @($helperArguments)
             if ($remoteLatest.Exists) {
                 $retryArguments += @("--current-latest", $currentLatestPath)
@@ -267,7 +203,7 @@ try {
                 "--content-type", "application/json",
                 "--cache-control", "no-store"
             ) + $condition
-            $writeLatest = Invoke-R2 $putLatestArguments
+            $writeLatest = Invoke-R2Object -Client $script:R2Client -Arguments $putLatestArguments
             if ($writeLatest.Code -eq 0) {
                 break
             }
