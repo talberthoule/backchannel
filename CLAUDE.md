@@ -41,10 +41,13 @@ docker-compose down -v
 
 Releases span source-built Docker images, the Cloudflare documentation site,
 and tag-built Linux x64, macOS arm64, and Windows x64 desktop bundles. Follow
-`docs/releasing.md` and the private R2 manifests as the authoritative checklist
-and catalog. A `master` push does not update existing desktop downloads. The tag
-workflow publishes verified executables to R2; GitHub releases keep source tags
-and notes only, with no executable files.
+`docs/releasing.md` and run `scripts/release_desktop.ps1 -Version vX.Y.Z` from
+clean synchronized `master`. The coordinator builds Windows and Linux locally,
+dispatches macOS, and publishes each smoke-tested platform independently using
+immutable progressive R2 metadata. Historical aggregate manifests remain
+supported, but mixed progressive and aggregate metadata for one version is
+invalid. A `master` push does not update existing desktop downloads. GitHub
+releases keep source tags and notes only.
 
 The checked-in `scripts/r2-object.mjs` client is the sole release object
 transport. Do not publish release objects with Amazon Web Services command-line
@@ -55,10 +58,10 @@ tools or SDKs.
 `desktop/` contains a PyInstaller launcher that runs the backend with an
 embedded zonky.io PostgreSQL and serves the built frontend via
 `FRONTEND_DIST`. Desktop tests: run `python -m unittest discover -s tests`
-from `desktop/`. Local build: `pyinstaller desktop/backchannel.spec`;
-release builds produce a portable Linux x64 tarball plus macOS arm64 and
-Windows x64 zip bundles in `.github/workflows/desktop-release.yml` on `v*`
-tags (unsigned; Sortformer and ffmpeg are not bundled).
+from `desktop/`. Local build: `pyinstaller desktop/backchannel.spec`. The
+release coordinator creates the Windows x64 zip natively and the Linux x64
+tarball through Docker; `.github/workflows/desktop-release.yml` builds only the
+macOS arm64 zip (unsigned; Sortformer and ffmpeg are not bundled).
 
 ### Docs Site
 

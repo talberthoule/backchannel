@@ -10,11 +10,12 @@ delivered through `https://downloads.backchannel.page/`.
 | --- | --- | --- |
 | Docker Compose | Source commit or tag; users rebuild locally | Public source-built `backend` and `frontend` images; no container registry image is published |
 | Documentation site | Push to `master` changing site/docs inputs | Cloudflare deploy of `backchannel.page`, `admin.backchannel.page`, and `downloads.backchannel.page` |
-| Desktop | Canonical `vX.Y.Z` tag | Three smoke-tested native assets published to private R2; GitHub receives notes without files |
+| Desktop | `scripts/release_desktop.ps1 -Version vX.Y.Z` after an annotated tag exists | Windows and Linux build locally while macOS builds in GitHub; each smoke-tested platform publishes to private R2 as soon as it finishes |
 
-`workflow_dispatch` builds and smoke-tests workflow artifacts only. It never
-publishes R2 objects, advances Latest, or creates a GitHub release. A normal
-`master` push does not rebuild desktop bundles.
+The coordinator dispatches the macOS workflow and builds Windows before Linux.
+The protected macOS publication job is the only GitHub job with R2 credentials.
+A normal `master` push does not rebuild desktop bundles. GitHub releases keep
+source tags and notes only; they never contain executable files.
 
 Any site release containing the modular admin identity/authorization change
 must first complete the preview rehearsal and production mutation freeze,
@@ -65,14 +66,25 @@ disabled. Objects use this layout:
 
 ```text
 releases/latest.json
-releases/vX.Y.Z/manifest.json
+releases/vX.Y.Z/release.json
+releases/vX.Y.Z/platforms/windows-x64.json
+releases/vX.Y.Z/platforms/macos-arm64.json
+releases/vX.Y.Z/platforms/linux-x64.json
 releases/vX.Y.Z/Backchannel-windows-x64.zip
 releases/vX.Y.Z/Backchannel-macos-arm64.zip
 releases/vX.Y.Z/Backchannel-linux-x64.tar.gz
 ```
 
-Current tags contain exactly those three assets. The legacy `v0.1.0` and
-`v0.1.1` manifests contain only their original Windows and macOS pair.
+`release.json` is immutable release identity. Each `platforms/{id}.json` is an
+independently immutable completion record for one verified asset. The portal
+shows a platform only after its asset uploads, its remote size verifies, and
+its platform manifest is created and read back. Windows, Linux, and macOS can
+therefore appear independently without waiting for unfinished siblings.
+
+Historical `releases/vX.Y.Z/manifest.json` aggregate manifests remain valid.
+The legacy `v0.1.0` and `v0.1.1` manifests contain only their original Windows
+and macOS pair. Progressive and aggregate metadata must never coexist for the
+same version; the portal treats that version as conflicted and hides it.
 
 `latest.json` is one-field JSON:
 
@@ -80,31 +92,38 @@ Current tags contain exactly those three assets. The legacy `v0.1.0` and
 {"version":"vX.Y.Z"}
 ```
 
-Each immutable manifest has exactly `version`, `published_at`, `commit`, and
-`assets`. Every asset has `id`, `platform`, `filename`, `key`, `size`,
-`sha256`, and `content_type`:
+Each progressive release identity has exactly `version`, `published_at`, and
+`commit`:
 
 ```json
 {
-  "assets": [
-    {
-      "content_type": "application/zip",
-      "filename": "Backchannel-windows-x64.zip",
-      "id": "windows-x64",
-      "key": "releases/vX.Y.Z/Backchannel-windows-x64.zip",
-      "platform": "Windows x64",
-      "sha256": "<64 lowercase hex characters>",
-      "size": 1
-    }
-  ],
   "commit": "<40 lowercase hex characters>",
   "published_at": "<strict UTC ISO-8601 timestamp>",
   "version": "vX.Y.Z"
 }
 ```
 
+Each platform manifest has exactly `version`, `commit`, and `asset`. The asset
+has `id`, `platform`, `filename`, `key`, `size`, `sha256`, and `content_type`:
+
+```json
+{
+  "asset": {
+    "content_type": "application/zip",
+    "filename": "Backchannel-windows-x64.zip",
+    "id": "windows-x64",
+    "key": "releases/vX.Y.Z/Backchannel-windows-x64.zip",
+    "platform": "Windows x64",
+    "sha256": "<64 lowercase hex characters>",
+    "size": 1
+  },
+  "commit": "<40 lowercase hex characters>",
+  "version": "vX.Y.Z"
+}
+```
+
 Content types are `application/zip` for Windows and macOS,
-`application/gzip` for Linux, and `application/json` for both metadata files.
+`application/gzip` for Linux, and `application/json` for metadata files.
 Asset responses use attachment filenames. Metadata uses `Cache-Control:
 no-store`.
 
@@ -122,6 +141,13 @@ API token with Object Read & Write permission; Cloudflare exposes its
 S3-compatible writer credentials as access-key and secret fields. Do not reuse
 or expand the site deployment token.
 
+The local coordinator requires the same four names as user-scoped environment
+variables: `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY`, and `R2_RELEASES_BUCKET`. Never print their values. It
+also requires Python 3.12, Node 24 or newer, authenticated `gh`, a reachable
+Docker engine reporting `linux/x86_64`, and clean `master` synchronized with
+`origin/master`.
+
 The checked-in `scripts/r2-object.mjs` client calls Cloudflare R2 directly and
 is the only release object transport. `AWS4-HMAC-SHA256` and `x-amz-*` are the
 protocol field names Cloudflare requires for its S3-compatible API; they are
@@ -132,7 +158,8 @@ not AWS credentials or services.
 ### 1. Prepare and validate
 
 1. Start from clean `master`, synchronized with `origin/master`.
-2. Confirm `vX.Y.Z` is unused locally, remotely, and in R2.
+2. For a new version, confirm `vX.Y.Z` is unused locally, remotely, and in R2.
+   If the annotated tag already exists, verify it and never move it.
 3. Update `.github/release-notes/vX.Y.Z.md`, the public release page, and
    current-version references.
 4. Run the local test/build gate and `git diff --check`, including the focused
@@ -141,6 +168,8 @@ not AWS credentials or services.
    ```powershell
    node --test scripts/tests/r2-object.test.mjs
    powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test_migrate_releases_to_r2.ps1
+   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test_publish_release_platform.ps1
+   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test_release_desktop.ps1
    ```
 
 5. Commit release metadata, then create and push an annotated canonical tag:
@@ -153,28 +182,61 @@ not AWS credentials or services.
 Never move or replace a published tag. Correct a bad release with a new patch
 tag.
 
-### 2. Verify the tag workflow
+### 2. Run the hybrid desktop release
 
-The build matrix must build and smoke-test exactly the Windows x64 zip, macOS
-arm64 zip, and Linux x64 tarball. Its final publication job must then, in this
-order:
+Run the coordinator from clean synchronized `master`:
 
-1. Resolve the peeled tag commit and download the three workflow artifacts.
-2. Reject an existing `releases/vX.Y.Z/manifest.json`.
-3. Read the current Latest metadata and build the deterministic manifest.
-4. Upload all three assets with manifest-owned content types.
-5. verify every remote object size.
-6. Conditionally create the immutable manifest with `If-None-Match: *`.
-7. Read back and validate the manifest bytes and schema.
-8. Conditionally advance monotonic `releases/latest.json` last, using its ETag
-   or `If-None-Match: *`; an older version must never replace a newer Latest.
-9. Create GitHub release notes from the checked-in note file without attaching
-   executable files.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release_desktop.ps1 -Version vX.Y.Z -Confirm:$false
+```
 
-Do not call the release complete until all three build jobs and the final job
-pass, the portal presents the new entitled version, downloads match manifest
-sizes and SHA-256 values, the public release page and notes are live, and a
-Compose build from the source tag succeeds.
+It verifies the immutable local and remote annotated tag, checks existing R2
+metadata, dispatches macOS, builds and immediately publishes Windows, then
+builds and immediately publishes Linux. One platform failure does not roll
+back or block valid siblings. Rerunning the coordinator skips platforms whose
+immutable metadata already matches.
+
+Every platform publisher performs this fail-closed sequence:
+
+1. Read or conditionally create the immutable release identity, then read it
+   back and require byte-equivalent metadata.
+2. Reject a conflicting platform manifest or accept an identical one as an
+   idempotent completed publication.
+3. Upload the asset with its trusted content type and attachment filename.
+4. Verify the remote object size.
+5. Conditionally create the platform manifest with `If-None-Match: *`.
+6. Read back and validate the platform manifest.
+7. Conditionally advance monotonic `releases/latest.json` last, using its ETag
+   or `If-None-Match: *`; an older version never replaces a newer Latest.
+
+The macOS handoff artifact contains no credentials, is retained for one day,
+and is deleted immediately after protected publication. Before dispatch, the
+coordinator may delete only exact `Backchannel-macos-arm64.zip` artifacts from
+completed runs of `.github/workflows/desktop-release.yml` older than 24 hours.
+It never deletes R2 objects.
+
+To retry an already-built Windows or Linux asset directly, first resolve the
+same immutable tag commit and timestamp, then invoke its publisher:
+
+```powershell
+$version = 'vX.Y.Z'
+$commit = (& git rev-parse "$version^{commit}").Trim()
+$publishedAt = [DateTimeOffset]::Parse(
+    (& git for-each-ref '--format=%(taggerdate:iso-strict)' "refs/tags/$version").Trim()
+).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+
+.\scripts\publish_release_platform.ps1 -Version $version -Commit $commit -PublishedAt $publishedAt -PlatformId windows-x64 -AssetPath ".\release-assets\$version\Backchannel-windows-x64.zip" -Confirm:$false
+.\scripts\publish_release_platform.ps1 -Version $version -Commit $commit -PublishedAt $publishedAt -PlatformId linux-x64 -AssetPath ".\release-assets\$version\Backchannel-linux-x64.tar.gz" -Confirm:$false
+```
+
+A retry is safe only when release and platform metadata match byte-for-byte.
+Use a new patch version to correct an already published platform.
+
+Do not call the release complete until every platform build and publication
+passes, each platform appears in the entitled portal as soon as it completes,
+downloads match manifest sizes and SHA-256 values, the macOS handoff is deleted,
+the public release page and source-only GitHub notes are live, and a Compose
+build from the source tag succeeds.
 
 ## Historical migration
 
@@ -229,17 +291,18 @@ and never deletes old assets.
 
 ## Failure recovery and rollback
 
-- Any failure before the Update Latest step leaves Latest unchanged. Do not
-  point Latest at a partial release.
-- Never overwrite a published version prefix or manifest. Use a new patch tag.
-- If upload fails before a manifest exists, manually inspect the unpublished
-  prefix and delete only confirmed partial objects before retrying. Never let an
-  automated cleanup guess what to remove.
-- If a manifest was created, treat that version as published and immutable even
-  when a later step fails; repair with a patch release.
+- Any failure before one platform's manifest is created leaves that platform
+  hidden. Valid siblings remain available, and Latest may name the progressive
+  release as soon as its first platform is complete.
+- Never overwrite release identity or a published platform manifest. Use a new
+  patch tag to correct completed metadata.
+- A failure after asset upload but before platform-manifest creation leaves an
+  unpublished object for manual inspection. No automated R2 cleanup guesses
+  which object to remove.
+- If a platform manifest was created, treat that platform as published and
+  immutable even when a sibling or later step fails.
 - If only GitHub note creation fails after Latest advances, leave verified R2
   metadata unchanged and repair the notes without attaching files.
-- Retain old private GitHub executable files for one full release cycle as a
-  rollback source. Remove those executable files manually only after R2 and
-  portal acceptance for the next release. Keep every GitHub source tag and
-  release-note page permanently.
+- Keep every GitHub source tag and release-note page permanently. GitHub does
+  not retain executable release assets; the temporary macOS handoff follows the
+  bounded cleanup policy above.

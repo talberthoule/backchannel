@@ -8,7 +8,7 @@ max_cc = 50
 max_fn_lines = 325
 # Sentrux 0.5.7 has no per-path max_file_lines exceptions and applies global
 # constraints to tracked JSON. The generated lockfiles are approved exceptions:
-# docs-site/package-lock.json (5718), frontend/package-lock.json (4311).
+# docs-site/package-lock.json (7057), frontend/package-lock.json (4311).
 # Do not raise this source guard to hide them; any additional finding is debt.
 max_file_lines = 3000
 no_god_files = false

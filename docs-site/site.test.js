@@ -204,9 +204,10 @@ test('D1 exports require operator-supplied absolute paths outside the repository
   assert.doesNotMatch(deployment, /--output=(?:backchannel-interest-backup|interest-subscribers)\.sql/);
 });
 
-test('release recovery names the Update Latest boundary precisely', () => {
+test('progressive release recovery names the platform boundary precisely', () => {
   const releasing = read('../docs/releasing.md');
-  assert.match(releasing, /failure before the Update Latest step leaves Latest unchanged/i);
+  assert.match(releasing, /failure before one platform's manifest is created leaves that platform\s+hidden/i);
+  assert.match(releasing, /Latest may name the progressive\s+release as soon as its first platform is complete/i);
   assert.match(releasing, /GitHub note creation fails after Latest advances/i);
-  assert.doesNotMatch(releasing, /failure before the last step/i);
+  assert.doesNotMatch(releasing, /point Latest at a partial release/i);
 });
