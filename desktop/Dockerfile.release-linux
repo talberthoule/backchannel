@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1
+FROM node:24-bookworm-slim AS frontend
+WORKDIR /src/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+FROM python:3.12-slim AS bundle
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    binutils libsndfile1 libx11-6 libxext6 libxrender1 libsm6 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY backend/requirements.txt backend/requirements.txt
+COPY desktop/requirements.txt desktop/requirements.txt
+RUN pip install --no-cache-dir -r backend/requirements.txt -r desktop/requirements.txt
+COPY backend/ backend/
+COPY desktop/ desktop/
+COPY --from=frontend /src/frontend/dist frontend/dist
+RUN python backend/scripts/download_models.py
+RUN python desktop/scripts/download_pg.py
+RUN pyinstaller desktop/backchannel.spec --distpath dist --workpath build --noconfirm
+USER nobody
+RUN python desktop/scripts/smoke_test.py
+USER root
+RUN mkdir /out && tar -C dist -czf "/out/Backchannel-linux-x64.tar.gz" Backchannel
+
+FROM scratch AS export
+COPY --from=bundle /out/Backchannel-linux-x64.tar.gz /

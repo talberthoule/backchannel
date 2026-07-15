@@ -12,9 +12,25 @@ PLATFORM_PUBLISHER_PATH = ROOT / "scripts" / "publish_release_platform.ps1"
 PLATFORM_PUBLISHER = (
     PLATFORM_PUBLISHER_PATH.read_text() if PLATFORM_PUBLISHER_PATH.exists() else ""
 )
+LINUX_DOCKERFILE = (ROOT / "desktop" / "Dockerfile.release-linux").read_text()
 
 
 class ReleaseContractTests(unittest.TestCase):
+    def test_linux_release_container_builds_smokes_and_exports_one_tarball(self):
+        for value in (
+            "FROM node:24", "npm ci", "npm run build", "FROM python:3.12",
+            "binutils",
+            "pip install", "download_models.py", "download_pg.py",
+            "pyinstaller desktop/backchannel.spec", "desktop/scripts/smoke_test.py",
+            "USER nobody\nRUN python desktop/scripts/smoke_test.py",
+            'tar -C dist -czf "/out/Backchannel-linux-x64.tar.gz" Backchannel',
+            "FROM scratch AS export",
+            "COPY --from=bundle /out/Backchannel-linux-x64.tar.gz /",
+        ):
+            self.assertIn(value, LINUX_DOCKERFILE)
+        self.assertNotIn("ENTRYPOINT", LINUX_DOCKERFILE)
+        self.assertNotIn("CMD", LINUX_DOCKERFILE)
+
     def test_workflow_is_dispatch_only_macos_handoff(self):
         self.assertIn("workflow_dispatch:", WORKFLOW)
         self.assertNotIn("tags:", WORKFLOW)
