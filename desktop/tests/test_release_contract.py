@@ -38,7 +38,8 @@ class ReleaseContractTests(unittest.TestCase):
         for value in (
             "FROM node:24", "npm ci", "npm run build", "FROM python:3.12",
             "binutils",
-            "pip install", "download_models.py", "download_pg.py",
+            "pip install", "download_models.py",
+            "rm -rf desktop/pgsql && python desktop/scripts/download_pg.py",
             "pyinstaller desktop/backchannel.spec", "desktop/scripts/smoke_test.py",
             "USER nobody\nRUN python desktop/scripts/smoke_test.py",
             'tar -C dist -czf "/out/Backchannel-linux-x64.tar.gz" Backchannel',

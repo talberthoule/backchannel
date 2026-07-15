@@ -67,6 +67,18 @@ $stderrOutput = Invoke-Checked "successful stderr" {
 Assert-True ($stderrOutput[-1] -eq "native progress") `
     "Successful native stderr output was not captured"
 
+. ([scriptblock]::Create($definitions["Invoke-GhJson"]))
+$script:Gh = {
+    $global:LASTEXITCODE = 0
+    '[{"total_count":0,"artifacts":[]}]'
+}
+$ghPages = @(Invoke-GhJson -Arguments @("ignored"))
+Assert-True ($ghPages.Count -eq 1) "GitHub page count changed"
+Assert-True ($ghPages[0] -isnot [array]) `
+    "GitHub JSON pages retained an extra array layer"
+Assert-True ($ghPages[0].PSObject.Properties.Name -contains "artifacts") `
+    "GitHub artifact page lost its artifacts property"
+
 . ([scriptblock]::Create($definitions["Get-AndClearR2Credentials"]))
 . ([scriptblock]::Create($definitions["Invoke-WithR2Credentials"]))
 $credentialNames = @(
@@ -153,6 +165,10 @@ foreach ($platformId in @("windows-x64", "linux-x64")) {
 }
 Assert-True $source.Contains('elseif ($state["macos-arm64"] -eq "Pending")') `
     "Completed macOS metadata does not skip dispatch"
+Assert-True $source.Contains('Invoke-Checked "Waiting for macOS release"') `
+    "macOS watch does not use the native command wrapper"
+Assert-True $source.Contains('$releaseExists = $LASTEXITCODE -eq 0') `
+    "Missing GitHub releases are not handled as an expected status"
 
 . ([scriptblock]::Create($definitions["Remove-StaleMacArtifacts"]))
 

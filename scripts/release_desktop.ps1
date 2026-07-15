@@ -249,8 +249,15 @@ function Get-ReleasePublicationState {
 function Invoke-GhJson {
     param([Parameter(Mandatory = $true)][string[]]$Arguments)
 
-    $records = @(& $script:Gh @Arguments 2>&1)
-    if ($LASTEXITCODE -ne 0) {
+    $savedErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $records = @(& $script:Gh @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedErrorActionPreference
+    }
+    if ($exitCode -ne 0) {
         throw "GitHub CLI request failed"
     }
     $text = (($records | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine).Trim()
@@ -258,10 +265,17 @@ function Invoke-GhJson {
         return $null
     }
     try {
-        return $text | ConvertFrom-Json
+        $parsed = $text | ConvertFrom-Json
     } catch {
         throw "GitHub CLI returned invalid JSON"
     }
+    if ($parsed -is [array]) {
+        foreach ($item in $parsed) {
+            Write-Output $item
+        }
+        return
+    }
+    return $parsed
 }
 
 function Remove-StaleMacArtifacts {
@@ -588,9 +602,14 @@ try {
     }
 
     if ($null -ne $macRunId) {
-        & $script:Gh run watch $macRunId --exit-status
-        if ($LASTEXITCODE -ne 0 -and -not $failures.Contains("macos-arm64")) {
-            $failures.Add("macos-arm64")
+        try {
+            Invoke-Checked "Waiting for macOS release" {
+                & $script:Gh run watch $macRunId --exit-status
+            } | Out-Null
+        } catch {
+            if (-not $failures.Contains("macos-arm64")) {
+                $failures.Add("macos-arm64")
+            }
         }
     }
 
@@ -598,8 +617,15 @@ try {
     if (-not (Test-Path -LiteralPath $notes -PathType Leaf)) {
         throw "Release notes file is missing: $notes"
     }
-    & $script:Gh release view $Version --json tagName *> $null
-    if ($LASTEXITCODE -eq 0) {
+    $savedErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $script:Gh release view $Version --json tagName *> $null
+        $releaseExists = $LASTEXITCODE -eq 0
+    } finally {
+        $ErrorActionPreference = $savedErrorActionPreference
+    }
+    if ($releaseExists) {
         Invoke-Checked "Updating GitHub release notes" {
             & $script:Gh release edit $Version --notes-file $notes
         } | Out-Null

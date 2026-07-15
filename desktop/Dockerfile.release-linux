@@ -18,7 +18,7 @@ COPY backend/ backend/
 COPY desktop/ desktop/
 COPY --from=frontend /src/frontend/dist frontend/dist
 RUN python backend/scripts/download_models.py
-RUN python desktop/scripts/download_pg.py
+RUN rm -rf desktop/pgsql && python desktop/scripts/download_pg.py
 RUN pyinstaller desktop/backchannel.spec --distpath dist --workpath build --noconfirm
 USER nobody
 RUN python desktop/scripts/smoke_test.py
