@@ -23,12 +23,10 @@ permissions:
 jobs:
   build-macos:
     runs-on: macos-latest
-    environment: production
     permissions:
       contents: read
-    concurrency:
-      group: backchannel-r2-publish
-      cancel-in-progress: false
+    outputs:
+      published_at: ${{ steps.release.outputs.published_at }}
     steps:
       - name: Checkout controller
         uses: actions/checkout@v4
@@ -108,6 +106,43 @@ jobs:
         working-directory: source
         run: ditto -c -k --keepParent dist/Backchannel.app ../controller/Backchannel-macos-arm64.zip
 
+      - name: Upload macOS handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: Backchannel-macos-arm64.zip
+          path: controller/Backchannel-macos-arm64.zip
+          retention-days: 1
+
+  publish-macos:
+    needs: build-macos
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      actions: write
+    concurrency:
+      group: backchannel-r2-publish
+      cancel-in-progress: false
+    steps:
+      - name: Checkout controller
+        uses: actions/checkout@v4
+        with:
+          path: controller
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download macOS handoff
+        uses: actions/download-artifact@v4
+        with:
+          name: Backchannel-macos-arm64.zip
+          path: controller/release-assets
+
       - name: Publish verified macOS platform
         working-directory: controller
         env:
@@ -117,6 +152,16 @@ jobs:
           R2_RELEASES_BUCKET: ${{ vars.R2_RELEASES_BUCKET }}
           RELEASE_REF: ${{ inputs.release_ref }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-          PUBLISHED_AT: ${{ steps.release.outputs.published_at }}
+          PUBLISHED_AT: ${{ needs.build-macos.outputs.published_at }}
         shell: pwsh
-        run: ./scripts/publish_release_platform.ps1 -Version $env:RELEASE_REF -Commit $env:EXPECTED_COMMIT -PublishedAt $env:PUBLISHED_AT -PlatformId macos-arm64 -AssetPath Backchannel-macos-arm64.zip -Confirm:$false
+        run: ./scripts/publish_release_platform.ps1 -Version $env:RELEASE_REF -Commit $env:EXPECTED_COMMIT -PublishedAt $env:PUBLISHED_AT -PlatformId macos-arm64 -AssetPath release-assets/Backchannel-macos-arm64.zip -Confirm:$false
+
+      - name: Delete exact macOS handoff
+        working-directory: controller
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --jq '[.artifacts[] | select(.name == "Backchannel-macos-arm64.zip")] | if length == 1 then .[0].id else error("expected one macOS artifact") end')"
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id"

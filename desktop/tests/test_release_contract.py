@@ -50,7 +50,7 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertNotIn("ENTRYPOINT", LINUX_DOCKERFILE)
         self.assertNotIn("CMD", LINUX_DOCKERFILE)
 
-    def test_workflow_is_dispatch_only_direct_macos_publish(self):
+    def test_workflow_is_dispatch_only_macos_handoff(self):
         self.assertIn("workflow_dispatch:", WORKFLOW)
         self.assertNotIn("tags:", WORKFLOW)
         self.assertIn("release_ref:", WORKFLOW)
@@ -58,33 +58,32 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertIn("correlation_id:", WORKFLOW)
         self.assertIn("run-name: Desktop release", WORKFLOW)
         self.assertIn("runs-on: macos-latest", WORKFLOW)
-        self.assertIn("environment: production", WORKFLOW)
-        self.assertIn("group: backchannel-r2-publish", WORKFLOW)
         self.assertNotIn("windows-latest", WORKFLOW)
-        self.assertNotIn("publish-macos:", WORKFLOW)
-        self.assertNotIn("actions/upload-artifact", WORKFLOW)
-        self.assertNotIn("actions/download-artifact", WORKFLOW)
-        self.assertNotIn("actions/artifacts/", WORKFLOW)
+        self.assertNotIn("ubuntu-latest\n            asset:", WORKFLOW)
+        self.assertIn("retention-days: 1", WORKFLOW)
 
-    def test_macos_credentials_are_scoped_to_final_publish_step(self):
-        marker = "      - name: Publish verified macOS platform"
-        build, publish = WORKFLOW.split(marker, 1)
+    def test_macos_build_is_credential_free_and_publish_is_separate(self):
+        build, publish = WORKFLOW.split("  publish-macos:", 1)
         for name in (
             "CLOUDFLARE_ACCOUNT_ID",
             "R2_ACCESS_KEY_ID",
             "R2_SECRET_ACCESS_KEY",
-            "R2_RELEASES_BUCKET",
         ):
             with self.subTest(name=name):
                 self.assertNotIn(name, build)
                 self.assertIn(name, publish)
-        self.assertIn("environment: production", build)
-        self.assertIn("cancel-in-progress: false", build)
-        self.assertIn("steps.release.outputs.published_at", publish)
+        self.assertIn("environment: production", publish)
+        self.assertIn("actions: write", publish)
+        self.assertIn("group: backchannel-r2-publish", publish)
+        self.assertIn("cancel-in-progress: false", publish)
         self.assertIn("publish_release_platform.ps1", publish)
-        self.assertIn("-AssetPath Backchannel-macos-arm64.zip", publish)
+        self.assertLess(
+            publish.index("publish_release_platform.ps1"),
+            publish.index("--method DELETE"),
+        )
 
     def test_macos_build_is_tag_pinned_smoked_and_exactly_packaged(self):
+        build, publish = WORKFLOW.split("  publish-macos:", 1)
         for value in (
             "path: controller",
             "path: source",
@@ -101,19 +100,23 @@ class ReleaseContractTests(unittest.TestCase):
             "pyinstaller desktop/backchannel.spec",
             "desktop/scripts/smoke_test.py",
             "Backchannel-macos-arm64.zip",
-            "Publish verified macOS platform",
-            "publish_release_platform.ps1",
+            "actions/upload-artifact@v4",
         ):
             with self.subTest(value=value):
-                self.assertIn(value, WORKFLOW)
+                self.assertIn(value, build)
         self.assertNotIn("softprops/action-gh-release", WORKFLOW)
         self.assertNotIn("files:", WORKFLOW)
-        self.assertIn("-AssetPath Backchannel-macos-arm64.zip", WORKFLOW)
+        self.assertIn("actions/download-artifact@v4", publish)
+        self.assertIn("name: Backchannel-macos-arm64.zip", publish)
 
-    def test_macos_workflow_uses_no_artifact_storage(self):
-        self.assertNotIn("actions/upload-artifact", WORKFLOW)
-        self.assertNotIn("actions/download-artifact", WORKFLOW)
-        self.assertNotIn("actions/artifacts/", WORKFLOW)
+    def test_macos_cleanup_targets_only_this_runs_exact_artifact(self):
+        publish = WORKFLOW.split("  publish-macos:", 1)[1]
+        self.assertIn("actions/runs/$GITHUB_RUN_ID/artifacts", publish)
+        self.assertIn(
+            'select(.name == "Backchannel-macos-arm64.zip")', publish
+        )
+        self.assertIn("actions/artifacts/$artifact_id", publish)
+        self.assertIn("--method DELETE", publish)
 
     def test_linux_bundle_collects_the_xorg_tray_backend(self):
         self.assertIn('hidden.append("pystray._xorg")', SPEC)
