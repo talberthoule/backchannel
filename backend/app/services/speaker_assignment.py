@@ -3,6 +3,10 @@
 from app.models import Speaker
 
 
+def is_unknown_auto_speaker(auto_id: str) -> bool:
+    return auto_id.endswith("auto_unknown")
+
+
 def assignable_speakers(speakers: list[Speaker]) -> list[Speaker]:
     """Return speaker rows that can be assigned from live diarization.
 

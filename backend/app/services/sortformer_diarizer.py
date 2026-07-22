@@ -50,6 +50,9 @@ class SortformerDiarizer:
         self._bytes_per_sample = 2
         self._window_bytes = int((window_ms or settings.SORTFORMER_WINDOW_MS) * sample_rate / 1000) * self._bytes_per_sample
         self._min_segment_bytes = int(settings.MIN_SEGMENT_MS * sample_rate / 1000) * self._bytes_per_sample
+        self._min_new_speaker_bytes = (
+            int(settings.MIN_NEW_SPEAKER_MS * sample_rate / 1000) * self._bytes_per_sample
+        )
         self._pending_audio = bytearray()
         self._speaker_map: dict[str, str] = {}
         self._next_speaker_id = 1
@@ -97,7 +100,9 @@ class SortformerDiarizer:
             segment_pcm = pcm_bytes[start:end]
             if len(segment_pcm) < self._min_segment_bytes:
                 continue
-            segments.append(DiarizedSegment(speaker_id=self._speaker_id_for_segment(turn.label, segment_pcm), pcm_bytes=segment_pcm))
+            speaker_id = self._speaker_id_for_segment(turn.label, segment_pcm)
+            if speaker_id != "auto_unknown":
+                segments.append(DiarizedSegment(speaker_id=speaker_id, pcm_bytes=segment_pcm))
         return segments
 
     def _run_sortformer(self, pcm_bytes: bytes) -> Any:
@@ -126,9 +131,14 @@ class SortformerDiarizer:
         try:
             pcm_float = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
             embedding = self._embedding_extractor(pcm_float, self._sample_rate)
-            return self._registry.match_or_create(embedding)
+            return self._registry.match_or_create(
+                embedding,
+                allow_create=len(pcm_bytes) >= self._min_new_speaker_bytes,
+            )
         except Exception as exc:
             logger.warning(f"Sortformer speaker embedding failed; falling back to local label: {exc}")
+            if len(pcm_bytes) < self._min_new_speaker_bytes and self._registry.profile_count == 0:
+                return "auto_unknown"
             return self._speaker_id_for_label(label)
 
 

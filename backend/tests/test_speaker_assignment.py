@@ -4,6 +4,7 @@ import uuid
 from app.models import Speaker
 from app.services.speaker_assignment import (
     auto_speaker_would_create_new_speaker,
+    is_unknown_auto_speaker,
     resolve_existing_auto_speaker,
     resolve_live_mic_speaker,
 )
@@ -19,6 +20,11 @@ def _speaker(name: str, is_user: bool) -> Speaker:
 
 
 class SpeakerAssignmentTests(unittest.TestCase):
+    def test_unknown_auto_speaker_recognizes_track_prefixes(self):
+        self.assertTrue(is_unknown_auto_speaker("auto_unknown"))
+        self.assertTrue(is_unknown_auto_speaker("sys_auto_unknown"))
+        self.assertFalse(is_unknown_auto_speaker("auto_1"))
+
     def test_live_mic_resolves_to_sole_user_when_split_track_is_established(self):
         user = _speaker("Me", True)
         participant = _speaker("Remote", False)

@@ -17,7 +17,11 @@ from app.services.diarizer_factory import create_diarizer
 from app.services.diarizer_runtime import get_diarizer_runtime_config
 from app.services.diarizer_selection import flush_diarizer_segments
 from app.services.session_manager import get_next_sequence
-from app.services.speaker_assignment import auto_speaker_would_create_new_speaker, resolve_existing_auto_speaker
+from app.services.speaker_assignment import (
+    auto_speaker_would_create_new_speaker,
+    is_unknown_auto_speaker,
+    resolve_existing_auto_speaker,
+)
 from app.services.speaker_ghost_filter import should_defer_new_speaker_segment
 from app.services.speaker_diarizer import SpeakerRegistry
 from app.services.transcription_runtime import get_transcription_runtime_config
@@ -132,12 +136,15 @@ async def _transcribe_audio_diarized(
         if not text:
             continue
 
-        if should_skip_import_ghost_speaker_segment(seg.speaker_id, auto_speaker_map, speakers, seg.pcm_bytes, text):
+        unknown_speaker = is_unknown_auto_speaker(seg.speaker_id)
+        if not unknown_speaker and should_skip_import_ghost_speaker_segment(
+            seg.speaker_id, auto_speaker_map, speakers, seg.pcm_bytes, text
+        ):
             continue
 
-        speaker_id_str = resolve_speaker(seg.speaker_id)
+        speaker_id_str = None if unknown_speaker else resolve_speaker(seg.speaker_id)
         # Auto-create speaker if needed
-        if speaker_id_str is None:
+        if speaker_id_str is None and not unknown_speaker:
             color = _SPEAKER_COLORS[len(speakers) % len(_SPEAKER_COLORS)]
             new_speaker = Speaker(
                 session_id=session_id,

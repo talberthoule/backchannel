@@ -21,6 +21,7 @@ from app.services.diarizer_runtime import get_diarizer_runtime_config
 from app.services.diarizer_selection import flush_diarizer_segments
 from app.services.speaker_assignment import (
     auto_speaker_would_create_new_speaker,
+    is_unknown_auto_speaker,
     resolve_existing_auto_speaker,
     resolve_live_mic_speaker,
 )
@@ -467,7 +468,9 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         """Persist an already-transcribed diarized segment in original audio order."""
         speaker_auto_id, split_track_mic = _normalize_speaker_auto_id(speaker_auto_id)
         local_mic_speaker = resolve_live_mic_speaker(speaker_auto_id, speaker_rows, split_track_mic)
-        if local_mic_speaker is not None:
+        if is_unknown_auto_speaker(speaker_auto_id):
+            speaker_id, speaker_name, speaker_type = None, "Unknown", None
+        elif local_mic_speaker is not None:
             # Keep the mic ID out of auto_speaker_map so remote ordering remains intact.
             speaker_id, speaker_name, speaker_type = _speaker_identity(local_mic_speaker)
         else:

@@ -11,6 +11,17 @@ def embedding(*values: float) -> np.ndarray:
 
 
 class SpeakerRegistryTests(unittest.TestCase):
+    def test_first_short_segment_does_not_seed_a_profile(self):
+        registry = SpeakerRegistry(threshold=0.9, max_profiles=4)
+
+        result = registry.match_or_create(
+            embedding(1.0, 0.0),
+            allow_create=False,
+        )
+
+        self.assertEqual("auto_unknown", result)
+        self.assertEqual(0, registry.profile_count)
+
     def test_short_unmatched_segment_reuses_profile_without_enrolling(self):
         registry = SpeakerRegistry(threshold=0.9, max_profiles=4)
         first_id = registry.match_or_create(embedding(1.0, 0.0))

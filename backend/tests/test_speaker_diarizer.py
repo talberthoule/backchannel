@@ -30,6 +30,15 @@ def finalize(diarizer: SpeakerDiarizer, audio: bytes, embeddings: list[np.ndarra
 
 
 class SpeakerDiarizerTests(unittest.TestCase):
+    def test_first_short_segment_is_dropped_without_enrollment(self):
+        registry = SpeakerRegistry(threshold=0.68)
+        diarizer = SpeakerDiarizer(registry=registry)
+
+        segments, _ = finalize(diarizer, pcm(2.0), [embedding(1.0, 0.0)])
+
+        self.assertEqual([], segments)
+        self.assertEqual(0, registry.profile_count)
+
     def test_matched_fast_path_updates_profile_without_windows(self):
         registry = SpeakerRegistry(threshold=0.68)
         registry.enroll("auto_1", embedding(1.0, 0.0))
