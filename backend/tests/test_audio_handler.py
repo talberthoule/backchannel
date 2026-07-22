@@ -189,6 +189,153 @@ class AudioReconnectTests(unittest.IsolatedAsyncioTestCase):
         websocket.send_json.assert_not_awaited()
 
 
+class StopDrainModeTests(unittest.TestCase):
+    def test_bare_stop_keeps_full_drain(self):
+        self.assertTrue(hasattr(audio_handler, "_requested_drain_mode"))
+        self.assertEqual("full", audio_handler._requested_drain_mode({"type": "stop"}))
+
+    def test_stop_can_request_skip_analysis(self):
+        self.assertEqual(
+            "skip_analysis",
+            audio_handler._requested_drain_mode({"type": "stop", "drain": "skip_analysis"}),
+        )
+
+    def test_unknown_or_minimal_drain_requests_fall_back_to_full(self):
+        for requested in ("minimal", "bogus", 7, None):
+            with self.subTest(requested=requested):
+                self.assertEqual(
+                    "full",
+                    audio_handler._requested_drain_mode({"type": "stop", "drain": requested}),
+                )
+
+
+class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
+    def _make_orchestrator(self, briefing=True):
+        plans = {
+            "full": ["final_insights", "insight_reconciliation", "opportunity_matching"]
+            + (["call_briefing"] if briefing else []),
+            "skip_analysis": ["final_insights", "insight_reconciliation"],
+            "minimal": [],
+        }
+        orchestrator = MagicMock()
+        orchestrator.drain_stages = MagicMock(side_effect=lambda mode="full": list(plans[mode]))
+        orchestrator.graceful_drain = AsyncMock(
+            return_value={
+                "transcript_available": True,
+                "insights_saved": 2,
+                "synthesizer_ops": 1,
+                "opportunity_ops": 0,
+            }
+        )
+        orchestrator.close_all = AsyncMock()
+        return orchestrator
+
+    async def _run_finalize(self, orchestrator, drain_mode=None):
+        websocket = MagicMock()
+        websocket.send_json = AsyncMock()
+        session = SimpleNamespace(state="active", ended_at=None)
+        db = FakeSessionContext(session, last_segment_number=None)
+        transcription_queue = MagicMock()
+        transcription_queue.drain = AsyncMock()
+        kwargs = {}
+        if drain_mode is not None:
+            kwargs["drain_mode"] = drain_mode
+
+        with (
+            patch("app.ws.audio_handler.async_session", return_value=db),
+            patch("app.ws.audio_handler.flush_diarizer_segments", return_value=[]),
+        ):
+            await audio_handler._finalize_call(
+                uuid.uuid4(),
+                websocket,
+                MagicMock(),
+                orchestrator,
+                transcription_queue,
+                **kwargs,
+            )
+
+        statuses = [c.args[0]["data"] for c in websocket.send_json.await_args_list]
+        return statuses, session, transcription_queue
+
+    async def test_default_finalize_runs_full_drain(self):
+        orchestrator = self._make_orchestrator(briefing=True)
+
+        statuses, session, transcription_queue = await self._run_finalize(orchestrator)
+
+        orchestrator.graceful_drain.assert_awaited_once()
+        self.assertEqual("full", orchestrator.graceful_drain.await_args.kwargs["mode"])
+        orchestrator.close_all.assert_awaited_once()
+        transcription_queue.drain.assert_awaited_once()
+        first, last = statuses[0], statuses[-1]
+        self.assertEqual("speaker_assignment", first["stage"])
+        self.assertEqual(1, first["current_step"])
+        self.assertEqual(6, first["total_steps"])
+        self.assertEqual(
+            [
+                "speaker_assignment",
+                "final_insights",
+                "insight_reconciliation",
+                "opportunity_matching",
+                "call_briefing",
+                "saving_session",
+            ],
+            first["steps"],
+        )
+        self.assertEqual("completed", last["state"])
+        self.assertEqual(6, last["current_step"])
+        self.assertEqual(6, last["total_steps"])
+        self.assertEqual(100, last["progress"])
+        self.assertIn("details", last)
+        self.assertEqual("completed", session.state)
+        self.assertIsNotNone(session.ended_at)
+
+    async def test_skip_analysis_finalize_drains_without_late_stages(self):
+        orchestrator = self._make_orchestrator(briefing=True)
+
+        statuses, session, _ = await self._run_finalize(orchestrator, drain_mode="skip_analysis")
+
+        orchestrator.graceful_drain.assert_awaited_once()
+        self.assertEqual("skip_analysis", orchestrator.graceful_drain.await_args.kwargs["mode"])
+        first, last = statuses[0], statuses[-1]
+        self.assertEqual(4, first["total_steps"])
+        self.assertEqual(
+            [
+                "speaker_assignment",
+                "final_insights",
+                "insight_reconciliation",
+                "saving_session",
+            ],
+            first["steps"],
+        )
+        self.assertEqual("completed", last["state"])
+        self.assertEqual(4, last["total_steps"])
+        self.assertEqual("completed", session.state)
+
+    async def test_minimal_finalize_runs_zero_analysis_steps(self):
+        orchestrator = self._make_orchestrator(briefing=True)
+
+        statuses, session, transcription_queue = await self._run_finalize(
+            orchestrator, drain_mode="minimal"
+        )
+
+        orchestrator.graceful_drain.assert_not_awaited()
+        orchestrator.close_all.assert_awaited_once()
+        transcription_queue.drain.assert_awaited_once()
+        first, last = statuses[0], statuses[-1]
+        self.assertEqual(1, first["current_step"])
+        self.assertEqual(2, first["total_steps"])
+        self.assertEqual(["speaker_assignment", "saving_session"], first["steps"])
+        saving = statuses[-2]
+        self.assertEqual("saving_session", saving["stage"])
+        self.assertEqual(2, saving["current_step"])
+        self.assertNotIn("details", saving)
+        self.assertEqual("completed", last["state"])
+        self.assertEqual(2, last["total_steps"])
+        self.assertNotIn("details", last)
+        self.assertEqual("completed", session.state)
+        self.assertIsNotNone(session.ended_at)
+
+
 class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
     async def test_initial_segment_does_not_add_resume_marker_from_active_state(self):
         session_id = uuid.uuid4()

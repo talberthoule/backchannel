@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from app.database import async_session
 from app.models import AgentConfig, CallSegment, Directive, Question, Session, SessionAgentOverride, Speaker, TranscriptEntry
-from app.services.agents.orchestrator import AgentOrchestrator
+from app.services.agents.orchestrator import AgentOrchestrator, drain_progress_percent
 from app.services.session_manager import get_active_directives, get_document_summaries, get_next_sequence
 from app.services.audio_store import SegmentAudioWriter
 from app.services.local_transcriber import create_transcriber
@@ -40,6 +40,16 @@ _SPEAKER_COLORS = ["#0d9488", "#f59e0b", "#e74c3c", "#2ecc71", "#9b59b6", "#f39c
 _PCM_BYTES_PER_SECOND = 32_000
 _AUDIO_FLOW_LOG_INTERVAL_BYTES = 10 * _PCM_BYTES_PER_SECOND
 
+# Drain modes a client may request on stop. "minimal" is reserved for the
+# disconnect/error path and cannot be requested over the wire.
+_STOP_DRAIN_MODES = ("full", "skip_analysis")
+
+
+def _requested_drain_mode(data: dict) -> str:
+    """Drain mode requested by a stop message; a bare stop keeps full behavior."""
+    requested = data.get("drain")
+    return requested if requested in _STOP_DRAIN_MODES else "full"
+
 
 async def _send_status(websocket: WebSocket, state: str, message: str, **extra: Any):
     try:
@@ -56,6 +66,7 @@ async def _send_post_processing_status(
     total_steps: int,
     progress: int,
     details: dict[str, Any] | None = None,
+    steps: list[str] | None = None,
 ):
     payload: dict[str, Any] = {
         "stage": stage,
@@ -63,6 +74,8 @@ async def _send_post_processing_status(
         "total_steps": total_steps,
         "progress": progress,
     }
+    if steps is not None:
+        payload["steps"] = steps
     if details is not None:
         payload["details"] = details
     await _send_status(websocket, "post_processing", message, **payload)
@@ -250,15 +263,19 @@ async def _finalize_call(
     audio_writer: SegmentAudioWriter | None = None,
     sys_diarizer: Any = None,
     split_track_established: bool = False,
+    drain_mode: str = "full",
 ):
-    total_steps = 6 if orchestrator.briefing_enabled() else 5
+    drain_stages = orchestrator.drain_stages(drain_mode)
+    total_steps = 2 + len(drain_stages)
+    pipeline_steps = ["speaker_assignment", *drain_stages, "saving_session"]
     await _send_post_processing_status(
         websocket,
         "speaker_assignment",
         "Finalizing speaker assignments...",
         1,
         total_steps,
-        15,
+        drain_progress_percent(1, total_steps),
+        steps=pipeline_steps,
     )
     await _flush_remaining_audio(
         diarizer,
@@ -281,7 +298,14 @@ async def _finalize_call(
             },
         )
 
-    drain_result = await orchestrator.graceful_drain(progress_callback=_forward_drain_progress)
+    if drain_mode == "minimal":
+        # Disconnect/error path: no analysis passes, just shut the agents down.
+        drain_result = None
+    else:
+        drain_result = await orchestrator.graceful_drain(
+            progress_callback=_forward_drain_progress,
+            mode=drain_mode,
+        )
     await orchestrator.close_all()
 
     await _send_post_processing_status(
@@ -290,7 +314,7 @@ async def _finalize_call(
         "Saving completed session...",
         total_steps,
         total_steps,
-        95,
+        drain_progress_percent(total_steps, total_steps),
         details=drain_result,
     )
 
@@ -318,6 +342,7 @@ async def _finalize_call(
             session.ended_at = datetime.now(timezone.utc)
         await db.commit()
 
+    completed_extra: dict[str, Any] = {} if drain_result is None else {"details": drain_result}
     await _send_status(
         websocket,
         "completed",
@@ -326,7 +351,7 @@ async def _finalize_call(
         current_step=total_steps,
         total_steps=total_steps,
         progress=100,
-        details=drain_result,
+        **completed_extra,
     )
 
 
@@ -385,6 +410,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         local_only = await get_local_only(db)
 
     stopped = False
+    stop_drain_mode = "full"
     audio_chunks_received = 0
     audio_bytes_received = 0
     audio_bytes_by_track = [0, 0]
@@ -634,6 +660,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                 split_track_established = _split_track_established_after_message(data, split_track_established)
                 if data.get("type") == "stop":
                     stopped = True
+                    stop_drain_mode = _requested_drain_mode(data)
                     break
                 elif data.get("type") == "directive":
                     directive_text = data.get("text", "")
@@ -656,7 +683,10 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         except Exception:
             pass
     finally:
+        # A deliberate stop honors the requested drain mode; a disconnect or
+        # error runs the minimal drain (no analysis LLM calls).
         await _finalize_call(
             session_id, websocket, diarizer, orchestrator, transcription_queue,
             audio_writer=audio_writer, sys_diarizer=sys_diarizer, split_track_established=split_track_established,
+            drain_mode=stop_drain_mode if stopped else "minimal",
         )
