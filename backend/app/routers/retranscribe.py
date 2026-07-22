@@ -3,15 +3,17 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import CallSegment, Session, TranscriptEntry
 from app.routers.imports import _transcribe_audio_diarized
+from app.services.diarizer_runtime import get_diarizer_runtime_config
 from app.services.llm import registry_entry
 from app.services.privacy import get_local_only, is_local_model
 from app.services.secrets import data_dir
+from app.services.speaker_diarizer import SpeakerRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,68 @@ router = APIRouter(prefix="/api/sessions/{session_id}/retranscribe", tags=["retr
 
 class RetranscribeIn(BaseModel):
     model_id: str
+
+
+def _stored_audio_path(relative_path: str | None):
+    if not relative_path:
+        return None
+    path = data_dir() / relative_path
+    return path if path.exists() else None
+
+
+async def _transcribe_stored_segments(
+    segments: list[CallSegment],
+    session_id: uuid.UUID,
+    db: AsyncSession,
+    model_id: str,
+) -> int:
+    runtime_config = await get_diarizer_runtime_config(db)
+    mic_registry = SpeakerRegistry(threshold=runtime_config.speaker_similarity_threshold)
+    remote_registry = SpeakerRegistry(threshold=runtime_config.speaker_similarity_threshold)
+    mic_speaker_map: dict[str, str] = {}
+    remote_speaker_map: dict[str, str] = {}
+    total = 0
+
+    for segment in segments:
+        mic_path = _stored_audio_path(segment.mic_audio_path)
+        system_path = _stored_audio_path(segment.system_audio_path)
+        if mic_path or system_path:
+            if mic_path:
+                total += await _transcribe_audio_diarized(
+                    mic_path.read_bytes(),
+                    "wav",
+                    session_id,
+                    db,
+                    model_id=model_id,
+                    registry=mic_registry,
+                    auto_speaker_map=mic_speaker_map,
+                    runtime_config=runtime_config,
+                    local_track=True,
+                )
+            if system_path:
+                total += await _transcribe_audio_diarized(
+                    system_path.read_bytes(),
+                    "wav",
+                    session_id,
+                    db,
+                    model_id=model_id,
+                    registry=remote_registry,
+                    auto_speaker_map=remote_speaker_map,
+                    runtime_config=runtime_config,
+                )
+            continue
+
+        mixed_path = _stored_audio_path(segment.audio_path)
+        if mixed_path:
+            total += await _transcribe_audio_diarized(
+                mixed_path.read_bytes(),
+                "wav",
+                session_id,
+                db,
+                model_id=model_id,
+            )
+
+    return total
 
 
 @router.post("")
@@ -43,24 +107,28 @@ async def retranscribe_session(session_id: uuid.UUID, body: RetranscribeIn, db: 
 
     result = await db.execute(
         select(CallSegment)
-        .where(CallSegment.session_id == session_id, CallSegment.audio_path.is_not(None))
+        .where(
+            CallSegment.session_id == session_id,
+            or_(
+                CallSegment.audio_path.is_not(None),
+                CallSegment.mic_audio_path.is_not(None),
+                CallSegment.system_audio_path.is_not(None),
+            ),
+        )
         .order_by(CallSegment.segment_number)
     )
     segments = list(result.scalars().all())
-    audio_files = [data_dir() / s.audio_path for s in segments]
-    audio_files = [p for p in audio_files if p.exists()]
-    if not audio_files:
+    if not any(
+        _stored_audio_path(path)
+        for segment in segments
+        for path in (segment.mic_audio_path, segment.system_audio_path, segment.audio_path)
+    ):
         raise HTTPException(404, "No stored audio for this session")
 
     await db.execute(delete(TranscriptEntry).where(TranscriptEntry.session_id == session_id))
     await db.commit()
 
-    # ponytail: one diarizer pass per segment; speaker identity across segments
-    # relies on in-order auto-id mapping onto existing speaker rows. Share one
-    # registry across segments if cross-segment voice matching ever matters.
-    total = 0
-    for path in audio_files:
-        total += await _transcribe_audio_diarized(path.read_bytes(), "wav", session_id, db, model_id=body.model_id)
+    total = await _transcribe_stored_segments(segments, session_id, db, body.model_id)
 
     logger.info(f"Re-transcribed session {session_id}: {total} entries via {body.model_id}")
     return {"entries": total}

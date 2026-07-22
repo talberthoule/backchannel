@@ -14,13 +14,14 @@ from app.services.file_parsing import parse_docx, parse_markdown, parse_text
 from app.services.audio_utils import convert_to_pcm16
 from app.services.local_transcriber import create_transcriber
 from app.services.diarizer_factory import create_diarizer
-from app.services.diarizer_runtime import get_diarizer_runtime_config
+from app.services.diarizer_runtime import DiarizerRuntimeConfig, get_diarizer_runtime_config
 from app.services.diarizer_selection import flush_diarizer_segments
 from app.services.session_manager import get_next_sequence
 from app.services.speaker_assignment import (
     auto_speaker_would_create_new_speaker,
     is_unknown_auto_speaker,
     resolve_existing_auto_speaker,
+    resolve_live_mic_speaker,
 )
 from app.services.speaker_ghost_filter import should_defer_new_speaker_segment
 from app.services.speaker_diarizer import SpeakerRegistry
@@ -85,6 +86,10 @@ async def _transcribe_audio_diarized(
     model_id: str | None = None,
     persist_audio: bool = False,
     probe_sortformer: bool = True,
+    registry: SpeakerRegistry | None = None,
+    auto_speaker_map: dict[str, str] | None = None,
+    runtime_config: DiarizerRuntimeConfig | None = None,
+    local_track: bool = False,
 ) -> int:
     """Transcribe audio using diarization pipeline. Returns count of entries created."""
     # Convert to PCM16 16kHz mono
@@ -93,8 +98,10 @@ async def _transcribe_audio_diarized(
     if persist_audio:
         await _persist_import_audio(pcm_data, session_id, db)
 
-    runtime_config = await get_diarizer_runtime_config(db, probe_sortformer=probe_sortformer)
-    registry = SpeakerRegistry(threshold=runtime_config.speaker_similarity_threshold)
+    if runtime_config is None:
+        runtime_config = await get_diarizer_runtime_config(db, probe_sortformer=probe_sortformer)
+    if registry is None:
+        registry = SpeakerRegistry(threshold=runtime_config.speaker_similarity_threshold)
     diarizer = create_diarizer(runtime_config.effective_live_diarizer, registry=registry)
     transcription_config = await get_transcription_runtime_config(db)
     transcriber = create_transcriber(model_id or transcription_config.batch_model_id)
@@ -105,7 +112,8 @@ async def _transcribe_audio_diarized(
     )
     speakers = list(result.scalars().all())
 
-    auto_speaker_map: dict[str, str] = {}
+    if auto_speaker_map is None:
+        auto_speaker_map = {}
 
     def resolve_speaker(auto_id: str) -> str | None:
         if auto_id in auto_speaker_map:
@@ -136,13 +144,19 @@ async def _transcribe_audio_diarized(
         if not text:
             continue
 
+        local_speaker = resolve_live_mic_speaker(seg.speaker_id, speakers, local_track)
         unknown_speaker = is_unknown_auto_speaker(seg.speaker_id)
-        if not unknown_speaker and should_skip_import_ghost_speaker_segment(
+        if not local_speaker and not unknown_speaker and should_skip_import_ghost_speaker_segment(
             seg.speaker_id, auto_speaker_map, speakers, seg.pcm_bytes, text
         ):
             continue
 
-        speaker_id_str = None if unknown_speaker else resolve_speaker(seg.speaker_id)
+        if local_speaker:
+            speaker_id_str = str(local_speaker.id)
+        elif unknown_speaker:
+            speaker_id_str = None
+        else:
+            speaker_id_str = resolve_speaker(seg.speaker_id)
         # Auto-create speaker if needed
         if speaker_id_str is None and not unknown_speaker:
             color = _SPEAKER_COLORS[len(speakers) % len(_SPEAKER_COLORS)]
