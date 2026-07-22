@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 
 TranscribeFn = Callable[[bytes], Awaitable[str | None]]
 EmitFn = Callable[[str, bytes, str], Awaitable[None]]
-FailureFn = Callable[[int], Awaitable[None]]
+# Called with the cumulative failure count and the failure kind:
+# "transcribe" (provider/model/timeout) or "emit" (persisting the transcript).
+FailureFn = Callable[[int, str], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -67,12 +69,12 @@ class OrderedTranscriptionQueue:
         task.add_done_callback(self._tasks.discard)
         return index
 
-    async def _record_failure(self):
+    async def _record_failure(self, kind: str):
         self._failed_count += 1
         if self._on_failure is None:
             return
         try:
-            await self._on_failure(self._failed_count)
+            await self._on_failure(self._failed_count, kind)
         except Exception:
             logger.warning("Transcription failure callback raised", exc_info=True)
 
@@ -102,7 +104,7 @@ class OrderedTranscriptionQueue:
             failed = True
 
         if failed:
-            await self._record_failure()
+            await self._record_failure("transcribe")
         async with self._lock:
             self._results[index] = TranscriptionResult(speaker_auto_id, pcm_bytes, text)
         await self._emit_ready()
@@ -131,4 +133,4 @@ class OrderedTranscriptionQueue:
                     logger.error("Ordered transcript emit failed: %s", exc)
                     emit_failures += 1
         for _ in range(emit_failures):
-            await self._record_failure()
+            await self._record_failure("emit")

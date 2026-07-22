@@ -28,7 +28,7 @@ from app.services.speaker_assignment import (
 from app.services.speaker_ghost_filter import should_defer_new_speaker_segment
 from app.services.speaker_diarizer import SpeakerRegistry
 from app.services.ordered_transcription import OrderedTranscriptionQueue
-from app.services.privacy import get_local_only
+from app.services.privacy import get_local_only, is_local_model
 from app.services.transcription_readiness import TranscriptionReadiness, get_transcription_readiness
 from app.services.transcription_runtime import get_transcription_runtime_config
 
@@ -570,8 +570,9 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         )
 
     last_transcription_failure_status_at = 0.0
+    batch_model_is_local = is_local_model(transcription_config.batch_model_id)
 
-    async def _on_transcription_failure(failed_count: int):
+    async def _on_transcription_failure(failed_count: int, kind: str):
         # Throttle so a burst of failing segments does not spam the frontend.
         nonlocal last_transcription_failure_status_at
         now = monotonic()
@@ -579,15 +580,27 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
             return
         last_transcription_failure_status_at = now
         plural = "s" if failed_count != 1 else ""
-        await _send_status(
-            websocket,
-            "transcription_error",
-            (
+        if kind == "emit":
+            message = (
+                f"Saving transcript text failed for {failed_count} speech "
+                f"segment{plural} this call; transcript entries may be missing."
+            )
+        elif batch_model_is_local:
+            message = (
+                f"Local transcription failed for {failed_count} speech "
+                f"segment{plural} this call; transcript text may be missing."
+            )
+        else:
+            message = (
                 f"Transcription failed for {failed_count} speech segment{plural} "
                 "this call; transcript text may be missing. Check the provider "
                 "API key in Admin -> API Keys."
-            ),
-            details={"failed": failed_count},
+            )
+        await _send_status(
+            websocket,
+            "transcription_error",
+            message,
+            details={"failed": failed_count, "kind": kind},
         )
 
     transcription_queue = OrderedTranscriptionQueue(

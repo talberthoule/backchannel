@@ -72,7 +72,7 @@ class OrderedTranscriptionQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["kept"], emitted)
 
     async def test_transcribe_errors_count_as_failures_and_notify(self):
-        failure_counts = []
+        failures = []
 
         async def transcribe(pcm_bytes: bytes):
             if pcm_bytes == b"boom":
@@ -82,8 +82,8 @@ class OrderedTranscriptionQueueTests(unittest.IsolatedAsyncioTestCase):
         async def emit(speaker_auto_id: str, pcm_bytes: bytes, text: str):
             pass
 
-        async def on_failure(failed_count: int):
-            failure_counts.append(failed_count)
+        async def on_failure(failed_count: int, kind: str):
+            failures.append((failed_count, kind))
 
         queue = OrderedTranscriptionQueue(
             transcribe=transcribe, emit=emit, on_failure=on_failure
@@ -93,7 +93,7 @@ class OrderedTranscriptionQueueTests(unittest.IsolatedAsyncioTestCase):
         await queue.drain()
 
         self.assertEqual({"jobs": 2, "emitted": 1, "failed": 1}, queue.stats)
-        self.assertEqual([1], failure_counts)
+        self.assertEqual([(1, "transcribe")], failures)
 
     async def test_timeout_counts_as_failure(self):
         async def transcribe(pcm_bytes: bytes):
@@ -127,17 +127,25 @@ class OrderedTranscriptionQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({"jobs": 1, "emitted": 0, "failed": 0}, queue.stats)
 
     async def test_emit_errors_count_as_failures(self):
+        failures = []
+
         async def transcribe(pcm_bytes: bytes):
             return pcm_bytes.decode()
 
         async def emit(speaker_auto_id: str, pcm_bytes: bytes, text: str):
             raise RuntimeError("db unavailable")
 
-        queue = OrderedTranscriptionQueue(transcribe=transcribe, emit=emit)
+        async def on_failure(failed_count: int, kind: str):
+            failures.append((failed_count, kind))
+
+        queue = OrderedTranscriptionQueue(
+            transcribe=transcribe, emit=emit, on_failure=on_failure
+        )
         queue.add("auto_1", b"text")
         await queue.drain()
 
         self.assertEqual({"jobs": 1, "emitted": 0, "failed": 1}, queue.stats)
+        self.assertEqual([(1, "emit")], failures)
 
     async def test_failure_callback_errors_do_not_break_the_queue(self):
         emitted = []
@@ -150,7 +158,7 @@ class OrderedTranscriptionQueueTests(unittest.IsolatedAsyncioTestCase):
         async def emit(speaker_auto_id: str, pcm_bytes: bytes, text: str):
             emitted.append(text)
 
-        async def on_failure(failed_count: int):
+        async def on_failure(failed_count: int, kind: str):
             raise RuntimeError("callback crashed")
 
         queue = OrderedTranscriptionQueue(

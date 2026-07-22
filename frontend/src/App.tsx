@@ -10,6 +10,7 @@ import ActiveCallView from "./components/ActiveCall/ActiveCallView";
 import PostCallView from "./components/PostCall/PostCallView";
 import { startSingleFlight, useAudioCapture } from "./hooks/useAudioCapture";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { refusalRollbackState } from "./lib/callRefusal";
 import { useSession } from "./hooks/useSession";
 import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
 import { useWhatsNew } from "./hooks/useWhatsNew";
@@ -301,11 +302,27 @@ export default function App() {
             confirmed: false,
           }));
         } else if (msg.data.state === "transcription_unready") {
-          // Backend refused the call and closed the socket; stop capture and
-          // surface the reason in both the pre-call and active views.
+          // Backend refused the call and closed the socket. Undo the
+          // optimistic start so the session is not stranded active with no
+          // call segment, and surface the reason in both views.
           setStartError(msg.data.message);
           setCaptureError(msg.data.message);
           stopCapture();
+          disconnect();
+          liveSessionIdRef.current = null;
+          setLiveSessionId(null);
+          setInterimText("");
+          const refusedSessionId = messageSessionId || activeSessionId;
+          if (refusedSessionId) {
+            void api
+              .updateSession(refusedSessionId, {
+                state: refusalRollbackState(segments.length),
+              })
+              .catch(() => null)
+              .then(() => refreshSession())
+              .then(() => api.listSessions().then(setSessions))
+              .catch(() => null);
+          }
         } else if (msg.data.state === "transcription_error") {
           setCaptureError(msg.data.message);
         } else if (
@@ -352,7 +369,7 @@ export default function App() {
         setRuntimeSynthesis(msg.data);
       }
     }
-  }, [messages, activeSessionId, speakers, refreshSpeakers, stopCapture]);
+  }, [messages, activeSessionId, speakers, refreshSpeakers, stopCapture, disconnect, segments, refreshSession]);
 
   const runtimeMatchesView = Boolean(activeSessionId && activeSessionId === runtimeSessionId);
   const viewLiveQuestions = runtimeMatchesView ? liveQuestions : [];
