@@ -165,6 +165,14 @@ async def _add_missing_columns(conn):
                 connection.execute(
                     text("ALTER TABLE call_segments ADD COLUMN audio_path VARCHAR(500)")
                 )
+            if "mic_audio_path" not in columns:
+                connection.execute(
+                    text("ALTER TABLE call_segments ADD COLUMN mic_audio_path VARCHAR(500)")
+                )
+            if "system_audio_path" not in columns:
+                connection.execute(
+                    text("ALTER TABLE call_segments ADD COLUMN system_audio_path VARCHAR(500)")
+                )
 
     await conn.run_sync(_check_and_add)
 

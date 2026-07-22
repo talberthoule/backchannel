@@ -18,13 +18,13 @@ logger = logging.getLogger(__name__)
 SAMPLE_RATE = 16000
 
 
-def audio_file_path(session_id: uuid.UUID | str, segment_number: int, track: str = "mic") -> Path:
-    suffix = "" if track == "mic" else f"_{track}"
+def audio_file_path(session_id: uuid.UUID | str, segment_number: int, track: str = "mixed") -> Path:
+    suffix = "" if track == "mixed" else f"_{track}"
     return data_dir() / "audio" / str(session_id) / f"segment_{segment_number}{suffix}.wav"
 
 
 class SegmentAudioWriter:
-    def __init__(self, session_id: uuid.UUID | str, segment_number: int, track: str = "mic"):
+    def __init__(self, session_id: uuid.UUID | str, segment_number: int, track: str = "mixed"):
         self._path = audio_file_path(session_id, segment_number, track)
         self._file = None
         self._bytes_written = 0

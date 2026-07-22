@@ -49,6 +49,17 @@ class AudioStoreTests(unittest.TestCase):
         self.assertTrue(path.name.endswith("segment_2_sys.wav"))
         self.assertTrue(path.exists())
 
+    def test_microphone_track_gets_own_file(self):
+        from app.services.audio_store import SegmentAudioWriter, audio_file_path
+
+        session_id = uuid.uuid4()
+        writer = SegmentAudioWriter(session_id, 2, track="mic")
+        writer.append(b"\x00\x01" * 1600)
+        writer.close()
+        path = audio_file_path(session_id, 2, track="mic")
+        self.assertTrue(path.name.endswith("segment_2_mic.wav"))
+        self.assertTrue(path.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

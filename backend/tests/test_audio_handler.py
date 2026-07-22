@@ -1,6 +1,8 @@
 import unittest
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -219,13 +221,13 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
             ended_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
         )
         db = FakeSessionContext(session, last_segment_number=2)
-        writer = MagicMock()
+        writers = [MagicMock(), MagicMock(), MagicMock()]
 
         with (
             patch("app.ws.audio_handler.async_session", return_value=db),
             patch(
                 "app.ws.audio_handler.SegmentAudioWriter",
-                return_value=writer,
+                side_effect=writers,
             ) as writer_class,
             patch(
                 "app.ws.audio_handler.get_next_sequence",
@@ -234,8 +236,17 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
         ):
             result = await start_call_segment(session_id)
 
-        self.assertIs(writer, result)
-        writer_class.assert_called_once_with(session_id, 3)
+        self.assertEqual(
+            {"mixed": writers[0], "mic": writers[1], "system": writers[2]},
+            result,
+        )
+        writer_class.assert_has_calls(
+            [
+                call(session_id, 3),
+                call(session_id, 3, track="mic"),
+                call(session_id, 3, track="sys"),
+            ]
+        )
         self.assertEqual(2, len(db.added))
         segment, marker = db.added
         self.assertIsInstance(segment, CallSegment)
@@ -267,6 +278,67 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
         writer_class.assert_not_called()
         self.assertEqual([], db.added)
         self.assertEqual(0, db.commits)
+
+
+class SegmentAudioPersistenceTests(unittest.TestCase):
+    def test_split_track_paths_are_retained(self):
+        self.assertTrue(hasattr(audio_handler, "_close_audio_writers"))
+        writers = {
+            "mixed": MagicMock(close=MagicMock(return_value="audio/mixed.wav")),
+            "mic": MagicMock(close=MagicMock(return_value="audio/mic.wav")),
+            "system": MagicMock(close=MagicMock(return_value="audio/sys.wav")),
+        }
+
+        paths = audio_handler._close_audio_writers(writers, split_track_established=True)
+
+        self.assertEqual(
+            {
+                "audio_path": "audio/mixed.wav",
+                "mic_audio_path": "audio/mic.wav",
+                "system_audio_path": "audio/sys.wav",
+            },
+            paths,
+        )
+
+    def test_mic_only_track_files_are_removed(self):
+        self.assertTrue(hasattr(audio_handler, "_close_audio_writers"))
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mic_path = root / "audio" / "mic.wav"
+            system_path = root / "audio" / "sys.wav"
+            mic_path.parent.mkdir()
+            mic_path.write_bytes(b"mic")
+            system_path.write_bytes(b"system")
+            writers = {
+                "mixed": MagicMock(close=MagicMock(return_value="audio/mixed.wav")),
+                "mic": MagicMock(close=MagicMock(return_value="audio/mic.wav")),
+                "system": MagicMock(close=MagicMock(return_value="audio/sys.wav")),
+            }
+
+            with patch("app.ws.audio_handler.data_dir", return_value=root):
+                paths = audio_handler._close_audio_writers(
+                    writers,
+                    split_track_established=False,
+                )
+
+            self.assertEqual("audio/mixed.wav", paths["audio_path"])
+            self.assertIsNone(paths["mic_audio_path"])
+            self.assertIsNone(paths["system_audio_path"])
+            self.assertFalse(mic_path.exists())
+            self.assertFalse(system_path.exists())
+
+    def test_call_segment_accepts_track_paths(self):
+        self.assertTrue(hasattr(CallSegment, "mic_audio_path"))
+        self.assertTrue(hasattr(CallSegment, "system_audio_path"))
+        segment = CallSegment(
+            session_id=uuid.uuid4(),
+            segment_number=1,
+            mic_audio_path="audio/mic.wav",
+            system_audio_path="audio/sys.wav",
+        )
+
+        self.assertEqual("audio/mic.wav", segment.mic_audio_path)
+        self.assertEqual("audio/sys.wav", segment.system_audio_path)
 
 
 if __name__ == "__main__":
