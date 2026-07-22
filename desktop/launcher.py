@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import secrets
 import shutil
 import socket
 import subprocess
@@ -30,6 +31,7 @@ DEFAULT_APP_PORT = 8474
 WINDOWS_BROWSERS = ("msedge.exe", "chrome.exe")
 MACOS_BROWSERS = ("Microsoft Edge", "Google Chrome")
 LINUX_BROWSERS = ("microsoft-edge", "google-chrome", "chromium")
+INSTANCE_HEADER = "X-Backchannel-Instance"
 
 
 def app_url(port: int) -> str:
@@ -40,13 +42,15 @@ def health_url(port: int) -> str:
     return f"http://{LOOPBACK_HOST}:{port}/api/health"
 
 
-def select_app_port() -> int:
+def bind_app_socket() -> socket.socket:
+    listener = socket.socket()
     try:
-        with socket.socket() as candidate:
-            candidate.bind((LOOPBACK_HOST, DEFAULT_APP_PORT))
+        listener.bind((LOOPBACK_HOST, DEFAULT_APP_PORT))
     except OSError:
-        return free_port()
-    return DEFAULT_APP_PORT
+        listener.close()
+        listener = socket.socket()
+        listener.bind((LOOPBACK_HOST, 0))
+    return listener
 
 
 def _windows_browser_path() -> str | None:
@@ -123,17 +127,28 @@ def browser_opener(url: str) -> None:
     webbrowser.open(url)
 
 
+def instance_is_healthy(port: int, token: str) -> bool:
+    try:
+        req = urllib.request.urlopen(health_url(port), timeout=2)
+        with req as resp:
+            return (
+                resp.status == 200
+                and resp.headers.get(INSTANCE_HEADER) == token
+            )
+    except Exception:
+        return False
+
+
 def existing_instance_port(data_dir: Path) -> int | None:
     """Port of a healthy already-running instance, else None."""
     lock = data_dir / LOCK_NAME
     if not lock.exists():
         return None
     try:
-        port = json.loads(lock.read_text())["port"]
-        req = urllib.request.urlopen(health_url(port), timeout=2)
-        with req as resp:
-            if resp.status == 200:
-                return port
+        instance = json.loads(lock.read_text())
+        port = instance["port"]
+        if instance_is_healthy(port, instance["token"]):
+            return port
     except Exception:
         pass
     return None
@@ -153,16 +168,16 @@ def wait_for_other_instance(
         time.sleep(interval)
 
 
-def wait_healthy(port: int, timeout: float = 90.0) -> bool:
+def wait_healthy(
+    port: int, timeout: float = 90.0, token: str | None = None
+) -> bool:
+    if token is None:
+        return False
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        try:
-            req = urllib.request.urlopen(health_url(port), timeout=2)
-            with req as resp:
-                if resp.status == 200:
-                    return True
-        except Exception:
-            time.sleep(0.5)
+        if instance_is_healthy(port, token):
+            return True
+        time.sleep(0.5)
     return False
 
 
@@ -312,7 +327,9 @@ def run(headless: bool = False) -> int:
             _error_dialog(f"PostgreSQL failed to start. See log: {pg.log}")
         return 1
 
-    app_port = select_app_port()
+    listener = bind_app_socket()
+    app_port = listener.getsockname()[1]
+    instance_token = secrets.token_urlsafe()
     os.environ["DATABASE_URL"] = pg.database_url(pg_port)
     os.environ["DATA_DIR"] = str(data_dir / "data")
     os.environ["FRONTEND_DIST"] = str(resource("frontend"))
@@ -322,23 +339,33 @@ def run(headless: bool = False) -> int:
 
     server = uvicorn.Server(
         uvicorn.Config(
-            "app.main:app", host=LOOPBACK_HOST, port=app_port, log_config=None
+            "app.main:app",
+            host=LOOPBACK_HOST,
+            port=app_port,
+            log_config=None,
+            headers=[(INSTANCE_HEADER, instance_token)],
         )
     )
-    thread = threading.Thread(target=server.run, daemon=True)
+    thread = threading.Thread(
+        target=server.run, kwargs={"sockets": [listener]}, daemon=True
+    )
     log.info("starting app on port %s", app_port)
     thread.start()
 
     lock = data_dir / LOCK_NAME
     try:
-        if not wait_healthy(app_port):
+        lock.write_text(
+            json.dumps(
+                {"port": app_port, "pid": os.getpid(), "token": instance_token}
+            )
+        )
+        if not wait_healthy(app_port, token=instance_token):
             log.error("app failed to become healthy; see postgres.log too")
             if not headless:
                 _error_dialog(
                     f"Backchannel failed to start. See log: {data_dir / 'backchannel.log'}"
                 )
             return 1
-        lock.write_text(json.dumps({"port": app_port, "pid": os.getpid()}))
         if headless:
             _wait_for_stop_file(data_dir)
         else:
@@ -348,6 +375,7 @@ def run(headless: bool = False) -> int:
         log.info("shutting down")
         server.should_exit = True
         thread.join(timeout=15)
+        listener.close()
         pg.stop()
         lock.unlink(missing_ok=True)
     return 0

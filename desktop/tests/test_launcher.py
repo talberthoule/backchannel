@@ -1,5 +1,6 @@
 import http.server
 import json
+import socket
 import tempfile
 import threading
 import unittest
@@ -10,9 +11,13 @@ import launcher
 
 
 class _HealthHandler(http.server.BaseHTTPRequestHandler):
+    instance_token = None
+
     def do_GET(self):
         if self.path == "/api/health":
             self.send_response(200)
+            if self.instance_token is not None:
+                self.send_header(launcher.INSTANCE_HEADER, self.instance_token)
             self.end_headers()
             self.wfile.write(b'{"status": "ok"}')
         else:
@@ -29,8 +34,13 @@ class LauncherHelperTests(unittest.TestCase):
         self.assertIsNotNone(opener, "browser_opener is missing")
         return opener
 
-    def _serve_health(self):
-        server = http.server.HTTPServer(("127.0.0.1", 0), _HealthHandler)
+    def _serve_health(self, instance_token=None):
+        handler = type(
+            "HealthHandler",
+            (_HealthHandler,),
+            {"instance_token": instance_token},
+        )
+        server = http.server.HTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
@@ -52,34 +62,31 @@ class LauncherHelperTests(unittest.TestCase):
             launcher.health_url(54321),
         )
 
-    def test_app_port_prefers_stable_default(self):
-        choose_port = getattr(launcher, "select_app_port", None)
-        self.assertIsNotNone(choose_port, "select_app_port is missing")
-        self.assertEqual(getattr(launcher, "DEFAULT_APP_PORT", None), 8474)
-        with (
-            patch("launcher.socket.socket") as socket_factory,
-            patch.object(launcher, "free_port") as free_port,
-        ):
-            self.assertEqual(choose_port(), 8474)
+    def test_app_socket_prefers_stable_default(self):
+        with socket.socket() as available:
+            available.bind((launcher.LOOPBACK_HOST, 0))
+            preferred_port = available.getsockname()[1]
+        with patch.object(launcher, "DEFAULT_APP_PORT", preferred_port):
+            listener = launcher.bind_app_socket()
+        self.addCleanup(listener.close)
 
-        socket_factory.return_value.__enter__.return_value.bind.assert_called_once_with(
-            ("127.0.0.1", 8474)
-        )
-        free_port.assert_not_called()
+        self.assertEqual(listener.getsockname()[1], preferred_port)
 
-    def test_app_port_falls_back_when_default_is_occupied(self):
-        choose_port = getattr(launcher, "select_app_port", None)
-        self.assertIsNotNone(choose_port, "select_app_port is missing")
-        with (
-            patch("launcher.socket.socket") as socket_factory,
-            patch.object(launcher, "free_port", return_value=54321) as free_port,
-        ):
-            socket_factory.return_value.__enter__.return_value.bind.side_effect = (
-                OSError("occupied")
-            )
-            self.assertEqual(choose_port(), 54321)
+    def test_app_socket_falls_back_and_stays_reserved(self):
+        bind_app_socket = getattr(launcher, "bind_app_socket", None)
+        self.assertIsNotNone(bind_app_socket, "bind_app_socket is missing")
+        with socket.socket() as occupied:
+            occupied.bind((launcher.LOOPBACK_HOST, 0))
+            occupied_port = occupied.getsockname()[1]
+            with patch.object(launcher, "DEFAULT_APP_PORT", occupied_port):
+                listener = bind_app_socket()
+        self.addCleanup(listener.close)
 
-        free_port.assert_called_once_with()
+        fallback_port = listener.getsockname()[1]
+        self.assertNotEqual(fallback_port, occupied_port)
+        with socket.socket() as contender:
+            with self.assertRaises(OSError):
+                contender.bind((launcher.LOOPBACK_HOST, fallback_port))
 
     def test_windows_browser_opener_prefers_edge_app_paths_registry(self):
         opener = self._browser_opener()
@@ -210,6 +217,71 @@ class LauncherHelperTests(unittest.TestCase):
 
         opener.assert_called_once_with("http://localhost:8474")
 
+    def test_run_starts_on_reserved_socket(self):
+        listener = Mock()
+        listener.getsockname.return_value = (launcher.LOOPBACK_HOST, 54321)
+        postgres = Mock()
+        uvicorn = Mock()
+        server = uvicorn.Server.return_value
+        secrets = Mock()
+        secrets.token_urlsafe.return_value = "ours"
+        observed_health = {}
+
+        def confirm_health(port, timeout=90.0, token=None):
+            lock = Path(tmp) / launcher.LOCK_NAME
+            observed_health.update(
+                port=port,
+                token=token,
+                lock=json.loads(lock.read_text()) if lock.exists() else None,
+            )
+            return True
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(launcher, "app_data_dir", return_value=Path(tmp)),
+            patch.object(launcher, "existing_instance_port", return_value=None),
+            patch.object(launcher, "EmbeddedPostgres", return_value=postgres),
+            patch.object(postgres, "pgdata", Path(tmp) / "pgdata"),
+            patch.object(postgres, "database_url", return_value="postgresql://db"),
+            patch.object(launcher, "resource", return_value=Path(tmp)),
+            patch.object(launcher, "free_port", return_value=15432),
+            patch.object(launcher, "bind_app_socket", return_value=listener),
+            patch.object(launcher, "secrets", secrets, create=True),
+            patch.dict(launcher.sys.modules, {"uvicorn": uvicorn}),
+            patch.object(launcher.threading, "Thread") as thread_factory,
+            patch.object(launcher, "wait_healthy", side_effect=confirm_health),
+            patch.object(launcher, "browser_opener") as opener,
+            patch.object(launcher, "_run_tray"),
+            patch.object(launcher.logging, "basicConfig"),
+        ):
+            self.assertEqual(launcher.run(), 0)
+
+        opener.assert_called_once_with("http://localhost:54321")
+        thread_factory.assert_called_once_with(
+            target=server.run,
+            kwargs={"sockets": [listener]},
+            daemon=True,
+        )
+        self.assertEqual(
+            observed_health,
+            {
+                "port": 54321,
+                "token": "ours",
+                "lock": {
+                    "port": 54321,
+                    "pid": launcher.os.getpid(),
+                    "token": "ours",
+                },
+            },
+        )
+        uvicorn.Config.assert_called_once_with(
+            "app.main:app",
+            host=launcher.LOOPBACK_HOST,
+            port=54321,
+            log_config=None,
+            headers=[(launcher.INSTANCE_HEADER, "ours")],
+        )
+
     def test_tray_open_action_uses_browser_opener(self):
         self._browser_opener()
         pystray = Mock()
@@ -236,27 +308,44 @@ class LauncherHelperTests(unittest.TestCase):
             self.assertIsNone(launcher.existing_instance_port(Path(tmp)))
 
     def test_live_lock_file_returns_port(self):
-        port = self._serve_health()
+        token = "ours"
+        port = self._serve_health(token)
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "launcher.json").write_text(
-                json.dumps({"port": port, "pid": 1})
+                json.dumps({"port": port, "pid": 1, "token": token})
             )
             self.assertEqual(launcher.existing_instance_port(Path(tmp)), port)
 
-    def test_wait_healthy_true_for_live_server(self):
+    def test_live_lock_file_rejects_foreign_health_response(self):
         port = self._serve_health()
-        self.assertTrue(launcher.wait_healthy(port, timeout=5))
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "launcher.json").write_text(
+                json.dumps({"port": port, "pid": 1, "token": "ours"})
+            )
+            self.assertIsNone(launcher.existing_instance_port(Path(tmp)))
+
+    def test_wait_healthy_true_for_live_server(self):
+        token = "ours"
+        port = self._serve_health(token)
+        self.assertTrue(launcher.wait_healthy(port, timeout=5, token=token))
+
+    def test_wait_healthy_rejects_unidentified_200(self):
+        port = self._serve_health()
+        self.assertFalse(launcher.wait_healthy(port, timeout=0.2))
 
     def test_wait_healthy_false_when_nothing_listens(self):
         from bcdesktop.paths import free_port
 
-        self.assertFalse(launcher.wait_healthy(free_port(), timeout=1))
+        self.assertFalse(
+            launcher.wait_healthy(free_port(), timeout=1, token="ours")
+        )
 
     def test_wait_for_other_instance_returns_port_once_lock_appears(self):
-        port = self._serve_health()
+        token = "ours"
+        port = self._serve_health(token)
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "launcher.json").write_text(
-                json.dumps({"port": port, "pid": 1})
+                json.dumps({"port": port, "pid": 1, "token": token})
             )
             found = launcher.wait_for_other_instance(
                 Path(tmp), timeout=1, interval=0.05
