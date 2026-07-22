@@ -265,6 +265,17 @@ async def _finalize_call(
     split_track_established: bool = False,
     drain_mode: str = "full",
 ):
+    if drain_mode == "minimal":
+        # Disconnect/error path: stop the orchestrator's live analysis tasks
+        # before the transcription flush below, so no analysis LLM call can
+        # start or continue once the disconnect is detected. A deliberate stop
+        # keeps agents running through the flush so the final drain sees the
+        # full transcript.
+        try:
+            await orchestrator.close_all()
+        except Exception as e:
+            logger.warning(f"Orchestrator shutdown failed during minimal finalize: {e}")
+
     drain_stages = orchestrator.drain_stages(drain_mode)
     total_steps = 2 + len(drain_stages)
     pipeline_steps = ["speaker_assignment", *drain_stages, "saving_session"]
@@ -299,14 +310,14 @@ async def _finalize_call(
         )
 
     if drain_mode == "minimal":
-        # Disconnect/error path: no analysis passes, just shut the agents down.
+        # No analysis passes; the agents were already shut down above.
         drain_result = None
     else:
         drain_result = await orchestrator.graceful_drain(
             progress_callback=_forward_drain_progress,
             mode=drain_mode,
         )
-    await orchestrator.close_all()
+        await orchestrator.close_all()
 
     await _send_post_processing_status(
         websocket,

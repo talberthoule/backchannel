@@ -1,10 +1,13 @@
+import asyncio
 import unittest
 import uuid
 from datetime import datetime, timezone
+from time import monotonic
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from app.models import CallSegment, TranscriptEntry
+from app.services.agents.orchestrator import AgentOrchestrator
 from app.ws import audio_handler
 from app.ws.audio_handler import (
     _decode_audio_frame,
@@ -332,6 +335,132 @@ class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("completed", last["state"])
         self.assertEqual(2, last["total_steps"])
         self.assertNotIn("details", last)
+        self.assertEqual("completed", session.state)
+        self.assertIsNotNone(session.ended_at)
+
+    async def test_minimal_finalize_survives_orchestrator_shutdown_failure(self):
+        orchestrator = self._make_orchestrator(briefing=True)
+        orchestrator.close_all = AsyncMock(side_effect=RuntimeError("gateway close failed"))
+
+        with self.assertLogs("app.ws.audio_handler", level="WARNING"):
+            statuses, session, transcription_queue = await self._run_finalize(
+                orchestrator, drain_mode="minimal"
+            )
+
+        orchestrator.close_all.assert_awaited_once()
+        orchestrator.graceful_drain.assert_not_awaited()
+        transcription_queue.drain.assert_awaited_once()
+        self.assertEqual("completed", statuses[-1]["state"])
+        self.assertEqual("completed", session.state)
+        self.assertIsNotNone(session.ended_at)
+
+
+class MinimalFinalizeAnalysisShutdownTests(unittest.IsolatedAsyncioTestCase):
+    """Real-orchestrator coverage for the disconnect path.
+
+    The orchestrator's interval analysis tasks are real asyncio tasks here
+    (only the LLM call itself is stubbed), so these tests prove no analysis
+    cycle can run once a minimal finalize has started, even while a slow
+    transcription drain keeps yielding control across analyst intervals.
+    """
+
+    _ANALYST_INTERVAL = 0.02
+
+    def _build_live_orchestrator(self, analysis_calls: list) -> tuple[MagicMock, AgentOrchestrator]:
+        def config(**overrides):
+            base = {
+                "enabled": False,
+                "model_id": "test-model",
+                "prompt": "",
+                "interval_seconds": self._ANALYST_INTERVAL,
+                "sub_types": "",
+                "lenses": "",
+                "knowledge_source_ids": "",
+            }
+            base.update(overrides)
+            return SimpleNamespace(**base)
+
+        websocket = MagicMock()
+        websocket.send_json = AsyncMock()
+        orchestrator = AgentOrchestrator(
+            session_id=uuid.uuid4(),
+            websocket=websocket,
+            directives=[],
+            doc_summaries="",
+            active_questions=[],
+            speakers=[],
+            agent_configs={
+                "audio_gateway": config(),
+                "consolidated_analyst": config(enabled=True, sub_types="question"),
+                "objection_handler": config(),
+                "synthesizer": config(),
+                "opportunity_specialist": config(),
+            },
+        )
+
+        async def record_analysis_cycle(**kwargs):
+            analysis_calls.append(kwargs)
+            return []
+
+        orchestrator.consolidated_agent.run_cycle = record_analysis_cycle
+        return websocket, orchestrator
+
+    async def test_minimal_finalize_stops_analysis_before_slow_transcription_drain(self):
+        analysis_calls: list = []
+        websocket, orchestrator = self._build_live_orchestrator(analysis_calls)
+        await orchestrator.start()
+        self.addAsyncCleanup(AgentOrchestrator.close_all, orchestrator)
+        await orchestrator.feed_transcript("We are worried about rollout timing.", "Alice")
+
+        # Sanity: while the call is live, the real interval analyst task fires.
+        deadline = monotonic() + 2.0
+        while not analysis_calls and monotonic() < deadline:
+            await asyncio.sleep(0.01)
+        self.assertTrue(
+            analysis_calls,
+            "interval analyst never fired while live; harness is not exercising the loop",
+        )
+
+        events: list[str] = []
+        real_close_all = orchestrator.close_all
+
+        async def recording_close_all():
+            events.append("close_all")
+            await real_close_all()
+
+        orchestrator.close_all = recording_close_all
+
+        async def slow_drain():
+            # A long transcription flush after a disconnect: keeps yielding
+            # control across many analyst intervals.
+            events.append("drain_start")
+            for _ in range(10):
+                await asyncio.sleep(self._ANALYST_INTERVAL)
+            events.append("drain_end")
+
+        transcription_queue = SimpleNamespace(add=MagicMock(), drain=slow_drain)
+        session = SimpleNamespace(state="active", ended_at=None)
+        db = FakeSessionContext(session, last_segment_number=None)
+        analysis_calls.clear()
+
+        with (
+            patch("app.ws.audio_handler.async_session", return_value=db),
+            patch("app.ws.audio_handler.flush_diarizer_segments", return_value=[]),
+        ):
+            await audio_handler._finalize_call(
+                uuid.uuid4(),
+                websocket,
+                MagicMock(),
+                orchestrator,
+                transcription_queue,
+                drain_mode="minimal",
+            )
+
+        # Ordering: the orchestrator is stopped before the drain starts.
+        self.assertEqual(["close_all", "drain_start", "drain_end"], events)
+        # Zero analysis cycles ran during or after the minimal finalize.
+        self.assertEqual([], analysis_calls)
+        self.assertTrue(orchestrator._consolidated_task.done())
         self.assertEqual("completed", session.state)
         self.assertIsNotNone(session.ended_at)
 
