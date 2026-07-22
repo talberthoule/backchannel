@@ -5,6 +5,7 @@ interface BriefingViewProps {
   synthesis: SessionSynthesis | null;
   onRefresh: () => Promise<void>;
   refreshing: boolean;
+  error?: string | null;
 }
 
 function Section({ title, items }: { title: string; items: SynthesisSectionItem[] }) {
@@ -85,9 +86,16 @@ function sectionLabels(session: Session) {
   }
 }
 
-export default function BriefingView({ session, synthesis, onRefresh, refreshing }: BriefingViewProps) {
+export default function BriefingView({ session, synthesis, onRefresh, refreshing, error }: BriefingViewProps) {
   const updatedAt = synthesis?.updated_at || synthesis?.created_at || null;
   const labels = sectionLabels(session);
+  const actionLabel = refreshing
+    ? synthesis
+      ? "Refreshing..."
+      : "Generating..."
+    : synthesis
+      ? "Refresh Briefing"
+      : "Generate Briefing";
 
   return (
     <div className="space-y-4">
@@ -109,9 +117,14 @@ export default function BriefingView({ session, synthesis, onRefresh, refreshing
             disabled={refreshing}
             className="rounded-lg bg-brand-teal px-4 py-2 font-body text-sm font-semibold text-white transition-colors hover:bg-brand-teal-dark disabled:cursor-wait disabled:bg-brand-mid-gray"
           >
-            {refreshing ? "Refreshing..." : "Refresh Briefing"}
+            {actionLabel}
           </button>
         </div>
+        {error && (
+          <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2">
+            <p className="font-body text-sm text-red-700">{error}</p>
+          </div>
+        )}
         {synthesis?.status === "error" && synthesis.error_message && (
           <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2">
             <p className="font-body text-sm text-red-700">{synthesis.error_message}</p>
@@ -119,7 +132,9 @@ export default function BriefingView({ session, synthesis, onRefresh, refreshing
         )}
         {!synthesis && (
           <p className="mt-4 font-body text-sm text-brand-mid-gray">
-            No briefing has been generated yet. Refresh the briefing after transcript processing completes.
+            No briefing was generated for this call (for example after "End without briefing" or a
+            dropped connection). Use Generate Briefing to run the briefing synthesis over the saved
+            transcript and insights now.
           </p>
         )}
       </div>

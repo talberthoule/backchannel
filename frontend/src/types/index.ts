@@ -314,6 +314,9 @@ export interface SessionSynthesis {
   clusters: InsightCluster[];
 }
 
+/** How much post-call analysis a deliberate stop should run. */
+export type StopDrainMode = "full" | "skip_analysis";
+
 export interface WSStatusData {
   state: string;
   message: string;
@@ -321,6 +324,7 @@ export interface WSStatusData {
   current_step?: number;
   total_steps?: number;
   progress?: number;
+  steps?: string[];
   details?: Record<string, unknown>;
 }
 
@@ -335,6 +339,7 @@ export interface PostProcessingProgress {
   startedAt: string | null;
   completedAt: string | null;
   confirmed: boolean;
+  steps?: string[];
   details?: Record<string, unknown>;
 }
 

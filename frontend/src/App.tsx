@@ -14,7 +14,7 @@ import { useSession } from "./hooks/useSession";
 import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
 import { useWhatsNew } from "./hooks/useWhatsNew";
 import * as api from "./services/api";
-import type { PostProcessingProgress, Question, Session, SessionGroup, SessionSynthesis, TranscriptEntry, WSStatusData } from "./types";
+import type { PostProcessingProgress, Question, Session, SessionGroup, SessionSynthesis, StopDrainMode, TranscriptEntry, WSStatusData } from "./types";
 
 function idlePostProcessing(): PostProcessingProgress {
   return {
@@ -58,6 +58,7 @@ function progressFromStatus(prev: PostProcessingProgress, data: WSStatusData): P
     startedAt: prev.startedAt ?? new Date().toISOString(),
     completedAt: null,
     confirmed: false,
+    steps: data.steps ?? prev.steps,
     details: data.details ?? prev.details,
   };
 }
@@ -651,7 +652,7 @@ export default function App() {
     await beginCall();
   }, [activeSessionId, refreshQuestions, beginCall]);
 
-  const handleEndCall = useCallback(async () => {
+  const handleEndCall = useCallback(async (drain: StopDrainMode = "full") => {
     setPostProcessing(startPostProcessing());
     beginCallGenerationRef.current += 1;
     beginCallPromiseRef.current = null;
@@ -661,7 +662,7 @@ export default function App() {
     setAudioStarting(false);
     stopCapture();
     stopListening();
-    const backendCompleted = await sendStop();
+    const backendCompleted = await sendStop(drain);
     disconnect();
     liveSessionIdRef.current = null;
     setLiveSessionId(null);

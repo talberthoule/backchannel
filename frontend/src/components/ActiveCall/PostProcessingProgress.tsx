@@ -4,13 +4,33 @@ interface PostProcessingProgressProps {
   progress: ProgressState;
 }
 
-const STEPS = [
-  { id: "speaker_assignment", label: "Speaker assignments" },
-  { id: "final_insights", label: "Final insight pass" },
-  { id: "insight_reconciliation", label: "Insight reconciliation" },
-  { id: "opportunity_matching", label: "Offering matching" },
-  { id: "saving_session", label: "Save session" },
+const STEP_LABELS: Record<string, string> = {
+  speaker_assignment: "Speaker assignments",
+  final_insights: "Final insight pass",
+  insight_reconciliation: "Insight reconciliation",
+  opportunity_matching: "Offering matching",
+  call_briefing: "Call briefing",
+  saving_session: "Save session",
+};
+
+// Fallback for older backends that do not announce the pipeline steps.
+const DEFAULT_STEP_IDS = [
+  "speaker_assignment",
+  "final_insights",
+  "insight_reconciliation",
+  "opportunity_matching",
+  "saving_session",
 ];
+
+// Static class names so Tailwind generates them.
+const GRID_COLS: Record<number, string> = {
+  1: "sm:grid-cols-1",
+  2: "sm:grid-cols-2",
+  3: "sm:grid-cols-3",
+  4: "sm:grid-cols-4",
+  5: "sm:grid-cols-5",
+  6: "sm:grid-cols-6",
+};
 
 function clampProgress(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -42,6 +62,7 @@ export default function PostProcessingProgress({ progress }: PostProcessingProgr
   const percent = clampProgress(progress.progress);
   const currentStep = Math.max(0, Math.min(progress.totalSteps, progress.currentStep));
   const summary = detailsText(progress.details);
+  const stepIds = progress.steps && progress.steps.length > 0 ? progress.steps : DEFAULT_STEP_IDS;
 
   return (
     <section className="border-b border-brand-light-gray-1 bg-surface px-6 py-4">
@@ -71,12 +92,12 @@ export default function PostProcessingProgress({ progress }: PostProcessingProgr
           />
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-5">
-          {STEPS.map((step, index) => {
+        <div className={`mt-3 grid grid-cols-1 gap-2 ${GRID_COLS[stepIds.length] ?? "sm:grid-cols-5"}`}>
+          {stepIds.map((stepId, index) => {
             const state = stepState(index, currentStep, progress.active);
             return (
               <div
-                key={step.id}
+                key={stepId}
                 className={`flex items-center gap-2 rounded-md border px-2.5 py-2 ${
                   state === "active"
                     ? "border-brand-teal bg-brand-teal/5 text-brand-teal"
@@ -94,7 +115,7 @@ export default function PostProcessingProgress({ progress }: PostProcessingProgr
                         : "bg-brand-mid-gray"
                   }`}
                 />
-                <span className="min-w-0 truncate font-body text-xs font-medium">{step.label}</span>
+                <span className="min-w-0 truncate font-body text-xs font-medium">{STEP_LABELS[stepId] ?? stepId}</span>
               </div>
             );
           })}
