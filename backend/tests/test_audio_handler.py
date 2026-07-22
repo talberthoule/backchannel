@@ -269,6 +269,125 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(0, db.commits)
 
 
+class FakeRestoreSessionContext:
+    """Async-session fake for the refusal-restore flow.
+
+    execute() results are consumed in order: finished-segment probe first,
+    then the transcript-entry probe.
+    """
+
+    def __init__(self, session, execute_results, commit_error=None):
+        self.session = session
+        self._execute_results = list(execute_results)
+        self._commit_error = commit_error
+        self.commits = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+    async def get(self, model, item_id):
+        return self.session
+
+    async def execute(self, statement):
+        value = self._execute_results.pop(0)
+        return SimpleNamespace(scalar_one_or_none=lambda: value)
+
+    async def commit(self):
+        if self._commit_error is not None:
+            raise self._commit_error
+        self.commits += 1
+
+
+class RefusalRestoreTests(unittest.IsolatedAsyncioTestCase):
+    """A refused start must never leave a session stranded in "active"."""
+
+    def _active_session(self, ended_at=None):
+        return SimpleNamespace(
+            state="active",
+            ended_at=ended_at,
+            started_at=datetime.now(timezone.utc),
+        )
+
+    async def _restore(self, db):
+        with patch("app.ws.audio_handler.async_session", return_value=db):
+            return await audio_handler._restore_session_after_refusal(uuid.uuid4())
+
+    async def test_fresh_refusal_restores_pre_call_and_clears_started_at(self):
+        session = self._active_session()
+        db = FakeRestoreSessionContext(session, [None, None])
+
+        restored = await self._restore(db)
+
+        self.assertEqual("pre_call", restored)
+        self.assertEqual("pre_call", session.state)
+        self.assertIsNone(session.started_at)
+        self.assertEqual(1, db.commits)
+
+    async def test_resumed_refusal_with_finished_segment_restores_completed(self):
+        session = self._active_session()
+        db = FakeRestoreSessionContext(session, [object(), None])
+
+        restored = await self._restore(db)
+
+        self.assertEqual("completed", restored)
+        self.assertEqual("completed", session.state)
+        self.assertIsNotNone(session.ended_at)
+        self.assertEqual(1, db.commits)
+
+    async def test_completed_zero_segment_imported_session_restores_completed(self):
+        # Imported/analyzed session: transcript entries exist, no call
+        # segments, and the resume PATCH already cleared ended_at.
+        session = self._active_session()
+        db = FakeRestoreSessionContext(session, [None, object()])
+
+        restored = await self._restore(db)
+
+        self.assertEqual("completed", restored)
+        self.assertEqual("completed", session.state)
+        self.assertIsNotNone(session.ended_at)
+
+    async def test_surviving_ended_at_restores_completed_without_probes(self):
+        session = self._active_session(ended_at=datetime.now(timezone.utc))
+        db = FakeRestoreSessionContext(session, [None, None])
+
+        restored = await self._restore(db)
+
+        self.assertEqual("completed", restored)
+        self.assertEqual("completed", session.state)
+
+    async def test_non_active_session_is_left_untouched(self):
+        session = SimpleNamespace(
+            state="completed",
+            ended_at=datetime.now(timezone.utc),
+            started_at=datetime.now(timezone.utc),
+        )
+        db = FakeRestoreSessionContext(session, [None, None])
+
+        restored = await self._restore(db)
+
+        self.assertIsNone(restored)
+        self.assertEqual("completed", session.state)
+        self.assertEqual(0, db.commits)
+
+    async def test_missing_session_is_a_no_op(self):
+        db = FakeRestoreSessionContext(None, [None, None])
+
+        self.assertIsNone(await self._restore(db))
+        self.assertEqual(0, db.commits)
+
+    async def test_restore_failure_is_contained(self):
+        session = self._active_session()
+        db = FakeRestoreSessionContext(
+            session, [None, None], commit_error=RuntimeError("db down")
+        )
+
+        # Must not raise: the refusal proceeds even when the restore fails.
+        self.assertIsNone(await self._restore(db))
+
+
 class TranscriptionReadinessGateTests(unittest.IsolatedAsyncioTestCase):
     def _websocket(self):
         websocket = MagicMock()

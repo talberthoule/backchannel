@@ -219,6 +219,74 @@ async def _refuse_unready_transcription(
     return True
 
 
+def _derive_refusal_restore_state(
+    ended_at: datetime | None,
+    has_finished_segment: bool,
+    has_transcripts: bool,
+) -> str:
+    """Prior state of a session left "active" by a refused start.
+
+    ended_at survives only when no resume PATCH cleared it. A finished call
+    segment or any transcript entry proves the session had a completed life
+    before this start attempt; imported/analyzed sessions can be completed
+    with transcript entries but zero call segments.
+    """
+    if ended_at is not None:
+        return "completed"
+    if has_finished_segment or has_transcripts:
+        return "completed"
+    return "pre_call"
+
+
+async def _restore_session_after_refusal(session_id: uuid.UUID) -> str | None:
+    """Server-side rollback of the optimistic "active" PATCH after a refusal.
+
+    The frontend marks the session active before the socket opens; when the
+    readiness gate then refuses, this restores the row so a refused call can
+    never strand a session in "active" regardless of client behavior.
+    Returns the restored state, or None when nothing needed restoring or the
+    restore itself failed (contained: the refusal still proceeds).
+    """
+    try:
+        async with async_session() as db:
+            session = await db.get(Session, session_id)
+            if session is None or session.state != "active":
+                return None
+
+            result = await db.execute(
+                select(CallSegment)
+                .where(
+                    CallSegment.session_id == session_id,
+                    CallSegment.ended_at.is_not(None),
+                )
+                .limit(1)
+            )
+            has_finished_segment = result.scalar_one_or_none() is not None
+
+            result = await db.execute(
+                select(TranscriptEntry)
+                .where(TranscriptEntry.session_id == session_id)
+                .limit(1)
+            )
+            has_transcripts = result.scalar_one_or_none() is not None
+
+            prior = _derive_refusal_restore_state(
+                session.ended_at, has_finished_segment, has_transcripts
+            )
+            session.state = prior
+            if prior == "completed":
+                if session.ended_at is None:
+                    session.ended_at = datetime.now(timezone.utc)
+            else:
+                # The refused start never ran; undo the optimistic started_at.
+                session.started_at = None
+            await db.commit()
+            return prior
+    except Exception:
+        logger.exception(f"Failed to restore session {session_id} after refused start")
+        return None
+
+
 async def _start_call_segment(
     session_id: uuid.UUID,
 ) -> SegmentAudioWriter | None:
@@ -422,10 +490,15 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         local_only = await get_local_only(db)
         readiness = await get_transcription_readiness(db)
 
-    if await _refuse_unready_transcription(websocket, readiness):
+    if not readiness.ready:
+        # Restore the row before notifying so the client's refresh reads the
+        # corrected state.
+        restored = await _restore_session_after_refusal(session_id)
         logger.warning(
-            f"Refused call start for session {session_id}: {readiness.reason}"
+            f"Refused call start for session {session_id} "
+            f"(restored state: {restored}): {readiness.reason}"
         )
+        await _refuse_unready_transcription(websocket, readiness)
         return
 
     stopped = False

@@ -10,7 +10,7 @@ import ActiveCallView from "./components/ActiveCall/ActiveCallView";
 import PostCallView from "./components/PostCall/PostCallView";
 import { startSingleFlight, useAudioCapture } from "./hooks/useAudioCapture";
 import { useWebSocket } from "./hooks/useWebSocket";
-import { refusalRollbackState } from "./lib/callRefusal";
+import { reconcileRefusedSession } from "./lib/callRefusal";
 import { useSession } from "./hooks/useSession";
 import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
 import { useWhatsNew } from "./hooks/useWhatsNew";
@@ -313,15 +313,30 @@ export default function App() {
           setLiveSessionId(null);
           setInterimText("");
           const refusedSessionId = messageSessionId || activeSessionId;
+          const refusalMessage = msg.data.message;
           if (refusedSessionId) {
-            void api
-              .updateSession(refusedSessionId, {
-                state: refusalRollbackState(segments.length),
-              })
-              .catch(() => null)
-              .then(() => refreshSession())
-              .then(() => api.listSessions().then(setSessions))
-              .catch(() => null);
+            void (async () => {
+              const problem = await reconcileRefusedSession(
+                refusedSessionId,
+                savedTranscripts.length,
+                { getSession: api.getSession, updateSession: api.updateSession },
+              );
+              if (problem) {
+                setStartError(
+                  `${refusalMessage} (The session could not be reset automatically: ` +
+                    `${problem} — reload the app if it still shows an active call.)`,
+                );
+              }
+              await refreshSession().catch((err) =>
+                console.error("Session refresh after refused call failed", err),
+              );
+              await api
+                .listSessions()
+                .then(setSessions)
+                .catch((err) =>
+                  console.error("Session list refresh after refused call failed", err),
+                );
+            })();
           }
         } else if (msg.data.state === "transcription_error") {
           setCaptureError(msg.data.message);
@@ -369,7 +384,7 @@ export default function App() {
         setRuntimeSynthesis(msg.data);
       }
     }
-  }, [messages, activeSessionId, speakers, refreshSpeakers, stopCapture, disconnect, segments, refreshSession]);
+  }, [messages, activeSessionId, speakers, refreshSpeakers, stopCapture, disconnect, savedTranscripts.length, refreshSession]);
 
   const runtimeMatchesView = Boolean(activeSessionId && activeSessionId === runtimeSessionId);
   const viewLiveQuestions = runtimeMatchesView ? liveQuestions : [];
