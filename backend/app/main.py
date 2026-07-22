@@ -8,7 +8,8 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.database import engine
 from app.models import Base
-from app.routers import agents, analyze, artifacts, chat, credentials, retranscribe, diagnostics, directives, documents, groups, imports, knowledge, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts
+from app.release_notes import APP_VERSION
+from app.routers import agents, analyze, artifacts, chat, credentials, retranscribe, diagnostics, directives, documents, groups, imports, knowledge, meta, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts
 from app.services.privacy import LocalOnlyModeError
 from app.ws import audio_handler
 
@@ -194,7 +195,7 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
-app = FastAPI(title="Backchannel", lifespan=lifespan)
+app = FastAPI(title="Backchannel", version=APP_VERSION, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -219,6 +220,7 @@ app.include_router(artifacts.router)
 app.include_router(imports.router)
 app.include_router(analyze.router)
 app.include_router(models.router)
+app.include_router(meta.router)
 app.include_router(credentials.router)
 app.include_router(retranscribe.router)
 app.include_router(chat.router)

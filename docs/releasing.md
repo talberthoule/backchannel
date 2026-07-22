@@ -160,7 +160,9 @@ not AWS credentials or services.
 1. Start from clean `master`, synchronized with `origin/master`.
 2. For a new version, confirm `vX.Y.Z` is unused locally, remotely, and in R2.
    If the annotated tag already exists, verify it and never move it.
-3. Update `.github/release-notes/vX.Y.Z.md`, the public release page, and
+3. Update `.github/release-notes/vX.Y.Z.md`, the in-app version and release
+   notes (`APP_VERSION` and a new `RELEASE_NOTES` entry in
+   `backend/app/release_notes.py`), the public release page, and
    current-version references.
 4. Run the local test/build gate and `git diff --check`, including the focused
    release transport checks:

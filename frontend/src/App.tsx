@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Layout from "./components/Layout";
 import NewSessionModal from "./components/NewSessionModal";
-import AdminPanel from "./components/AdminPanel";
+import AdminPanel, { type AdminTab } from "./components/AdminPanel";
 import OfferingsManager from "./components/OfferingsManager";
 import KnowledgeManager from "./components/KnowledgeManager";
+import WelcomeView from "./components/WelcomeView";
 import PreCallView from "./components/PreCall/PreCallView";
 import ActiveCallView from "./components/ActiveCall/ActiveCallView";
 import PostCallView from "./components/PostCall/PostCallView";
@@ -11,6 +12,7 @@ import { startSingleFlight, useAudioCapture } from "./hooks/useAudioCapture";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { useSession } from "./hooks/useSession";
 import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
+import { useWhatsNew } from "./hooks/useWhatsNew";
 import * as api from "./services/api";
 import type { PostProcessingProgress, Question, Session, SessionGroup, SessionSynthesis, TranscriptEntry, WSStatusData } from "./types";
 
@@ -158,7 +160,9 @@ export default function App() {
   const [showOfferings, setShowOfferings] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [adminTab, setAdminTab] = useState<AdminTab>("agents");
   const [showNewSession, setShowNewSession] = useState(false);
+  const { whatsNew, bannerOpen, acknowledge: acknowledgeWhatsNew } = useWhatsNew();
 
   const {
     session,
@@ -438,13 +442,18 @@ export default function App() {
     setActiveSessionId(null);
   }, [resetSessionRuntimeState]);
 
-  const handleOpenAdmin = useCallback(() => {
+  const openAdmin = useCallback((tab: AdminTab = "agents") => {
     if (!liveSessionIdRef.current) resetSessionRuntimeState();
+    setAdminTab(tab);
     setShowAdmin(true);
     setShowOfferings(false);
     setShowKnowledge(false);
     setActiveSessionId(null);
   }, [resetSessionRuntimeState]);
+
+  const handleOpenAdmin = useCallback(() => openAdmin(), [openAdmin]);
+
+  const handleOpenApiKeys = useCallback(() => openAdmin("keys"), [openAdmin]);
 
   const handleRenameSession = useCallback(async (name: string) => {
     if (!activeSessionId) return;
@@ -733,7 +742,13 @@ export default function App() {
 
   const renderContent = () => {
     if (showAdmin) {
-      return <AdminPanel onBack={() => setShowAdmin(false)} />;
+      return (
+        <AdminPanel
+          onBack={() => setShowAdmin(false)}
+          initialTab={adminTab}
+          highlightSince={whatsNew?.since ?? null}
+        />
+      );
     }
 
     if (showOfferings) {
@@ -746,12 +761,11 @@ export default function App() {
 
     if (!session) {
       return (
-        <div className="flex items-center justify-center h-full text-brand-mid-gray">
-          <div className="text-center">
-            <h2 className="text-2xl font-display font-semibold mb-2">Welcome to Backchannel</h2>
-            <p className="font-body">Select a session from the sidebar or create a new one to get started.</p>
-          </div>
-        </div>
+        <WelcomeView
+          hasSessions={sessions.length > 0}
+          onNewSession={handleNewSession}
+          onOpenApiKeys={handleOpenApiKeys}
+        />
       );
     }
 
@@ -860,6 +874,33 @@ export default function App() {
         onClose={() => setShowNewSession(false)}
         onCreate={handleCreateSession}
       />
+      {bannerOpen && whatsNew && (
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-xl bg-surface px-4 py-3 shadow-lg ring-1 ring-brand-light-gray-1">
+          <p className="font-body text-sm text-brand-dark-gray">
+            Backchannel was updated to <span className="font-mono font-semibold">v{whatsNew.current}</span>
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              acknowledgeWhatsNew();
+              openAdmin("about");
+            }}
+            className="rounded-lg bg-brand-teal px-3 py-1.5 font-body text-xs font-semibold text-white transition-colors hover:bg-brand-teal/90"
+          >
+            See what&apos;s new
+          </button>
+          <button
+            type="button"
+            onClick={acknowledgeWhatsNew}
+            title="Dismiss"
+            className="rounded p-1 text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
     </Layout>
   );
 }

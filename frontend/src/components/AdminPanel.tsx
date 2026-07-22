@@ -5,6 +5,7 @@ import DiarizationCapabilityCard from "./DiarizationCapabilityCard";
 import BatchTranscriptionCard from "./BatchTranscriptionCard";
 import ApiKeysCard from "./ApiKeysCard";
 import PrivacyModeCard from "./PrivacyModeCard";
+import AboutCard from "./AboutCard";
 
 const TYPE_BADGES: Record<string, { label: string; color: string }> = {
   audio: { label: "Audio", color: "#0d9488" },
@@ -45,16 +46,21 @@ const AGENT_SECTIONS: { slugs: string[]; title: string; blurb: string }[] = [
   },
 ];
 
-type TabId = "agents" | "transcription" | "keys";
+export type AdminTab = "agents" | "transcription" | "keys" | "about";
 
-const TABS: { id: TabId; label: string; hint: string }[] = [
+const TABS: { id: AdminTab; label: string; hint: string }[] = [
   { id: "agents", label: "Agents", hint: "Models, prompts, and behavior for each analysis agent" },
   { id: "transcription", label: "Transcription & Audio", hint: "Speaker diarization and batch transcription settings" },
   { id: "keys", label: "API Keys", hint: "Provider credentials for Google and OpenAI models" },
+  { id: "about", label: "About", hint: "Application version and release notes" },
 ];
 
 interface AdminPanelProps {
   onBack: () => void;
+  initialTab?: AdminTab;
+  // Version this browser last ran before an upgrade; forwarded to the About
+  // tab so releases since then are badged, with an unread dot on the tab.
+  highlightSince?: string | null;
 }
 
 // Compact filter-chip toggle used for multi-select groups (knowledge sources,
@@ -523,28 +529,32 @@ function AgentCard({
   );
 }
 
-export default function AdminPanel({ onBack }: AdminPanelProps) {
+export default function AdminPanel({ onBack, initialTab, highlightSince }: AdminPanelProps) {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>([]);
   const [privacy, setPrivacy] = useState<PrivacyConfig | null>(null);
+  const [version, setVersion] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId>("agents");
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab ?? "agents");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [a, m, k, p] = await Promise.all([
+      const [a, m, k, p, meta] = await Promise.all([
         api.listAgents(),
         api.listModels(),
         api.listKnowledgeSources(),
         api.getPrivacyConfig(),
+        // Version is cosmetic here; never let it fail the whole panel
+        api.getAppMeta().catch(() => null),
       ]);
       setAgents(a);
       setModels(m);
       setKnowledgeSources(k);
       setPrivacy(p);
+      setVersion(meta?.version ?? null);
     } catch (err) {
       console.error("Failed to load agent configs", err);
     } finally {
@@ -614,7 +624,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             </svg>
           </button>
           <div>
-            <h1 className="font-display text-lg font-bold text-brand-dark-gray">Administration</h1>
+            <div className="flex items-baseline gap-2">
+              <h1 className="font-display text-lg font-bold text-brand-dark-gray">Administration</h1>
+              {version && (
+                <span className="rounded-full bg-brand-light-gray-2 px-2 py-0.5 font-mono text-[11px] font-medium text-brand-gray" title="Application version">
+                  v{version}
+                </span>
+              )}
+            </div>
             <p className="font-body text-xs text-brand-mid-gray">{activeTabInfo.hint}</p>
           </div>
         </div>
@@ -636,6 +653,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 }`}
               >
                 {tab.label}
+                {tab.id === "about" && highlightSince && (
+                  <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-brand-teal align-middle" title="New release notes" />
+                )}
                 {tab.id === "agents" && !loading && (
                   <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${active ? "bg-brand-teal/10 text-brand-teal" : "bg-brand-light-gray-2 text-brand-mid-gray"}`}>
                     {enabledCount}/{agents.length}
@@ -654,11 +674,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
           </div>
         ) : (
           <div className="mx-auto max-w-4xl">
-            {/* Global switch shown on every tab: it changes which models and
-                agents below can run at all. */}
-            <div className="mb-6">
-              <PrivacyModeCard config={privacy} onChanged={setPrivacy} />
-            </div>
+            {/* Global switch shown on every settings tab: it changes which
+                models and agents below can run at all. About is read-only, so
+                it skips the switch. */}
+            {activeTab !== "about" && (
+              <div className="mb-6">
+                <PrivacyModeCard config={privacy} onChanged={setPrivacy} />
+              </div>
+            )}
 
             {/* All tabs stay mounted so in-progress work (e.g. a diarization
                 benchmark recording) survives tab switches. */}
@@ -717,6 +740,10 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
             <div className={activeTab === "keys" ? "space-y-4" : "hidden"}>
               <ApiKeysCard onChanged={refreshModels} />
+            </div>
+
+            <div className={activeTab === "about" ? "" : "hidden"}>
+              <AboutCard version={version} highlightSince={highlightSince} />
             </div>
           </div>
         )}

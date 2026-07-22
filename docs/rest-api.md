@@ -15,6 +15,16 @@ same paths work against `http://localhost:3000`.
 | --- | --- | --- |
 | GET | `/api/health` | Liveness check |
 
+## App metadata (`routers/meta.py`)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/meta` | Current application version (`{"version": "X.Y.Z"}`) |
+| GET | `/api/meta/release-notes` | In-app release notes, newest first (`version`, `date`, `title`, markdown `body`) |
+
+Both are backed by `backend/app/release_notes.py`, the version's single
+source of truth, which is updated as part of every release.
+
 ## Sessions (`routers/sessions.py`)
 
 | Method | Path | Purpose |

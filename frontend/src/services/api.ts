@@ -1,4 +1,4 @@
-import type { AgentConfig, CallSegment, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, MeetingType, ModelInfo, Offering, PrivacyConfig, Question, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TranscriptionConfig, TranscriptEntry } from "../types";
+import type { AgentConfig, AppMeta, CallSegment, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, MeetingType, ModelInfo, Offering, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TranscriptionConfig, TranscriptEntry } from "../types";
 
 const BASE = "/api";
 
@@ -153,6 +153,11 @@ export const importAudio = async (sessionId: string, file: File): Promise<{ impo
 
 // Models
 export const listModels = () => request<ModelInfo[]>("/models");
+
+// App metadata (version + release notes)
+export const getAppMeta = () => request<AppMeta>("/meta");
+
+export const listReleaseNotes = () => request<ReleaseNote[]>("/meta/release-notes");
 
 export const segmentAudioUrl = (sessionId: string, segmentNumber: number) =>
   `${BASE}/sessions/${sessionId}/segments/${segmentNumber}/audio`;

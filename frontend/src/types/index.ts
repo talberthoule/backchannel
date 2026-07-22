@@ -161,6 +161,17 @@ export interface KnowledgeRecord {
   updated_at: string | null;
 }
 
+export interface AppMeta {
+  version: string;
+}
+
+export interface ReleaseNote {
+  version: string;
+  date: string;
+  title: string;
+  body: string;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;
