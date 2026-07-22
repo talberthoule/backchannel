@@ -36,6 +36,8 @@ router = APIRouter()
 
 # Default colors for auto-created speakers
 _SPEAKER_COLORS = ["#0d9488", "#f59e0b", "#e74c3c", "#2ecc71", "#9b59b6", "#f39c12"]
+_PCM_BYTES_PER_SECOND = 32_000
+_AUDIO_FLOW_LOG_INTERVAL_BYTES = 10 * _PCM_BYTES_PER_SECOND
 
 
 async def _send_status(websocket: WebSocket, state: str, message: str, **extra: Any):
@@ -117,6 +119,15 @@ def _decode_audio_frame(raw_frame: bytes) -> tuple[int, bytes]:
         return 0, raw_frame
     track = raw_frame[0] if raw_frame[0] in (0, 1) else 0
     return track, raw_frame[1:]
+
+
+def _record_audio_flow(track_bytes: list[int], track: int, byte_count: int) -> tuple[float, float] | None:
+    previous_total = sum(track_bytes)
+    track_bytes[track] += byte_count
+    current_total = sum(track_bytes)
+    if current_total // _AUDIO_FLOW_LOG_INTERVAL_BYTES == previous_total // _AUDIO_FLOW_LOG_INTERVAL_BYTES:
+        return None
+    return track_bytes[0] / _PCM_BYTES_PER_SECOND, track_bytes[1] / _PCM_BYTES_PER_SECOND
 
 
 def _system_audio_state_after_message(
@@ -382,6 +393,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
     stopped = False
     audio_chunks_received = 0
     audio_bytes_received = 0
+    audio_bytes_by_track = [0, 0]
     last_audio_status_at = 0.0
     # Track active (unanswered) questions for agent context
     active_questions: list[dict] = list(existing_questions)
@@ -556,13 +568,13 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                             websocket,
                             "audio_received",
                             (
-                                f"Backend received {audio_bytes_received // 32000}s audio "
+                                f"Backend received {audio_bytes_received // _PCM_BYTES_PER_SECOND}s audio "
                                 f"({audio_chunks_received} chunks)"
                             ),
                             details={
                                 "chunks": audio_chunks_received,
                                 "bytes": audio_bytes_received,
-                                "seconds": audio_bytes_received / 32000,
+                                "seconds": audio_bytes_received / _PCM_BYTES_PER_SECOND,
                             },
                         )
 
@@ -594,16 +606,21 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                     else:
                         segments = await asyncio.to_thread(diarizer.feed_audio, pcm_data)
                     system_audio_active = _system_audio_active_after_frame(track, system_audio_active, system_audio_state_explicit)
-                    audio_bytes_total = getattr(audio_websocket, "_abt", 0) + len(pcm_data)
-                    setattr(audio_websocket, "_abt", audio_bytes_total)
-                    if audio_bytes_total // 320000 != (audio_bytes_total - len(pcm_data)) // 320000:
-                        logger.info(f"Audio flow: ~{audio_bytes_total // 32000 / 10:.1f}s received")
+                    audio_flow = _record_audio_flow(audio_bytes_by_track, track, len(pcm_data))
+                    if audio_flow:
+                        mic_seconds, system_seconds = audio_flow
+                        logger.info(
+                            "Audio flow: mic=%.1fs system=%.1fs aggregate_track_seconds=%.1fs",
+                            mic_seconds,
+                            system_seconds,
+                            mic_seconds + system_seconds,
+                        )
                     for seg in segments:
                         logger.info(f"Diarized segment: speaker={seg.speaker_id} bytes={len(seg.pcm_bytes)}")
                         await _send_status(
                             websocket,
                             "audio_segment",
-                            f"Queued {len(seg.pcm_bytes) // 32000}s speech segment for transcription",
+                            f"Queued {len(seg.pcm_bytes) // _PCM_BYTES_PER_SECOND}s speech segment for transcription",
                             details={
                                 "speaker_auto_id": seg.speaker_id,
                                 "bytes": len(seg.pcm_bytes),

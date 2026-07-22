@@ -78,6 +78,30 @@ class AudioFrameDecodingTests(unittest.TestCase):
         self.assertEqual("sys_auto_1", audio_handler._queued_speaker_auto_id("sys_auto_1", 1, True))
 
 
+class AudioFlowAccountingTests(unittest.TestCase):
+    def test_reports_per_connection_seconds_by_track(self):
+        first_connection = [0, 0]
+        second_connection = [0, 0]
+
+        self.assertEqual(
+            (10.0, 0.0),
+            audio_handler._record_audio_flow(first_connection, track=0, byte_count=320_000),
+        )
+        self.assertIsNone(
+            audio_handler._record_audio_flow(second_connection, track=0, byte_count=160_000)
+        )
+        self.assertEqual([160_000, 0], second_connection)
+
+        split_connection = [0, 0]
+        self.assertIsNone(
+            audio_handler._record_audio_flow(split_connection, track=0, byte_count=160_000)
+        )
+        self.assertEqual(
+            (5.0, 5.0),
+            audio_handler._record_audio_flow(split_connection, track=1, byte_count=160_000),
+        )
+
+
 class AudioReconnectTests(unittest.IsolatedAsyncioTestCase):
     async def test_flushes_both_tracks_and_reports_success(self):
         self.assertTrue(hasattr(audio_handler, "_reconnect_audio_pipeline"))
