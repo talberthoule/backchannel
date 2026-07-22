@@ -342,6 +342,32 @@ test('successful main writes the exact compact HEAD JSON contract', async () => 
   assert.deepEqual(stderr, []);
 });
 
+test('main maps the shell-safe create-only sentinel to If-None-Match wildcard', async t => {
+  const directory = await temporaryDirectory(t);
+  const file = join(directory, 'release.zip');
+  await writeFile(file, 'bundle');
+  let condition;
+  const code = await main(
+    [
+      'put', '--bucket', BUCKET, '--key', 'releases/v1.2.3/release.zip',
+      '--file', file, '--content-type', 'application/zip',
+      '--if-none-match', 'create-only',
+    ],
+    {
+      env: CREDENTIALS,
+      fetchImpl: async (_url, init) => {
+        condition = init.headers.get('if-none-match');
+        return new Response(null, {status: 200});
+      },
+      now: () => NOW,
+      stdout: () => {},
+      stderr: () => {},
+    },
+  );
+  assert.equal(code, 0);
+  assert.equal(condition, '*');
+});
+
 test('HTTP status contracts are stable and redacted', async () => {
   for (const [status, expected] of [[404, 44], [412, 42], [403, 1], [500, 1]]) {
     const stderr = [];

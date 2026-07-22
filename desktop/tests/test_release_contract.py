@@ -248,6 +248,12 @@ class ReleaseContractTests(unittest.TestCase):
             PLATFORM_PUBLISHER.index("Updating Latest"),
         )
         self.assertNotIn("delete", PLATFORM_PUBLISHER.lower())
+        self.assertNotIn('"--if-none-match", "*"', PLATFORM_PUBLISHER)
+        self.assertIn('"--if-none-match", "create-only"', PLATFORM_PUBLISHER)
+
+    def test_migration_uses_shell_safe_create_condition(self):
+        self.assertNotIn('"--if-none-match", "*"', MIGRATION)
+        self.assertIn('"--if-none-match", "create-only"', MIGRATION)
 
     def test_spec_bundles_brand_icons(self):
         self.assertIn('"assets"', SPEC)

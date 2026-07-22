@@ -163,7 +163,7 @@ try {
         "--file", $manifestPath,
         "--content-type", "application/json",
         "--cache-control", "no-store",
-        "--if-none-match", "*"
+        "--if-none-match", "create-only"
     )
     Assert-R2Success $create "Creating immutable manifest"
     $manifestCreated = $true
@@ -189,7 +189,7 @@ try {
                 $retryArguments += @("--current-latest", $currentLatestPath)
                 $condition = @("--if-match", $remoteLatest.ETag)
             } else {
-                $condition = @("--if-none-match", "*")
+                $condition = @("--if-none-match", "create-only")
             }
             & python @retryArguments
             if ($LASTEXITCODE -ne 0) {

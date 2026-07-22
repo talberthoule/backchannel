@@ -109,7 +109,7 @@ function Set-Latest {
             }
             $condition = @("--if-match", $remoteLatest.ETag)
         } else {
-            $condition = @("--if-none-match", "*")
+            $condition = @("--if-none-match", "create-only")
         }
 
         Write-Verbose "Updating Latest"
@@ -204,7 +204,7 @@ try {
             "--file", $releasePath,
             "--content-type", "application/json",
             "--cache-control", "no-store",
-            "--if-none-match", "*"
+            "--if-none-match", "create-only"
         )
         if ($createIdentity.Code -eq 42) {
             Assert-ExistingJson $releaseKey $releasePath $currentReleasePath "release identity"
@@ -239,7 +239,7 @@ try {
         "--file", $AssetPath,
         "--content-type", $platform.asset.content_type,
         "--content-disposition", "attachment; filename=`"$($platform.asset.filename)`"",
-        "--if-none-match", "*"
+        "--if-none-match", "create-only"
     )
     if ($upload.Code -eq 42) {
         $existingAsset = Invoke-R2Object -Client $script:R2Client -Arguments @(
@@ -272,7 +272,7 @@ try {
         "--file", $platformPath,
         "--content-type", "application/json",
         "--cache-control", "no-store",
-        "--if-none-match", "*"
+        "--if-none-match", "create-only"
     )
     if ($createPlatform.Code -eq 42) {
         Assert-ExistingJson $platformKey $platformPath $currentPlatformPath "platform manifest"

@@ -8,6 +8,7 @@ import {pathToFileURL} from 'node:url';
 export const EXIT_NOT_FOUND = 44;
 export const EXIT_PRECONDITION_FAILED = 42;
 export const EXIT_USAGE = 2;
+const CREATE_ONLY = 'create-only';
 
 const ACCOUNT_ID_PATTERN = /^[0-9a-f]{32}$/;
 const R2_HOST_PATTERN = /^[0-9a-f]{32}\.r2\.cloudflarestorage\.com$/;
@@ -267,7 +268,8 @@ function parseArguments(argv) {
       ? ['bucket', 'key', 'output']
       : ['bucket', 'key', 'file', 'content-type'];
   if (required.some(name => !options[name])
-      || (options['if-none-match'] && options['if-none-match'] !== '*')
+      || (options['if-none-match']
+        && !['*', CREATE_ONLY].includes(options['if-none-match']))
       || (options['if-none-match'] && options['if-match'])) return null;
   return {operation, options};
 }
@@ -313,7 +315,9 @@ export async function main(argv, dependencies = {}) {
             contentType: options['content-type'],
             contentDisposition: options['content-disposition'],
             cacheControl: options['cache-control'],
-            ifNoneMatch: options['if-none-match'],
+            ifNoneMatch: options['if-none-match'] === CREATE_ONLY
+              ? '*'
+              : options['if-none-match'],
             ifMatch: options['if-match'],
           };
     const result = await client[operation](input);
