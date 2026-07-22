@@ -40,8 +40,9 @@ class ReleaseContractTests(unittest.TestCase):
             "binutils",
             "pip install", "download_models.py",
             "rm -rf desktop/pgsql && python desktop/scripts/download_pg.py",
-            "pyinstaller desktop/backchannel.spec", "desktop/scripts/smoke_test.py",
-            "USER nobody\nRUN python desktop/scripts/smoke_test.py",
+            "pyinstaller desktop/backchannel.spec",
+            "COPY --from=controller smoke_test.py",
+            "USER nobody\nRUN python /tmp/backchannel-smoke-test.py",
             'tar -C dist -czf "/out/Backchannel-linux-x64.tar.gz" Backchannel',
             "FROM scratch AS export",
             "COPY --from=bundle /out/Backchannel-linux-x64.tar.gz /",
@@ -49,6 +50,15 @@ class ReleaseContractTests(unittest.TestCase):
             self.assertIn(value, LINUX_DOCKERFILE)
         self.assertNotIn("ENTRYPOINT", LINUX_DOCKERFILE)
         self.assertNotIn("CMD", LINUX_DOCKERFILE)
+        self.assertLess(
+            LINUX_DOCKERFILE.index("pyinstaller desktop/backchannel.spec"),
+            LINUX_DOCKERFILE.index("COPY --from=controller"),
+        )
+        self.assertIn('--build-context "controller=$ControllerScripts"', COORDINATOR)
+        self.assertIn(
+            '-ControllerScripts (Join-Path $repoRoot "desktop\\scripts")',
+            COORDINATOR,
+        )
 
     def test_workflow_is_dispatch_only_macos_handoff(self):
         self.assertIn("workflow_dispatch:", WORKFLOW)

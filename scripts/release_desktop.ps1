@@ -23,10 +23,14 @@ function Invoke-Checked {
     } finally {
         $ErrorActionPreference = $savedErrorActionPreference
     }
+    $result = @($output | ForEach-Object { $_.ToString() })
     if ($exitCode -ne 0) {
+        $details = ($result -join [Environment]::NewLine).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($details)) {
+            throw "$Action failed$([Environment]::NewLine)$details"
+        }
         throw "$Action failed"
     }
-    $result = @($output | ForEach-Object { $_.ToString() })
     if ($result.Count -gt 0) {
         Write-Output -NoEnumerate $result
     }
@@ -349,7 +353,7 @@ function Build-WindowsRelease {
                 --distpath dist --workpath build --noconfirm
         } | Out-Null
         Invoke-Checked "Smoke testing Windows desktop bundle" {
-            & $venvPython desktop/scripts/smoke_test.py
+            & $venvPython (Join-Path $PSScriptRoot "..\desktop\scripts\smoke_test.py")
         } | Out-Null
     } finally {
         Pop-Location
@@ -370,6 +374,7 @@ function Build-LinuxRelease {
     param(
         [Parameter(Mandatory = $true)][string]$Source,
         [Parameter(Mandatory = $true)][string]$Dockerfile,
+        [Parameter(Mandatory = $true)][string]$ControllerScripts,
         [Parameter(Mandatory = $true)][string]$OutputDirectory,
         [Parameter(Mandatory = $true)][string]$AssetPath
     )
@@ -378,6 +383,7 @@ function Build-LinuxRelease {
     Invoke-Checked "Building Linux release container" {
         & $script:Docker build `
             --file $Dockerfile `
+            --build-context "controller=$ControllerScripts" `
             --target export `
             --output "type=local,dest=$OutputDirectory" `
             $Source
@@ -588,6 +594,7 @@ try {
             $linuxAsset = Build-LinuxRelease `
                 -Source $sourceRoot `
                 -Dockerfile (Join-Path $repoRoot "desktop\Dockerfile.release-linux") `
+                -ControllerScripts (Join-Path $repoRoot "desktop\scripts") `
                 -OutputDirectory (Join-Path $temporary "linux-output") `
                 -AssetPath $linuxAsset
             Invoke-WithR2Credentials -Credentials $releaseCredentials -Command {

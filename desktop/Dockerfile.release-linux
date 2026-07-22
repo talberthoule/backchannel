@@ -20,8 +20,9 @@ COPY --from=frontend /src/frontend/dist frontend/dist
 RUN python backend/scripts/download_models.py
 RUN rm -rf desktop/pgsql && python desktop/scripts/download_pg.py
 RUN pyinstaller desktop/backchannel.spec --distpath dist --workpath build --noconfirm
+COPY --from=controller smoke_test.py /tmp/backchannel-smoke-test.py
 USER nobody
-RUN python desktop/scripts/smoke_test.py
+RUN python /tmp/backchannel-smoke-test.py
 USER root
 RUN mkdir /out && tar -C dist -czf "/out/Backchannel-linux-x64.tar.gz" Backchannel
 

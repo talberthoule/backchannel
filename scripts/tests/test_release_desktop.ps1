@@ -66,6 +66,17 @@ $stderrOutput = Invoke-Checked "successful stderr" {
 }
 Assert-True ($stderrOutput[-1] -eq "native progress") `
     "Successful native stderr output was not captured"
+$failureMessage = ""
+try {
+    Invoke-Checked "diagnostic command" {
+        & powershell -NoProfile -Command `
+            "[Console]::Error.WriteLine('visible failure detail'); exit 7"
+    }
+} catch {
+    $failureMessage = $_.Exception.Message
+}
+Assert-True ($failureMessage.Contains("visible failure detail")) `
+    "Invoke-Checked must preserve failed command output"
 
 . ([scriptblock]::Create($definitions["Invoke-GhJson"]))
 $script:Gh = {
@@ -157,6 +168,8 @@ Assert-True $main.Contains('-Dockerfile (Join-Path $repoRoot "desktop\Dockerfile
     "Linux must use controller tooling while building the exact tagged source"
 Assert-True $main.Contains('worktree add --detach $sourceRoot $tag.Commit') `
     "Release worktree must use the already-verified peeled commit"
+Assert-True $source.Contains('Join-Path $PSScriptRoot "..\desktop\scripts\smoke_test.py"') `
+    "Windows must use the current controller smoke gate against the tagged bundle"
 Assert-True $main.Contains('Verifying release worktree commit') `
     "Release worktree HEAD is not verified after creation"
 foreach ($platformId in @("windows-x64", "linux-x64")) {
