@@ -36,17 +36,19 @@ schema, or API changes.
 
 Update the fresh-install defaults in `Settings` and `SEED_CONFIGS`.
 
-Add Alembic revision `016` as a one-time data migration. On upgrade it:
+Add a versioned startup seed step using the existing `create_all` and seed
+path. When `defaults.models.version` is not `v0.2.5`, it:
 
 1. sets the five named agent rows to `gemini-3.6-flash`;
 2. sets Objection Handler to `gemini-3.5-flash-lite`; and
 3. inserts or replaces `transcription.batch.model_id` with
    `gemini-3.5-flash-lite`.
 
-The migration intentionally replaces existing selections. It runs once, so
+The versioned seed intentionally replaces existing selections. It runs once, so
 users can still choose another model afterward and that selection will
-survive restarts. Downgrade only restores rows/settings that still contain
-the new v0.2.5 defaults, avoiding destruction of choices made after upgrade.
+survive restarts. Backchannel's production databases are created and evolved
+through this startup path rather than Alembic, so no unused migration revision
+is added.
 
 ## API Compatibility
 
@@ -62,8 +64,8 @@ models. Existing live-audio routing remains isolated from the new entries.
 - Seed tests assert the six requested agent assignments.
 - Transcription tests assert `gemini-3.5-flash-lite` is the supported batch
   default and both new models are excluded from live audio.
-- Migration acceptance starts from saved non-default values, upgrades to
-  revision 016, and verifies all seven forced assignments.
+- Startup acceptance starts from saved non-default values, applies the missing
+  `v0.2.5` marker, and verifies all seven forced assignments plus the marker.
 - Run the complete backend suite, frontend tests/build, desktop release
   contracts, and v0.2.5 release gates before tagging.
 

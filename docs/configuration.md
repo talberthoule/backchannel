@@ -61,7 +61,7 @@ features that stop working before the mode is applied
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `GEMINI_MODEL` | `gemini-3.1-flash-live-preview` | Seeded default for the live audio gateway |
-| `BATCH_TRANSCRIBER_MODEL` | `gemini-3.5-flash` | Fallback batch transcription model; the persisted `transcription.batch.model_id` app setting takes precedence |
+| `BATCH_TRANSCRIBER_MODEL` | `gemini-3.5-flash-lite` | Fallback batch transcription model; the persisted `transcription.batch.model_id` app setting takes precedence |
 | `REFINEMENT_MODEL` | `gemini-3.5-flash` | Model for refinement passes |
 | `REFINEMENT_INTERVAL_SECONDS` | 45 | Refinement cadence |
 
@@ -121,7 +121,7 @@ required key, and capabilities:
 | `supports_live_audio` | Usable as the live audio gateway |
 
 Current entries include Google Gemini text/audio models
-(`gemini-3.5-flash`, `gemini-3-flash-preview`, `gemini-3.1-pro-preview`,
+(`gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.5-flash`, `gemini-3-flash-preview`, `gemini-3.1-pro-preview`,
 `gemini-3.1-flash-lite`, the `gemini-2.5` family), the live gateway model
 `gemini-3.1-flash-live-preview`, OpenAI text models (`gpt-5.5`, `gpt-5.4`,
 `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.2`), OpenAI realtime transcription

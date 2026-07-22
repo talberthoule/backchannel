@@ -67,6 +67,19 @@ class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("gpt-4o-transcribe", ids)
         self.assertIn("gpt-4o-mini-transcribe", ids)
 
+    def test_latest_gemini_models_are_selectable_for_text_and_batch_audio(self):
+        from app.config import MODEL_REGISTRY
+
+        by_id = {model["id"]: model for model in MODEL_REGISTRY}
+        for model_id in ("gemini-3.6-flash", "gemini-3.5-flash-lite"):
+            model = by_id[model_id]
+            self.assertEqual("Google", model["provider"])
+            self.assertEqual("stable", model["tier"])
+            self.assertEqual("google", model["requires_key"])
+            self.assertTrue(model["supports_text"])
+            self.assertTrue(model["supports_batch_audio"])
+            self.assertFalse(model["supports_live_audio"])
+
     def test_openai_realtime_entries_are_live_audio_only(self):
         from app.config import MODEL_REGISTRY
 

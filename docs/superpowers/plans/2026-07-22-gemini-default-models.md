@@ -4,7 +4,7 @@
 
 **Goal:** Add Gemini 3.6 Flash and Gemini 3.5 Flash-Lite as selectable models, force the requested v0.2.5 defaults once on existing installations, and preserve normal selection afterward.
 
-**Architecture:** `MODEL_REGISTRY` remains the single selector source. Fresh installs use updated settings and seed rows; Alembic revision 016 performs the one-time existing-install update. No frontend, schema, provider-client, or Live API changes are needed.
+**Architecture:** `MODEL_REGISTRY` remains the single selector source. Fresh installs use updated settings and seed rows; the existing startup seed path performs the one-time existing-install update behind a `v0.2.5` marker. No frontend, schema, provider-client, or Live API changes are needed.
 
 **Tech Stack:** Python 3.12, FastAPI, SQLAlchemy/Alembic, PostgreSQL, `unittest`, Google Gen AI SDK.
 
@@ -82,20 +82,20 @@ Set `BATCH_TRANSCRIBER_MODEL = "gemini-3.5-flash-lite"` and update only the six 
 
 Run the Step 2 command. Expected: all focused tests pass.
 
-### Task 2: One-time existing-install migration
+### Task 2: One-time existing-install update
 
 **Files:**
-- Create: `backend/alembic/versions/016_default_gemini_models.py`
-- Create: `backend/tests/test_default_model_migration.py`
+- Modify: `backend/app/services/seed_agents.py`
+- Test: `backend/tests/test_seed_agents.py`
 
 **Interfaces:**
-- Alembic revision: `016`, down revision: `015`.
-- Upgrade sets six agent rows plus `transcription.batch.model_id`.
-- Downgrade reverts only values still equal to the v0.2.5 assignments.
+- Marker: `defaults.models.version == "v0.2.5"`.
+- Missing marker sets six agent rows plus `transcription.batch.model_id`.
+- Current marker performs no writes, preserving later selections.
 
-- [ ] **Step 1: Write the failing migration contract test**
+- [ ] **Step 1: Write the failing versioned-seed contract test**
 
-Load revision 016 with `importlib.util.spec_from_file_location`, patch `migration.op.execute`, call `upgrade()`, and assert the bound statement parameters contain exactly:
+Use a fake async session, call `apply_default_model_version(db)`, and assert the agent assignments contain exactly:
 
 ```python
 {
@@ -108,72 +108,36 @@ Load revision 016 with `importlib.util.spec_from_file_location`, patch `migratio
 }
 ```
 
-Also assert the final upgrade statement upserts key `transcription.batch.model_id` with value `gemini-3.5-flash-lite`.
+Also assert the step writes `transcription.batch.model_id = gemini-3.5-flash-lite` and `defaults.models.version = v0.2.5`. A second test supplies the current marker and asserts there are no writes.
 
-- [ ] **Step 2: Run the migration test and observe RED**
+- [ ] **Step 2: Run the seed test and observe RED**
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m unittest tests.test_default_model_migration -v
+& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m unittest tests.test_seed_agents -v
 ```
 
-Expected: failure because revision 016 is absent.
+Expected: failure because the versioned seed helper is absent.
 
-- [ ] **Step 3: Implement revision 016**
+- [ ] **Step 3: Implement the versioned seed step**
 
-Use these mappings and parameter-bound statements:
+Use these constants and call the helper after normal seeding commits:
 
 ```python
-AGENT_DEFAULTS = {
-    "consolidated_analyst": ("gemini-3.6-flash", "gemini-3.5-flash"),
-    "opportunity_specialist": ("gemini-3.6-flash", "gemini-3.5-flash"),
-    "brief_meeting_lens": ("gemini-3.6-flash", "gemini-3.5-flash"),
-    "brief_discovery_lens": ("gemini-3.6-flash", "gemini-3.5-flash"),
-    "brief_arbiter": ("gemini-3.6-flash", "gemini-3.1-pro-preview"),
-    "objection_handler": ("gemini-3.5-flash-lite", "gemini-3.5-flash"),
+DEFAULT_MODEL_VERSION_KEY = "defaults.models.version"
+DEFAULT_MODEL_VERSION = "v0.2.5"
+FORCED_DEFAULT_MODELS = {
+    "consolidated_analyst": "gemini-3.6-flash",
+    "opportunity_specialist": "gemini-3.6-flash",
+    "brief_meeting_lens": "gemini-3.6-flash",
+    "brief_discovery_lens": "gemini-3.6-flash",
+    "brief_arbiter": "gemini-3.6-flash",
+    "objection_handler": "gemini-3.5-flash-lite",
 }
-BATCH_KEY = "transcription.batch.model_id"
-BATCH_DEFAULT = "gemini-3.5-flash-lite"
-PREVIOUS_BATCH_DEFAULT = "gemini-3.5-flash"
-
-
-def upgrade():
-    for slug, (model_id, _) in AGENT_DEFAULTS.items():
-        op.execute(
-            sa.text(
-                "UPDATE agent_configs SET model_id = :model_id WHERE slug = :slug"
-            ).bindparams(model_id=model_id, slug=slug)
-        )
-    op.execute(
-        sa.text(
-            "INSERT INTO app_settings (key, value) VALUES (:key, :value) "
-            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
-        ).bindparams(key=BATCH_KEY, value=BATCH_DEFAULT)
-    )
-
-
-def downgrade():
-    for slug, (new_model_id, old_model_id) in AGENT_DEFAULTS.items():
-        op.execute(
-            sa.text(
-                "UPDATE agent_configs SET model_id = :old_model_id "
-                "WHERE slug = :slug AND model_id = :new_model_id"
-            ).bindparams(
-                old_model_id=old_model_id,
-                slug=slug,
-                new_model_id=new_model_id,
-            )
-        )
-    op.execute(
-        sa.text(
-            "UPDATE app_settings SET value = :old_value "
-            "WHERE key = :key AND value = :new_value"
-        ).bindparams(
-            old_value=PREVIOUS_BATCH_DEFAULT,
-            key=BATCH_KEY,
-            new_value=BATCH_DEFAULT,
-        )
-    )
 ```
+
+`apply_default_model_version(db)` returns immediately when the marker matches.
+Otherwise it updates the six rows, inserts or updates the batch setting and
+marker, commits, and returns `True`.
 
 - [ ] **Step 4: Run the migration and focused model tests**
 
@@ -202,14 +166,14 @@ Change the `BATCH_TRANSCRIBER_MODEL` default to `gemini-3.5-flash-lite` and incl
 
 Expected: backend and frontend tests pass; frontend builds; dist PWA checks pass.
 
-- [ ] **Step 3: Verify the migration against Docker PostgreSQL**
+- [ ] **Step 3: Verify the startup update against Docker PostgreSQL**
 
-Rebuild the Backchannel stack from the clean worktree, run `alembic upgrade head`, and query `agent_configs` plus `app_settings` to confirm all seven assignments. Expected: exact values from Tasks 1 and 2.
+Rebuild and restart the Backchannel backend from the clean worktree, then query `agent_configs` plus `app_settings` to confirm all seven assignments and `defaults.models.version = v0.2.5`. Expected: exact values from Tasks 1 and 2.
 
 - [ ] **Step 4: Commit and push the implementation**
 
 ```powershell
-git add -- backend/app/config.py backend/app/services/seed_agents.py backend/alembic/versions/016_default_gemini_models.py backend/tests/test_llm_router.py backend/tests/test_seed_agents.py backend/tests/test_transcription_runtime.py backend/tests/test_default_model_migration.py docs/configuration.md docs/superpowers/plans/2026-07-22-gemini-default-models.md
+git add -- backend/app/config.py backend/app/services/seed_agents.py backend/tests/test_llm_router.py backend/tests/test_seed_agents.py backend/tests/test_transcription_runtime.py docs/configuration.md docs/superpowers/plans/2026-07-22-gemini-default-models.md docs/superpowers/specs/2026-07-22-gemini-default-models-design.md
 git diff --cached --check
 git commit -m "feat: add latest Gemini model defaults"
 git push origin master

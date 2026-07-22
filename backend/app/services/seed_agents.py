@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AgentConfig
+from app.services.app_settings import get_app_setting, set_app_setting
 from app.services.agents.prompts import (
     AUDIO_BRIDGE_PROMPT,
     BRIEF_ARBITER_PROMPT,
@@ -17,6 +18,7 @@ from app.services.agents.prompts import (
     OPPORTUNITY_SPECIALIST_PROMPT,
     PRINCIPAL_AGENT_PROMPT,
 )
+from app.services.transcription_runtime import SETTING_BATCH_TRANSCRIBER_MODEL
 
 # Default prompt lookup by slug (used for reset endpoint)
 DEFAULT_PROMPTS = {
@@ -46,12 +48,15 @@ OBSOLETE_MODEL_IDS = {
     "gemini-2.5-pro-preview-05-06",
 }
 
-OLD_DEFAULT_MODELS = {
-    "consolidated_analyst": "gemini-3-flash-preview",
-    "opportunity_specialist": "gemini-3-flash-preview",
-    "brief_meeting_lens": "gemini-3-flash-preview",
-    "brief_discovery_lens": "gemini-3-flash-preview",
-    "objection_handler": "gemini-3.1-flash-lite",
+DEFAULT_MODEL_VERSION_KEY = "defaults.models.version"
+DEFAULT_MODEL_VERSION = "v0.2.5"
+FORCED_DEFAULT_MODELS = {
+    "consolidated_analyst": "gemini-3.6-flash",
+    "opportunity_specialist": "gemini-3.6-flash",
+    "brief_meeting_lens": "gemini-3.6-flash",
+    "brief_discovery_lens": "gemini-3.6-flash",
+    "brief_arbiter": "gemini-3.6-flash",
+    "objection_handler": "gemini-3.5-flash-lite",
 }
 
 # Rows still on one of these old default intervals migrate to the new seeded
@@ -98,7 +103,7 @@ SEED_CONFIGS = [
         "name": "Consolidated Analyst",
         "description": "Analyzes transcript through configurable lenses in a single call. Default lenses: strategic follow-up questions, observations, product & service opportunities, and action items.",
         "agent_type": "text",
-        "model_id": "gemini-3.5-flash",
+        "model_id": "gemini-3.6-flash",
         "prompt": CONSOLIDATED_ANALYST_BASE_PROMPT,
         "enabled": True,
         "sub_types": "question,observation,opportunity,action_item",
@@ -111,7 +116,7 @@ SEED_CONFIGS = [
         "name": "Objection Handler",
         "description": "Fast-cycle scanner that flags objections the moment they surface and pairs each with an immediate suggested response plus the underlying strategic concern. Runs on a short interval over only the freshest transcript with a low-latency model.",
         "agent_type": "text",
-        "model_id": "gemini-3.5-flash",
+        "model_id": "gemini-3.5-flash-lite",
         "prompt": OBJECTION_HANDLER_PROMPT,
         "enabled": True,
         "sub_types": "",
@@ -135,7 +140,7 @@ SEED_CONFIGS = [
         "name": "Opportunity Specialist",
         "description": "Enrichment agent that runs after the Consolidated Analyst: when a lens surfaces an Opportunity insight, it matches that insight against the configured knowledge sources (offerings catalog by default) and attaches the match to the card. It does not create new insights.",
         "agent_type": "db",
-        "model_id": "gemini-3.5-flash",
+        "model_id": "gemini-3.6-flash",
         "prompt": OPPORTUNITY_SPECIALIST_PROMPT,
         "enabled": True,
         "sub_types": "",
@@ -147,7 +152,7 @@ SEED_CONFIGS = [
         "name": "Briefing Meeting Lens",
         "description": "Independent briefing lens that captures the meeting record: outcomes, decisions, blockers, commitments, and follow-ups.",
         "agent_type": "meta",
-        "model_id": "gemini-3.5-flash",
+        "model_id": "gemini-3.6-flash",
         "prompt": BRIEF_MEETING_LENS_PROMPT,
         "enabled": True,
         "sub_types": "",
@@ -158,7 +163,7 @@ SEED_CONFIGS = [
         "name": "Briefing Discovery Lens",
         "description": "Independent briefing lens that captures the broader sensemaking signal: objectives, pains, learning gaps, opportunities, risks, and open discovery paths.",
         "agent_type": "meta",
-        "model_id": "gemini-3.5-flash",
+        "model_id": "gemini-3.6-flash",
         "prompt": BRIEF_DISCOVERY_LENS_PROMPT,
         "enabled": True,
         "sub_types": "",
@@ -169,7 +174,7 @@ SEED_CONFIGS = [
         "name": "Briefing Arbiter",
         "description": "Compares the two independent briefing lenses, reconciles agreement and conflict, and settles the live/post-call briefing.",
         "agent_type": "meta",
-        "model_id": "gemini-3.1-pro-preview",
+        "model_id": "gemini-3.6-flash",
         "prompt": BRIEF_ARBITER_PROMPT,
         "enabled": True,
         "sub_types": "",
@@ -203,6 +208,29 @@ async def seed_agent_configs(db: AsyncSession):
         if existing is not None:
             _seed_missing_lenses(existing)
     await db.commit()
+    await apply_default_model_version(db)
+
+
+async def apply_default_model_version(db: AsyncSession) -> bool:
+    """Apply the v0.2.5 defaults once, then preserve later selections."""
+    current_version = await get_app_setting(db, DEFAULT_MODEL_VERSION_KEY, "")
+    if current_version == DEFAULT_MODEL_VERSION:
+        return False
+
+    result = await db.execute(
+        select(AgentConfig).where(AgentConfig.slug.in_(FORCED_DEFAULT_MODELS))
+    )
+    for agent in result.scalars():
+        agent.model_id = FORCED_DEFAULT_MODELS[agent.slug]
+
+    await set_app_setting(
+        db,
+        SETTING_BATCH_TRANSCRIBER_MODEL,
+        "gemini-3.5-flash-lite",
+    )
+    await set_app_setting(db, DEFAULT_MODEL_VERSION_KEY, DEFAULT_MODEL_VERSION)
+    await db.commit()
+    return True
 
 
 def _seed_missing_lenses(existing: AgentConfig):
@@ -224,9 +252,7 @@ def _seed_missing_lenses(existing: AgentConfig):
 def _should_refresh_seeded_model(existing: AgentConfig, cfg: dict) -> bool:
     if existing.model_id == cfg["model_id"]:
         return False
-    if existing.model_id in OBSOLETE_MODEL_IDS:
-        return True
-    return existing.model_id == OLD_DEFAULT_MODELS.get(existing.slug)
+    return existing.model_id in OBSOLETE_MODEL_IDS
 
 
 def _should_refresh_seeded_prompt(existing: AgentConfig, cfg: dict) -> bool:

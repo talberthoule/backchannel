@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://callhelper:changeme@db:5432/callhelper"
     FRONTEND_DIST: str = ""  # path to built frontend; empty = nginx serves it (Docker)
     GEMINI_MODEL: str = "gemini-3.1-flash-live-preview"
-    BATCH_TRANSCRIBER_MODEL: str = "gemini-3.5-flash"
+    BATCH_TRANSCRIBER_MODEL: str = "gemini-3.5-flash-lite"
     REFINEMENT_MODEL: str = "gemini-3.5-flash"
     REFINEMENT_INTERVAL_SECONDS: int = 45
 
@@ -53,6 +53,28 @@ settings = Settings()
 # Add new models here as they become available.
 
 MODEL_REGISTRY: list[dict] = [
+    {
+        "id": "gemini-3.5-flash-lite",
+        "name": "Gemini 3.5 Flash-Lite",
+        "provider": "Google",
+        "description": "Stable low-latency model for high-throughput, cost-effective multimodal tasks",
+        "tier": "stable",
+        "requires_key": "google",
+        "supports_text": True,
+        "supports_batch_audio": True,
+        "supports_live_audio": False,
+    },
+    {
+        "id": "gemini-3.6-flash",
+        "name": "Gemini 3.6 Flash",
+        "provider": "Google",
+        "description": "Stable frontier-speed model for agentic, coding, and multimodal reasoning tasks",
+        "tier": "stable",
+        "requires_key": "google",
+        "supports_text": True,
+        "supports_batch_audio": True,
+        "supports_live_audio": False,
+    },
     {
         "id": "gemini-3.5-flash",
         "name": "Gemini 3.5 Flash",
