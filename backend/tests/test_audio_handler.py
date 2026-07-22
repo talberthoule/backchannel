@@ -190,6 +190,24 @@ class AudioReconnectTests(unittest.IsolatedAsyncioTestCase):
 
 
 class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
+    async def test_initial_segment_does_not_add_resume_marker_from_active_state(self):
+        session_id = uuid.uuid4()
+        session = SimpleNamespace(
+            state="active",
+            started_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            ended_at=None,
+        )
+        db = FakeSessionContext(session, last_segment_number=None)
+
+        with (
+            patch("app.ws.audio_handler.async_session", return_value=db),
+            patch("app.ws.audio_handler.SegmentAudioWriter", return_value=MagicMock()),
+        ):
+            await audio_handler._start_call_segment(session_id)
+
+        self.assertEqual(1, len(db.added))
+        self.assertIsInstance(db.added[0], CallSegment)
+
     async def test_starts_next_segment_and_adds_resume_marker(self):
         self.assertTrue(hasattr(audio_handler, "_start_call_segment"))
         start_call_segment = audio_handler._start_call_segment
@@ -214,7 +232,7 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=41),
             ),
         ):
-            result = await start_call_segment(session_id, is_resume=True)
+            result = await start_call_segment(session_id)
 
         self.assertIs(writer, result)
         writer_class.assert_called_once_with(session_id, 3)
@@ -243,7 +261,7 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
             patch("app.ws.audio_handler.async_session", return_value=db),
             patch("app.ws.audio_handler.SegmentAudioWriter") as writer_class,
         ):
-            result = await start_call_segment(session_id, is_resume=False)
+            result = await start_call_segment(session_id)
 
         self.assertIsNone(result)
         writer_class.assert_not_called()

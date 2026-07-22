@@ -199,7 +199,6 @@ async def _reconnect_audio_pipeline(
 
 async def _start_call_segment(
     session_id: uuid.UUID,
-    is_resume: bool,
 ) -> SegmentAudioWriter | None:
     async with async_session() as db:
         session = await db.get(Session, session_id)
@@ -222,7 +221,7 @@ async def _start_call_segment(
         db.add(segment)
         audio_writer = SegmentAudioWriter(session_id, segment_number)
 
-        if is_resume:
+        if last_segment_number is not None:
             sequence = await get_next_sequence(session_id, db)
             marker = TranscriptEntry(
                 session_id=session_id,
@@ -345,8 +344,6 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         doc_summaries = await get_document_summaries(session_id, db)
         meeting_type = session.meeting_type
         meeting_context = session.meeting_context or session.notes or ""
-        is_resume = session.state == "completed" or session.started_at is not None
-
         # Load existing questions to give agents context on what to track
         result = await db.execute(
             select(Question).where(
@@ -542,7 +539,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         )
         await websocket.send_json({"type": "status", "data": {"state": "active", "message": active_message}})
 
-        audio_writer = await _start_call_segment(session_id, is_resume)
+        audio_writer = await _start_call_segment(session_id)
 
         while not stopped:
             try:
