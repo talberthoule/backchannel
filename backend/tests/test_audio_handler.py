@@ -281,6 +281,46 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SegmentAudioPersistenceTests(unittest.TestCase):
+    def test_auxiliary_append_failure_keeps_mixed_writer_active(self):
+        self.assertTrue(hasattr(audio_handler, "_append_audio_frames"))
+        writers = {
+            "mixed": MagicMock(),
+            "mic": MagicMock(),
+            "system": MagicMock(),
+        }
+        writers["mic"].append.side_effect = OSError("mic disk error")
+
+        with self.assertLogs("app.ws.audio_handler", level="WARNING"):
+            audio_handler._append_audio_frames(
+                writers,
+                (b"mixed", b"mic", b"system"),
+            )
+
+        writers["mixed"].append.assert_called_once_with(b"mixed")
+        writers["system"].append.assert_called_once_with(b"system")
+        self.assertIsNone(writers["mic"])
+        self.assertIsNotNone(writers["mixed"])
+
+    def test_auxiliary_close_failure_still_returns_mixed_path(self):
+        writers = {
+            "mixed": MagicMock(close=MagicMock(return_value="audio/mixed.wav")),
+            "mic": MagicMock(close=MagicMock(side_effect=OSError("mic close error"))),
+            "system": MagicMock(close=MagicMock(return_value="audio/sys.wav")),
+        }
+
+        try:
+            with self.assertLogs("app.ws.audio_handler", level="WARNING"):
+                paths = audio_handler._close_audio_writers(
+                    writers,
+                    split_track_established=True,
+                )
+        except OSError as exc:
+            self.fail(f"auxiliary close failure escaped: {exc}")
+
+        self.assertEqual("audio/mixed.wav", paths["audio_path"])
+        self.assertIsNone(paths["mic_audio_path"])
+        self.assertEqual("audio/sys.wav", paths["system_audio_path"])
+
     def test_split_track_paths_are_retained(self):
         self.assertTrue(hasattr(audio_handler, "_close_audio_writers"))
         writers = {

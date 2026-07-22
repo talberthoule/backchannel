@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import CallSegment, Session, TranscriptEntry
-from app.routers.imports import _transcribe_audio_diarized
+from app.routers.imports import _transcribe_audio_diarized, _transcribe_split_audio_diarized
 from app.services.diarizer_runtime import get_diarizer_runtime_config
 from app.services.llm import registry_entry
 from app.services.privacy import get_local_only, is_local_model
@@ -47,30 +47,19 @@ async def _transcribe_stored_segments(
     for segment in segments:
         mic_path = _stored_audio_path(segment.mic_audio_path)
         system_path = _stored_audio_path(segment.system_audio_path)
-        if mic_path or system_path:
-            if mic_path:
-                total += await _transcribe_audio_diarized(
-                    mic_path.read_bytes(),
-                    "wav",
-                    session_id,
-                    db,
-                    model_id=model_id,
-                    registry=mic_registry,
-                    auto_speaker_map=mic_speaker_map,
-                    runtime_config=runtime_config,
-                    local_track=True,
-                )
-            if system_path:
-                total += await _transcribe_audio_diarized(
-                    system_path.read_bytes(),
-                    "wav",
-                    session_id,
-                    db,
-                    model_id=model_id,
-                    registry=remote_registry,
-                    auto_speaker_map=remote_speaker_map,
-                    runtime_config=runtime_config,
-                )
+        if mic_path and system_path:
+            total += await _transcribe_split_audio_diarized(
+                mic_path.read_bytes(),
+                system_path.read_bytes(),
+                session_id,
+                db,
+                model_id=model_id,
+                mic_registry=mic_registry,
+                remote_registry=remote_registry,
+                mic_auto_speaker_map=mic_speaker_map,
+                remote_auto_speaker_map=remote_speaker_map,
+                runtime_config=runtime_config,
+            )
             continue
 
         mixed_path = _stored_audio_path(segment.audio_path)
@@ -81,6 +70,29 @@ async def _transcribe_stored_segments(
                 session_id,
                 db,
                 model_id=model_id,
+            )
+        elif mic_path:
+            total += await _transcribe_audio_diarized(
+                mic_path.read_bytes(),
+                "wav",
+                session_id,
+                db,
+                model_id=model_id,
+                registry=mic_registry,
+                auto_speaker_map=mic_speaker_map,
+                runtime_config=runtime_config,
+                local_track=True,
+            )
+        elif system_path:
+            total += await _transcribe_audio_diarized(
+                system_path.read_bytes(),
+                "wav",
+                session_id,
+                db,
+                model_id=model_id,
+                registry=remote_registry,
+                auto_speaker_map=remote_speaker_map,
+                runtime_config=runtime_config,
             )
 
     return total
