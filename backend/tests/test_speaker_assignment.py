@@ -19,7 +19,7 @@ def _speaker(name: str, is_user: bool) -> Speaker:
 
 
 class SpeakerAssignmentTests(unittest.TestCase):
-    def test_live_mic_resolves_to_sole_user_when_system_audio_is_active(self):
+    def test_live_mic_resolves_to_sole_user_when_split_track_is_established(self):
         user = _speaker("Me", True)
         participant = _speaker("Remote", False)
 

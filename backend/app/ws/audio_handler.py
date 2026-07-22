@@ -130,22 +130,18 @@ def _record_audio_flow(track_bytes: list[int], track: int, byte_count: int) -> t
     return track_bytes[0] / _PCM_BYTES_PER_SECOND, track_bytes[1] / _PCM_BYTES_PER_SECOND
 
 
-def _system_audio_state_after_message(
-    data: dict,
-    current: bool,
-    explicit: bool,
-) -> tuple[bool, bool]:
+def _split_track_established_after_message(data: dict, current: bool) -> bool:
     if data.get("type") == "track_state" and data.get("track") == 1:
-        return data.get("active") is True, True
-    return current, explicit
+        return current or data.get("active") is True
+    return current
 
 
-def _system_audio_active_after_frame(track: int, current: bool, explicit: bool) -> bool:
-    return True if track == 1 and not explicit else current
+def _split_track_established_after_frame(track: int, current: bool) -> bool:
+    return current or track == 1
 
 
-def _queued_speaker_auto_id(auto_id: str, track: int, system_audio_active: bool) -> str:
-    return f"mic_{auto_id}" if track == 0 and system_audio_active else auto_id
+def _queued_speaker_auto_id(auto_id: str, track: int, split_track_established: bool) -> str:
+    return f"mic_{auto_id}" if track == 0 and split_track_established else auto_id
 
 
 def _normalize_speaker_auto_id(auto_id: str) -> tuple[str, bool]:
@@ -174,10 +170,10 @@ async def _reconnect_audio_pipeline(
     sys_diarizer: Any | None,
     transcription_queue: OrderedTranscriptionQueue,
     orchestrator: AgentOrchestrator,
-    system_audio_active: bool = False,
+    split_track_established: bool = False,
 ) -> bool:
     for seg in await asyncio.to_thread(flush_diarizer_segments, diarizer):
-        transcription_queue.add(_queued_speaker_auto_id(seg.speaker_id, 0, system_audio_active), seg.pcm_bytes)
+        transcription_queue.add(_queued_speaker_auto_id(seg.speaker_id, 0, split_track_established), seg.pcm_bytes)
     diarizer.reset()
     if sys_diarizer is not None:
         for seg in await asyncio.to_thread(flush_diarizer_segments, sys_diarizer):
@@ -253,7 +249,7 @@ async def _finalize_call(
     transcription_queue: OrderedTranscriptionQueue,
     audio_writer: SegmentAudioWriter | None = None,
     sys_diarizer: Any = None,
-    system_audio_active: bool = False,
+    split_track_established: bool = False,
 ):
     total_steps = 6 if orchestrator.briefing_enabled() else 5
     await _send_post_processing_status(
@@ -267,7 +263,7 @@ async def _finalize_call(
     await _flush_remaining_audio(
         diarizer,
         transcription_queue,
-        speaker_prefix="mic_" if system_audio_active else "",
+        speaker_prefix="mic_" if split_track_established else "",
     )
     if sys_diarizer is not None:
         await _flush_remaining_audio(sys_diarizer, transcription_queue, speaker_prefix="sys_")
@@ -417,8 +413,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
     diarizer = create_diarizer(runtime_config.effective_live_diarizer, registry=registry)
     # Second diarizer for the system-audio track, created on first use.
     sys_diarizer = None
-    system_audio_active = False
-    system_audio_state_explicit = False
+    split_track_established = False
     mixer = TrackMixer()
     transcriber = create_transcriber(transcription_config.batch_model_id)
 
@@ -605,7 +600,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                             seg.speaker_id = f"sys_{seg.speaker_id}"
                     else:
                         segments = await asyncio.to_thread(diarizer.feed_audio, pcm_data)
-                    system_audio_active = _system_audio_active_after_frame(track, system_audio_active, system_audio_state_explicit)
+                    split_track_established = _split_track_established_after_frame(track, split_track_established)
                     audio_flow = _record_audio_flow(audio_bytes_by_track, track, len(pcm_data))
                     if audio_flow:
                         mic_seconds, system_seconds = audio_flow
@@ -626,17 +621,17 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                                 "bytes": len(seg.pcm_bytes),
                             },
                         )
-                        queued_speaker = _queued_speaker_auto_id(seg.speaker_id, track, system_audio_active)
+                        queued_speaker = _queued_speaker_auto_id(seg.speaker_id, track, split_track_established)
                         transcription_queue.add(queued_speaker, seg.pcm_bytes)
 
                 except Exception as e:
                     logger.warning(f"Audio send failed, reconnecting: {e}")
-                    if not await _reconnect_audio_pipeline(websocket, diarizer, sys_diarizer, transcription_queue, orchestrator, system_audio_active):
+                    if not await _reconnect_audio_pipeline(websocket, diarizer, sys_diarizer, transcription_queue, orchestrator, split_track_established):
                         break
 
             elif "text" in message:
                 data = json.loads(message["text"])
-                system_audio_active, system_audio_state_explicit = _system_audio_state_after_message(data, system_audio_active, system_audio_state_explicit)
+                split_track_established = _split_track_established_after_message(data, split_track_established)
                 if data.get("type") == "stop":
                     stopped = True
                     break
@@ -651,7 +646,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
 
             # Check audio gateway health
             if not await orchestrator.check_health():
-                if not await _reconnect_audio_pipeline(websocket, diarizer, sys_diarizer, transcription_queue, orchestrator, system_audio_active):
+                if not await _reconnect_audio_pipeline(websocket, diarizer, sys_diarizer, transcription_queue, orchestrator, split_track_established):
                     break
 
     except Exception as e:
@@ -663,5 +658,5 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
     finally:
         await _finalize_call(
             session_id, websocket, diarizer, orchestrator, transcription_queue,
-            audio_writer=audio_writer, sys_diarizer=sys_diarizer, system_audio_active=system_audio_active,
+            audio_writer=audio_writer, sys_diarizer=sys_diarizer, split_track_established=split_track_established,
         )
