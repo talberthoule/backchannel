@@ -344,6 +344,7 @@ export default function PostCallView({
           onRefresh={onRefreshSpeakers}
           onRefreshSession={onRefreshSession}
           onRefreshQuestions={onRefreshQuestions}
+          onRefreshSynthesis={onRefreshSynthesis}
           disabled={speakerActionsLocked}
           disabledReason="Post-processing must complete before speaker mappings or insight enhancement can be changed."
         />

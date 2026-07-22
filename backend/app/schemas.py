@@ -111,6 +111,7 @@ class EnhanceInsightsOut(BaseModel):
     enhanced_insights: int
     speaker_context_dirty: bool
     speaker_context_enhanced_at: datetime | None = None
+    briefing_updated: bool
 
 
 class SynthesisSectionItem(BaseModel):

@@ -1,5 +1,10 @@
 import unittest
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
+from app.routers.sessions import enhance_insights_after_speaker_changes
 from app.services.speaker_context_enhancer import (
     build_enhancement_prompt,
     speaker_update_changes_enhancement_context,
@@ -109,6 +114,65 @@ class SpeakerContextEnhancerTests(unittest.TestCase):
             "Michael to revise. Context: Michael stated the ask. Participant 2 remains unchanged.",
             replace_speaker_labels(text, replacements),
         )
+
+
+class SpeakerContextEnhancementRouteTests(unittest.IsolatedAsyncioTestCase):
+    async def test_unchanged_context_skips_all_ai_work(self):
+        enhanced_at = datetime.now(timezone.utc)
+        session = SimpleNamespace(
+            state="completed",
+            speaker_context_dirty=False,
+            speaker_context_enhanced_at=enhanced_at,
+        )
+        db = SimpleNamespace(get=AsyncMock(return_value=session))
+
+        with (
+            patch(
+                "app.routers.sessions.run_speaker_context_enhancement",
+                new=AsyncMock(),
+            ) as enhance,
+            patch(
+                "app.services.briefing_synthesis.run_session_synthesis",
+                new=AsyncMock(),
+            ) as refresh_briefing,
+        ):
+            result = await enhance_insights_after_speaker_changes(uuid4(), db)
+
+        enhance.assert_not_awaited()
+        refresh_briefing.assert_not_awaited()
+        self.assertEqual(0, result["enhanced_insights"])
+        self.assertFalse(result["briefing_updated"])
+        self.assertEqual(enhanced_at, result["speaker_context_enhanced_at"])
+
+    async def test_successful_insight_revalidation_regenerates_briefing(self):
+        session = SimpleNamespace(
+            state="completed",
+            speaker_context_dirty=True,
+            speaker_context_enhanced_at=None,
+        )
+        db = SimpleNamespace(get=AsyncMock(return_value=session))
+        enhancement_result = {
+            "applied_operations": 2,
+            "enhanced_insights": 4,
+            "speaker_context_dirty": False,
+            "speaker_context_enhanced_at": datetime.now(timezone.utc),
+        }
+
+        with (
+            patch(
+                "app.routers.sessions.run_speaker_context_enhancement",
+                new=AsyncMock(return_value=enhancement_result),
+            ),
+            patch(
+                "app.services.briefing_synthesis.run_session_synthesis",
+                new=AsyncMock(return_value=SimpleNamespace(status="completed")),
+            ) as refresh_briefing,
+        ):
+            result = await enhance_insights_after_speaker_changes(uuid4(), db)
+
+        refresh_briefing.assert_awaited_once()
+        self.assertTrue(result["briefing_updated"])
+        self.assertEqual(4, result["enhanced_insights"])
 
 
 if __name__ == "__main__":

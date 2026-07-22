@@ -121,6 +121,7 @@ export interface EnhanceInsightsResult {
   enhanced_insights: number;
   speaker_context_dirty: boolean;
   speaker_context_enhanced_at: string | null;
+  briefing_updated: boolean;
 }
 
 export interface Offering {

@@ -19,6 +19,7 @@ from app.schemas import (
     SessionUpdate,
 )
 from app.services.agents.orchestrator import get_live_orchestrator
+from app.services import briefing_synthesis
 from app.services.meeting_context import normalize_meeting_type
 from app.services.speaker_context_enhancer import run_speaker_context_enhancement
 
@@ -134,8 +135,23 @@ async def enhance_insights_after_speaker_changes(session_id: uuid.UUID, db: Asyn
         raise HTTPException(404, "Session not found")
     if session.state != "completed":
         raise HTTPException(400, "Insight enhancement is available after the session is completed")
+    if not session.speaker_context_dirty:
+        return {
+            "applied_operations": 0,
+            "enhanced_insights": 0,
+            "speaker_context_dirty": False,
+            "speaker_context_enhanced_at": session.speaker_context_enhanced_at,
+            "briefing_updated": False,
+        }
     try:
-        return await run_speaker_context_enhancement(session_id)
+        result = await run_speaker_context_enhancement(session_id)
+        result["briefing_updated"] = False
+        if not result["speaker_context_dirty"]:
+            synthesis = await briefing_synthesis.run_session_synthesis(session_id, mode="post_call")
+            result["briefing_updated"] = bool(
+                synthesis and synthesis.status in {"completed", "partial"}
+            )
+        return result
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
 
