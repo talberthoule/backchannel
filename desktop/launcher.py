@@ -3,6 +3,9 @@
 import json
 import logging
 import os
+import shutil
+import socket
+import subprocess
 import sys
 import threading
 import time
@@ -23,6 +26,10 @@ LOCK_NAME = "launcher.json"
 STOP_NAME = "stop"
 LOOPBACK_HOST = "127.0.0.1"
 BROWSER_HOST = "localhost"
+DEFAULT_APP_PORT = 8474
+WINDOWS_BROWSERS = ("msedge.exe", "chrome.exe")
+MACOS_BROWSERS = ("Microsoft Edge", "Google Chrome")
+LINUX_BROWSERS = ("microsoft-edge", "google-chrome", "chromium")
 
 
 def app_url(port: int) -> str:
@@ -31,6 +38,89 @@ def app_url(port: int) -> str:
 
 def health_url(port: int) -> str:
     return f"http://{LOOPBACK_HOST}:{port}/api/health"
+
+
+def select_app_port() -> int:
+    try:
+        with socket.socket() as candidate:
+            candidate.bind((LOOPBACK_HOST, DEFAULT_APP_PORT))
+    except OSError:
+        return free_port()
+    return DEFAULT_APP_PORT
+
+
+def _windows_browser_path() -> str | None:
+    try:
+        import winreg
+    except ImportError:
+        winreg = None
+
+    if winreg is not None:
+        for executable in WINDOWS_BROWSERS:
+            key_name = (
+                "Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\"
+                + executable
+            )
+            for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                try:
+                    key = winreg.OpenKey(hive, key_name)
+                    try:
+                        value = winreg.QueryValue(key, None)
+                    finally:
+                        winreg.CloseKey(key)
+                except OSError:
+                    continue
+                path = Path(str(value).strip('"'))
+                if path.is_file():
+                    return str(path)
+
+    installs = (
+        ("PROGRAMFILES(X86)", "Microsoft", "Edge", "Application", "msedge.exe"),
+        ("PROGRAMFILES", "Microsoft", "Edge", "Application", "msedge.exe"),
+        ("LOCALAPPDATA", "Microsoft", "Edge", "Application", "msedge.exe"),
+        ("PROGRAMFILES", "Google", "Chrome", "Application", "chrome.exe"),
+        ("PROGRAMFILES(X86)", "Google", "Chrome", "Application", "chrome.exe"),
+        ("LOCALAPPDATA", "Google", "Chrome", "Application", "chrome.exe"),
+    )
+    for environment, *parts in installs:
+        root = os.environ.get(environment)
+        if root:
+            path = Path(root).joinpath(*parts)
+            if path.is_file():
+                return str(path)
+    return None
+
+
+def browser_opener(url: str) -> None:
+    if sys.platform == "darwin":
+        for application in MACOS_BROWSERS:
+            try:
+                result = subprocess.run(
+                    ["open", "-na", application, "--args", f"--app={url}"],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except OSError:
+                break
+            if result.returncode == 0:
+                return
+    else:
+        browser = None
+        if sys.platform == "win32":
+            browser = _windows_browser_path()
+        elif sys.platform.startswith("linux"):
+            browser = next(
+                (path for name in LINUX_BROWSERS if (path := shutil.which(name))),
+                None,
+            )
+        if browser:
+            try:
+                subprocess.Popen([browser, f"--app={url}"])
+                return
+            except OSError:
+                pass
+    webbrowser.open(url)
 
 
 def existing_instance_port(data_dir: Path) -> int | None:
@@ -154,7 +244,7 @@ def _run_tray(port: int, data_dir: Path) -> None:
         menu=pystray.Menu(
             pystray.MenuItem(
                 "Open Backchannel",
-                lambda _icon, _item: webbrowser.open(app_url(port)),
+                lambda _icon, _item: browser_opener(app_url(port)),
             ),
             pystray.MenuItem(
                 "Open data folder",
@@ -180,7 +270,7 @@ def run(headless: bool = False) -> int:
     if port is not None:
         log.info("instance already running on port %s", port)
         if not headless:
-            webbrowser.open(app_url(port))
+            browser_opener(app_url(port))
         return 0
 
     pg = EmbeddedPostgres(resource("pgsql"), data_dir)
@@ -205,7 +295,7 @@ def run(headless: bool = False) -> int:
             if other_port is not None:
                 log.info("other instance is healthy on port %s", other_port)
                 if not headless:
-                    webbrowser.open(app_url(other_port))
+                    browser_opener(app_url(other_port))
                 return 0
             log.error("no other instance became healthy within timeout")
             if not headless:
@@ -222,7 +312,7 @@ def run(headless: bool = False) -> int:
             _error_dialog(f"PostgreSQL failed to start. See log: {pg.log}")
         return 1
 
-    app_port = free_port()
+    app_port = select_app_port()
     os.environ["DATABASE_URL"] = pg.database_url(pg_port)
     os.environ["DATA_DIR"] = str(data_dir / "data")
     os.environ["FRONTEND_DIST"] = str(resource("frontend"))
@@ -252,7 +342,7 @@ def run(headless: bool = False) -> int:
         if headless:
             _wait_for_stop_file(data_dir)
         else:
-            webbrowser.open(app_url(app_port))
+            browser_opener(app_url(app_port))
             _run_tray(app_port, data_dir)
     finally:
         log.info("shutting down")
