@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "test": "node --test src/hooks/useAudioCapture.test.mjs",
+    "test:pwa": "node scripts/verify-pwa-assets.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

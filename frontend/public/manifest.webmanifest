@@ -1,0 +1,24 @@
+{
+  "name": "Backchannel",
+  "short_name": "Backchannel",
+  "description": "Backchannel is a self-hosted, open-source (MIT) AI meeting assistant that runs on your own hardware -- no bot joins your call, and your audio never leaves your infrastructure except for the model API calls you configure.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
