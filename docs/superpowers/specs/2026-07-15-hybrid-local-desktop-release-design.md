@@ -13,7 +13,7 @@ passes its native smoke test, without waiting for either of the other builds.
 
 Preserve immutable release metadata, canonical tag and commit provenance,
 monotonic Latest, private Cloudflare R2 delivery, and source-only GitHub
-releases. Prevent the temporary macOS handoff artifact from accumulating in
+releases. Prevent the temporary macOS handoff cache from accumulating in
 GitHub Actions storage.
 
 The design must publish the already-created `v0.2.4` tag without moving it.
@@ -212,29 +212,31 @@ workflow definition and release tools come from current `master`; a separate
 checkout supplies application source from `release_ref`. This permits recovery
 of `v0.2.4` while ensuring PyInstaller consumes only that tag's source.
 
-The workflow contains two trust-separated jobs:
+The workflow contains three trust-separated jobs:
 
 1. A `macos-latest` build job verifies the peeled source commit, retains the
    current frontend, dependency, model, embedded PostgreSQL, PyInstaller,
-   smoke-test, and zip sequence, then uploads exactly
-   `Backchannel-macos-arm64.zip` with `retention-days: 1`. It has only
-   `contents: read` and receives no Cloudflare credentials.
-2. A protected Ubuntu publication job downloads only that run's named artifact,
-   invokes the shared platform publisher with step-scoped production R2
-   credentials, verifies macOS visibility, and deletes the artifact by its
-   exact GitHub artifact ID. Its permissions add only the Actions write access
-   required for that deletion.
+   smoke-test, and zip sequence, then saves exactly
+   `Backchannel-macos-arm64.zip` under a run-unique cache key containing the run,
+   attempt, expected commit, and bundle SHA-256. It has only `contents: read`
+   and receives no Cloudflare credentials.
+2. A fresh protected `macos-latest` publication job restores only that exact
+   key with no fallback, verifies the bundle SHA-256 before the credentialed
+   step, invokes the shared platform publisher with step-scoped production R2
+   credentials, and has only `contents: read` permission.
+3. A secret-free cleanup job depends on both prior jobs, runs after publisher
+   success or failure, filters returned cache records by the exact key and ref,
+   requires one match, and deletes only that GitHub cache ID with `actions:
+   write` permission.
 
-The one-day retention is the fallback for cancellation or failure before the
-cleanup step. Before dispatch, the local coordinator deletes only stale,
-completed artifacts produced by this macOS handoff workflow with the exact
-Backchannel macOS artifact name. It never deletes active-run or unrelated
-workflow artifacts. A cleanup failure blocks a new dispatch so storage debt is
-visible before another macOS build starts.
+The deletion step runs on ordinary failures as well as success. GitHub's cache
+eviction is the fallback for cancellation or runner loss. Legacy one-day
+handoff artifacts remain eligible for the coordinator's existing bounded stale
+cleanup; neither cleanup path deletes active-run cache entries, unrelated
+storage, or R2 objects.
 
-If publication succeeds but immediate artifact deletion fails, the macOS asset
-remains available in R2 and the workflow reports the cleanup failure; the
-one-day retention still removes the temporary GitHub copy.
+If publication succeeds but immediate cache deletion fails, the macOS asset
+remains available in R2 and the workflow reports the cleanup failure.
 
 ## Progressive portal behavior
 
@@ -294,11 +296,11 @@ Automated tests must prove:
 - the local coordinator is tag-pinned, publishes Windows before beginning the
   Linux build, and never waits for macOS before either local publication;
 - the Linux container exports only a smoke-tested named tarball;
-- the macOS build job is source-pinned, credential-free, and one-day retained;
-- the macOS publication job scopes R2 credentials, publishes before deleting
-  its exact artifact, and does not attach an executable to GitHub; and
-- proactive cleanup selects only stale artifacts from the macOS handoff
-  workflow.
+- the macOS build job is source-pinned and credential-free;
+- the macOS publication job scopes R2 credentials and attaches no executable to
+  GitHub; and
+- the secret-free cleanup job deletes the checksum-verified handoff by exact
+  cache ID.
 
 Live acceptance for `v0.2.4` must then:
 
@@ -308,8 +310,8 @@ Live acceptance for `v0.2.4` must then:
    waiting for macOS.
 3. Build and smoke-test macOS in GitHub and verify it appears after the
    protected publication job.
-4. Confirm the temporary macOS artifact is deleted and the repository artifact
-   inventory returns to zero.
+4. Confirm the temporary macOS cache is deleted and no workflow artifact was
+   created.
 5. Download each available platform through the entitled portal and verify its
    bytes against the platform manifest size and SHA-256.
 6. Verify `release.json`, all three platform manifests, monotonic Latest, the
@@ -323,7 +325,7 @@ Live acceptance for `v0.2.4` must then:
   compare-and-swap conflicts.
 - Waiting for all three builds would preserve the old aggregate format but
   directly violate progressive platform availability.
-- Publishing macOS from the build job would remove the temporary artifact but
+- Publishing macOS from the build job would remove the temporary handoff but
   would expose production R2 credentials inside the untrusted build boundary.
 - Keeping Windows and Linux in the GitHub matrix would remain coupled to
   Actions artifact quota and spend unnecessary runner minutes.
@@ -336,7 +338,7 @@ Live acceptance for `v0.2.4` must then:
 
 - Code signing, notarization, MSI, DMG, DEB, RPM, and automatic updates remain
   separate release work.
-- Cleanup does not delete arbitrary repository artifacts or any R2 object.
+- Cleanup does not delete arbitrary repository caches, artifacts, or R2 objects.
 - The design does not publish Docker registry images or change the source-built
   Docker Compose delivery model.
 - The design does not change desktop runtime behavior, diarization, recipient

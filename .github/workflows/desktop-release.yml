@@ -27,24 +27,26 @@ jobs:
       contents: read
     outputs:
       published_at: ${{ steps.release.outputs.published_at }}
+      cache_key: ${{ steps.handoff.outputs.cache_key }}
+      bundle_sha256: ${{ steps.handoff.outputs.bundle_sha256 }}
     steps:
       - name: Checkout controller
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: controller
 
       - name: Checkout release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.release_ref }}
           fetch-depth: 0
           path: source
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
@@ -104,44 +106,65 @@ jobs:
 
       - name: Zip macOS bundle
         working-directory: source
-        run: ditto -c -k --keepParent dist/Backchannel.app ../controller/Backchannel-macos-arm64.zip
+        run: |
+          mkdir -p ../controller/release-assets
+          ditto -c -k --keepParent dist/Backchannel.app ../controller/release-assets/Backchannel-macos-arm64.zip
 
-      - name: Upload macOS handoff
-        uses: actions/upload-artifact@v4
+      - name: Prepare macOS cache handoff
+        id: handoff
+        working-directory: controller
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_sha256="$(shasum -a 256 release-assets/Backchannel-macos-arm64.zip | awk '{print $1}')"
+          cache_key="backchannel-macos-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${EXPECTED_COMMIT}-${bundle_sha256}"
+          echo "bundle_sha256=$bundle_sha256" >> "$GITHUB_OUTPUT"
+          echo "cache_key=$cache_key" >> "$GITHUB_OUTPUT"
+
+      - name: Save macOS handoff
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          name: Backchannel-macos-arm64.zip
-          path: controller/Backchannel-macos-arm64.zip
-          retention-days: 1
+          path: controller/release-assets/Backchannel-macos-arm64.zip
+          key: ${{ steps.handoff.outputs.cache_key }}
 
   publish-macos:
     needs: build-macos
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     environment: production
     permissions:
       contents: read
-      actions: write
     concurrency:
       group: backchannel-r2-publish
       cancel-in-progress: false
     steps:
       - name: Checkout controller
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: controller
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
-      - name: Download macOS handoff
-        uses: actions/download-artifact@v4
+      - name: Restore exact macOS handoff
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          name: Backchannel-macos-arm64.zip
-          path: controller/release-assets
+          path: controller/release-assets/Backchannel-macos-arm64.zip
+          key: ${{ needs.build-macos.outputs.cache_key }}
+          fail-on-cache-miss: true
+
+      - name: Verify macOS handoff digest
+        working-directory: controller
+        env:
+          BUNDLE_SHA256: ${{ needs.build-macos.outputs.bundle_sha256 }}
+        shell: bash
+        run: echo "$BUNDLE_SHA256  release-assets/Backchannel-macos-arm64.zip" | shasum -a 256 -c -
 
       - name: Publish verified macOS platform
         working-directory: controller
@@ -156,12 +179,27 @@ jobs:
         shell: pwsh
         run: ./scripts/publish_release_platform.ps1 -Version $env:RELEASE_REF -Commit $env:EXPECTED_COMMIT -PublishedAt $env:PUBLISHED_AT -PlatformId macos-arm64 -AssetPath release-assets/Backchannel-macos-arm64.zip -Confirm:$false
 
-      - name: Delete exact macOS handoff
-        working-directory: controller
+  cleanup-macos:
+    needs: [build-macos, publish-macos]
+    if: ${{ always() && needs.build-macos.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete exact macOS handoff cache
         env:
+          CACHE_KEY: ${{ needs.build-macos.outputs.cache_key }}
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          artifact_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --jq '[.artifacts[] | select(.name == "Backchannel-macos-arm64.zip")] | if length == 1 then .[0].id else error("expected one macOS artifact") end')"
-          gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id"
+          cache_id=""
+          matches=0
+          while IFS=$'\t' read -r returned_id returned_key returned_ref; do
+            if [[ "$returned_key" == "$CACHE_KEY" && "$returned_ref" == "$GITHUB_REF" ]]; then
+              cache_id="$returned_id"
+              matches=$((matches + 1))
+            fi
+          done < <(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/caches" -f key="$CACHE_KEY" -f ref="$GITHUB_REF" --jq '.actions_caches[] | [.id, .key, .ref] | @tsv')
+          [[ "$matches" -eq 1 ]]
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$cache_id"

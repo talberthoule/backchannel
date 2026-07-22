@@ -43,8 +43,10 @@ Releases span source-built Docker images, the Cloudflare documentation site,
 and tag-built Linux x64, macOS arm64, and Windows x64 desktop bundles. Follow
 `docs/releasing.md` and run `scripts/release_desktop.ps1 -Version vX.Y.Z` from
 clean synchronized `master`. The coordinator builds Windows and Linux locally
-and dispatches the credential-free macOS build; each smoke-tested platform is
-published independently through immutable progressive R2 metadata. Historical
+and dispatches the credential-free macOS build. A fresh protected macOS runner
+restores its exact checksum-verified cache handoff and publishes it; a separate
+secret-free cleanup job deletes the exact cache ID. Each smoke-tested platform
+is published independently through immutable progressive R2 metadata. Historical
 aggregate manifests remain supported, but aggregate and progressive metadata
 must not coexist for one version. A `master` push does not update existing
 desktop downloads. GitHub releases keep source tags and notes only.

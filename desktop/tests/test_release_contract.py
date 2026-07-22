@@ -60,10 +60,13 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertIn("runs-on: macos-latest", WORKFLOW)
         self.assertNotIn("windows-latest", WORKFLOW)
         self.assertNotIn("ubuntu-latest\n            asset:", WORKFLOW)
-        self.assertIn("retention-days: 1", WORKFLOW)
+        self.assertNotIn("retention-days:", WORKFLOW)
+        self.assertNotIn("actions/upload-artifact", WORKFLOW)
+        self.assertNotIn("actions/download-artifact", WORKFLOW)
 
     def test_macos_build_is_credential_free_and_publish_is_separate(self):
-        build, publish = WORKFLOW.split("  publish-macos:", 1)
+        build, remainder = WORKFLOW.split("  publish-macos:", 1)
+        publish, cleanup = remainder.split("  cleanup-macos:", 1)
         for name in (
             "CLOUDFLARE_ACCOUNT_ID",
             "R2_ACCESS_KEY_ID",
@@ -73,17 +76,45 @@ class ReleaseContractTests(unittest.TestCase):
                 self.assertNotIn(name, build)
                 self.assertIn(name, publish)
         self.assertIn("environment: production", publish)
-        self.assertIn("actions: write", publish)
+        self.assertIn("runs-on: macos-latest", publish)
+        self.assertNotIn("actions: write", publish)
+        self.assertIn("actions: write", cleanup)
         self.assertIn("group: backchannel-r2-publish", publish)
         self.assertIn("cancel-in-progress: false", publish)
         self.assertIn("publish_release_platform.ps1", publish)
         self.assertLess(
-            publish.index("publish_release_platform.ps1"),
-            publish.index("--method DELETE"),
+            WORKFLOW.index("publish_release_platform.ps1"),
+            WORKFLOW.index("--method DELETE"),
         )
 
+    def test_release_actions_are_pinned_to_immutable_commits(self):
+        refs = re.findall(
+            r"uses:\s+actions/(?:checkout|setup-node|setup-python|cache(?:/(?:save|restore))?)@([^\s#]+)",
+            WORKFLOW,
+        )
+        self.assertEqual(len(refs), 9)
+        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in refs))
+
+    def test_macos_cleanup_is_separate_from_production_credentials(self):
+        self.assertIn("  cleanup-macos:", WORKFLOW)
+        publish, cleanup = WORKFLOW.split("  publish-macos:", 1)[1].split(
+            "  cleanup-macos:", 1
+        )
+        self.assertNotIn("actions: write", publish)
+        self.assertIn("actions: write", cleanup)
+        self.assertNotIn("environment: production", cleanup)
+        for name in (
+            "CLOUDFLARE_ACCOUNT_ID",
+            "R2_ACCESS_KEY_ID",
+            "R2_SECRET_ACCESS_KEY",
+        ):
+            self.assertNotIn(name, cleanup)
+        self.assertIn("needs: [build-macos, publish-macos]", cleanup)
+        self.assertIn("always()", cleanup)
+
     def test_macos_build_is_tag_pinned_smoked_and_exactly_packaged(self):
-        build, publish = WORKFLOW.split("  publish-macos:", 1)
+        build, remainder = WORKFLOW.split("  publish-macos:", 1)
+        publish = remainder.split("  cleanup-macos:", 1)[0]
         for value in (
             "path: controller",
             "path: source",
@@ -100,23 +131,48 @@ class ReleaseContractTests(unittest.TestCase):
             "pyinstaller desktop/backchannel.spec",
             "desktop/scripts/smoke_test.py",
             "Backchannel-macos-arm64.zip",
-            "actions/upload-artifact@v4",
+            "actions/cache/save@",
+            "bundle_sha256",
+            "cache_key",
         ):
             with self.subTest(value=value):
                 self.assertIn(value, build)
         self.assertNotIn("softprops/action-gh-release", WORKFLOW)
         self.assertNotIn("files:", WORKFLOW)
-        self.assertIn("actions/download-artifact@v4", publish)
-        self.assertIn("name: Backchannel-macos-arm64.zip", publish)
-
-    def test_macos_cleanup_targets_only_this_runs_exact_artifact(self):
-        publish = WORKFLOW.split("  publish-macos:", 1)[1]
-        self.assertIn("actions/runs/$GITHUB_RUN_ID/artifacts", publish)
         self.assertIn(
-            'select(.name == "Backchannel-macos-arm64.zip")', publish
+            'cache_key="backchannel-macos-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${EXPECTED_COMMIT}-${bundle_sha256}"',
+            build,
         )
-        self.assertIn("actions/artifacts/$artifact_id", publish)
-        self.assertIn("--method DELETE", publish)
+        self.assertIn(
+            "path: controller/release-assets/Backchannel-macos-arm64.zip",
+            build,
+        )
+        self.assertIn("actions/cache/restore@", publish)
+        self.assertIn(
+            "path: controller/release-assets/Backchannel-macos-arm64.zip",
+            publish,
+        )
+        self.assertIn("fail-on-cache-miss: true", publish)
+        self.assertNotIn("restore-keys:", publish)
+        self.assertIn("needs.build-macos.outputs.cache_key", publish)
+        self.assertIn("needs.build-macos.outputs.bundle_sha256", publish)
+        self.assertLess(
+            publish.index("shasum -a 256 -c"),
+            publish.index("publish_release_platform.ps1"),
+        )
+
+    def test_macos_cleanup_deletes_only_the_exact_cache_by_id(self):
+        cleanup = WORKFLOW.split("  cleanup-macos:", 1)[1]
+        self.assertIn("always()", cleanup)
+        self.assertIn("actions/caches", cleanup)
+        self.assertIn("needs.build-macos.outputs.cache_key", cleanup)
+        self.assertIn("actions/caches/$cache_id", cleanup)
+        self.assertIn('-f key="$CACHE_KEY" -f ref="$GITHUB_REF"', cleanup)
+        self.assertIn('if [[ "$returned_key" == "$CACHE_KEY"', cleanup)
+        self.assertIn('&& "$returned_ref" == "$GITHUB_REF" ]]', cleanup)
+        self.assertIn("matches=$((matches + 1))", cleanup)
+        self.assertIn('[[ "$matches" -eq 1 ]]', cleanup)
+        self.assertIn("--method DELETE", cleanup)
 
     def test_linux_bundle_collects_the_xorg_tray_backend(self):
         self.assertIn('hidden.append("pystray._xorg")', SPEC)

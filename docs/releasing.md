@@ -211,11 +211,14 @@ Every platform publisher performs this fail-closed sequence:
 7. Conditionally advance monotonic `releases/latest.json` last, using its ETag
    or `If-None-Match: *`; an older version never replaces a newer Latest.
 
-The macOS handoff artifact contains no credentials, is retained for one day,
-and is deleted immediately after protected publication. Before dispatch, the
-coordinator may delete only exact `Backchannel-macos-arm64.zip` artifacts from
-completed runs of `.github/workflows/desktop-release.yml` older than 24 hours.
-It never deletes R2 objects.
+The macOS handoff is a non-secret Actions cache entry keyed as
+`backchannel-macos-{run_id}-{run_attempt}-{commit}-{sha256}`. A fresh protected
+macOS runner restores only that full key with no fallback, verifies its SHA-256,
+and publishes it. A separate secret-free cleanup job deletes the cache by exact
+ID after publication, including publisher failure paths. GitHub's cache eviction
+is the fallback for whole-workflow cancellation or runner loss.
+The coordinator may still delete legacy one-day handoff artifacts from older
+completed runs. Neither cleanup path deletes R2 objects.
 
 To retry an already-built Windows or Linux asset directly, first resolve the
 same immutable tag commit and timestamp, then invoke its publisher:
@@ -236,7 +239,7 @@ Use a new patch version to correct an already published platform.
 
 Do not call the release complete until every platform build and publication
 passes, each platform appears in the entitled portal as soon as it completes,
-downloads match manifest sizes and SHA-256 values, the macOS handoff is deleted,
+downloads match manifest sizes and SHA-256 values, the macOS cache is deleted,
 the public release page and source-only GitHub notes are live, and a Compose
 build from the source tag succeeds.
 
@@ -305,6 +308,6 @@ and never deletes old assets.
   immutable even when a sibling or later step fails.
 - If only GitHub note creation fails after Latest advances, leave verified R2
   metadata unchanged and repair the notes without attaching files.
-- Keep every GitHub source tag and release-note page permanently. GitHub does
-  not retain executable release assets; the temporary macOS handoff follows the
-  bounded cleanup policy above.
+- Keep every GitHub source tag and release-note page permanently. GitHub
+  Releases have no executable attachments and this workflow creates no Actions
+  artifacts; the temporary macOS cache follows the bounded cleanup policy above.

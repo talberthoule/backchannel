@@ -4,7 +4,9 @@
 
 **Goal:** Build and publish Windows, Linux, and macOS desktop bundles independently so each appears in the authenticated portal immediately after its own native smoke test succeeds.
 
-**Architecture:** New releases use one immutable `release.json` identity plus one immutable manifest per completed platform. A local PowerShell coordinator builds and publishes Windows and Linux from an exact tag; a two-job GitHub workflow builds macOS without credentials, publishes it from a protected job, and deletes its one-day artifact. The portal merges valid platform manifests into its existing release shape while continuing to support historical aggregate manifests.
+**Architecture:** New releases use one immutable `release.json` identity plus one immutable manifest per completed platform. A local PowerShell coordinator builds and publishes Windows and Linux from an exact tag; a three-job GitHub workflow builds macOS without credentials, passes its checksum-pinned bundle through a run-unique Actions cache, publishes it from a fresh protected macOS job, and deletes the cache by exact ID from a secret-free cleanup job. The portal merges valid platform manifests into its existing release shape while continuing to support historical aggregate manifests.
+
+> **2026-07-22 amendment:** The cache handoff above supersedes Task 5's artifact upload/download and artifact-retention details, plus the artifact-specific acceptance checks below. The trust boundary, exact tag provenance, SHA-256 validation, protected publication, and bounded cleanup requirements remain unchanged. Existing coordinator cleanup remains only for legacy artifact handoffs.
 
 **Tech Stack:** Python 3.12 stdlib, PowerShell 7/Windows PowerShell 5.1, Node 24 stdlib, Cloudflare R2, Cloudflare Workers/D1, GitHub Actions, Docker BuildKit, PyInstaller, React/Vite.
 
@@ -18,7 +20,7 @@
 - Keep historical `releases/{version}/manifest.json` behavior unchanged.
 - Create `release.json` and `platforms/{id}.json` with `If-None-Match: *`; never overwrite them.
 - Build Windows and Linux on this Windows x64 workstation; Linux uses its Linux x64 Docker engine; GitHub builds only macOS arm64.
-- Use `retention-days: 1` for macOS, delete the artifact after verified publication, and scope stale cleanup to this workflow's exact artifact name.
+- Delete the run-unique macOS cache by exact ID after verified publication; automatic cache eviction is the cancellation fallback.
 - GitHub releases contain source notes only, with no executable attachments.
 - Add no dependency for validation, hashing, JSON, orchestration, cleanup, or R2 transport.
 
