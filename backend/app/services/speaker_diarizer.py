@@ -242,6 +242,10 @@ class SpeakerRegistry:
             self._update_profile(speaker_id, embedding)
             return speaker_id
 
+        if not allow_create and not self._profiles:
+            logger.info("Deferring first short segment without enrolling a speaker")
+            return "auto_unknown"
+
         best_profile, _ = self._best_profile(embedding)
         if best_profile and (not allow_create or len(self._profiles) >= self._max_profiles):
             reason = "short segment" if not allow_create else "profile limit"
@@ -432,6 +436,8 @@ class SpeakerDiarizer:
                 full_embedding,
                 allow_create=allow_create,
             )
+            if speaker_id == "auto_unknown":
+                return []
             return [DiarizedSegment(speaker_id=speaker_id, pcm_bytes=pcm_bytes)]
 
         matched_id, _ = self._registry.match(full_embedding)

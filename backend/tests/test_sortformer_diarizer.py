@@ -23,6 +23,29 @@ class StubSortformerDiarizer(SortformerDiarizer):
 
 
 class SortformerDiarizerTests(unittest.TestCase):
+    def test_first_short_turn_is_dropped_without_enrollment(self):
+        diarizer = StubSortformerDiarizer([["0.00 1.00 speaker_0"]])
+        voice = (np.ones(16000, dtype=np.int16) * 1000).tobytes()
+
+        segments = diarizer._process_pcm_window(voice)
+
+        self.assertEqual([], segments)
+        self.assertEqual(0, diarizer._registry.profile_count)
+
+    def test_first_short_turn_is_dropped_when_embedding_fails(self):
+        def fail_embedding(pcm_float, sample_rate):
+            del pcm_float, sample_rate
+            raise RuntimeError("embedding unavailable")
+
+        diarizer = StubSortformerDiarizer([["0.00 1.00 speaker_0"]])
+        diarizer._embedding_extractor = fail_embedding
+        voice = (np.ones(16000, dtype=np.int16) * 1000).tobytes()
+
+        segments = diarizer._process_pcm_window(voice)
+
+        self.assertEqual([], segments)
+        self.assertEqual({}, diarizer._speaker_map)
+
     def test_extracts_turns_from_rttm_lines(self):
         result = [
             "SPEAKER sample 1 0.50 1.25 <NA> <NA> speaker_0 <NA> <NA>",
@@ -47,11 +70,11 @@ class SortformerDiarizerTests(unittest.TestCase):
 
     def test_stitches_reused_sortformer_window_labels_by_voice_embedding(self):
         diarizer = StubSortformerDiarizer([
-            ["0.00 1.00 speaker_0"],
-            ["0.00 1.00 speaker_0"],
+            ["0.00 4.00 speaker_0"],
+            ["0.00 4.00 speaker_0"],
         ])
-        first_voice = (np.ones(16000, dtype=np.int16) * 1000).tobytes()
-        second_voice = (np.ones(16000, dtype=np.int16) * -1000).tobytes()
+        first_voice = (np.ones(64000, dtype=np.int16) * 1000).tobytes()
+        second_voice = (np.ones(64000, dtype=np.int16) * -1000).tobytes()
 
         first_segments = diarizer._process_pcm_window(first_voice)
         second_segments = diarizer._process_pcm_window(second_voice)
