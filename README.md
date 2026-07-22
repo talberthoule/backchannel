@@ -72,7 +72,7 @@ Download the latest desktop release for your platform from the
 [authenticated Backchannel download portal](https://downloads.backchannel.page/).
 An approved Backchannel account is required; no GitHub identity or repository
 membership is required. Public release notes remain on the
-[Backchannel v0.2.4 release page](https://backchannel.page/releases/v0.2.4/).
+[Backchannel v0.2.5 release page](https://backchannel.page/releases/v0.2.5/).
 
 - `Backchannel-windows-x64.zip` - unzip, run `Backchannel.exe`.
   Windows SmartScreen will warn on first run because the build is
