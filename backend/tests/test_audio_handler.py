@@ -269,5 +269,48 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(0, db.commits)
 
 
+class TranscriptionReadinessGateTests(unittest.IsolatedAsyncioTestCase):
+    def _websocket(self):
+        websocket = MagicMock()
+        websocket.send_json = AsyncMock()
+        websocket.close = AsyncMock()
+        return websocket
+
+    async def test_refuses_and_closes_when_transcription_is_not_ready(self):
+        from app.services.transcription_readiness import TranscriptionReadiness
+
+        self.assertTrue(hasattr(audio_handler, "_refuse_unready_transcription"))
+        websocket = self._websocket()
+        readiness = TranscriptionReadiness(
+            ready=False,
+            model_id="gemini-3.5-flash-lite",
+            provider="google",
+            reason="Transcription cannot run: no Google API key is configured.",
+        )
+
+        refused = await audio_handler._refuse_unready_transcription(websocket, readiness)
+
+        self.assertTrue(refused)
+        websocket.close.assert_awaited_once()
+        payload = websocket.send_json.await_args.args[0]
+        self.assertEqual("status", payload["type"])
+        self.assertEqual("transcription_unready", payload["data"]["state"])
+        self.assertEqual(readiness.reason, payload["data"]["message"])
+
+    async def test_allows_call_when_transcription_is_ready(self):
+        from app.services.transcription_readiness import TranscriptionReadiness
+
+        websocket = self._websocket()
+        readiness = TranscriptionReadiness(
+            ready=True, model_id="local-whisper-base", provider="local"
+        )
+
+        refused = await audio_handler._refuse_unready_transcription(websocket, readiness)
+
+        self.assertFalse(refused)
+        websocket.send_json.assert_not_awaited()
+        websocket.close.assert_not_awaited()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 TranscribeFn = Callable[[bytes], Awaitable[str | None]]
 EmitFn = Callable[[str, bytes, str], Awaitable[None]]
+FailureFn = Callable[[int], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -30,11 +31,13 @@ class OrderedTranscriptionQueue:
         max_concurrency: int = 3,
         transcribe_timeout_seconds: float | None = 90.0,
         emit_timeout_seconds: float | None = 60.0,
+        on_failure: FailureFn | None = None,
     ):
         self._transcribe = transcribe
         self._emit = emit
         self._transcribe_timeout_seconds = transcribe_timeout_seconds
         self._emit_timeout_seconds = emit_timeout_seconds
+        self._on_failure = on_failure
         self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
         self._lock = asyncio.Lock()
         self._tasks: set[asyncio.Task] = set()
@@ -42,6 +45,17 @@ class OrderedTranscriptionQueue:
         self._next_job_index = 0
         self._next_emit_index = 0
         self._closed = False
+        self._emitted_count = 0
+        self._failed_count = 0
+
+    @property
+    def stats(self) -> dict[str, int]:
+        """Job accounting: a failure is an error/timeout, not a filtered segment."""
+        return {
+            "jobs": self._next_job_index,
+            "emitted": self._emitted_count,
+            "failed": self._failed_count,
+        }
 
     def add(self, speaker_auto_id: str, pcm_bytes: bytes) -> int:
         if self._closed:
@@ -53,6 +67,15 @@ class OrderedTranscriptionQueue:
         task.add_done_callback(self._tasks.discard)
         return index
 
+    async def _record_failure(self):
+        self._failed_count += 1
+        if self._on_failure is None:
+            return
+        try:
+            await self._on_failure(self._failed_count)
+        except Exception:
+            logger.warning("Transcription failure callback raised", exc_info=True)
+
     async def drain(self):
         self._closed = True
         if self._tasks:
@@ -61,6 +84,7 @@ class OrderedTranscriptionQueue:
 
     async def _run(self, index: int, speaker_auto_id: str, pcm_bytes: bytes):
         text = None
+        failed = False
         try:
             async with self._semaphore:
                 if self._transcribe_timeout_seconds is None:
@@ -72,14 +96,19 @@ class OrderedTranscriptionQueue:
                     )
         except asyncio.TimeoutError:
             logger.error("Transcription job %s timed out", index)
+            failed = True
         except Exception as exc:
             logger.error("Transcription job %s failed: %s", index, exc)
+            failed = True
 
+        if failed:
+            await self._record_failure()
         async with self._lock:
             self._results[index] = TranscriptionResult(speaker_auto_id, pcm_bytes, text)
         await self._emit_ready()
 
     async def _emit_ready(self):
+        emit_failures = 0
         async with self._lock:
             while self._next_emit_index in self._results:
                 result = self._results.pop(self._next_emit_index)
@@ -94,7 +123,12 @@ class OrderedTranscriptionQueue:
                             self._emit(result.speaker_auto_id, result.pcm_bytes, result.text),
                             timeout=self._emit_timeout_seconds,
                         )
+                    self._emitted_count += 1
                 except asyncio.TimeoutError:
                     logger.error("Ordered transcript emit timed out")
+                    emit_failures += 1
                 except Exception as exc:
                     logger.error("Ordered transcript emit failed: %s", exc)
+                    emit_failures += 1
+        for _ in range(emit_failures):
+            await self._record_failure()

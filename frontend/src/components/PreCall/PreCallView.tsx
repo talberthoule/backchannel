@@ -18,6 +18,7 @@ interface Props {
   transcriptCount: number;
   processingTranscript?: boolean;
   processingError?: string | null;
+  startError?: string | null;
   isStarting?: boolean;
   onStartCall: () => void;
   captureSystemAudio?: boolean;
@@ -39,6 +40,7 @@ export default function PreCallView({
   transcriptCount,
   processingTranscript = false,
   processingError = null,
+  startError = null,
   isStarting = false,
   onStartCall,
   captureSystemAudio,
@@ -250,6 +252,11 @@ export default function PreCallView({
           </div>
         ) : (
           <div className="space-y-2">
+            {startError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-body text-sm text-red-700">
+                {startError}
+              </div>
+            )}
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"

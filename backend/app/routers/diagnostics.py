@@ -18,6 +18,7 @@ from app.services.diarizer_runtime import (
     set_selected_diarizer,
     set_speaker_similarity_threshold,
 )
+from app.services.transcription_readiness import get_transcription_readiness
 from app.services.transcription_runtime import (
     get_transcription_runtime_config,
     set_batch_transcriber_model,
@@ -87,6 +88,12 @@ async def update_diarization_config(
 async def get_transcription_config(db: AsyncSession = Depends(get_db)):
     runtime = await get_transcription_runtime_config(db)
     return runtime.to_dict()
+
+
+@router.get("/transcription/readiness")
+async def get_transcription_readiness_status(db: AsyncSession = Depends(get_db)):
+    readiness = await get_transcription_readiness(db)
+    return readiness.to_dict()
 
 
 @router.patch("/transcription/config")

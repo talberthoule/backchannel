@@ -29,6 +29,7 @@ from app.services.speaker_ghost_filter import should_defer_new_speaker_segment
 from app.services.speaker_diarizer import SpeakerRegistry
 from app.services.ordered_transcription import OrderedTranscriptionQueue
 from app.services.privacy import get_local_only
+from app.services.transcription_readiness import TranscriptionReadiness, get_transcription_readiness
 from app.services.transcription_runtime import get_transcription_runtime_config
 
 logger = logging.getLogger(__name__)
@@ -198,6 +199,26 @@ async def _reconnect_audio_pipeline(
         return False
 
 
+async def _refuse_unready_transcription(
+    websocket: WebSocket,
+    readiness: TranscriptionReadiness,
+) -> bool:
+    """Refuse to start a call whose batch transcriber cannot produce text."""
+    if readiness.ready:
+        return False
+    await _send_status(
+        websocket,
+        "transcription_unready",
+        readiness.reason,
+        details=readiness.to_dict(),
+    )
+    try:
+        await websocket.close()
+    except Exception:
+        pass
+    return True
+
+
 async def _start_call_segment(
     session_id: uuid.UUID,
 ) -> SegmentAudioWriter | None:
@@ -284,6 +305,22 @@ async def _finalize_call(
     drain_result = await orchestrator.graceful_drain(progress_callback=_forward_drain_progress)
     await orchestrator.close_all()
 
+    tq_stats = transcription_queue.stats
+    drain_result["transcription"] = tq_stats
+    completion_message = "Post-processing complete"
+    if tq_stats["failed"]:
+        if tq_stats["emitted"] == 0:
+            completion_message = (
+                "Post-processing complete, but transcription failed for all "
+                f"{tq_stats['failed']} speech segments and no transcript text "
+                "was saved"
+            )
+        else:
+            completion_message = (
+                "Post-processing complete; transcription failed for "
+                f"{tq_stats['failed']} of {tq_stats['jobs']} speech segments"
+            )
+
     await _send_post_processing_status(
         websocket,
         "saving_session",
@@ -321,7 +358,7 @@ async def _finalize_call(
     await _send_status(
         websocket,
         "completed",
-        "Post-processing complete",
+        completion_message,
         stage="complete",
         current_step=total_steps,
         total_steps=total_steps,
@@ -383,6 +420,13 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         runtime_config = await get_diarizer_runtime_config(db, probe_sortformer=False)
         transcription_config = await get_transcription_runtime_config(db)
         local_only = await get_local_only(db)
+        readiness = await get_transcription_readiness(db)
+
+    if await _refuse_unready_transcription(websocket, readiness):
+        logger.warning(
+            f"Refused call start for session {session_id}: {readiness.reason}"
+        )
+        return
 
     stopped = False
     audio_chunks_received = 0
@@ -525,9 +569,31 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
             },
         )
 
+    last_transcription_failure_status_at = 0.0
+
+    async def _on_transcription_failure(failed_count: int):
+        # Throttle so a burst of failing segments does not spam the frontend.
+        nonlocal last_transcription_failure_status_at
+        now = monotonic()
+        if failed_count > 1 and now - last_transcription_failure_status_at < 10:
+            return
+        last_transcription_failure_status_at = now
+        plural = "s" if failed_count != 1 else ""
+        await _send_status(
+            websocket,
+            "transcription_error",
+            (
+                f"Transcription failed for {failed_count} speech segment{plural} "
+                "this call; transcript text may be missing. Check the provider "
+                "API key in Admin -> API Keys."
+            ),
+            details={"failed": failed_count},
+        )
+
     transcription_queue = OrderedTranscriptionQueue(
         transcribe=transcriber.transcribe_segment,
         emit=_emit_transcript,
+        on_failure=_on_transcription_failure,
     )
 
     audio_writer: SegmentAudioWriter | None = None

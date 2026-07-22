@@ -218,6 +218,16 @@ export const updatePrivacyConfig = (localOnly: boolean) =>
 export const getTranscriptionConfig = () =>
   request<TranscriptionConfig>("/diagnostics/transcription");
 
+export interface TranscriptionReadiness {
+  ready: boolean;
+  model_id: string;
+  provider: string;
+  reason: string;
+}
+
+export const getTranscriptionReadiness = () =>
+  request<TranscriptionReadiness>("/diagnostics/transcription/readiness");
+
 export const updateTranscriptionConfig = (data: { batch_model_id?: string; live_preview_model_id?: string }) =>
   request<TranscriptionConfig>("/diagnostics/transcription/config", {
     method: "PATCH",
