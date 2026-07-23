@@ -32,13 +32,17 @@ action items you would otherwise reconstruct from memory afterwards.
   speaker embeddings segment speech and attribute every line to a speaker, with
   interim text streaming in seconds ahead of the final transcript
 - **Agent-based analysis** -- a consolidated analyst, a low-latency objection
-  handler, a synthesizer, and an opportunity specialist run on their own
-  triggers and push insights to the UI mid-call
+  handler, a synthesizer, an opportunity specialist, and a live Strategic
+  Signals agent run on their own triggers and push insights to the UI mid-call
+- **Post-call briefings** -- two briefing lenses draft the factual record and
+  the broader discovery view, and an arbiter settles them into a meeting
+  briefing after End Call or on demand
 - **Provider-routed models** -- mix Google Gemini and OpenAI models per
   agent, or transcribe fully offline with local ONNX Whisper/Parakeet
   (no API key required)
 - **Dual-track audio** -- mic and tab/system audio are captured separately,
-  so remote participants get their own speaker identities
+  so remote participants get their own speaker identities, and a short voice
+  calibration clip keeps your own lines attributed to you
 - **Import and re-transcription** -- bring in existing transcripts (`.txt`,
   `.md`, `.docx`) or audio files (`.mp3`, `.m4a`, `.wav`, `.ogg`, `.flac`),
   and replay any recorded call through a different transcription model later
@@ -71,8 +75,9 @@ Read more in [docs/architecture.md](docs/architecture.md).
 Download the latest desktop release for your platform from the
 [authenticated Backchannel download portal](https://downloads.backchannel.page/).
 An approved Backchannel account is required; no GitHub identity or repository
-membership is required. Public release notes remain on the
-[Backchannel v0.3.1 release page](https://backchannel.page/releases/v0.3.1/).
+membership is needed. Public release notes for the current version are linked
+from the [backchannel.page](https://backchannel.page/) landing page and shown
+in-app under Admin -> About.
 
 - `Backchannel-windows-x64.zip` - unzip, run `Backchannel.exe`.
   Windows SmartScreen will warn on first run because the build is
@@ -89,10 +94,12 @@ Windows, `~/Library/Application Support/Backchannel` on macOS,
 `~/.local/share/backchannel` on Linux).
 
 Notes:
-- MP3/M4A audio import needs `ffmpeg` on your PATH (WAV/FLAC/OGG work
-  out of the box).
-- The optional Sortformer diarizer is Docker-only; the desktop app uses
-  the built-in lightweight diarizer.
+- The Windows and Linux bundles ship their own ffmpeg, so compressed audio
+  imports (MP3, M4A) and browser-recorded voice-calibration clips work out
+  of the box; only the macOS bundle needs a system `ffmpeg` on PATH.
+- The optional Sortformer (Enhanced) diarizer is not bundled; the desktop
+  app uses the built-in lightweight diarizer. Use the Docker setup if you
+  want Sortformer.
 
 ### Option 2: Docker (isolated)
 
@@ -129,6 +136,7 @@ Full setup options (local development, migrations, GPU validation) are in
 | Page | What it covers |
 | --- | --- |
 | [Quickstart](docs/quickstart.md) | Docker Compose, local development, migrations, tests |
+| [Getting API Keys](docs/api-keys.md) | Step-by-step Gemini and OpenAI key setup |
 | [Architecture](docs/architecture.md) | The live call path end to end, frontend and backend structure |
 | [Agent System](docs/agents.md) | Each agent's trigger and purpose, configuration and overrides |
 | [Audio Pipeline](docs/audio-pipeline.md) | Capture format, VAD/diarization, transcription routing, audio storage |
