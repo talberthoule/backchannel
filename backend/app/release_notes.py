@@ -10,10 +10,29 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.3.2"
+APP_VERSION = "0.3.3"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.3.3",
+        "date": "2026-07-23",
+        "title": "Live strategic signals, post-call briefings",
+        "body": """This release separates the lightweight live strategic-signal cycle
+from the full post-call briefing pipeline and fixes a diagnostics-card failure.
+
+- Strategic Signals is now a standalone Administration agent with its own
+  enable switch, model, prompt, and cycle interval. It uses one model call per
+  live cycle (45 seconds by default) while preserving evidence links and the
+  existing automatic insight upvotes.
+- The Meeting Lens, Discovery Lens, and Brief Arbiter now run only after a
+  normal End Call or when Generate Briefing is selected. They no longer run
+  every 45 seconds during a call.
+- Administration and the public agent guide now show the complete current
+  crew and the triggers shipped by the application.
+- Invalid non-finite diarization benchmark values can no longer be saved and
+  break the Diagnostics card on later visits.""",
+    },
     {
         "version": "0.3.2",
         "date": "2026-07-23",
