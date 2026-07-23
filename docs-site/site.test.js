@@ -57,8 +57,9 @@ test('public agent crew matches the shipped defaults and triggers', () => {
   assert.match(section, /objection_handler[\s\S]*Every 10s over the last 90s/);
   assert.match(section, /synthesizer[\s\S]*New or updated insights; 75s cooldown, 120s fallback/);
   assert.match(section, /opportunity_specialist[\s\S]*New opportunities; 55s cooldown \+ final match/);
+  assert.match(section, /strategic_signals[\s\S]*Every 45s during the call/);
   for (const slug of ['brief_meeting_lens', 'brief_discovery_lens', 'brief_arbiter']) {
-    assert.match(section, new RegExp(`${slug}[\\s\\S]*Every 45s live, at call end, or on demand`));
+    assert.match(section, new RegExp(`${slug}[\\s\\S]*At call end or on demand`));
   }
 });
 

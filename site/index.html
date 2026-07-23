@@ -427,18 +427,23 @@ docker compose up --build
               <td>Matches opportunity insights against the configured knowledge sources without creating new insights</td>
             </tr>
             <tr>
+              <td><strong>Strategic Signals</strong><br /><code>strategic_signals</code></td>
+              <td>Every 45s during the call</td>
+              <td>Refreshes the live signal, risk, next question, opportunity, and action cue while linking supported cards to saved insights</td>
+            </tr>
+            <tr>
               <td><strong>Briefing Meeting Lens</strong><br /><code>brief_meeting_lens</code></td>
-              <td>Every 45s live, at call end, or on demand</td>
+              <td>At call end or on demand</td>
               <td>Drafts the meeting record: outcomes, decisions, blockers, commitments, and follow-ups</td>
             </tr>
             <tr>
               <td><strong>Briefing Discovery Lens</strong><br /><code>brief_discovery_lens</code></td>
-              <td>Every 45s live, at call end, or on demand</td>
+              <td>At call end or on demand</td>
               <td>Drafts the broader signal: objectives, pains, gaps, opportunities, risks, and open paths</td>
             </tr>
             <tr>
               <td><strong>Briefing Arbiter</strong><br /><code>brief_arbiter</code></td>
-              <td>Every 45s live, at call end, or on demand</td>
+              <td>At call end or on demand</td>
               <td>Reconciles the two independent lens drafts into the settled briefing</td>
             </tr>
           </tbody>

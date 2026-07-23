@@ -143,13 +143,20 @@ Agents are coordinated by `AgentOrchestrator` and configured by `agent_configs` 
 | Agent slug | Type | Trigger | Code | Purpose |
 | --- | --- | --- | --- | --- |
 | `audio_gateway` | audio | Continuous audio stream | `backend/app/services/gemini_live.py` | Silent Gemini Live listener for interim transcription |
-| `consolidated_analyst` | text | Interval, default 15s | `backend/app/services/agents/consolidated_analyst.py` | Single Gemini call that can produce questions, observations, opportunities, and action items |
-| `synthesizer` | meta | `new_insight` / `insight_updated` events, 30s cooldown, 120s max interval | `backend/app/services/agents/synthesizer.py` | Reconciles and enriches saved insights, detects answered questions, may elevate item type |
-| `opportunity_specialist` | db | `new_opportunity` events, 5s batch window | `backend/app/services/agents/opportunity_specialist.py` | Matches opportunity insights against the configured knowledge sources (offerings catalog by default) |
+| `consolidated_analyst` | text | Interval, default 40s, plus final pass | `backend/app/services/agents/consolidated_analyst.py` | Single Gemini call that can produce questions, observations, opportunities, and action items |
+| `objection_handler` | text | Interval, default 10s over the last 90s | `backend/app/services/agents/objection_handler.py` | Flags objections with an immediate response and strategic context |
+| `synthesizer` | meta | `new_insight` / `insight_updated` events, 75s cooldown, 120s fallback | `backend/app/services/agents/synthesizer.py` | Reconciles and enriches saved insights, detects answered questions, may elevate item type |
+| `opportunity_specialist` | db | `new_opportunity` events, 55s cooldown, plus final matching | `backend/app/services/agents/opportunity_specialist.py` | Matches opportunity insights against the configured knowledge sources |
+| `strategic_signals` | meta | Interval, default 45s during the call | `backend/app/services/agents/strategic_signals.py` | Produces the live strategic cards and evidence links that automatically upvote supported insights |
+| `brief_meeting_lens` | meta | Full End Call or on demand | `backend/app/services/briefing_synthesis.py` | Drafts the factual meeting record |
+| `brief_discovery_lens` | meta | Full End Call or on demand | `backend/app/services/briefing_synthesis.py` | Drafts the discovery and sensemaking view |
+| `brief_arbiter` | meta | After the post-call lens drafts | `backend/app/services/briefing_synthesis.py` | Reconciles both drafts into the settled briefing |
 
 Important: there is no standalone `question_hunter.py` in the current tree. Question generation is one enabled lens of `ConsolidatedAnalystAgent`; `question_hunter` only appears as a backward-compatible `agent_source` label for exported/saved question items.
 
 Deduplication is in `orchestrator.py` and uses simple word-overlap similarity within a 60-second sliding window.
+
+The briefing trio is post-call only. Normal **End Call** runs it, **End without briefing** skips it, and **Generate Briefing** runs it on demand. The standalone `strategic_signals` agent owns the live strategic cards.
 
 ## Audio Pipeline Details
 
@@ -236,6 +243,8 @@ Key files:
 | Consolidated text analyst | `backend/app/services/agents/consolidated_analyst.py` |
 | Synthesizer | `backend/app/services/agents/synthesizer.py` |
 | Opportunity specialist | `backend/app/services/agents/opportunity_specialist.py` |
+| Live strategic signals | `backend/app/services/agents/strategic_signals.py` |
+| Post-call briefing synthesis | `backend/app/services/briefing_synthesis.py` |
 | Default agent seed data | `backend/app/services/seed_agents.py` |
 
 ## Environment

@@ -23,12 +23,13 @@ const INTERVAL_DEFAULTS: Record<string, number> = {
   objection_handler: 10,
   synthesizer: 75,
   opportunity_specialist: 55,
+  strategic_signals: 45,
 };
 
 // Grouped by when agents run, not by their internal type: the Principal
-// Agent (meta) and Opportunity Specialist (db) react to live insights just
-// like the cycle-based analysts, while the briefing trio only runs once a
-// session ends. Slug order within a section is the display order.
+// Agent (meta) and Opportunity Specialist (db) react to live insights, while
+// Strategic Signals cycles over the live context and the briefing trio runs
+// only after a session or on demand. Slug order within a section is display order.
 const AGENT_SECTIONS: { slugs: string[]; title: string; blurb: string }[] = [
   {
     slugs: ["audio_gateway"],
@@ -36,14 +37,14 @@ const AGENT_SECTIONS: { slugs: string[]; title: string; blurb: string }[] = [
     blurb: "Streams call audio to a silent live listener for instant interim transcription.",
   },
   {
-    slugs: ["consolidated_analyst", "objection_handler", "synthesizer", "opportunity_specialist"],
+    slugs: ["consolidated_analyst", "objection_handler", "synthesizer", "opportunity_specialist", "strategic_signals"],
     title: "Live Analysis",
-    blurb: "Work the call as it happens: the analysts cycle over the growing transcript, while the Principal Agent and Opportunity Specialist react to each new insight to refine, connect, and match it.",
+    blurb: "Work the call as it happens: analysts surface and refine insights, specialists match them, and Strategic Signals keeps the live action cards current.",
   },
   {
     slugs: ["brief_meeting_lens", "brief_discovery_lens", "brief_arbiter"],
     title: "Post-Call Briefing",
-    blurb: "Run once after a session ends: two independent lenses draft the briefing and the arbiter reconciles them into the final summary.",
+    blurb: "Run after normal End Call or on demand: two independent lenses draft the briefing and the arbiter reconciles them into the final summary.",
   },
 ];
 
@@ -339,6 +340,7 @@ function AgentCard({
   const [promptOpen, setPromptOpen] = useState(false);
   const badge = TYPE_BADGES[agent.agent_type] || TYPE_BADGES.text;
   const intervalDefault = agent.agent_type === "text" ? INTERVAL_DEFAULTS[agent.slug] ?? 15 : INTERVAL_DEFAULTS[agent.slug];
+  const intervalDriven = agent.agent_type === "text" || agent.slug === "strategic_signals";
   const modelOptions = models.filter((m) => (agent.agent_type === "audio" ? m.supports_live_audio : m.supports_text));
   const hasLockedModels = modelOptions.some((m) => m.key_available === false);
   // Privacy First mode sidelines any agent that has no local model to run on
@@ -421,7 +423,7 @@ function AgentCard({
         {intervalDefault !== undefined && (
           <div>
             <label className="mb-1 block font-body text-xs font-medium text-brand-gray">
-              {agent.agent_type === "text" ? "Cycle Interval" : "Cooldown Between Runs"}
+              {intervalDriven ? "Cycle Interval" : "Cooldown Between Runs"}
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -442,7 +444,7 @@ function AgentCard({
               <span className="font-body text-xs text-brand-mid-gray">seconds</span>
             </div>
             <p className="mt-1 font-body text-[10px] text-brand-mid-gray">
-              {agent.agent_type === "text"
+              {intervalDriven
                 ? "How often this agent analyzes new transcript (5-300s)"
                 : "Minimum time between runs; triggered by new insights (5-300s)"}
             </p>
