@@ -19,8 +19,9 @@ from app.database import async_session
 from app.models import AgentConfig, Directive, InsightCluster, Question, Session, SessionAgentOverride, SessionSynthesis, Speaker, TranscriptEntry
 from app.services.agents.prompts import BRIEF_ARBITER_PROMPT, BRIEF_DISCOVERY_LENS_PROMPT, BRIEF_MEETING_LENS_PROMPT
 from app.services.agents.speaker_context import format_speakers_list, format_transcript_segment
+from app.services.llm import generate_json, provider_for
 from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
-from app.services.token_usage import record_token_usage
+from app.services.provider_errors import PROVIDER_ERROR_TYPES, provider_error_message
 from app.services.session_manager import get_document_summaries
 
 logger = logging.getLogger(__name__)
@@ -175,11 +176,6 @@ async def run_session_synthesis(
     discovery_cfg = agent_configs.get(BRIEF_DISCOVERY_LENS_SLUG)
     arbiter_cfg = agent_configs[BRIEF_ARBITER_SLUG]
 
-    from google import genai
-
-    from app.services.secrets import resolve_provider_key
-
-    client = genai.Client(api_key=await resolve_provider_key("google"))
     meeting_output = None
     discovery_output = None
     errors: list[str] = []
@@ -198,17 +194,17 @@ async def run_session_synthesis(
             transcript_text=context.transcript_text,
         )
         try:
-            return await _generate_structured(
-                client,
+            return await generate_json(
                 cfg.model_id,
                 prompt,
                 BriefLensOutput,
+                schema_hint=_response_contract(BriefLensOutput),
                 session_id=session_id,
                 source=slug,
             )
         except Exception as exc:
             logger.error("[%s] briefing lens failed: %s", slug, exc)
-            errors.append(f"{slug}: {exc}")
+            errors.append(f"{slug}: {_failure_text(cfg.model_id, exc)}")
             return None
 
     import asyncio
@@ -238,17 +234,17 @@ async def run_session_synthesis(
         discovery_lens_json=_model_json(discovery_output),
     )
     try:
-        arbiter_output = await _generate_structured(
-            client,
+        arbiter_output = await generate_json(
             arbiter_cfg.model_id,
             arbiter_prompt,
             BriefArbiterOutput,
+            schema_hint=_response_contract(BriefArbiterOutput),
             session_id=session_id,
             source=BRIEF_ARBITER_SLUG,
         )
     except Exception as exc:
         logger.error("[brief_arbiter] failed: %s", exc)
-        errors.append(f"{BRIEF_ARBITER_SLUG}: {exc}")
+        errors.append(f"{BRIEF_ARBITER_SLUG}: {_failure_text(arbiter_cfg.model_id, exc)}")
         return await _persist_error_synthesis(
             session_id,
             mode,
@@ -393,65 +389,11 @@ def _format_insights(items: list[dict]) -> str:
     return "\n".join(lines)
 
 
-async def _generate_structured(
-    client,
-    model_id: str,
-    prompt: str,
-    response_schema: type[BaseModel],
-    session_id=None,
-    source: str = "",
-):
-    from google.genai import types
-
-    contents = [types.Content(parts=[types.Part(text=prompt)])]
-    try:
-        config = types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=response_schema,
-        )
-        response = await client.aio.models.generate_content(
-            model=model_id,
-            contents=contents,
-            config=config,
-        )
-    except Exception as exc:
-        logger.warning(
-            "Structured briefing schema call failed for %s/%s; retrying JSON contract prompt: %s",
-            model_id,
-            response_schema.__name__,
-            exc,
-        )
-        response = await _generate_json_contract(client, model_id, prompt, response_schema, types)
-
-    await record_token_usage(
-        session_id, source, model_id, getattr(response, "usage_metadata", None)
-    )
-
-    parsed = getattr(response, "parsed", None)
-    if parsed is not None:
-        if isinstance(parsed, response_schema):
-            return parsed
-        if isinstance(parsed, dict):
-            return response_schema.model_validate(parsed)
-        return parsed
-    return _parse_structured_response(response.text or "", response_schema)
-
-
-async def _generate_json_contract(client, model_id: str, prompt: str, response_schema: type[BaseModel], genai_types):
-    contract_prompt = f"{prompt.rstrip()}\n\n## Required JSON Contract\n{_response_contract(response_schema)}"
-    contents = [genai_types.Content(parts=[genai_types.Part(text=contract_prompt)])]
-    try:
-        config = genai_types.GenerateContentConfig(response_mime_type="application/json")
-        return await client.aio.models.generate_content(
-            model=model_id,
-            contents=contents,
-            config=config,
-        )
-    except TypeError:
-        return await client.aio.models.generate_content(
-            model=model_id,
-            contents=contents,
-        )
+def _failure_text(model_id: str, exc: Exception) -> str:
+    """Actionable one-line failure text for briefing status strings."""
+    if isinstance(exc, PROVIDER_ERROR_TYPES):
+        return provider_error_message(provider_for(model_id), exc)
+    return str(exc)
 
 
 def _response_contract(response_schema: type[BaseModel]) -> str:
@@ -501,26 +443,6 @@ def _response_contract(response_schema: type[BaseModel]) -> str:
         "when there is no supported evidence. Do not include markdown or commentary.\n"
         f"{json.dumps(contract, indent=2)}"
     )
-
-
-def _parse_structured_response(raw: str, response_schema: type[BaseModel]):
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-    if raw.endswith("```"):
-        raw = raw[:-3]
-    raw = raw.strip()
-    if not raw:
-        return response_schema()
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start == -1 or end == -1:
-            raise
-        data = json.loads(raw[start:end + 1])
-    return response_schema.model_validate(data)
 
 
 async def _persist_error_synthesis(

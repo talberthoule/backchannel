@@ -49,12 +49,7 @@ class StrategicSignalsTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=context),
             ),
             patch(
-                "app.services.agents.strategic_signals.resolve_provider_key",
-                new=AsyncMock(return_value="test"),
-            ),
-            patch("app.services.agents.strategic_signals.genai.Client"),
-            patch(
-                "app.services.agents.strategic_signals._generate_structured",
+                "app.services.agents.strategic_signals.generate_json",
                 new=AsyncMock(return_value=output),
             ) as generate,
             patch(
@@ -67,6 +62,7 @@ class StrategicSignalsTests(unittest.IsolatedAsyncioTestCase):
             )
 
         generate.assert_awaited_once()
+        self.assertEqual("test-model", generate.await_args.args[0])
         persist.assert_awaited_once()
         self.assertEqual(
             "insight-1",

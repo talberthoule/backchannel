@@ -1,9 +1,12 @@
-"""Map LLM provider client errors to actionable HTTPExceptions.
+"""Map LLM provider client errors to actionable messages.
 
 Routers that call the provider-routed LLM helpers should catch
 PROVIDER_ERROR_TYPES and re-raise via provider_error_to_http() so quota,
 auth, and transport failures surface as clean 429/502 responses with a
-user-readable remedy instead of unhandled 500s. The tuple is deliberately
+user-readable remedy instead of unhandled 500s. Background paths (agent
+loops, briefing synthesis) that persist status strings or write log lines
+instead of raising should use provider_error_message() for the same
+actionable text without the HTTP wrapper. The tuple is deliberately
 narrow: programming errors (TypeError, KeyError, ...) must keep surfacing
 as 500s.
 """
@@ -73,6 +76,40 @@ def _is_auth_error(exc: Exception, status: int | None) -> bool:
     return False
 
 
+def _is_quota_error(exc: Exception, status: int | None) -> bool:
+    resource_exhausted = (
+        isinstance(exc, genai_errors.APIError)
+        and (exc.status or "") == "RESOURCE_EXHAUSTED"
+    )
+    return status == 429 or resource_exhausted
+
+
+def provider_error_message(provider: str, exc: Exception) -> str:
+    """Short actionable description of a provider failure.
+
+    For background paths that surface failures as persisted status strings
+    or log lines (briefing synthesis, strategic signals, agent loops)
+    rather than HTTP responses.
+    """
+    label = _LABELS.get(provider, provider or "provider")
+    status = _status_of(exc)
+
+    if _is_quota_error(exc, status):
+        return _QUOTA_REMEDIES.get(provider) or (
+            f"{label} quota exhausted: {_short_message(exc)} "
+            "Switch the model or provider in Admin."
+        )
+
+    if _is_auth_error(exc, status):
+        key_name = _KEY_NAMES.get(provider, provider)
+        return (
+            f"{label} rejected the API key ({_short_message(exc)}). "
+            f"Update the {key_name} key in Admin -> API Keys."
+        )
+
+    return f"{label} error: {_short_message(exc)}"
+
+
 def provider_error_to_http(
     provider: str,
     exc: Exception,
@@ -88,23 +125,9 @@ def provider_error_to_http(
     status = _status_of(exc)
     logger.warning("%s: %s provider error (HTTP %s): %s", context, label, status, exc)
 
-    resource_exhausted = (
-        isinstance(exc, genai_errors.APIError)
-        and (exc.status or "") == "RESOURCE_EXHAUSTED"
-    )
-    if status == 429 or resource_exhausted:
-        detail = _QUOTA_REMEDIES.get(provider) or (
-            f"{label} quota exhausted: {_short_message(exc)} "
-            "Switch the model or provider in Admin."
-        )
+    detail = provider_error_message(provider, exc)
+    if _is_quota_error(exc, status):
         return HTTPException(429, detail)
-
     if _is_auth_error(exc, status):
-        key_name = _KEY_NAMES.get(provider, provider)
-        return HTTPException(
-            502,
-            f"{label} rejected the API key ({_short_message(exc)}). "
-            f"Update the {key_name} key in Admin -> API Keys.",
-        )
-
-    return HTTPException(502, f"{context}: {label} error: {_short_message(exc)}")
+        return HTTPException(502, detail)
+    return HTTPException(502, f"{context}: {detail}")

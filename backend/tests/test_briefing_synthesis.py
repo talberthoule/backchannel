@@ -1,38 +1,26 @@
-import sys
-import types
 import unittest
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.services import llm
 from app.services.briefing_synthesis import (
     BRIEF_ARBITER_SLUG,
     BriefArbiterOutput,
     BriefLensOutput,
     agent_config_enabled,
-    _generate_structured,
-    _parse_structured_response,
+    _response_contract,
 )
+from app.services.llm import parse_json_response
 
 
-class FakeGenerateContentConfig:
-    def __init__(self, **kwargs):
-        self.kwargs = kwargs
+class FakeGoogleClient:
+    """Async genai.Client stand-in that fails the schema call once."""
 
-
-class FakeContent:
-    def __init__(self, parts):
-        self.parts = parts
-
-
-class FakePart:
-    def __init__(self, text):
-        self.text = text
-
-
-class FakeModels:
     def __init__(self):
         self.calls = []
+        self.models = self
+        self.aio = SimpleNamespace(models=self)
 
     async def generate_content(self, **kwargs):
         self.calls.append(kwargs)
@@ -41,18 +29,13 @@ class FakeModels:
         return SimpleNamespace(
             parsed=None,
             text='{"top_outcomes":[{"title":"Outcome","summary":"Client confirmed priority."}]}',
+            usage_metadata=None,
         )
 
 
-class FakeClient:
-    def __init__(self):
-        self.models = FakeModels()
-        self.aio = SimpleNamespace(models=self.models)
-
-
 class BriefingSynthesisTests(unittest.TestCase):
-    def test_parse_structured_response_handles_fenced_json(self):
-        parsed = _parse_structured_response(
+    def test_parse_json_response_handles_fenced_json(self):
+        parsed = parse_json_response(
             """```json
 {"top_outcomes":[{"title":"Outcome","summary":"Client confirmed priority."}],"arbiter_notes":"Both lenses agree."}
 ```""",
@@ -69,47 +52,53 @@ class BriefingSynthesisTests(unittest.TestCase):
 
 
 class BriefingSynthesisAsyncTests(unittest.IsolatedAsyncioTestCase):
-    async def test_generate_structured_retries_with_json_contract(self):
-        fake_google = types.ModuleType("google")
-        fake_genai = types.ModuleType("google.genai")
-        fake_google.__path__ = []
-        fake_genai.types = SimpleNamespace(
-            GenerateContentConfig=FakeGenerateContentConfig,
-            Content=FakeContent,
-            Part=FakePart,
-        )
-        fake_google.genai = fake_genai
-        client = FakeClient()
+    def setUp(self):
+        for target, value in (
+            ("is_local_only", AsyncMock(return_value=False)),
+            ("_resolve_key", AsyncMock(return_value="k")),
+        ):
+            patcher = patch.object(llm, target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
-        with patch.dict(sys.modules, {"google": fake_google, "google.genai": fake_genai}):
-            parsed = await _generate_structured(client, "gemini-test", "Base prompt", BriefLensOutput)
+    async def test_generate_json_google_retries_with_json_contract(self):
+        client = FakeGoogleClient()
+        with (
+            patch.object(llm.genai, "Client", return_value=client),
+            patch.object(llm, "record_token_usage", new=AsyncMock()),
+        ):
+            parsed = await llm.generate_json(
+                "gemini-3.5-flash",
+                "Base prompt",
+                BriefLensOutput,
+                schema_hint=_response_contract(BriefLensOutput),
+            )
 
         self.assertEqual("Outcome", parsed.top_outcomes[0].title)
-        self.assertEqual(2, len(client.models.calls))
-        retry_prompt = client.models.calls[1]["contents"][0].parts[0].text
+        self.assertEqual(2, len(client.calls))
+        retry_prompt = client.calls[1]["contents"]
         self.assertIn("Required JSON Contract", retry_prompt)
         self.assertIn("top_outcomes", retry_prompt)
 
-    async def test_generate_structured_records_usage_for_its_source(self):
-        response = SimpleNamespace(
-            parsed=BriefLensOutput(),
-            text="",
-            usage_metadata=SimpleNamespace(prompt_token_count=4, candidates_token_count=1, total_token_count=5),
-        )
+    async def test_generate_json_records_usage_for_its_source(self):
+        usage = SimpleNamespace(prompt_token_count=4, candidates_token_count=1, total_token_count=5)
+        response = SimpleNamespace(parsed=BriefLensOutput(), text="", usage_metadata=usage)
         client = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(
             generate_content=AsyncMock(return_value=response),
         )))
         session_id = uuid.uuid4()
-        with patch("app.services.briefing_synthesis.record_token_usage", new=AsyncMock()) as record:
-            await _generate_structured(
-                client,
-                "gemini-test",
+        with (
+            patch.object(llm.genai, "Client", return_value=client),
+            patch.object(llm, "record_token_usage", new=AsyncMock()) as record,
+        ):
+            await llm.generate_json(
+                "gemini-3.5-flash",
                 "Base prompt",
                 BriefLensOutput,
                 session_id=session_id,
                 source="brief_meeting_lens",
             )
-        record.assert_awaited_once_with(session_id, "brief_meeting_lens", "gemini-test", response.usage_metadata)
+        record.assert_awaited_once_with(session_id, "brief_meeting_lens", "gemini-3.5-flash", usage)
 
 
 if __name__ == "__main__":

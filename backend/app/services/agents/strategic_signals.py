@@ -2,22 +2,24 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
-
-from google import genai
 
 from app.services.agents.prompts import STRATEGIC_SIGNALS_PROMPT
 from app.services.briefing_synthesis import (
     BriefArbiterOutput,
     _build_context,
-    _generate_structured,
     _persist_synthesis,
+    _response_contract,
     load_agent_configs,
 )
+from app.services.llm import generate_json, provider_for
 from app.services.meeting_context import format_prompt_with_meeting_context
 from app.services.privacy import LocalOnlyModeError, is_local_only
-from app.services.secrets import resolve_provider_key
+from app.services.provider_errors import PROVIDER_ERROR_TYPES, provider_error_message
+
+logger = logging.getLogger(__name__)
 
 STRATEGIC_SIGNALS_SLUG = "strategic_signals"
 
@@ -61,15 +63,21 @@ async def run_strategic_signals_cycle(
         insights_text=context.insights_text,
         transcript_text=context.transcript_text,
     )
-    client = genai.Client(api_key=await resolve_provider_key("google"))
-    output = await _generate_structured(
-        client,
-        cfg.model_id,
-        prompt,
-        BriefArbiterOutput,
-        session_id=session_id,
-        source=STRATEGIC_SIGNALS_SLUG,
-    )
+    try:
+        output = await generate_json(
+            cfg.model_id,
+            prompt,
+            BriefArbiterOutput,
+            schema_hint=_response_contract(BriefArbiterOutput),
+            session_id=session_id,
+            source=STRATEGIC_SIGNALS_SLUG,
+        )
+    except PROVIDER_ERROR_TYPES as exc:
+        logger.error(
+            "[strategic_signals] provider call failed: %s",
+            provider_error_message(provider_for(cfg.model_id), exc),
+        )
+        raise
     return await _persist_synthesis(
         session_id=session_id,
         mode="live",
