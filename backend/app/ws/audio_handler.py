@@ -428,8 +428,9 @@ async def _finalize_call(
         )
 
     if drain_mode == "minimal":
-        # No analysis passes; the agents were already shut down above.
-        drain_result = None
+        # No analysis passes; the agents were already shut down above. Start
+        # from an empty result so transcription stats still reach the client.
+        drain_result = {}
     else:
         drain_result = await orchestrator.graceful_drain(
             progress_callback=_forward_drain_progress,
@@ -487,7 +488,7 @@ async def _finalize_call(
             session.ended_at = datetime.now(timezone.utc)
         await db.commit()
 
-    completed_extra: dict[str, Any] = {} if drain_result is None else {"details": drain_result}
+    completed_extra: dict[str, Any] = {"details": drain_result}
     await _send_status(
         websocket,
         "completed",

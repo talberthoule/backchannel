@@ -271,6 +271,7 @@ class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
         db = FakeSessionContext(session, last_segment_number=None)
         transcription_queue = MagicMock()
         transcription_queue.drain = AsyncMock()
+        transcription_queue.stats = {"jobs": 0, "emitted": 0, "failed": 0}
         kwargs = {}
         if drain_mode is not None:
             kwargs["drain_mode"] = drain_mode
@@ -362,10 +363,13 @@ class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
         saving = statuses[-2]
         self.assertEqual("saving_session", saving["stage"])
         self.assertEqual(2, saving["current_step"])
-        self.assertNotIn("details", saving)
+        # Minimal mode still reports honest transcription stats, but carries
+        # no analysis output in the details.
+        minimal_details = {"transcription": {"jobs": 0, "emitted": 0, "failed": 0}}
+        self.assertEqual(minimal_details, saving.get("details"))
         self.assertEqual("completed", last["state"])
         self.assertEqual(2, last["total_steps"])
-        self.assertNotIn("details", last)
+        self.assertEqual(minimal_details, last.get("details"))
         self.assertEqual("completed", session.state)
         self.assertIsNotNone(session.ended_at)
 
@@ -469,7 +473,11 @@ class MinimalFinalizeAnalysisShutdownTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(self._ANALYST_INTERVAL)
             events.append("drain_end")
 
-        transcription_queue = SimpleNamespace(add=MagicMock(), drain=slow_drain)
+        transcription_queue = SimpleNamespace(
+            add=MagicMock(),
+            drain=slow_drain,
+            stats={"jobs": 0, "emitted": 0, "failed": 0},
+        )
         session = SimpleNamespace(state="active", ended_at=None)
         db = FakeSessionContext(session, last_segment_number=None)
         analysis_calls.clear()
