@@ -17,9 +17,13 @@ from app.services.agents.speaker_context import (
     format_transcript_segment,
     speaker_display_name,
 )
-from app.services.insight_refiner import _apply_operations
+from app.services.insight_refiner import _apply_operations, _apply_operations_in_db
 from app.services.meeting_context import build_meeting_context_text
-from app.services.speaker_name_rewriter import rewrite_session_insight_speaker_labels
+from app.services.speaker_name_rewriter import (
+    build_speaker_label_replacements,
+    rewrite_question_speaker_labels,
+    rewrite_session_insight_speaker_labels,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +199,96 @@ async def run_speaker_context_enhancement(session_id: uuid.UUID) -> dict:
         "enhanced_insights": len(enhanced_ids),
         "speaker_context_dirty": True,
         "speaker_context_enhanced_at": None,
+    }
+
+
+async def run_speaker_context_batch(
+    session_id: uuid.UUID,
+    question_ids: list[uuid.UUID],
+    mapping_revision_id: uuid.UUID,
+    apply_db: AsyncSession,
+) -> dict:
+    """Revalidate one assigned insight batch in the caller's transaction."""
+    async with async_session() as db:
+        session = await db.get(Session, session_id)
+        if not session:
+            raise ValueError("Session not found")
+
+        speakers_result = await db.execute(
+            select(Speaker).where(Speaker.session_id == session_id).order_by(Speaker.created_at)
+        )
+        speakers = [_speaker_dict(speaker) for speaker in speakers_result.scalars().all()]
+        questions_result = await db.execute(
+            select(Question)
+            .where(Question.session_id == session_id, Question.id.in_(question_ids))
+            .options(selectinload(Question.speaker))
+            .order_by(Question.created_at)
+        )
+        questions = list(questions_result.scalars().all())
+        transcript_result = await db.execute(
+            select(TranscriptEntry)
+            .where(TranscriptEntry.session_id == session_id)
+            .options(selectinload(TranscriptEntry.speaker))
+            .order_by(TranscriptEntry.sequence)
+        )
+        transcript_entries = list(transcript_result.scalars().all())
+        prompt = build_enhancement_prompt(
+            speakers,
+            [_insight_dict(question) for question in questions],
+            [_transcript_dict(entry) for entry in transcript_entries],
+            build_meeting_context_text(session),
+        )
+
+    raw = await generate_text(
+        settings.REFINEMENT_MODEL,
+        prompt,
+        session_id=session_id,
+        source="speaker_context_enhancer",
+    )
+    applied = await _apply_operations_in_db(
+        apply_db,
+        session_id,
+        _parse_ops(raw),
+        questions,
+        agent_source="speaker_context_enhancer",
+        enhanced=True,
+    )
+
+    affected_ids = {str(question_id) for question_id in question_ids}
+    created_ids: set[str] = set()
+    for operation in applied:
+        affected_id = operation.get("id") or operation.get("keep_id")
+        if affected_id:
+            affected_ids.add(str(affected_id))
+        ws_data = operation.get("ws_data")
+        if isinstance(ws_data, dict) and ws_data.get("id"):
+            created_ids.add(str(ws_data["id"]))
+            affected_ids.add(str(ws_data["id"]))
+
+    replacements = build_speaker_label_replacements(speakers)
+    changed_ids: set[str] = set()
+    for question_id in affected_ids:
+        question = await apply_db.get(Question, uuid.UUID(question_id))
+        if not question:
+            continue
+        if rewrite_question_speaker_labels(
+            question,
+            replacements,
+            now=datetime.now(timezone.utc),
+            enhanced=True,
+        ):
+            changed_ids.add(question_id)
+        question.speaker_mapping_revision_id = mapping_revision_id
+
+    enhanced_ids = changed_ids | created_ids | {
+        str(operation.get("id") or operation.get("keep_id"))
+        for operation in applied
+        if operation.get("applied") and (operation.get("id") or operation.get("keep_id"))
+    }
+    return {
+        "processed_entries": len(questions),
+        "applied_operations": len(applied) + len(changed_ids),
+        "enhanced_insights": len(enhanced_ids),
     }
 
 

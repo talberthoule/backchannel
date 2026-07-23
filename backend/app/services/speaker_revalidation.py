@@ -1,9 +1,31 @@
 import hashlib
 import json
+import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.database import async_session
+from app.models import (
+    Question,
+    Session,
+    SessionSynthesis,
+    Speaker,
+    SpeakerMappingRevision,
+    SpeakerRevalidationBatch,
+    SpeakerRevalidationRun,
+    TokenUsage,
+    TranscriptEntry,
+)
+from app.services.briefing_synthesis import run_session_synthesis
+from app.services.speaker_context_enhancer import run_speaker_context_batch
+
 REVALIDATION_BATCH_SIZE = 25
+logger = logging.getLogger(__name__)
 
 
 def _value(source: Any, field: str, default: Any = None) -> Any:
@@ -199,3 +221,178 @@ def summarize_run(run: Any, session: Any, now: datetime | None = None) -> dict:
             for batch in batches
         ],
     }
+
+
+async def start_or_resume_revalidation(
+    session_id: uuid.UUID,
+    db: AsyncSession,
+) -> tuple[SpeakerRevalidationRun, bool]:
+    session = (await db.execute(
+        select(Session).where(Session.id == session_id).with_for_update()
+    )).scalar_one()
+    speakers = list((await db.execute(
+        select(Speaker).where(Speaker.session_id == session_id).order_by(Speaker.created_at)
+    )).scalars())
+    questions = list((await db.execute(
+        select(Question).where(Question.session_id == session_id).order_by(Question.created_at)
+    )).scalars())
+    transcripts = list((await db.execute(
+        select(TranscriptEntry)
+        .where(TranscriptEntry.session_id == session_id)
+        .order_by(TranscriptEntry.sequence)
+    )).scalars())
+
+    mapping = canonical_speaker_mapping(speakers)
+    revision = (await db.execute(
+        select(SpeakerMappingRevision).where(
+            SpeakerMappingRevision.session_id == session_id,
+            SpeakerMappingRevision.source_version == session.speaker_context_version,
+        )
+    )).scalar_one_or_none()
+    if not revision:
+        revision = SpeakerMappingRevision(
+            session_id=session_id,
+            source_version=session.speaker_context_version,
+            mapping_hash=mapping_hash(mapping),
+            mapping_snapshot=mapping,
+        )
+        db.add(revision)
+        await db.flush()
+
+    run = (await db.execute(
+        select(SpeakerRevalidationRun)
+        .where(
+            SpeakerRevalidationRun.session_id == session_id,
+            SpeakerRevalidationRun.mapping_revision_id == revision.id,
+        )
+        .options(selectinload(SpeakerRevalidationRun.batches))
+        .order_by(SpeakerRevalidationRun.created_at.desc())
+    )).scalars().first()
+    if run and run.status in {"partial", "failed"}:
+        requeue_failed_batches(run, run.batches)
+        await db.commit()
+        return run, True
+    if run:
+        return run, False
+
+    run = SpeakerRevalidationRun(
+        session_id=session_id,
+        mapping_revision_id=revision.id,
+        content_version=content_version(session, questions, transcripts),
+        status="running",
+        started_at=datetime.now(timezone.utc),
+    )
+    db.add(run)
+    await db.flush()
+    for index, (kind, item_ids) in enumerate(
+        build_batch_specs([str(question.id) for question in questions])
+    ):
+        db.add(SpeakerRevalidationBatch(
+            run_id=run.id,
+            batch_index=index,
+            kind=kind,
+            item_ids=item_ids,
+        ))
+    await db.commit()
+    return await get_revalidation_run(run.id, db), True
+
+
+async def get_revalidation_run(
+    run_id: uuid.UUID,
+    db: AsyncSession,
+) -> SpeakerRevalidationRun | None:
+    return (await db.execute(
+        select(SpeakerRevalidationRun)
+        .where(SpeakerRevalidationRun.id == run_id)
+        .options(
+            selectinload(SpeakerRevalidationRun.batches),
+            selectinload(SpeakerRevalidationRun.mapping_revision),
+        )
+    )).scalar_one_or_none()
+
+
+async def run_revalidation(run_id: uuid.UUID) -> None:
+    async with async_session() as db:
+        run = await get_revalidation_run(run_id, db)
+        if not run:
+            return
+        session = await db.get(Session, run.session_id)
+
+        for batch in run.batches:
+            if batch.status != "queued":
+                continue
+            if batch.kind == "briefing" and any(
+                prior.kind == "insights" and prior.status != "completed"
+                for prior in run.batches
+            ):
+                break
+            await _run_batch(db, run, batch)
+
+        await db.refresh(run, attribute_names=["batches", "mapping_revision"])
+        finalize_run_state(run, run.batches, session, run.mapping_revision)
+        await db.commit()
+
+
+async def _run_batch(
+    db: AsyncSession,
+    run: SpeakerRevalidationRun,
+    batch: SpeakerRevalidationBatch,
+) -> None:
+    started = datetime.now(timezone.utc)
+    batch.status = "running"
+    batch.attempts += 1
+    batch.started_at = started
+    batch.error_message = ""
+    await db.commit()
+    try:
+        if batch.kind == "insights":
+            metrics = await run_speaker_context_batch(
+                run.session_id,
+                [uuid.UUID(item_id) for item_id in batch.item_ids],
+                run.mapping_revision_id,
+                db,
+            )
+            batch.processed_entries = metrics["processed_entries"]
+            batch.applied_operations = metrics["applied_operations"]
+            batch.enhanced_insights = metrics["enhanced_insights"]
+        else:
+            synthesis = await run_session_synthesis(run.session_id, mode="post_call")
+            if not synthesis or synthesis.status != "completed":
+                raise RuntimeError("Briefing revalidation did not complete")
+            stored = await db.get(SessionSynthesis, synthesis.id)
+            stored.speaker_mapping_revision_id = run.mapping_revision_id
+
+        completed = datetime.now(timezone.utc)
+        usage = (await db.execute(
+            select(
+                func.coalesce(func.sum(TokenUsage.input_tokens), 0),
+                func.coalesce(func.sum(TokenUsage.output_tokens), 0),
+                func.coalesce(func.sum(TokenUsage.total_tokens), 0),
+            ).where(
+                TokenUsage.session_id == run.session_id,
+                TokenUsage.source.in_(
+                    ["speaker_context_enhancer"]
+                    if batch.kind == "insights"
+                    else ["brief_meeting_lens", "brief_discovery_lens", "brief_arbiter"]
+                ),
+                TokenUsage.created_at >= started,
+                TokenUsage.created_at <= completed,
+            )
+        )).one()
+        batch.input_tokens, batch.output_tokens, batch.total_tokens = usage
+        batch.duration_ms = max(0, int((completed - started).total_seconds() * 1000))
+        batch.completed_at = completed
+        batch.status = "completed"
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        failed = await db.get(SpeakerRevalidationBatch, batch.id)
+        failed.status = "failed"
+        failed.error_message = str(exc)
+        failed.duration_ms = max(
+            0,
+            int((datetime.now(timezone.utc) - started).total_seconds() * 1000),
+        )
+        failed.completed_at = datetime.now(timezone.utc)
+        await db.commit()
+        logger.exception("Speaker revalidation batch %s failed", batch.id)

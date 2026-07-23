@@ -4,12 +4,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
-from fastapi import HTTPException
+from fastapi import BackgroundTasks
 
 from app.routers.sessions import enhance_insights_after_speaker_changes
 from app.services.speaker_context_enhancer import (
     build_enhancement_prompt,
     mark_speaker_context_dirty_if_completed,
+    run_speaker_context_batch,
     run_speaker_context_enhancement,
     speaker_update_changes_enhancement_context,
 )
@@ -156,6 +157,76 @@ class SpeakerContextEnhancerFailureTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(RuntimeError, "model offline"):
                 await run_speaker_context_enhancement(uuid4())
 
+    async def test_batch_applies_and_stamps_only_assigned_insights_in_caller_transaction(self):
+        question_id = uuid4()
+        mapping_revision_id = uuid4()
+        question = SimpleNamespace(
+            id=question_id,
+            item_type="observation",
+            question="Assigned insight",
+            rationale="Reason",
+            source_context="Evidence",
+            speaker_id=None,
+            speaker=None,
+            dismissed=False,
+            answered=False,
+            answer_summary="",
+            enhanced=False,
+            agent_source="general",
+            speaker_mapping_revision_id=None,
+        )
+        session = SimpleNamespace(meeting_type="general", meeting_context="")
+        speaker = SimpleNamespace(
+            id=uuid4(),
+            name="Participant",
+            role="",
+            speaker_type="external",
+            display_name="",
+            display_name_enabled=False,
+        )
+        load_db = SimpleNamespace(
+            get=AsyncMock(return_value=session),
+            execute=AsyncMock(
+                side_effect=[
+                    _ListResult([speaker]),
+                    _ListResult([question]),
+                    _ListResult([]),
+                ]
+            ),
+        )
+        apply_db = SimpleNamespace(get=AsyncMock(return_value=question))
+
+        with (
+            patch(
+                "app.services.speaker_context_enhancer.async_session",
+                return_value=_AsyncContext(load_db),
+            ),
+            patch(
+                "app.services.speaker_context_enhancer.generate_text",
+                new=AsyncMock(return_value="[]"),
+            ) as generate,
+            patch(
+                "app.services.speaker_context_enhancer._apply_operations_in_db",
+                new=AsyncMock(return_value=[]),
+            ) as apply,
+            patch(
+                "app.services.speaker_context_enhancer.rewrite_session_insight_speaker_labels",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
+            result = await run_speaker_context_batch(
+                uuid4(),
+                [question_id],
+                mapping_revision_id,
+                apply_db,
+            )
+
+        self.assertIn("Assigned insight", generate.await_args.args[1])
+        apply.assert_awaited_once()
+        self.assertIs(apply.await_args.args[0], apply_db)
+        self.assertEqual(mapping_revision_id, question.speaker_mapping_revision_id)
+        self.assertEqual(1, result["processed_entries"])
+
 
 class SpeakerContextEnhancementRouteTests(unittest.IsolatedAsyncioTestCase):
     async def test_unchanged_context_skips_all_ai_work(self):
@@ -167,127 +238,46 @@ class SpeakerContextEnhancementRouteTests(unittest.IsolatedAsyncioTestCase):
         )
         db = SimpleNamespace(get=AsyncMock(return_value=session))
 
-        with (
-            patch(
-                "app.routers.sessions.run_speaker_context_enhancement",
-                new=AsyncMock(),
-            ) as enhance,
-            patch(
-                "app.services.briefing_synthesis.run_session_synthesis",
-                new=AsyncMock(),
-            ) as refresh_briefing,
-        ):
-            result = await enhance_insights_after_speaker_changes(uuid4(), db)
+        background_tasks = BackgroundTasks()
+        result = await enhance_insights_after_speaker_changes(
+            uuid4(), background_tasks, db
+        )
 
-        enhance.assert_not_awaited()
-        refresh_briefing.assert_not_awaited()
-        self.assertEqual(0, result["enhanced_insights"])
         self.assertFalse(result["briefing_updated"])
         self.assertEqual("unchanged", result["status"])
         self.assertEqual(enhanced_at, result["speaker_context_enhanced_at"])
+        self.assertEqual([], background_tasks.tasks)
 
-    async def test_successful_insight_revalidation_regenerates_briefing(self):
+    async def test_dirty_context_starts_observable_background_run(self):
+        run_id = uuid4()
         session = SimpleNamespace(
             state="completed",
             speaker_context_dirty=True,
             speaker_context_enhanced_at=None,
         )
-        db = SimpleNamespace(get=AsyncMock(return_value=session), commit=AsyncMock())
-        enhancement_result = {
-            "applied_operations": 2,
-            "enhanced_insights": 4,
-            "speaker_context_dirty": False,
-            "speaker_context_enhanced_at": datetime.now(timezone.utc),
+        run = SimpleNamespace(id=run_id)
+        db = SimpleNamespace(get=AsyncMock(return_value=session))
+        summary = {
+            "status": "running",
+            "run_id": run_id,
+            "speaker_context_dirty": True,
         }
+        background_tasks = BackgroundTasks()
 
         with (
             patch(
-                "app.routers.sessions.run_speaker_context_enhancement",
-                new=AsyncMock(return_value=enhancement_result),
-            ),
-            patch(
-                "app.services.briefing_synthesis.run_session_synthesis",
-                new=AsyncMock(return_value=SimpleNamespace(status="completed")),
-            ) as refresh_briefing,
+                "app.routers.sessions.start_or_resume_revalidation",
+                new=AsyncMock(return_value=(run, True)),
+            ) as start,
+            patch("app.routers.sessions.summarize_run", return_value=summary),
         ):
-            result = await enhance_insights_after_speaker_changes(uuid4(), db)
+            result = await enhance_insights_after_speaker_changes(
+                uuid4(), background_tasks, db
+            )
 
-        refresh_briefing.assert_awaited_once()
-        self.assertTrue(result["briefing_updated"])
-        self.assertEqual("completed", result["status"])
-        self.assertEqual("completed", result["briefing_status"])
-        self.assertFalse(result["speaker_context_dirty"])
-        self.assertFalse(session.speaker_context_dirty)
-        self.assertIsNotNone(session.speaker_context_enhanced_at)
-        db.commit.assert_awaited_once()
-        self.assertEqual(4, result["enhanced_insights"])
-
-    async def test_partial_or_error_briefing_stays_dirty_and_retryable(self):
-        for briefing_status in ("partial", "error"):
-            with self.subTest(briefing_status=briefing_status):
-                session = SimpleNamespace(
-                    state="completed",
-                    speaker_context_dirty=True,
-                    speaker_context_enhanced_at=None,
-                )
-                db = SimpleNamespace(get=AsyncMock(return_value=session), commit=AsyncMock())
-                enhancement_result = {
-                    "applied_operations": 2,
-                    "enhanced_insights": 4,
-                    "speaker_context_dirty": False,
-                    "speaker_context_enhanced_at": None,
-                }
-
-                with (
-                    patch(
-                        "app.routers.sessions.run_speaker_context_enhancement",
-                        new=AsyncMock(return_value=enhancement_result),
-                    ),
-                    patch(
-                        "app.services.briefing_synthesis.run_session_synthesis",
-                        new=AsyncMock(return_value=SimpleNamespace(status=briefing_status)),
-                    ),
-                ):
-                    result = await enhance_insights_after_speaker_changes(uuid4(), db)
-
-                self.assertFalse(result["briefing_updated"])
-                self.assertEqual("partial", result["status"])
-                self.assertEqual(briefing_status, result["briefing_status"])
-                self.assertTrue(result["speaker_context_dirty"])
-                self.assertTrue(session.speaker_context_dirty)
-                self.assertIsNone(session.speaker_context_enhanced_at)
-                self.assertIn("Retry", result["error"])
-
-    async def test_insight_failure_returns_actionable_error_and_keeps_retry_path(self):
-        session = SimpleNamespace(
-            state="completed",
-            speaker_context_dirty=True,
-            speaker_context_enhanced_at=None,
-        )
-        db = SimpleNamespace(get=AsyncMock(return_value=session), commit=AsyncMock())
-
-        with (
-            patch(
-                "app.routers.sessions.run_speaker_context_enhancement",
-                new=AsyncMock(side_effect=RuntimeError("model offline")),
-            ),
-            patch(
-                "app.services.briefing_synthesis.run_session_synthesis",
-                new=AsyncMock(),
-            ) as refresh_briefing,
-        ):
-            try:
-                await enhance_insights_after_speaker_changes(uuid4(), db)
-            except Exception as exc:
-                error = exc
-            else:
-                self.fail("Expected insight revalidation failure")
-
-        self.assertIsInstance(error, HTTPException)
-        self.assertEqual(502, error.status_code)
-        self.assertIn("retry", str(error.detail).lower())
-        refresh_briefing.assert_not_awaited()
-        self.assertTrue(session.speaker_context_dirty)
+        start.assert_awaited_once()
+        self.assertEqual(summary, result)
+        self.assertEqual(1, len(background_tasks.tasks))
 
 
 class _ListResult:

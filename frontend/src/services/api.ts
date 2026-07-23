@@ -32,6 +32,23 @@ export const deleteSession = (id: string) =>
 export const enhanceInsights = (id: string) =>
   request<EnhanceInsightsResult>(`/sessions/${id}/enhance-insights`, { method: "POST" });
 
+export const getEnhancementStatus = (id: string, runId: string) =>
+  request<EnhanceInsightsResult>(`/sessions/${id}/enhance-insights/${runId}`);
+
+export async function waitForEnhancement(
+  id: string,
+  initial: EnhanceInsightsResult,
+  onProgress: (result: EnhanceInsightsResult) => void,
+): Promise<EnhanceInsightsResult> {
+  let result = initial;
+  while (result.status === "running" && result.run_id) {
+    onProgress(result);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    result = await getEnhancementStatus(id, result.run_id);
+  }
+  return result;
+}
+
 export const getSynthesis = (id: string, mode = "post_call") =>
   request<SessionSynthesis | null>(`/sessions/${id}/synthesis?mode=${encodeURIComponent(mode)}`);
 

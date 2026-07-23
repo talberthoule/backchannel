@@ -133,14 +133,39 @@ export interface Question {
 }
 
 export interface EnhanceInsightsResult {
-  status: "unchanged" | "completed" | "partial";
+  status: "unchanged" | "running" | "completed" | "partial" | "failed";
+  run_id: string | null;
+  mapping_revision: number | null;
+  content_version: string | null;
+  total_batches: number;
+  completed_batches: number;
+  failed_batches: number;
+  failure_rate: number;
+  processed_entries: number;
   applied_operations: number;
   enhanced_insights: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  duration_ms: number;
   speaker_context_dirty: boolean;
   speaker_context_enhanced_at: string | null;
   briefing_updated: boolean;
   briefing_status: string | null;
   error: string | null;
+  batches: Array<{
+    id: string;
+    index: number;
+    kind: string;
+    status: string;
+    attempts: number;
+    processed_entries: number;
+    duration_ms: number;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    error: string | null;
+  }>;
 }
 
 export interface Offering {
