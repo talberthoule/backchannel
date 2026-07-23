@@ -88,56 +88,58 @@ class LauncherHelperTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 contender.bind((launcher.LOOPBACK_HOST, fallback_port))
 
-    def test_windows_browser_opener_prefers_edge_app_paths_registry(self):
+    def test_windows_browser_path_uses_http_association(self):
+        chrome = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+
+        def resolve(_flags, assoc_string, association, _extra, output, size):
+            self.assertEqual(assoc_string, 2)  # ASSOCSTR_EXECUTABLE
+            self.assertEqual(association, "http")
+            size._obj.value = len(chrome) + 1
+            if output is None:
+                return 1  # S_FALSE: caller now has the required buffer size
+            output.value = chrome
+            return 0
+
+        query = Mock(side_effect=resolve)
+        windll = Mock()
+        windll.shlwapi.AssocQueryStringW = query
+        with (
+            patch.object(launcher.ctypes, "windll", windll, create=True),
+            patch.object(Path, "is_file", return_value=True),
+        ):
+            self.assertEqual(launcher._windows_browser_path(), chrome)
+
+        self.assertEqual(query.call_count, 2)
+
+    def test_windows_browser_opener_uses_default_chrome_in_app_mode(self):
         opener = self._browser_opener()
-        registry = Mock()
-        registry.HKEY_CURRENT_USER = object()
-        registry.HKEY_LOCAL_MACHINE = object()
-        registry.QueryValue.return_value = r"C:\Program Files\Edge\msedge.exe"
+        chrome = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
         with (
             patch.object(launcher.sys, "platform", "win32"),
-            patch.dict(launcher.sys.modules, {"winreg": registry}),
-            patch.object(Path, "is_file", return_value=True),
+            patch.object(
+                launcher, "_windows_browser_path", return_value=chrome
+            ) as default_browser,
             patch("launcher.subprocess.Popen") as popen,
         ):
             opener("http://localhost:8474")
 
-        self.assertIn("App Paths\\msedge.exe", registry.OpenKey.call_args.args[1])
+        default_browser.assert_called_once_with()
         popen.assert_called_once_with(
-            [r"C:\Program Files\Edge\msedge.exe", "--app=http://localhost:8474"]
+            [chrome, "--app=http://localhost:8474"]
         )
 
-    def test_windows_browser_opener_uses_standard_install_directory(self):
+    def test_windows_browser_opener_falls_back_for_unsupported_default(self):
         opener = self._browser_opener()
-        registry = Mock()
-        registry.HKEY_CURRENT_USER = object()
-        registry.HKEY_LOCAL_MACHINE = object()
-        registry.OpenKey.side_effect = OSError("missing")
         with (
             patch.object(launcher.sys, "platform", "win32"),
-            patch.dict(launcher.sys.modules, {"winreg": registry}),
-            patch.dict(
-                launcher.os.environ,
-                {"PROGRAMFILES(X86)": r"C:\Program Files (x86)"},
-                clear=True,
-            ),
-            patch.object(Path, "is_file", return_value=True),
+            patch.object(launcher, "_windows_browser_path", return_value=None),
             patch("launcher.subprocess.Popen") as popen,
+            patch("launcher.webbrowser.open") as fallback,
         ):
             opener("http://localhost:8474")
 
-        popen.assert_called_once_with(
-            [
-                str(
-                    Path(r"C:\Program Files (x86)")
-                    / "Microsoft"
-                    / "Edge"
-                    / "Application"
-                    / "msedge.exe"
-                ),
-                "--app=http://localhost:8474",
-            ]
-        )
+        popen.assert_not_called()
+        fallback.assert_called_once_with("http://localhost:8474")
 
     def test_macos_browser_opener_tries_edge_then_chrome_app_mode(self):
         opener = self._browser_opener()
