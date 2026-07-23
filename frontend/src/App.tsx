@@ -161,6 +161,9 @@ export default function App() {
   const [showKnowledge, setShowKnowledge] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [adminTab, setAdminTab] = useState<AdminTab>("agents");
+  // True only while Admin was opened from the welcome checklist's "Add API
+  // key" action; gates the contextual first-run setup card on the keys tab.
+  const [adminOnboarding, setAdminOnboarding] = useState(false);
   const [showNewSession, setShowNewSession] = useState(false);
   const { whatsNew, bannerOpen, acknowledge: acknowledgeWhatsNew } = useWhatsNew();
 
@@ -482,9 +485,10 @@ export default function App() {
     setActiveSessionId(null);
   }, [resetSessionRuntimeState]);
 
-  const openAdmin = useCallback((tab: AdminTab = "agents") => {
+  const openAdmin = useCallback((tab: AdminTab = "agents", onboarding = false) => {
     if (!liveSessionIdRef.current) resetSessionRuntimeState();
     setAdminTab(tab);
+    setAdminOnboarding(onboarding);
     setShowAdmin(true);
     setShowOfferings(false);
     setShowKnowledge(false);
@@ -493,7 +497,15 @@ export default function App() {
 
   const handleOpenAdmin = useCallback(() => openAdmin(), [openAdmin]);
 
-  const handleOpenApiKeys = useCallback(() => openAdmin("keys"), [openAdmin]);
+  const handleOpenApiKeys = useCallback(() => openAdmin("keys", true), [openAdmin]);
+
+  // "Continue to first session" from the onboarding setup card: leave Admin
+  // and drop straight into the new-session flow.
+  const handleOnboardingContinue = useCallback(() => {
+    setShowAdmin(false);
+    setAdminOnboarding(false);
+    setShowNewSession(true);
+  }, []);
 
   const handleOpenVoiceSettings = useCallback(
     () => openAdmin("transcription"),
@@ -804,10 +816,12 @@ export default function App() {
           showOfferings={showOfferings}
           showKnowledge={showKnowledge}
           adminTab={adminTab}
+          adminOnboarding={adminOnboarding}
           highlightSince={whatsNew?.since ?? null}
           onCloseAdmin={() => setShowAdmin(false)}
           onCloseOfferings={() => setShowOfferings(false)}
           onCloseKnowledge={() => setShowKnowledge(false)}
+          onAdminOnboardingContinue={handleOnboardingContinue}
         />
       );
     }

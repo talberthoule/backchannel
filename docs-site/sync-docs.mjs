@@ -55,4 +55,11 @@ for (const file of readdirSync(SRC).filter((f) => f.endsWith('.md'))) {
 
 // Referenced by architecture.md; lives at the repo root for the main README.
 copyFileSync(join(SRC, '..', 'architecture.svg'), join(OUT, 'architecture.svg'));
+
+// Screenshots and other images referenced by the docs as assets/<file>.
+const ASSETS = join(SRC, 'assets');
+mkdirSync(join(OUT, 'assets'), { recursive: true });
+for (const file of readdirSync(ASSETS).filter((f) => /\.(png|svg|jpe?g|gif|webp)$/i.test(f))) {
+  copyFileSync(join(ASSETS, file), join(OUT, 'assets', file));
+}
 console.log('Synced docs from', SRC);
