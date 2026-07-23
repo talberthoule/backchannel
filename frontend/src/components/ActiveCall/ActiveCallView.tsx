@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AudioSendStats, MeetingType, PostProcessingProgress as PostProcessingProgressState, Question, Session, SessionSynthesis, Speaker, TranscriptEntry } from "../../types";
+import type { AudioSendStats, MeetingType, PostProcessingProgress as PostProcessingProgressState, Question, Session, SessionSynthesis, Speaker, StopDrainMode, TranscriptEntry } from "../../types";
 import AudioIndicator from "./AudioIndicator";
 import DirectiveBar from "./DirectiveBar";
 import PostProcessingProgress from "./PostProcessingProgress";
@@ -11,7 +11,7 @@ interface ActiveCallViewProps {
   session: Session;
   questions: Question[];
   transcripts: TranscriptEntry[];
-  onEndCall: () => void;
+  onEndCall: (drain?: StopDrainMode) => void;
   onResumeAudio: () => void;
   onStarQuestion: (id: string, starred: boolean) => void;
   onDismissQuestion: (id: string) => void;
@@ -102,6 +102,8 @@ export default function ActiveCallView({
 }: ActiveCallViewProps) {
   const [debugOpen, setDebugOpen] = useState(false);
   const [contextExpanded, setContextExpanded] = useState(false);
+  const [endMenuOpen, setEndMenuOpen] = useState(false);
+  const endMenuRef = useRef<HTMLDivElement | null>(null);
   const autoUpvotedSignalIds = useRef<Set<string>>(new Set());
   const timerDisplay = useSessionTimer(callSegmentStart);
   const postProcessingActive = postProcessing?.active ?? false;
@@ -150,6 +152,17 @@ export default function ActiveCallView({
       });
     }
   }, [normalizedQuestions, onVoteQuestion, strategicSignalQuestionIds]);
+
+  useEffect(() => {
+    if (!endMenuOpen) return;
+    function handlePointerDown(event: MouseEvent) {
+      if (endMenuRef.current && !endMenuRef.current.contains(event.target as Node)) {
+        setEndMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [endMenuOpen]);
 
   const displayQuestions = useMemo(
     () =>
@@ -251,25 +264,68 @@ export default function ActiveCallView({
             </span>
           </div>
 
-          {/* End Call button */}
-          <button
-            onClick={onEndCall}
-            disabled={postProcessingActive}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 font-body text-sm font-semibold text-white transition-colors ${
-              postProcessingActive
-                ? "cursor-wait bg-brand-mid-gray"
-                : "bg-red-500 hover:bg-red-600"
-            }`}
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M15.75 3.75L18 6m0 0l2.25 2.25M18 6l2.25-2.25M18 6l-2.25 2.25m-10.5 6v3.75a.75.75 0 01-.75.75H3a.75.75 0 01-.75-.75V15a9.75 9.75 0 019.75-9.75h2.25"
-              />
-            </svg>
-            {postProcessingActive ? "Ending..." : "End Call"}
-          </button>
+          {/* End Call split button: primary = full drain, menu = skip briefing */}
+          <div className="relative flex" ref={endMenuRef}>
+            <button
+              onClick={() => {
+                setEndMenuOpen(false);
+                onEndCall("full");
+              }}
+              disabled={postProcessingActive}
+              className={`flex items-center gap-2 rounded-l-lg px-4 py-2 font-body text-sm font-semibold text-white transition-colors ${
+                postProcessingActive
+                  ? "cursor-wait bg-brand-mid-gray"
+                  : "bg-red-500 hover:bg-red-600"
+              }`}
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15.75 3.75L18 6m0 0l2.25 2.25M18 6l2.25-2.25M18 6l-2.25 2.25m-10.5 6v3.75a.75.75 0 01-.75.75H3a.75.75 0 01-.75-.75V15a9.75 9.75 0 019.75-9.75h2.25"
+                />
+              </svg>
+              {postProcessingActive ? "Ending..." : "End Call"}
+            </button>
+            <button
+              onClick={() => setEndMenuOpen((open) => !open)}
+              disabled={postProcessingActive}
+              aria-haspopup="menu"
+              aria-expanded={endMenuOpen}
+              aria-label="More end call options"
+              className={`flex items-center rounded-r-lg border-l px-2 py-2 text-white transition-colors ${
+                postProcessingActive
+                  ? "cursor-wait border-brand-light-gray-1 bg-brand-mid-gray"
+                  : "border-red-400 bg-red-500 hover:bg-red-600"
+              }`}
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+              </svg>
+            </button>
+            {endMenuOpen && !postProcessingActive && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-brand-light-gray-1 bg-surface py-1 shadow-lg"
+              >
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setEndMenuOpen(false);
+                    onEndCall("skip_analysis");
+                  }}
+                  className="block w-full px-4 py-2.5 text-left transition-colors hover:bg-brand-light-gray-2"
+                >
+                  <span className="block font-body text-sm font-semibold text-brand-dark-gray">
+                    End without briefing
+                  </span>
+                  <span className="mt-0.5 block font-body text-xs text-brand-mid-gray">
+                    Saves the transcript and reconciles insights; skips the call briefing and offering matching.
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 

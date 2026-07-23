@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Directive, Document, Session, Speaker } from "../../types";
+import * as api from "../../services/api";
 import DocumentUpload from "./DocumentUpload";
 import DirectiveInput from "./DirectiveInput";
 import DirectiveList from "./DirectiveList";
@@ -18,8 +19,10 @@ interface Props {
   transcriptCount: number;
   processingTranscript?: boolean;
   processingError?: string | null;
+  startError?: string | null;
   isStarting?: boolean;
   onStartCall: () => void;
+  onOpenVoiceSettings: () => void;
   captureSystemAudio?: boolean;
   onToggleSystemAudio?: (enabled: boolean) => void;
   onProcessTranscript: () => void;
@@ -39,8 +42,10 @@ export default function PreCallView({
   transcriptCount,
   processingTranscript = false,
   processingError = null,
+  startError = null,
   isStarting = false,
   onStartCall,
+  onOpenVoiceSettings,
   captureSystemAudio,
   onToggleSystemAudio,
   onProcessTranscript,
@@ -54,7 +59,18 @@ export default function PreCallView({
   const [showSpeakers, setShowSpeakers] = useState(false);
   const [showAgents, setShowAgents] = useState(false);
   const [hasImport, setHasImport] = useState(false);
+  const [voiceEnrolled, setVoiceEnrolled] = useState<boolean | null>(null);
   const hasImportedTranscript = hasImport || transcriptCount > 0;
+
+  useEffect(() => {
+    let active = true;
+    api.getVoiceProfileStatus()
+      .then((status) => {
+        if (active) setVoiceEnrolled(status.enrolled);
+      })
+      .catch((err) => console.error("Failed to load voice profile status", err));
+    return () => { active = false; };
+  }, []);
 
   const handleImported = () => {
     setHasImport(true);
@@ -250,6 +266,11 @@ export default function PreCallView({
           </div>
         ) : (
           <div className="space-y-2">
+            {startError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-body text-sm text-red-700">
+                {startError}
+              </div>
+            )}
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -261,6 +282,20 @@ export default function PreCallView({
                 Capture meeting audio (share a tab or screen with audio)
               </span>
             </label>
+            {captureSystemAudio === false
+              && speakers.filter((speaker) => speaker.is_user).length === 1
+              && voiceEnrolled === false && (
+              <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 font-body text-xs text-amber-800">
+                Mic-only calls identify you more reliably after voice calibration.{" "}
+                <button
+                  type="button"
+                  onClick={onOpenVoiceSettings}
+                  className="font-semibold underline"
+                >
+                  Open Transcription &amp; Audio
+                </button>
+              </p>
+            )}
             <button
               onClick={onStartCall}
               disabled={isStarting}

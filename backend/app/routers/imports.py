@@ -1,3 +1,4 @@
+import logging
 import re
 import uuid
 import os
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import CallSegment, Speaker, TranscriptEntry
 from app.services.audio_store import SegmentAudioWriter
+from app.services.batch_transcriber import TranscriptionError
 from app.services.file_parsing import parse_docx, parse_markdown, parse_text
 from app.services.audio_utils import convert_to_pcm16
 from app.services.local_transcriber import create_transcriber
@@ -26,6 +28,8 @@ from app.services.speaker_assignment import (
 from app.services.speaker_ghost_filter import should_defer_new_speaker_segment
 from app.services.speaker_diarizer import DiarizedSegment, SpeakerRegistry
 from app.services.transcription_runtime import get_transcription_runtime_config
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/sessions/{session_id}/import", tags=["import"])
 
@@ -96,7 +100,12 @@ async def _persist_diarized_segments(
 ) -> int:
     count = 0
     for seg, local_track, auto_speaker_map in segments:
-        text = await transcriber.transcribe_segment(seg.pcm_bytes)
+        try:
+            text = await transcriber.transcribe_segment(seg.pcm_bytes)
+        except TranscriptionError as exc:
+            # Keep import best-effort: a failed segment is skipped, not fatal.
+            logger.warning(f"Audio import: segment transcription failed: {exc}")
+            continue
         if not text:
             continue
 

@@ -203,6 +203,7 @@ class _SpeakerProfile:
     speaker_id: str
     embedding: np.ndarray
     sample_count: int = 1
+    fallback_for_unmatched: bool = True
 
 
 class SpeakerRegistry:
@@ -219,12 +220,23 @@ class SpeakerRegistry:
     def profile_count(self) -> int:
         return len(self._profiles)
 
-    def enroll(self, speaker_id: str, embedding: np.ndarray):
+    def enroll(
+        self,
+        speaker_id: str,
+        embedding: np.ndarray,
+        fallback_for_unmatched: bool = True,
+    ):
         """Pre-register a speaker with a known ID."""
         norm = np.linalg.norm(embedding)
         if norm > 0:
             embedding = embedding / norm
-        self._profiles.append(_SpeakerProfile(speaker_id=speaker_id, embedding=embedding))
+        self._profiles.append(
+            _SpeakerProfile(
+                speaker_id=speaker_id,
+                embedding=embedding,
+                fallback_for_unmatched=fallback_for_unmatched,
+            )
+        )
 
     def match(self, embedding: np.ndarray) -> tuple[str | None, float]:
         """Find best matching speaker. Returns (speaker_id, similarity) or (None, 0)."""
@@ -242,20 +254,30 @@ class SpeakerRegistry:
             self._update_profile(speaker_id, embedding)
             return speaker_id
 
-        if not allow_create and not self._profiles:
-            logger.info("Deferring first short segment without enrolling a speaker")
-            return "auto_unknown"
-
-        best_profile, _ = self._best_profile(embedding)
-        if best_profile and (not allow_create or len(self._profiles) >= self._max_profiles):
-            reason = "short segment" if not allow_create else "profile limit"
+        best_fallback, fallback_sim = self._best_profile(embedding, fallback_only=True)
+        if not allow_create:
+            if not best_fallback:
+                logger.info("Deferring short segment without an eligible speaker profile")
+                return "auto_unknown"
             logger.info(
                 "Reusing closest speaker %s for %s (similarity %.3f)",
-                best_profile.speaker_id,
-                reason,
-                sim,
+                best_fallback.speaker_id,
+                "short segment",
+                fallback_sim,
             )
-            return best_profile.speaker_id
+            return best_fallback.speaker_id
+
+        generic_profile_count = sum(
+            profile.fallback_for_unmatched for profile in self._profiles
+        )
+        if best_fallback and generic_profile_count >= self._max_profiles:
+            logger.info(
+                "Reusing closest speaker %s for %s (similarity %.3f)",
+                best_fallback.speaker_id,
+                "profile limit",
+                fallback_sim,
+            )
+            return best_fallback.speaker_id
 
         # New speaker
         while any(profile.speaker_id == f"auto_{self._next_id}" for profile in self._profiles):
@@ -266,11 +288,21 @@ class SpeakerRegistry:
         logger.info(f"New speaker enrolled: {new_id} (best sim was {sim:.3f})")
         return new_id
 
-    def _best_profile(self, embedding: np.ndarray) -> tuple[_SpeakerProfile | None, float]:
-        if not self._profiles:
+    def _best_profile(
+        self,
+        embedding: np.ndarray,
+        fallback_only: bool = False,
+    ) -> tuple[_SpeakerProfile | None, float]:
+        profiles = [
+            profile
+            for profile in self._profiles
+            if profile.embedding.shape == embedding.shape
+            and (not fallback_only or profile.fallback_for_unmatched)
+        ]
+        if not profiles:
             return None, 0.0
         best_profile = max(
-            self._profiles,
+            profiles,
             key=lambda profile: float(np.dot(embedding, profile.embedding)),
         )
         return best_profile, float(np.dot(embedding, best_profile.embedding))

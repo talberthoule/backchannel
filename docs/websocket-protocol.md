@@ -35,12 +35,27 @@ this state when each microphone segment is queued so later transcription does
 not change its speaker-routing policy.
 
 ```json
-{"type": "stop"}
+{"type": "stop", "drain": "full"}
 ```
 
 Ends the call. The backend flushes the diarizer, drains in-flight
 transcription and agent work, closes the audio recording, marks the session
 completed, and reports post-processing progress via `status` messages.
+
+The optional `drain` field selects how much post-call analysis runs:
+
+- `"full"` (default, and the behavior of a bare `{"type": "stop"}`): final
+  insight pass, insight reconciliation, opportunity matching, and briefing
+  synthesis.
+- `"skip_analysis"`: final insight pass and insight reconciliation only;
+  briefing synthesis and opportunity matching are skipped. The briefing can
+  be generated later with `POST /api/sessions/{id}/synthesis/refresh`.
+
+Unknown values fall back to `"full"`. If the socket disconnects or errors
+without a stop message, the backend runs a minimal drain instead: it flushes
+and transcribes buffered audio, closes the recording, and completes the
+session with no analysis agent calls. Per-agent enablement still applies
+within every mode.
 
 ```json
 {"type": "directive", "text": "Focus on pricing objections"}
@@ -60,7 +75,9 @@ Connection and pipeline state. Sent for connection lifecycle
 (`audio_received` roughly every 5 seconds, `audio_segment` when a diarized
 segment is queued, `transcript_saved` after persistence), and staged
 post-processing progress after stop (`post_processing` with `stage`,
-`current_step`, `total_steps`, `progress`, then a final `completed`).
+`current_step`, `total_steps`, `progress`, then a final `completed`). The
+first post-processing status also carries `steps`, the ordered stage ids for
+the selected drain mode, so the client can render the correct pipeline.
 
 ```json
 {"type": "status", "data": {"state": "active", "message": "Listening..."}}

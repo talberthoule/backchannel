@@ -18,10 +18,20 @@ from app.services.diarizer_runtime import (
     set_selected_diarizer,
     set_speaker_similarity_threshold,
 )
+from app.services.transcription_readiness import get_transcription_readiness
 from app.services.transcription_runtime import (
     get_transcription_runtime_config,
     set_batch_transcriber_model,
     set_live_preview_model,
+)
+from app.services.voice_enrollment import (
+    MAX_ENROLLMENT_SECONDS,
+    MAX_ENROLLMENT_UPLOAD_BYTES,
+    VoiceEnrollmentError,
+    clear_local_voice_embedding,
+    extract_enrollment_embedding,
+    load_local_voice_embedding,
+    save_local_voice_embedding,
 )
 
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
@@ -57,6 +67,10 @@ def is_supported_benchmark_audio_filename(filename: str) -> bool:
     return os.path.splitext(filename)[1].lower() in _SUPPORTED_AUDIO_FORMATS
 
 
+def is_enrollment_upload_too_large(size: int) -> bool:
+    return size > MAX_ENROLLMENT_UPLOAD_BYTES
+
+
 @router.get("/diarization")
 async def get_diarization_diagnostics(db: AsyncSession = Depends(get_db)):
     environment = probe_sortformer_environment()
@@ -83,10 +97,61 @@ async def update_diarization_config(
     return {**environment.to_dict(), **runtime.to_dict()}
 
 
+@router.get("/diarization/voice-profile")
+async def get_voice_profile_status(db: AsyncSession = Depends(get_db)):
+    return {"enrolled": await load_local_voice_embedding(db) is not None}
+
+
+@router.put("/diarization/voice-profile")
+async def replace_voice_profile(
+    file: UploadFile,
+    db: AsyncSession = Depends(get_db),
+):
+    filename = file.filename or ""
+    ext = os.path.splitext(filename)[1].lower()
+    if not is_supported_benchmark_audio_filename(filename):
+        raise HTTPException(400, f"Unsupported audio format: {ext}")
+
+    content = await file.read(MAX_ENROLLMENT_UPLOAD_BYTES + 1)
+    if is_enrollment_upload_too_large(len(content)):
+        raise HTTPException(413, "Voice sample is too large.")
+
+    try:
+        pcm_data = convert_to_pcm16(
+            content,
+            ext.lstrip("."),
+            max_seconds=MAX_ENROLLMENT_SECONDS,
+        )
+    except Exception as exc:
+        raise HTTPException(400, f"Audio conversion failed: {exc}") from exc
+    try:
+        embedding = extract_enrollment_embedding(pcm_data)
+    except VoiceEnrollmentError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(400, "Voice profile extraction failed.") from exc
+
+    await save_local_voice_embedding(db, embedding)
+    await db.commit()
+    return {"enrolled": True}
+
+
+@router.delete("/diarization/voice-profile", status_code=204)
+async def delete_voice_profile(db: AsyncSession = Depends(get_db)):
+    await clear_local_voice_embedding(db)
+    await db.commit()
+
+
 @router.get("/transcription")
 async def get_transcription_config(db: AsyncSession = Depends(get_db)):
     runtime = await get_transcription_runtime_config(db)
     return runtime.to_dict()
+
+
+@router.get("/transcription/readiness")
+async def get_transcription_readiness_status(db: AsyncSession = Depends(get_db)):
+    readiness = await get_transcription_readiness(db)
+    return readiness.to_dict()
 
 
 @router.patch("/transcription/config")

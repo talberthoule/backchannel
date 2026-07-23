@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import type { AudioSendStats, WSMessage } from "../types";
+import type { AudioSendStats, StopDrainMode, WSMessage } from "../types";
 import type { AudioTrack } from "./useAudioCapture";
 
 export type WSStatus = "disconnected" | "connecting" | "connected" | "error";
@@ -156,7 +156,7 @@ export function useWebSocket() {
     }
   }, []);
 
-  const sendStop = useCallback(() => {
+  const sendStop = useCallback((drain: StopDrainMode = "full") => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) {
       return Promise.resolve(false);
     }
@@ -165,7 +165,10 @@ export function useWebSocket() {
       resolveStop(false);
       stopCompletionRef.current = resolve;
       stopTimeoutRef.current = window.setTimeout(() => resolveStop(false), 180000);
-      wsRef.current?.send(JSON.stringify({ type: "stop" }));
+      // A bare stop keeps the backend's full drain; only send the drain field
+      // when requesting the shorter pipeline (backward compatible).
+      const payload = drain === "full" ? { type: "stop" } : { type: "stop", drain };
+      wsRef.current?.send(JSON.stringify(payload));
     });
   }, [resolveStop]);
 

@@ -207,6 +207,29 @@ export const updateDiarizationConfig = (data: { selected_live_diarizer?: "lightw
     body: JSON.stringify(data),
   });
 
+export interface VoiceProfileStatus {
+  enrolled: boolean;
+}
+
+export const getVoiceProfileStatus = () =>
+  request<VoiceProfileStatus>("/diagnostics/diarization/voice-profile");
+
+export const replaceVoiceProfile = async (file: File): Promise<VoiceProfileStatus> => {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(`${BASE}/diagnostics/diarization/voice-profile`, {
+    method: "PUT",
+    body: form,
+  });
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+  return response.json();
+};
+
+export const deleteVoiceProfile = () =>
+  request<void>("/diagnostics/diarization/voice-profile", { method: "DELETE" });
+
 export const getPrivacyConfig = () => request<PrivacyConfig>("/privacy");
 
 export const updatePrivacyConfig = (localOnly: boolean) =>
@@ -217,6 +240,16 @@ export const updatePrivacyConfig = (localOnly: boolean) =>
 
 export const getTranscriptionConfig = () =>
   request<TranscriptionConfig>("/diagnostics/transcription");
+
+export interface TranscriptionReadiness {
+  ready: boolean;
+  model_id: string;
+  provider: string;
+  reason: string;
+}
+
+export const getTranscriptionReadiness = () =>
+  request<TranscriptionReadiness>("/diagnostics/transcription/readiness");
 
 export const updateTranscriptionConfig = (data: { batch_model_id?: string; live_preview_model_id?: string }) =>
   request<TranscriptionConfig>("/diagnostics/transcription/config", {

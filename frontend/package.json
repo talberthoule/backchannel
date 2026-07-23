@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "test": "node --test src/hooks/useAudioCapture.test.mjs",
+    "test": "node --test src/hooks/useAudioCapture.test.mjs src/lib/callRefusal.test.mjs src/components/SpeakerNameMapper.test.mjs",
     "test:pwa": "node scripts/verify-pwa-assets.mjs",
     "preview": "vite preview"
   },

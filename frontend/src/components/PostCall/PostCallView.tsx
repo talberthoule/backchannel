@@ -102,6 +102,7 @@ export default function PostCallView({
 }: PostCallViewProps) {
   const [activeTab, setActiveTab] = useState<Tab>("briefing");
   const [refreshingBriefing, setRefreshingBriefing] = useState(false);
+  const [briefingError, setBriefingError] = useState<string | null>(null);
   const speakerActionsLocked = Boolean(postProcessing?.active || postProcessing?.state === "timeout" || postProcessing?.state === "error");
   const progressSummary = postProcessingSummary(postProcessing);
 
@@ -311,11 +312,17 @@ export default function PostCallView({
           session={session}
           synthesis={synthesis}
           refreshing={refreshingBriefing}
+          error={briefingError}
           onRefresh={async () => {
             setRefreshingBriefing(true);
+            setBriefingError(null);
             try {
               await api.refreshSynthesis(session.id);
               await onRefreshSynthesis();
+            } catch (err) {
+              setBriefingError(
+                err instanceof Error ? err.message : "Briefing generation failed."
+              );
             } finally {
               setRefreshingBriefing(false);
             }
@@ -344,6 +351,7 @@ export default function PostCallView({
           onRefresh={onRefreshSpeakers}
           onRefreshSession={onRefreshSession}
           onRefreshQuestions={onRefreshQuestions}
+          onRefreshSynthesis={onRefreshSynthesis}
           disabled={speakerActionsLocked}
           disabledReason="Post-processing must complete before speaker mappings or insight enhancement can be changed."
         />
