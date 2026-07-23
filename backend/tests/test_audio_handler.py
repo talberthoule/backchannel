@@ -46,6 +46,25 @@ class FakeSessionContext:
         self.commits += 1
 
 
+class AgentConfigLoadingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_session_override_replaces_global_enabled_value(self):
+        config = SimpleNamespace(slug="analyst", enabled=True)
+        override = SimpleNamespace(agent_slug="analyst", enabled=False)
+        db = SimpleNamespace(
+            execute=AsyncMock(
+                side_effect=[
+                    SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [config])),
+                    SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [override])),
+                ]
+            )
+        )
+
+        result = await audio_handler._load_agent_configs(db, uuid.uuid4())
+
+        self.assertIs(config, result["analyst"])
+        self.assertFalse(result["analyst"].enabled)
+
+
 class AudioFrameDecodingTests(unittest.TestCase):
     def test_local_embedding_is_enrolled_only_when_passed_to_registry(self):
         local = np.array([1.0, 0.0], dtype=np.float32)

@@ -1,7 +1,10 @@
 """Helpers for mapping diarizer speaker IDs to session speaker rows."""
 
 from app.models import Speaker
-from app.services.voice_enrollment import LOCAL_VOICE_PROFILE_ID
+from app.services.voice_enrollment import (
+    LOCAL_VOICE_PROFILE_ID,
+    load_local_voice_embedding,
+)
 
 
 def is_unknown_auto_speaker(auto_id: str) -> bool:
@@ -35,6 +38,13 @@ def resolve_live_mic_speaker(
     if split_track_established or auto_id == LOCAL_VOICE_PROFILE_ID:
         return users[0]
     return None
+
+
+async def load_live_mic_voice_embedding(db, speakers: list[Speaker]):
+    """Load enrollment only when a live mic can map to one local user."""
+    if sum(speaker.is_user for speaker in speakers) != 1:
+        return None
+    return await load_local_voice_embedding(db)
 
 
 def auto_speaker_would_create_new_speaker(

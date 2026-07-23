@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Layout from "./components/Layout";
 import NewSessionModal from "./components/NewSessionModal";
-import AdminPanel, { type AdminTab } from "./components/AdminPanel";
-import OfferingsManager from "./components/OfferingsManager";
-import KnowledgeManager from "./components/KnowledgeManager";
+import ManagementView, { type AdminTab } from "./components/ManagementView";
 import WelcomeView from "./components/WelcomeView";
 import PreCallView from "./components/PreCall/PreCallView";
 import ActiveCallView from "./components/ActiveCall/ActiveCallView";
@@ -747,22 +745,19 @@ export default function App() {
   );
 
   const renderContent = () => {
-    if (showAdmin) {
+    if (showAdmin || showOfferings || showKnowledge) {
       return (
-        <AdminPanel
-          onBack={() => setShowAdmin(false)}
-          initialTab={adminTab}
+        <ManagementView
+          showAdmin={showAdmin}
+          showOfferings={showOfferings}
+          showKnowledge={showKnowledge}
+          adminTab={adminTab}
           highlightSince={whatsNew?.since ?? null}
+          onCloseAdmin={() => setShowAdmin(false)}
+          onCloseOfferings={() => setShowOfferings(false)}
+          onCloseKnowledge={() => setShowKnowledge(false)}
         />
       );
-    }
-
-    if (showOfferings) {
-      return <OfferingsManager onBack={() => setShowOfferings(false)} />;
-    }
-
-    if (showKnowledge) {
-      return <KnowledgeManager onBack={() => setShowKnowledge(false)} />;
     }
 
     if (!session) {

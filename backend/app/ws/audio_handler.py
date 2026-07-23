@@ -20,8 +20,10 @@ from app.services.diarizer_factory import create_diarizer
 from app.services.diarizer_runtime import get_diarizer_runtime_config
 from app.services.diarizer_selection import flush_diarizer_segments
 from app.services.speaker_assignment import (
+    LOCAL_VOICE_PROFILE_ID,
     auto_speaker_would_create_new_speaker,
     is_unknown_auto_speaker,
+    load_live_mic_voice_embedding,
     resolve_existing_auto_speaker,
     resolve_live_mic_speaker,
 )
@@ -30,10 +32,6 @@ from app.services.speaker_diarizer import SpeakerRegistry
 from app.services.ordered_transcription import OrderedTranscriptionQueue
 from app.services.privacy import get_local_only
 from app.services.transcription_runtime import get_transcription_runtime_config
-from app.services.voice_enrollment import (
-    LOCAL_VOICE_PROFILE_ID,
-    load_local_voice_embedding,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +59,19 @@ def _new_speaker_registry(
             fallback_for_unmatched=False,
         )
     return registry
+
+
+async def _load_agent_configs(db, session_id: uuid.UUID) -> dict[str, AgentConfig]:
+    result = await db.execute(select(AgentConfig).order_by(AgentConfig.display_order))
+    configs = {config.slug: config for config in result.scalars().all()}
+    result = await db.execute(
+        select(SessionAgentOverride).where(SessionAgentOverride.session_id == session_id)
+    )
+    overrides = {override.agent_slug: override.enabled for override in result.scalars().all()}
+    for slug, config in configs.items():
+        if slug in overrides:
+            config.enabled = overrides[slug]
+    return configs
 
 
 def _requested_drain_mode(data: dict) -> str:
@@ -415,25 +426,9 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         )
         speaker_rows = list(result.scalars().all())
         speakers_list = [_speaker_context(s) for s in speaker_rows]
-        local_voice_embedding = await load_local_voice_embedding(db)
+        local_voice_embedding = await load_live_mic_voice_embedding(db, speaker_rows)
 
-        # Load agent configs from DB
-        agent_result = await db.execute(
-            select(AgentConfig).order_by(AgentConfig.display_order)
-        )
-        agent_configs_list = agent_result.scalars().all()
-        agent_configs = {a.slug: a for a in agent_configs_list}
-
-        # Load per-session overrides
-        override_result = await db.execute(
-            select(SessionAgentOverride).where(SessionAgentOverride.session_id == session_id)
-        )
-        session_overrides = {o.agent_slug: o.enabled for o in override_result.scalars().all()}
-
-        # Merge: override trumps global
-        for slug, config in agent_configs.items():
-            if slug in session_overrides:
-                config.enabled = session_overrides[slug]
+        agent_configs = await _load_agent_configs(db, session_id)
 
         runtime_config = await get_diarizer_runtime_config(db, probe_sortformer=False)
         transcription_config = await get_transcription_runtime_config(db)
@@ -463,11 +458,9 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
     )
 
     # --- Speaker diarization ---
-    enrolled_users = [speaker for speaker in speaker_rows if speaker.is_user]
-    mic_voice_embedding = local_voice_embedding if len(enrolled_users) == 1 else None
     registry = _new_speaker_registry(
         runtime_config.speaker_similarity_threshold,
-        mic_voice_embedding,
+        local_voice_embedding,
     )
     diarizer = create_diarizer(runtime_config.effective_live_diarizer, registry=registry)
     # Second diarizer for the system-audio track, created on first use.
