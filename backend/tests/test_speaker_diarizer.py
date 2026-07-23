@@ -30,6 +30,24 @@ def finalize(diarizer: SpeakerDiarizer, audio: bytes, embeddings: list[np.ndarra
 
 
 class SpeakerDiarizerTests(unittest.TestCase):
+    def test_segment_records_source_start_after_leading_silence(self):
+        diarizer = SpeakerDiarizer()
+        frame_samples = VoiceActivityDetector.FRAME_SAMPLES
+        diarizer._min_segment_samples = 0
+        diarizer._min_new_speaker_samples = 0
+        diarizer._max_segment_samples = frame_samples
+        diarizer._vad.process_frame = Mock(side_effect=[0.0, 0.0, 1.0])
+        three_frames = bytes(frame_samples * 2 * 3)
+
+        with patch(
+            "app.services.speaker_diarizer._extract_embedding",
+            return_value=embedding(1.0, 0.0),
+        ):
+            segments = diarizer.feed_audio(three_frames)
+
+        self.assertEqual(1, len(segments))
+        self.assertEqual(2 * frame_samples, segments[0].start_sample)
+
     def test_first_short_segment_is_dropped_without_enrollment(self):
         registry = SpeakerRegistry(threshold=0.68)
         diarizer = SpeakerDiarizer(registry=registry)

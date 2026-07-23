@@ -100,11 +100,25 @@ is the source of truth that agents analyze and that gets persisted.
 Mixed call audio is appended per call segment to
 `DATA_DIR/audio/<session_id>/segment_<n>.wav`
 (`backend/app/services/audio_store.py`); the path is stored on the
-`call_segments` row when the segment closes.
+`call_segments` row when the segment closes. Split-track calls also retain
+time-aligned `segment_<n>_mic.wav` and `segment_<n>_sys.wav` files, including
+silence on the absent side. This uses about three times the PCM storage of a
+mixed-only call. Auxiliary files are created only after a system track is
+observed, so mic-only calls stay at one copy; startup removes unreferenced
+auxiliary files left by an interrupted split-track call.
+
+Migration `016_add_call_segment_track_paths` adds nullable
+`mic_audio_path` and `system_audio_path` columns, and startup schema patching
+adds them to older local databases. Existing rows with only `audio_path`
+remain playable and re-transcribable.
 
 Because raw audio is retained, a session can be re-transcribed later through
 any batch-capable model with `POST /api/sessions/{id}/retranscribe`
-(destructive to existing transcript entries), and individual segment
+(destructive to existing transcript entries). Retranscription prefers the
+split paths when present so mic speech stays bound to the sole local user and
+remote voice matching continues across call segments. Split-track turns are
+ordered by their source speech start rather than diarizer completion time.
+Individual mixed segment
 recordings can be fetched from
 `GET /api/sessions/{id}/segments/{n}/audio`.
 

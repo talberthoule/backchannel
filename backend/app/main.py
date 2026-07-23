@@ -11,6 +11,7 @@ from app.models import Base
 from app.release_notes import APP_VERSION
 from app.routers import agents, analyze, artifacts, chat, credentials, retranscribe, diagnostics, directives, documents, groups, imports, knowledge, meta, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts
 from app.services.privacy import LocalOnlyModeError
+from app.services.audio_store import cleanup_orphan_track_audio
 from app.ws import audio_handler
 
 logging.basicConfig(level=logging.INFO)
@@ -165,8 +166,31 @@ async def _add_missing_columns(conn):
                 connection.execute(
                     text("ALTER TABLE call_segments ADD COLUMN audio_path VARCHAR(500)")
                 )
+            if "mic_audio_path" not in columns:
+                connection.execute(
+                    text("ALTER TABLE call_segments ADD COLUMN mic_audio_path VARCHAR(500)")
+                )
+            if "system_audio_path" not in columns:
+                connection.execute(
+                    text("ALTER TABLE call_segments ADD COLUMN system_audio_path VARCHAR(500)")
+                )
 
     await conn.run_sync(_check_and_add)
+
+
+async def _cleanup_orphan_audio(conn):
+    from sqlalchemy import text
+
+    result = await conn.execute(
+        text(
+            "SELECT mic_audio_path, system_audio_path FROM call_segments "
+            "WHERE mic_audio_path IS NOT NULL OR system_audio_path IS NOT NULL"
+        )
+    )
+    referenced = {path for row in result for path in row if path}
+    removed = cleanup_orphan_track_audio(referenced)
+    if removed:
+        logging.info("Removed %s orphan auxiliary audio files", removed)
 
 
 @asynccontextmanager
@@ -174,6 +198,7 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _add_missing_columns(conn)
+        await _cleanup_orphan_audio(conn)
 
     # Seed agent configs and knowledge sources
     from app.database import async_session

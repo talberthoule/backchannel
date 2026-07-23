@@ -31,6 +31,7 @@ from app.services.speaker_ghost_filter import should_defer_new_speaker_segment
 from app.services.speaker_diarizer import SpeakerRegistry
 from app.services.ordered_transcription import OrderedTranscriptionQueue
 from app.services.privacy import get_local_only, is_local_model
+from app.services.secrets import data_dir
 from app.services.transcription_readiness import TranscriptionReadiness, get_transcription_readiness
 from app.services.transcription_runtime import get_transcription_runtime_config
 
@@ -331,7 +332,7 @@ async def _restore_session_after_refusal(session_id: uuid.UUID) -> str | None:
 
 async def _start_call_segment(
     session_id: uuid.UUID,
-) -> SegmentAudioWriter | None:
+) -> dict[str, SegmentAudioWriter | None] | None:
     async with async_session() as db:
         session = await db.get(Session, session_id)
         if session is None:
@@ -351,7 +352,11 @@ async def _start_call_segment(
             started_at=datetime.now(timezone.utc),
         )
         db.add(segment)
-        audio_writer = SegmentAudioWriter(session_id, segment_number)
+        audio_writers = {
+            "mixed": SegmentAudioWriter(session_id, segment_number),
+            "mic": SegmentAudioWriter(session_id, segment_number, track="mic"),
+            "system": SegmentAudioWriter(session_id, segment_number, track="sys"),
+        }
 
         if last_segment_number is not None:
             sequence = await get_next_sequence(session_id, db)
@@ -369,7 +374,80 @@ async def _start_call_segment(
             session.ended_at = None
 
         await db.commit()
-        return audio_writer
+        return audio_writers
+
+
+def _close_audio_writers(
+    audio_writers: dict[str, SegmentAudioWriter | None],
+    split_track_established: bool,
+) -> dict[str, str | None]:
+    paths: dict[str, str | None] = {}
+    for track, writer in audio_writers.items():
+        try:
+            paths[track] = writer.close() if writer else None
+        except Exception as exc:
+            logger.warning("Failed to finalize %s segment audio: %s", track, exc)
+            paths[track] = None
+    if not split_track_established:
+        for path in (paths["mic"], paths["system"]):
+            if path:
+                (data_dir() / path).unlink(missing_ok=True)
+        paths["mic"] = paths["system"] = None
+    return {
+        "audio_path": paths["mixed"],
+        "mic_audio_path": paths["mic"],
+        "system_audio_path": paths["system"],
+    }
+
+
+def _append_audio_frames(
+    audio_writers: dict[str, SegmentAudioWriter | None],
+    frames: tuple[bytes, bytes, bytes],
+    split_track_established: bool = True,
+) -> None:
+    for track, pcm in zip(("mixed", "mic", "system"), frames):
+        if track != "mixed" and not split_track_established:
+            continue
+        writer = audio_writers[track]
+        if not writer:
+            continue
+        try:
+            writer.append(pcm)
+        except Exception as exc:
+            logger.warning("Disabling %s segment audio persistence: %s", track, exc)
+            try:
+                failed_path = writer.close()
+                if isinstance(failed_path, str):
+                    (data_dir() / failed_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+            audio_writers[track] = None
+
+
+def _establish_split_audio_persistence(
+    audio_writers: dict[str, SegmentAudioWriter | None],
+) -> None:
+    mixed = audio_writers["mixed"]
+    if not mixed:
+        return
+    try:
+        for pcm in mixed.pcm_chunks():
+            for track, backfill in (("mic", pcm), ("system", bytes(len(pcm)))):
+                writer = audio_writers[track]
+                if writer:
+                    writer.append(backfill)
+    except Exception as exc:
+        logger.warning("Failed to backfill split-track audio: %s", exc)
+        for track in ("mic", "system"):
+            writer = audio_writers[track]
+            if writer:
+                try:
+                    path = writer.close()
+                    if path:
+                        (data_dir() / path).unlink(missing_ok=True)
+                except Exception:
+                    pass
+            audio_writers[track] = None
 
 
 async def _finalize_call(
@@ -378,7 +456,7 @@ async def _finalize_call(
     diarizer: Any,
     orchestrator: AgentOrchestrator,
     transcription_queue: OrderedTranscriptionQueue,
-    audio_writer: SegmentAudioWriter | None = None,
+    audio_writers: dict[str, SegmentAudioWriter | None] | None = None,
     sys_diarizer: Any = None,
     split_track_established: bool = False,
     drain_mode: str = "full",
@@ -474,11 +552,13 @@ async def _finalize_call(
         open_segment = result.scalar_one_or_none()
         if open_segment:
             open_segment.ended_at = datetime.now(timezone.utc)
-            if audio_writer:
+            if audio_writers:
                 try:
-                    audio_rel_path = audio_writer.close()
-                    if audio_rel_path:
-                        open_segment.audio_path = audio_rel_path
+                    for field, path in _close_audio_writers(
+                        audio_writers,
+                        split_track_established,
+                    ).items():
+                        setattr(open_segment, field, path)
                 except Exception as e:
                     logger.warning(f"Failed to finalize segment audio: {e}")
 
@@ -737,7 +817,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         on_failure=_on_transcription_failure,
     )
 
-    audio_writer: SegmentAudioWriter | None = None
+    audio_writers: dict[str, SegmentAudioWriter | None] | None = None
 
     try:
         await websocket.send_json({"type": "status", "data": {"state": "connecting", "message": "Connecting to AI agents..."}})
@@ -749,7 +829,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         )
         await websocket.send_json({"type": "status", "data": {"state": "active", "message": active_message}})
 
-        audio_writer = await _start_call_segment(session_id)
+        audio_writers = await _start_call_segment(session_id)
 
         while not stopped:
             try:
@@ -780,15 +860,21 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                             },
                         )
 
+                    if track == 1 and not split_track_established:
+                        if audio_writers:
+                            _establish_split_audio_persistence(audio_writers)
+                        split_track_established = True
+
                     # Mix tracks into one stream for the gateway and the session recording
-                    mixed = mixer.add(track, pcm_data)
-                    if mixed:
-                        if audio_writer:
-                            try:
-                                audio_writer.append(mixed)
-                            except Exception as e:
-                                logger.warning(f"Disabling segment audio persistence: {e}")
-                                audio_writer = None
+                    mixed_frames = mixer.add(track, pcm_data)
+                    if mixed_frames:
+                        mixed, mic, system = mixed_frames
+                        if audio_writers:
+                            _append_audio_frames(
+                                audio_writers,
+                                (mixed, mic, system),
+                                split_track_established,
+                            )
                         # Forward to orchestrator for the audio gateway and text-agent context
                         await orchestrator.send_audio(mixed)
 
@@ -840,7 +926,12 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
 
             elif "text" in message:
                 data = json.loads(message["text"])
-                split_track_established = _split_track_established_after_message(data, split_track_established)
+                updated_split_state = _split_track_established_after_message(
+                    data, split_track_established
+                )
+                if updated_split_state and not split_track_established and audio_writers:
+                    _establish_split_audio_persistence(audio_writers)
+                split_track_established = updated_split_state
                 if data.get("type") == "stop":
                     stopped = True
                     stop_drain_mode = _requested_drain_mode(data)
@@ -870,6 +961,6 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         # error runs the minimal drain (no analysis LLM calls).
         await _finalize_call(
             session_id, websocket, diarizer, orchestrator, transcription_queue,
-            audio_writer=audio_writer, sys_diarizer=sys_diarizer, split_track_established=split_track_established,
+            audio_writers=audio_writers, sys_diarizer=sys_diarizer, split_track_established=split_track_established,
             drain_mode=stop_drain_mode if stopped else "minimal",
         )

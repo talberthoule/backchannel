@@ -174,6 +174,8 @@ class CallSegmentOut(BaseModel):
     started_at: datetime
     ended_at: datetime | None
     audio_path: str | None = None
+    mic_audio_path: str | None = None
+    system_audio_path: str | None = None
 
     model_config = {"from_attributes": True}
 
