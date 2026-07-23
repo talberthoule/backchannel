@@ -1,10 +1,19 @@
+import io
 import unittest
+from unittest.mock import AsyncMock, patch
+
+import numpy as np
+from fastapi import HTTPException, UploadFile
 
 from app.routers.diagnostics import (
     MAX_BENCHMARK_SECONDS,
     MIN_BENCHMARK_SECONDS,
+    delete_voice_profile,
+    get_voice_profile_status,
     is_benchmark_pcm_too_short,
+    is_enrollment_upload_too_large,
     is_supported_benchmark_audio_filename,
+    replace_voice_profile,
     trim_benchmark_pcm,
 )
 from app.services.diarization_diagnostics import (
@@ -12,6 +21,7 @@ from app.services.diarization_diagnostics import (
     classify_benchmark,
     probe_sortformer_environment,
 )
+from app.services.voice_enrollment import MAX_ENROLLMENT_UPLOAD_BYTES, VoiceEnrollmentError
 
 
 class DiarizationDiagnosticsTests(unittest.TestCase):
@@ -38,6 +48,10 @@ class DiarizationDiagnosticsTests(unittest.TestCase):
         self.assertFalse(result.sortformer_available)
         self.assertFalse(result.torch_available)
         self.assertEqual(result.recommended_live_diarizer, "lightweight")
+
+    def test_enrollment_upload_size_is_bounded(self):
+        self.assertFalse(is_enrollment_upload_too_large(MAX_ENROLLMENT_UPLOAD_BYTES))
+        self.assertTrue(is_enrollment_upload_too_large(MAX_ENROLLMENT_UPLOAD_BYTES + 1))
 
     def test_classify_benchmark_passes_fast_cuda_measurement(self):
         measurement = BenchmarkMeasurement(
@@ -66,6 +80,68 @@ class DiarizationDiagnosticsTests(unittest.TestCase):
         self.assertEqual(result.status, "failed")
         self.assertEqual(result.recommended_live_diarizer, "lightweight")
 
+
+class VoiceProfileEndpointTests(unittest.IsolatedAsyncioTestCase):
+    async def test_replacement_commits_only_after_extraction(self):
+        file = UploadFile(filename="voice.webm", file=io.BytesIO(b"encoded"))
+        db = AsyncMock()
+        embedding = np.array([1.0, 0.0], dtype=np.float32)
+
+        with (
+            patch("app.routers.diagnostics.convert_to_pcm16", return_value=b"pcm"),
+            patch(
+                "app.routers.diagnostics.extract_enrollment_embedding",
+                return_value=embedding,
+            ),
+            patch(
+                "app.routers.diagnostics.save_local_voice_embedding",
+                new=AsyncMock(),
+            ) as save,
+        ):
+            result = await replace_voice_profile(file, db)
+
+        self.assertEqual({"enrolled": True}, result)
+        save.assert_awaited_once_with(db, embedding)
+        db.commit.assert_awaited_once()
+
+    async def test_failed_replacement_preserves_existing_profile(self):
+        file = UploadFile(filename="voice.webm", file=io.BytesIO(b"encoded"))
+        db = AsyncMock()
+
+        with (
+            patch("app.routers.diagnostics.convert_to_pcm16", return_value=b"pcm"),
+            patch(
+                "app.routers.diagnostics.extract_enrollment_embedding",
+                side_effect=VoiceEnrollmentError("Voice sample must contain audible speech."),
+            ),
+            patch(
+                "app.routers.diagnostics.save_local_voice_embedding",
+                new=AsyncMock(),
+            ) as save,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await replace_voice_profile(file, db)
+
+        self.assertEqual(400, raised.exception.status_code)
+        save.assert_not_awaited()
+        db.commit.assert_not_awaited()
+
+    async def test_status_and_delete_never_return_embedding(self):
+        db = AsyncMock()
+        with patch(
+            "app.routers.diagnostics.load_local_voice_embedding",
+            new=AsyncMock(return_value=np.ones(2)),
+        ):
+            self.assertEqual({"enrolled": True}, await get_voice_profile_status(db))
+
+        with patch(
+            "app.routers.diagnostics.clear_local_voice_embedding",
+            new=AsyncMock(),
+        ) as clear:
+            await delete_voice_profile(db)
+
+        clear.assert_awaited_once_with(db)
+        db.commit.assert_awaited_once()
 
 if __name__ == "__main__":
     unittest.main()
