@@ -11,7 +11,6 @@ from app.services.speaker_context_enhancer import (
     build_enhancement_prompt,
     mark_speaker_context_dirty_if_completed,
     run_speaker_context_batch,
-    run_speaker_context_enhancement,
     speaker_update_changes_enhancement_context,
 )
 from app.services.speaker_name_rewriter import (
@@ -136,27 +135,6 @@ class SpeakerContextEnhancerFailureTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(session.speaker_context_dirty)
         self.assertEqual(5, session.speaker_context_version)
 
-    async def test_insight_model_failure_is_raised_for_an_honest_api_failure(self):
-        session = SimpleNamespace(meeting_type="general", meeting_context="")
-        db = SimpleNamespace(
-            get=AsyncMock(return_value=session),
-            execute=AsyncMock(side_effect=[_ListResult([]), _ListResult([]), _ListResult([])]),
-        )
-
-        with (
-            patch("app.services.speaker_context_enhancer.async_session", return_value=_AsyncContext(db)),
-            patch(
-                "app.services.speaker_context_enhancer.generate_text",
-                new=AsyncMock(side_effect=RuntimeError("model offline")),
-            ),
-            patch(
-                "app.services.speaker_context_enhancer._rewrite_speaker_labels",
-                new=AsyncMock(return_value=set()),
-            ),
-        ):
-            with self.assertRaisesRegex(RuntimeError, "model offline"):
-                await run_speaker_context_enhancement(uuid4())
-
     async def test_batch_applies_and_stamps_only_assigned_insights_in_caller_transaction(self):
         question_id = uuid4()
         mapping_revision_id = uuid4()
@@ -209,10 +187,6 @@ class SpeakerContextEnhancerFailureTests(unittest.IsolatedAsyncioTestCase):
                 "app.services.speaker_context_enhancer._apply_operations_in_db",
                 new=AsyncMock(return_value=[]),
             ) as apply,
-            patch(
-                "app.services.speaker_context_enhancer.rewrite_session_insight_speaker_labels",
-                new=AsyncMock(return_value=set()),
-            ),
         ):
             result = await run_speaker_context_batch(
                 uuid4(),

@@ -1,5 +1,4 @@
 import json
-import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -17,15 +16,12 @@ from app.services.agents.speaker_context import (
     format_transcript_segment,
     speaker_display_name,
 )
-from app.services.insight_refiner import _apply_operations, _apply_operations_in_db
+from app.services.insight_refiner import _apply_operations_in_db
 from app.services.meeting_context import build_meeting_context_text
 from app.services.speaker_name_rewriter import (
     build_speaker_label_replacements,
     rewrite_question_speaker_labels,
-    rewrite_session_insight_speaker_labels,
 )
-
-logger = logging.getLogger(__name__)
 
 CONTEXT_CHANGE_FIELDS = {"name", "display_name", "display_name_enabled", "speaker_type", "is_user"}
 
@@ -125,83 +121,6 @@ def build_enhancement_prompt(
     )
 
 
-async def run_speaker_context_enhancement(session_id: uuid.UUID) -> dict:
-    async with async_session() as db:
-        session = await db.get(Session, session_id)
-        if not session:
-            raise ValueError("Session not found")
-        meeting_context_text = build_meeting_context_text(session)
-
-        speakers_result = await db.execute(
-            select(Speaker).where(Speaker.session_id == session_id).order_by(Speaker.created_at)
-        )
-        speakers = [_speaker_dict(speaker) for speaker in speakers_result.scalars().all()]
-
-        questions_result = await db.execute(
-            select(Question)
-            .where(Question.session_id == session_id)
-            .options(selectinload(Question.speaker))
-            .order_by(Question.created_at)
-        )
-        questions = list(questions_result.scalars().all())
-
-        transcript_result = await db.execute(
-            select(TranscriptEntry)
-            .where(TranscriptEntry.session_id == session_id)
-            .options(selectinload(TranscriptEntry.speaker))
-            .order_by(TranscriptEntry.sequence)
-        )
-        transcript_entries = list(transcript_result.scalars().all())
-
-        prompt = build_enhancement_prompt(
-            speakers=speakers,
-            insights=[_insight_dict(question) for question in questions],
-            transcript_lines=[_transcript_dict(entry) for entry in transcript_entries],
-            meeting_context_text=meeting_context_text,
-        )
-
-    try:
-        raw = await generate_text(
-            settings.REFINEMENT_MODEL,
-            prompt,
-            session_id=session_id,
-            source="speaker_context_enhancer",
-        )
-    except Exception as exc:
-        logger.exception("[speaker_context_enhancer] API call failed")
-        raise RuntimeError(f"Insight revalidation failed: {exc}") from exc
-
-    ops = _parse_ops(raw)
-    applied = await _apply_operations(
-        session_id,
-        ops,
-        questions,
-        agent_source="speaker_context_enhancer",
-        enhanced=True,
-    )
-
-    enhanced_ids = {
-        op.get("id") or op.get("keep_id")
-        for op in applied
-        if op.get("applied") and (op.get("id") or op.get("keep_id"))
-    }
-    for op in applied:
-        ws_data = op.get("ws_data")
-        if isinstance(ws_data, dict) and ws_data.get("id"):
-            enhanced_ids.add(ws_data["id"])
-
-    now = datetime.now(timezone.utc)
-    replacement_ids = await _rewrite_speaker_labels(session_id, speakers, now=now)
-    enhanced_ids.update(replacement_ids)
-
-    return {
-        "applied_operations": len(applied) + len(replacement_ids),
-        "enhanced_insights": len(enhanced_ids),
-        "speaker_context_dirty": True,
-        "speaker_context_enhanced_at": None,
-    }
-
-
 async def run_speaker_context_batch(
     session_id: uuid.UUID,
     question_ids: list[uuid.UUID],
@@ -290,24 +209,6 @@ async def run_speaker_context_batch(
         "applied_operations": len(applied) + len(changed_ids),
         "enhanced_insights": len(enhanced_ids),
     }
-
-
-async def _rewrite_speaker_labels(
-    session_id: uuid.UUID,
-    speakers: list[dict],
-    now: datetime | None = None,
-) -> set[str]:
-    async with async_session() as db:
-        changed_ids = await rewrite_session_insight_speaker_labels(
-            db,
-            session_id,
-            speakers,
-            now=now,
-            enhanced=True,
-        )
-        if changed_ids:
-            await db.commit()
-        return changed_ids
 
 
 def _speaker_dict(speaker: Speaker) -> dict:
