@@ -32,7 +32,7 @@ Key facts:
 ## Docs
 
 - [Download portal](https://downloads.backchannel.page/): authenticated Windows, macOS, and Linux executable delivery for approved Backchannel accounts
-- [Desktop release v0.3.3](https://backchannel.page/releases/v0.3.3/): public asset inventory, release notes, install notes, and first-run guidance
+- [Desktop release v0.3.4](https://backchannel.page/releases/v0.3.4/): public asset inventory, release notes, install notes, and first-run guidance
 - [Quickstart](https://backchannel.page/docs/quickstart/): Docker Compose setup, local development, migrations, tests
 - [Architecture](https://backchannel.page/docs/architecture/): the live call path end to end
 - [Agent System](https://backchannel.page/docs/agents/): each agent's trigger, purpose, and configuration

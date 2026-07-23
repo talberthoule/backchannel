@@ -10,10 +10,24 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.3.3"
+APP_VERSION = "0.3.4"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.3.4",
+        "date": "2026-07-23",
+        "title": "Hotfix: starting a new call works again",
+        "body": """This hotfix repairs starting a call, which was broken in
+versions 0.3.1 through 0.3.3.
+
+- Pressing Start Call on a new session failed silently: the server
+  rejected the request that marks the session active, so the call never
+  began. The underlying server error is fixed and starting a call works
+  again for new and existing sessions.
+- No data was affected. Sessions created while the bug was present work
+  normally after upgrading.""",
+    },
     {
         "version": "0.3.3",
         "date": "2026-07-23",
