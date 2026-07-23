@@ -8,6 +8,7 @@ from app.services.speaker_assignment import (
     resolve_existing_auto_speaker,
     resolve_live_mic_speaker,
 )
+from app.services.voice_enrollment import LOCAL_VOICE_PROFILE_ID
 
 
 def _speaker(name: str, is_user: bool) -> Speaker:
@@ -38,6 +39,34 @@ class SpeakerAssignmentTests(unittest.TestCase):
 
         self.assertIsNone(resolve_live_mic_speaker("sys_auto_1", [user], True))
         self.assertIsNone(resolve_live_mic_speaker("auto_1", [user], False))
+
+    def test_enrolled_mic_only_voice_resolves_to_sole_user(self):
+        user = _speaker("Me", True)
+
+        self.assertIs(
+            user,
+            resolve_live_mic_speaker(LOCAL_VOICE_PROFILE_ID, [user], False),
+        )
+        self.assertIsNone(resolve_live_mic_speaker("auto_1", [user], False))
+        self.assertIsNone(
+            resolve_live_mic_speaker(
+                f"sys_{LOCAL_VOICE_PROFILE_ID}",
+                [user],
+                True,
+            )
+        )
+
+    def test_enrolled_mic_only_voice_requires_exactly_one_user(self):
+        self.assertIsNone(
+            resolve_live_mic_speaker(LOCAL_VOICE_PROFILE_ID, [], False)
+        )
+        self.assertIsNone(
+            resolve_live_mic_speaker(
+                LOCAL_VOICE_PROFILE_ID,
+                [_speaker("Me", True), _speaker("Other local", True)],
+                False,
+            )
+        )
 
     def test_live_mic_resolution_requires_exactly_one_user(self):
         self.assertIsNone(resolve_live_mic_speaker("auto_1", [], True))

@@ -6,6 +6,8 @@ from time import monotonic
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+import numpy as np
+
 from app.models import CallSegment, TranscriptEntry
 from app.services.agents.orchestrator import AgentOrchestrator
 from app.ws import audio_handler
@@ -13,6 +15,7 @@ from app.ws.audio_handler import (
     _decode_audio_frame,
     _reconnect_audio_pipeline,
 )
+from app.services.voice_enrollment import LOCAL_VOICE_PROFILE_ID
 
 
 class FakeSessionContext:
@@ -44,6 +47,15 @@ class FakeSessionContext:
 
 
 class AudioFrameDecodingTests(unittest.TestCase):
+    def test_local_embedding_is_enrolled_only_when_passed_to_registry(self):
+        local = np.array([1.0, 0.0], dtype=np.float32)
+
+        mic = audio_handler._new_speaker_registry(0.68, local)
+        system = audio_handler._new_speaker_registry(0.68)
+
+        self.assertEqual(LOCAL_VOICE_PROFILE_ID, mic.match(local)[0])
+        self.assertIsNone(system.match(local)[0])
+
     def test_decodes_prefixed_and_legacy_frames(self):
         self.assertTrue(hasattr(audio_handler, "_decode_audio_frame"))
         decode_audio_frame = audio_handler._decode_audio_frame

@@ -30,6 +30,10 @@ from app.services.speaker_diarizer import SpeakerRegistry
 from app.services.ordered_transcription import OrderedTranscriptionQueue
 from app.services.privacy import get_local_only
 from app.services.transcription_runtime import get_transcription_runtime_config
+from app.services.voice_enrollment import (
+    LOCAL_VOICE_PROFILE_ID,
+    load_local_voice_embedding,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +47,20 @@ _AUDIO_FLOW_LOG_INTERVAL_BYTES = 10 * _PCM_BYTES_PER_SECOND
 # Drain modes a client may request on stop. "minimal" is reserved for the
 # disconnect/error path and cannot be requested over the wire.
 _STOP_DRAIN_MODES = ("full", "skip_analysis")
+
+
+def _new_speaker_registry(
+    threshold: float,
+    local_embedding=None,
+) -> SpeakerRegistry:
+    registry = SpeakerRegistry(threshold=threshold)
+    if local_embedding is not None:
+        registry.enroll(
+            LOCAL_VOICE_PROFILE_ID,
+            local_embedding,
+            fallback_for_unmatched=False,
+        )
+    return registry
 
 
 def _requested_drain_mode(data: dict) -> str:
@@ -397,6 +415,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         )
         speaker_rows = list(result.scalars().all())
         speakers_list = [_speaker_context(s) for s in speaker_rows]
+        local_voice_embedding = await load_local_voice_embedding(db)
 
         # Load agent configs from DB
         agent_result = await db.execute(
@@ -444,7 +463,12 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
     )
 
     # --- Speaker diarization ---
-    registry = SpeakerRegistry(threshold=runtime_config.speaker_similarity_threshold)
+    enrolled_users = [speaker for speaker in speaker_rows if speaker.is_user]
+    mic_voice_embedding = local_voice_embedding if len(enrolled_users) == 1 else None
+    registry = _new_speaker_registry(
+        runtime_config.speaker_similarity_threshold,
+        mic_voice_embedding,
+    )
     diarizer = create_diarizer(runtime_config.effective_live_diarizer, registry=registry)
     # Second diarizer for the system-audio track, created on first use.
     sys_diarizer = None
@@ -627,7 +651,9 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                         if sys_diarizer is None:
                             sys_diarizer = create_diarizer(
                                 runtime_config.effective_live_diarizer,
-                                registry=SpeakerRegistry(threshold=runtime_config.speaker_similarity_threshold),
+                                registry=_new_speaker_registry(
+                                    runtime_config.speaker_similarity_threshold
+                                ),
                             )
                         # Diarizer inference (and its lazy model load) is CPU-bound;
                         # keep it off the event loop or websocket keepalives starve
