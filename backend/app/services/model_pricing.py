@@ -67,6 +67,12 @@ MODEL_PRICING: dict[str, dict | None] = {
     # variant; kept in the table (as None) so the registry-sync test still
     # covers it and the UI shows "-".
     "gpt-realtime-whisper": None,
+    # Audio-capable chat models (Chat Completions input_audio path). Text
+    # rates from the per-model pages; gpt-audio-1.5 audio input is billed at
+    # 32.00/1M audio tokens. The gpt-audio-mini page publishes no separate
+    # audio-token rate, so only its text rates are recorded.
+    "gpt-audio-1.5": _price(2.50, 10.00, audio_input_per_million=32.00),
+    "gpt-audio-mini": _price(0.60, 2.40),
     # --- Local ONNX models: no API cost ---
     "local-whisper-base": _price(0.0, 0.0),
     "local-parakeet-tdt-0.6b": _price(0.0, 0.0),

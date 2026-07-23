@@ -88,6 +88,8 @@ class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("gpt-realtime-whisper", ids)
         self.assertIn("gpt-4o-transcribe", ids)
         self.assertIn("gpt-4o-mini-transcribe", ids)
+        self.assertIn("gpt-audio-1.5", ids)
+        self.assertIn("gpt-audio-mini", ids)
 
     def test_latest_gemini_models_are_selectable_for_text_and_batch_audio(self):
         from app.config import MODEL_REGISTRY
@@ -133,6 +135,33 @@ class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(entry["supports_batch_audio"], model_id)
             self.assertFalse(entry["supports_text"], model_id)
             self.assertEqual("openai", entry["requires_key"], model_id)
+        # Audio-capable chat models: batch-only via the Chat Completions
+        # input_audio path (no realtime gateway or text-agent wiring here).
+        for model_id in ("gpt-audio-1.5", "gpt-audio-mini"):
+            entry = by_id[model_id]
+            self.assertTrue(entry["supports_batch_audio"], model_id)
+            self.assertFalse(entry["supports_live_audio"], model_id)
+            self.assertFalse(entry["supports_text"], model_id)
+            self.assertEqual("openai", entry["requires_key"], model_id)
+
+    def test_gpt56_family_lacks_audio_input_so_batch_stays_off(self):
+        # Verified 2026-07-23 against the OpenAI per-model docs: every
+        # GPT-5.6/5.5/5.4 page lists audio as "Not supported". Flipping
+        # supports_batch_audio on them produces runtime 400s, so this guard
+        # pins the whole text lineup off the batch dropdown.
+        from app.config import MODEL_REGISTRY
+
+        by_id = {model["id"]: model for model in MODEL_REGISTRY}
+        for model_id in (
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-5.4-nano",
+        ):
+            self.assertFalse(by_id[model_id]["supports_batch_audio"], model_id)
 
 
 if __name__ == "__main__":

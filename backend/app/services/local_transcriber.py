@@ -49,7 +49,9 @@ def _load_model(model_id: str):
 
 def create_transcriber(model_id: str, session_id=None):
     """LocalTranscriber for local-* ids, then the cloud transcriber for the
-    model's registry provider: OpenAI ids go to OpenAITranscriber, everything
+    model's registry provider: specialized OpenAI transcribe ids go to
+    OpenAITranscriber (/v1/audio/transcriptions), other OpenAI ids to
+    OpenAIChatTranscriber (chat completions with input_audio), and everything
     else (including ids no longer in the registry) to the Gemini BatchTranscriber."""
     from app.config import MODEL_REGISTRY
     from app.services.batch_transcriber import BatchTranscriber
@@ -58,9 +60,15 @@ def create_transcriber(model_id: str, session_id=None):
         return LocalTranscriber(model_id)
     entry = next((m for m in MODEL_REGISTRY if m["id"] == model_id), None)
     if entry and entry["provider"].lower() == "openai":
-        from app.services.openai_transcriber import OpenAITranscriber
+        from app.services.openai_transcriber import (
+            OPENAI_TRANSCRIBE_MODEL_IDS,
+            OpenAIChatTranscriber,
+            OpenAITranscriber,
+        )
 
-        return OpenAITranscriber(model_id=model_id, session_id=session_id)
+        if model_id in OPENAI_TRANSCRIBE_MODEL_IDS:
+            return OpenAITranscriber(model_id=model_id, session_id=session_id)
+        return OpenAIChatTranscriber(model_id=model_id, session_id=session_id)
     return BatchTranscriber(model_id=model_id, session_id=session_id)
 
 

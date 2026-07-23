@@ -297,4 +297,30 @@ MODEL_REGISTRY: list[dict] = [
         "supports_batch_audio": True,
         "supports_live_audio": True,
     },
+    # Audio-capable OpenAI chat models: batch transcription goes through
+    # /v1/chat/completions with an input_audio content part (see
+    # OpenAIChatTranscriber). The GPT-5.6/5.5/5.4 text models are NOT batch
+    # options: their model pages list audio as "Not supported".
+    {
+        "id": "gpt-audio-1.5",
+        "name": "GPT Audio 1.5",
+        "provider": "OpenAI",
+        "description": "OpenAI audio chat model; batch segment transcription via Chat Completions audio input",
+        "tier": "stable",
+        "requires_key": "openai",
+        "supports_text": False,
+        "supports_batch_audio": True,
+        "supports_live_audio": False,
+    },
+    {
+        "id": "gpt-audio-mini",
+        "name": "GPT Audio Mini",
+        "provider": "OpenAI",
+        "description": "Cost-efficient OpenAI audio chat model for batch segment transcription",
+        "tier": "stable",
+        "requires_key": "openai",
+        "supports_text": False,
+        "supports_batch_audio": True,
+        "supports_live_audio": False,
+    },
 ]
