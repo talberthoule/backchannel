@@ -124,7 +124,7 @@ Local frontend development expects the Vite dev proxy in `frontend/vite.config.t
 
 AMD GPUs cannot be used from Docker on Windows. `backend/scripts/setup_windows_gpu.ps1` sets up a native Python 3.12 backend venv with AMD's ROCm torch wheels (auto-detected by `backend/scripts/install_sortformer.py`); `-Run` starts the compose db plus a native backend on :8000. See docs/deployment.md "AMD GPU on Windows".
 
-Audio file import uses `soundfile` first and falls back to `ffmpeg` for formats such as MP3 and M4A. If audio import fails locally, verify `ffmpeg` is installed and on `PATH`.
+Audio file import uses `soundfile` first and falls back to `ffmpeg` for formats such as MP3, M4A, and WebM (which also covers browser-recorded voice-profile and mic-benchmark audio). The backend resolves ffmpeg via `BACKCHANNEL_FFMPEG` (set by the desktop launcher to the bundled copy) and then `PATH`; Windows and Linux desktop bundles ship an LGPL ffmpeg fetched by `desktop/scripts/download_ffmpeg.py`, while macOS bundles and local dev still need a system `ffmpeg` on `PATH`.
 
 ### Database Migrations
 

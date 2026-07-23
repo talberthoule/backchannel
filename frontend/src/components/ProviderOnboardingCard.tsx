@@ -19,9 +19,9 @@ interface ProviderOnboardingCardProps {
 
 // Contextual first-run setup state shown above the API Keys card only when
 // the screen was entered from the welcome checklist's "Add API key" action.
-// Frames the one decision that matters -- one cloud provider key (Google
-// recommended) or Privacy First -- and offers a continue action once the
-// currently selected configuration is actually usable.
+// Frames the one decision that matters -- one cloud provider key or Privacy
+// First -- and offers a continue action once the currently selected
+// configuration is actually usable.
 export default function ProviderOnboardingCard({
   privacy,
   onPrivacyChanged,
@@ -88,21 +88,15 @@ export default function ProviderOnboardingCard({
 
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <div className="rounded-lg border border-brand-teal/40 bg-brand-teal/5 p-3.5">
-          <div className="flex items-center gap-2">
-            <h4 className="font-display text-sm font-bold text-brand-dark-gray">
-              Cloud AI with Google (Gemini)
-            </h4>
-            <span className="inline-flex rounded-full bg-brand-teal px-2 py-0.5 text-[10px] font-medium text-white">
-              Recommended
-            </span>
-          </div>
+          <h4 className="font-display text-sm font-bold text-brand-dark-gray">
+            Cloud AI
+          </h4>
           <p className="mt-1.5 font-body text-xs leading-relaxed text-brand-gray">
-            The built-in transcription and analysis agents ship on Gemini
-            models, so one free Google key turns everything on. Use the
-            <strong> Get a key</strong> link below, paste the key into the
-            Google field, and click <strong>Save</strong> -- saving runs a
-            connection test automatically. An OpenAI key is only needed if you
-            later point agents at OpenAI models.
+            Add an API key from Google (Gemini) or OpenAI -- one key from
+            either provider is enough. Use the <strong>Get a key</strong> link
+            below, paste the key into that provider's field, and click
+            <strong> Save</strong> -- saving runs a connection test
+            automatically.
           </p>
         </div>
 

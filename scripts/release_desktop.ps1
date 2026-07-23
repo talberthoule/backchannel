@@ -346,6 +346,9 @@ function Build-WindowsRelease {
     Invoke-Checked "Downloading embedded Postgres" {
         & $venvPython (Join-Path $Source "desktop\scripts\download_pg.py")
     } | Out-Null
+    Invoke-Checked "Downloading ffmpeg" {
+        & $venvPython (Join-Path $Source "desktop\scripts\download_ffmpeg.py")
+    } | Out-Null
     Push-Location $Source
     try {
         Invoke-Checked "Building Windows desktop bundle" {

@@ -10,6 +10,8 @@ release-assets/
 .DS_Store
 pgdata/
 desktop/pgsql/
+desktop/ffmpeg/
+.release-venv/
 
 # Internal marketing strategy docs (not published)
 marketing/

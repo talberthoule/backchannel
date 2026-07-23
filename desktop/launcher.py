@@ -308,6 +308,11 @@ def run(headless: bool = False) -> int:
     os.environ["DATABASE_URL"] = pg.database_url(pg_port)
     os.environ["DATA_DIR"] = str(data_dir / "data")
     os.environ["FRONTEND_DIST"] = str(resource("frontend"))
+    ffmpeg = resource("ffmpeg") / (
+        "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
+    )
+    if ffmpeg.is_file():
+        os.environ["BACKCHANNEL_FFMPEG"] = str(ffmpeg)
 
     # Import after env is set: app.config reads the environment at import.
     import uvicorn

@@ -23,15 +23,21 @@ elif sys.platform == "darwin":
 else:
     hidden.append("pystray._xorg")
 
+datas = [
+    (str(repo / "frontend" / "dist"), "frontend"),
+    (str(repo / "backend" / "models"), "models"),
+    (str(repo / "desktop" / "pgsql"), "pgsql"),
+    (str(repo / "desktop" / "assets"), "assets"),
+]
+# Present only after desktop/scripts/download_ffmpeg.py runs (Windows/Linux
+# releases); macOS bundles stay ffmpeg-free.
+if (repo / "desktop" / "ffmpeg").is_dir():
+    datas.append((str(repo / "desktop" / "ffmpeg"), "ffmpeg"))
+
 a = Analysis(
     [str(repo / "desktop" / "launcher.py")],
     pathex=[str(repo / "backend"), str(repo / "desktop")],
-    datas=[
-        (str(repo / "frontend" / "dist"), "frontend"),
-        (str(repo / "backend" / "models"), "models"),
-        (str(repo / "desktop" / "pgsql"), "pgsql"),
-        (str(repo / "desktop" / "assets"), "assets"),
-    ],
+    datas=datas,
     hiddenimports=hidden,
 )
 

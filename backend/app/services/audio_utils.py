@@ -42,6 +42,17 @@ def pcm16_to_float32(pcm_bytes: bytes) -> np.ndarray:
     return samples.astype(np.float32) / 32768.0
 
 
+def resolve_ffmpeg() -> str | None:
+    """Locate ffmpeg: the desktop launcher's bundled copy wins over PATH."""
+    import os
+    import shutil
+
+    override = os.environ.get("BACKCHANNEL_FFMPEG")
+    if override and os.path.isfile(override):
+        return override
+    return shutil.which("ffmpeg")
+
+
 def convert_to_pcm16(
     file_bytes: bytes,
     source_format: str,
@@ -76,7 +87,15 @@ def convert_to_pcm16(
     except Exception:
         pass
 
-    # Fallback to ffmpeg for formats like m4a, mp3
+    # Fallback to ffmpeg for formats like m4a, mp3, webm
+    ffmpeg = resolve_ffmpeg()
+    if ffmpeg is None:
+        raise RuntimeError(
+            f"FFmpeg is required to read {source_format} audio but was not "
+            "found on this machine. Install FFmpeg and make sure it is on "
+            "PATH, then restart Backchannel."
+        )
+
     with tempfile.NamedTemporaryFile(suffix=f".{source_format}", delete=False) as tmp_in:
         tmp_in.write(file_bytes)
         tmp_in_path = tmp_in.name
@@ -85,16 +104,23 @@ def convert_to_pcm16(
     try:
         output_limit = int(max_seconds * 16000) + 1 if max_seconds is not None else None
         duration_args = ["-t", f"{output_limit / 16000:.8f}"] if output_limit is not None else []
-        subprocess.run(
-            [
-                "ffmpeg", "-y", "-i", tmp_in_path,
-                *duration_args,
-                "-ar", "16000", "-ac", "1", "-f", "s16le",
-                tmp_out_path,
-            ],
-            capture_output=True,
-            check=True,
-        )
+        try:
+            subprocess.run(
+                [
+                    ffmpeg, "-y", "-i", tmp_in_path,
+                    *duration_args,
+                    "-ar", "16000", "-ac", "1", "-f", "s16le",
+                    tmp_out_path,
+                ],
+                capture_output=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            lines = (exc.stderr or b"").decode(errors="replace").strip().splitlines()
+            detail = lines[-1] if lines else "unknown ffmpeg error"
+            raise RuntimeError(
+                f"FFmpeg could not decode this {source_format} audio: {detail}"
+            ) from exc
         with open(tmp_out_path, "rb") as f:
             return f.read(output_limit * 2 if output_limit is not None else -1)
     finally:
