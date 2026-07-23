@@ -30,7 +30,8 @@ from app.services.speaker_assignment import (
 from app.services.speaker_ghost_filter import should_defer_new_speaker_segment
 from app.services.speaker_diarizer import SpeakerRegistry
 from app.services.ordered_transcription import OrderedTranscriptionQueue
-from app.services.privacy import get_local_only
+from app.services.privacy import get_local_only, is_local_model
+from app.services.transcription_readiness import TranscriptionReadiness, get_transcription_readiness
 from app.services.transcription_runtime import get_transcription_runtime_config
 
 logger = logging.getLogger(__name__)
@@ -240,6 +241,94 @@ async def _reconnect_audio_pipeline(
         return False
 
 
+async def _refuse_unready_transcription(
+    websocket: WebSocket,
+    readiness: TranscriptionReadiness,
+) -> bool:
+    """Refuse to start a call whose batch transcriber cannot produce text."""
+    if readiness.ready:
+        return False
+    await _send_status(
+        websocket,
+        "transcription_unready",
+        readiness.reason,
+        details=readiness.to_dict(),
+    )
+    try:
+        await websocket.close()
+    except Exception:
+        pass
+    return True
+
+
+def _derive_refusal_restore_state(
+    ended_at: datetime | None,
+    has_finished_segment: bool,
+    has_transcripts: bool,
+) -> str:
+    """Prior state of a session left "active" by a refused start.
+
+    ended_at survives only when no resume PATCH cleared it. A finished call
+    segment or any transcript entry proves the session had a completed life
+    before this start attempt; imported/analyzed sessions can be completed
+    with transcript entries but zero call segments.
+    """
+    if ended_at is not None:
+        return "completed"
+    if has_finished_segment or has_transcripts:
+        return "completed"
+    return "pre_call"
+
+
+async def _restore_session_after_refusal(session_id: uuid.UUID) -> str | None:
+    """Server-side rollback of the optimistic "active" PATCH after a refusal.
+
+    The frontend marks the session active before the socket opens; when the
+    readiness gate then refuses, this restores the row so a refused call can
+    never strand a session in "active" regardless of client behavior.
+    Returns the restored state, or None when nothing needed restoring or the
+    restore itself failed (contained: the refusal still proceeds).
+    """
+    try:
+        async with async_session() as db:
+            session = await db.get(Session, session_id)
+            if session is None or session.state != "active":
+                return None
+
+            result = await db.execute(
+                select(CallSegment)
+                .where(
+                    CallSegment.session_id == session_id,
+                    CallSegment.ended_at.is_not(None),
+                )
+                .limit(1)
+            )
+            has_finished_segment = result.scalar_one_or_none() is not None
+
+            result = await db.execute(
+                select(TranscriptEntry)
+                .where(TranscriptEntry.session_id == session_id)
+                .limit(1)
+            )
+            has_transcripts = result.scalar_one_or_none() is not None
+
+            prior = _derive_refusal_restore_state(
+                session.ended_at, has_finished_segment, has_transcripts
+            )
+            session.state = prior
+            if prior == "completed":
+                if session.ended_at is None:
+                    session.ended_at = datetime.now(timezone.utc)
+            else:
+                # The refused start never ran; undo the optimistic started_at.
+                session.started_at = None
+            await db.commit()
+            return prior
+    except Exception:
+        logger.exception(f"Failed to restore session {session_id} after refused start")
+        return None
+
+
 async def _start_call_segment(
     session_id: uuid.UUID,
 ) -> SegmentAudioWriter | None:
@@ -348,6 +437,22 @@ async def _finalize_call(
         )
         await orchestrator.close_all()
 
+    tq_stats = transcription_queue.stats
+    drain_result["transcription"] = tq_stats
+    completion_message = "Post-processing complete"
+    if tq_stats["failed"]:
+        if tq_stats["emitted"] == 0:
+            completion_message = (
+                "Post-processing complete, but transcription failed for all "
+                f"{tq_stats['failed']} speech segments and no transcript text "
+                "was saved"
+            )
+        else:
+            completion_message = (
+                "Post-processing complete; transcription failed for "
+                f"{tq_stats['failed']} of {tq_stats['jobs']} speech segments"
+            )
+
     await _send_post_processing_status(
         websocket,
         "saving_session",
@@ -386,7 +491,7 @@ async def _finalize_call(
     await _send_status(
         websocket,
         "completed",
-        "Post-processing complete",
+        completion_message,
         stage="complete",
         current_step=total_steps,
         total_steps=total_steps,
@@ -433,6 +538,18 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         runtime_config = await get_diarizer_runtime_config(db, probe_sortformer=False)
         transcription_config = await get_transcription_runtime_config(db)
         local_only = await get_local_only(db)
+        readiness = await get_transcription_readiness(db)
+
+    if not readiness.ready:
+        # Restore the row before notifying so the client's refresh reads the
+        # corrected state.
+        restored = await _restore_session_after_refusal(session_id)
+        logger.warning(
+            f"Refused call start for session {session_id} "
+            f"(restored state: {restored}): {readiness.reason}"
+        )
+        await _refuse_unready_transcription(websocket, readiness)
+        return
 
     stopped = False
     stop_drain_mode = "full"
@@ -579,9 +696,44 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
             },
         )
 
+    last_transcription_failure_status_at = 0.0
+    batch_model_is_local = is_local_model(transcription_config.batch_model_id)
+
+    async def _on_transcription_failure(failed_count: int, kind: str):
+        # Throttle so a burst of failing segments does not spam the frontend.
+        nonlocal last_transcription_failure_status_at
+        now = monotonic()
+        if failed_count > 1 and now - last_transcription_failure_status_at < 10:
+            return
+        last_transcription_failure_status_at = now
+        plural = "s" if failed_count != 1 else ""
+        if kind == "emit":
+            message = (
+                f"Saving transcript text failed for {failed_count} speech "
+                f"segment{plural} this call; transcript entries may be missing."
+            )
+        elif batch_model_is_local:
+            message = (
+                f"Local transcription failed for {failed_count} speech "
+                f"segment{plural} this call; transcript text may be missing."
+            )
+        else:
+            message = (
+                f"Transcription failed for {failed_count} speech segment{plural} "
+                "this call; transcript text may be missing. Check the provider "
+                "API key in Admin -> API Keys."
+            )
+        await _send_status(
+            websocket,
+            "transcription_error",
+            message,
+            details={"failed": failed_count, "kind": kind},
+        )
+
     transcription_queue = OrderedTranscriptionQueue(
         transcribe=transcriber.transcribe_segment,
         emit=_emit_transcript,
+        on_failure=_on_transcription_failure,
     )
 
     audio_writer: SegmentAudioWriter | None = None
