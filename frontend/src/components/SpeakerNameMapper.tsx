@@ -1,6 +1,27 @@
 import { useState, useRef, useEffect } from "react";
-import type { Session, Speaker } from "../types";
+import type { EnhanceInsightsResult, Session, Speaker } from "../types";
 import * as api from "../services/api";
+
+export function enhancementOutcome(result: EnhanceInsightsResult): {
+  tone: "success" | "warning";
+  message: string;
+} {
+  if (
+    result.status === "completed"
+    && result.briefing_updated
+    && result.briefing_status === "completed"
+    && !result.speaker_context_dirty
+  ) {
+    return {
+      tone: "success",
+      message: `Revalidated the Briefing and all Insights; ${result.enhanced_insights} insight${result.enhanced_insights === 1 ? "" : "s"} changed.`,
+    };
+  }
+  return {
+    tone: "warning",
+    message: result.error || "Revalidation did not complete. Retry Enhance Insights.",
+  };
+}
 
 interface SpeakerNameMapperProps {
   session: Session;
@@ -8,6 +29,7 @@ interface SpeakerNameMapperProps {
   onRefresh: () => void;
   onRefreshSession: () => void;
   onRefreshQuestions: () => void;
+  onRefreshSynthesis: () => Promise<unknown>;
   disabled?: boolean;
   disabledReason?: string;
 }
@@ -18,19 +40,39 @@ export default function SpeakerNameMapper({
   onRefresh,
   onRefreshSession,
   onRefreshQuestions,
+  onRefreshSynthesis,
   disabled = false,
   disabledReason,
 }: SpeakerNameMapperProps) {
   const [enhancing, setEnhancing] = useState(false);
+  const [enhancementMessage, setEnhancementMessage] = useState("");
+  const [enhancementWarning, setEnhancementWarning] = useState("");
+  const [enhancementError, setEnhancementError] = useState("");
 
   if (speakers.length === 0) return null;
 
   const handleEnhance = async () => {
-    if (disabled) return;
+    if (disabled || !session.speaker_context_dirty) return;
+    if (!confirm("Enhance Insights will revalidate the Briefing and every Insight using the corrected speaker names and internal/external roles. Continue?")) {
+      return;
+    }
+    setEnhancementMessage("");
+    setEnhancementWarning("");
+    setEnhancementError("");
     setEnhancing(true);
     try {
-      await api.enhanceInsights(session.id);
-      await Promise.all([onRefreshQuestions(), onRefreshSession(), onRefresh()]);
+      const result = await api.enhanceInsights(session.id);
+      await Promise.all([
+        onRefreshQuestions(),
+        onRefreshSession(),
+        onRefresh(),
+        onRefreshSynthesis(),
+      ]);
+      const outcome = enhancementOutcome(result);
+      if (outcome.tone === "success") setEnhancementMessage(outcome.message);
+      else setEnhancementWarning(outcome.message);
+    } catch (error) {
+      setEnhancementError(error instanceof Error ? error.message : "Enhancement failed. Try again.");
     } finally {
       setEnhancing(false);
     }
@@ -38,13 +80,17 @@ export default function SpeakerNameMapper({
 
   return (
     <div className="rounded-xl bg-surface p-5 shadow-sm">
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <div>
+      <div className="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row">
+        <div className="min-w-0">
           <h3 className="font-display text-sm font-semibold text-brand-dark-gray">
             Speaker Name Mapping
           </h3>
           <p className="font-body text-xs text-brand-mid-gray mt-0.5">
             Map auto-detected speakers to real names. Toggle each mapping on or off individually.
+          </p>
+          <p className="mt-1 font-body text-xs text-brand-gray">
+            Correct speaker names and roles first. Enhance Insights uses these associations to
+            reframe the Briefing and every Insight from the correct internal or external perspective.
           </p>
           {session.speaker_context_dirty ? (
             <p className="mt-1 font-body text-xs font-medium text-brand-amber">
@@ -62,6 +108,7 @@ export default function SpeakerNameMapper({
           )}
         </div>
         <button
+          type="button"
           onClick={handleEnhance}
           disabled={disabled || enhancing || !session.speaker_context_dirty}
           className={`shrink-0 rounded-md px-3 py-2 font-body text-sm font-semibold transition-colors ${
@@ -73,6 +120,22 @@ export default function SpeakerNameMapper({
           {enhancing ? "Enhancing..." : "Enhance Insights"}
         </button>
       </div>
+
+      {enhancementMessage && (
+        <p className="mb-3 rounded-md bg-brand-teal/10 px-3 py-2 font-body text-xs text-brand-teal" role="status">
+          {enhancementMessage}
+        </p>
+      )}
+      {enhancementWarning && (
+        <p className="mb-3 rounded-md bg-brand-amber/10 px-3 py-2 font-body text-xs text-brand-amber" role="alert">
+          {enhancementWarning}
+        </p>
+      )}
+      {enhancementError && (
+        <p className="mb-3 rounded-md bg-red-500/10 px-3 py-2 font-body text-xs text-red-600" role="alert">
+          {enhancementError}
+        </p>
+      )}
 
       <div className="space-y-2">
         {speakers.map((speaker) => (
@@ -177,16 +240,16 @@ function SpeakerRow({
   const hasMapping = !!speaker.display_name;
 
   return (
-    <div className={`flex items-center gap-3 rounded-lg border border-brand-light-gray-1 px-3 py-2.5 transition-colors ${
+    <div className={`flex flex-wrap items-center gap-3 rounded-lg border border-brand-light-gray-1 px-3 py-3 transition-colors ${
       disabled ? "bg-brand-light-gray-2/40 opacity-80" : "hover:bg-brand-light-gray-2/30"
     }`}>
       {/* Color dot + original name */}
-      <div className="flex items-center gap-2 w-36 shrink-0">
+      <div className="flex min-w-[14rem] flex-1 flex-wrap items-center gap-2">
         <span
           className="h-3 w-3 rounded-full shrink-0"
           style={{ backgroundColor: speaker.color }}
         />
-        <span className="font-body text-sm font-medium text-brand-dark-gray truncate">
+        <span className="min-w-[8rem] flex-1 break-words font-body text-sm font-medium text-brand-dark-gray" title={speaker.name}>
           {speaker.name}
         </span>
         {speaker.is_user && (
@@ -206,12 +269,12 @@ function SpeakerRow({
       </div>
 
       {/* Arrow */}
-      <svg className="h-4 w-4 text-brand-mid-gray shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <svg className="hidden h-4 w-4 shrink-0 text-brand-mid-gray sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5} aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
       </svg>
 
       {/* Display name (editable) */}
-      <div className="flex-1 min-w-0">
+      <div className="min-w-[14rem] flex-[1.25]">
         {editing ? (
           <input
             ref={inputRef}
@@ -226,15 +289,19 @@ function SpeakerRow({
                 setEditing(false);
               }
             }}
+            aria-label={`Mapped name for ${speaker.name}`}
             placeholder="Enter real name..."
             className="w-full rounded border border-brand-teal-light bg-surface px-2 py-1 text-sm text-brand-dark-gray ring-1 ring-brand-teal-light/30"
           />
         ) : (
-          <span
+          <button
+            type="button"
             onClick={() => {
               if (!disabled) setEditing(true);
             }}
-            className={`block rounded px-2 py-1 text-sm transition-colors ${
+            disabled={disabled}
+            aria-label={`Edit mapped name for ${speaker.name}`}
+            className={`block w-full break-words rounded px-2 py-1 text-left text-sm transition-colors ${
               disabled ? "cursor-not-allowed" : "cursor-pointer hover:bg-brand-light-gray-2"
             } ${
               hasMapping
@@ -243,10 +310,10 @@ function SpeakerRow({
                   : "text-brand-mid-gray line-through"
                 : "italic text-brand-mid-gray"
             }`}
-            title="Click to edit"
+            title={hasMapping ? speaker.display_name : "Click to map a real name"}
           >
             {hasMapping ? speaker.display_name : "Click to map a real name..."}
-          </span>
+          </button>
         )}
       </div>
 
@@ -261,6 +328,7 @@ function SpeakerRow({
         value={speaker.speaker_type}
         onChange={(e) => handleSpeakerTypeChange(e.target.value as "team" | "external")}
         disabled={disabled}
+        aria-label={`Classification for ${speaker.name}`}
         className="shrink-0 rounded border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-gray focus:border-brand-teal-light disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
         title="Speaker type used by analysis agents"
       >
@@ -269,12 +337,13 @@ function SpeakerRow({
       </select>
 
       {mergeTargets.length > 0 && (
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex min-w-0 items-center gap-1">
           <select
             value={mergeTargetId}
             onChange={(e) => setMergeTargetId(e.target.value)}
             disabled={disabled}
-            className="max-w-36 rounded border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-gray focus:border-brand-teal-light disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
+            aria-label={`Merge target for ${speaker.name}`}
+            className="min-w-0 max-w-48 rounded border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-gray focus:border-brand-teal-light disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
             title="Merge this detected speaker into another speaker"
           >
             <option value="">Merge into...</option>
@@ -285,6 +354,7 @@ function SpeakerRow({
             ))}
           </select>
           <button
+            type="button"
             onClick={handleMerge}
             disabled={disabled || !mergeTargetId || merging}
             className={`rounded border px-2 py-1 font-body text-xs font-medium transition-colors ${
@@ -300,8 +370,11 @@ function SpeakerRow({
 
       {/* Toggle */}
       <button
+        type="button"
         onClick={handleToggle}
         disabled={disabled || !hasMapping}
+        aria-label={`${speaker.display_name_enabled ? "Disable" : "Enable"} mapped name for ${speaker.name}`}
+        aria-pressed={speaker.display_name_enabled}
         className={`h-5 w-9 rounded-full transition-colors shrink-0 ${
           hasMapping && speaker.display_name_enabled ? "bg-brand-teal" : "bg-brand-light-gray-1"
         } ${disabled || !hasMapping ? "opacity-30 cursor-not-allowed" : ""}`}
