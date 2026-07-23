@@ -336,7 +336,7 @@ test('Users and Authorization expose labelled case-insensitive email search', as
 });
 
 test('admin shell styles dense responsive list-detail without page overflow', () => {
-  assert.match(css, /--accent:\s*#0d9488/);
+  assert.match(css, /--accent:\s*#0f766e/);
   assert.match(adminCss, /grid-template-columns:\s*208px minmax\(0, 1fr\)/);
   assert.match(adminCss, /font-variant-numeric:\s*tabular-nums/);
   assert.match(adminCss, /min-height:\s*44px/);
