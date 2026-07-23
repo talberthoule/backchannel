@@ -9,14 +9,44 @@ export interface ReadinessTranscription {
   reason: string;
 }
 
-// One enabled agent joined to its selected model's registry entry. keyAvailable
+// One agent joined to its selected model's registry entry. keyAvailable
 // mirrors ModelInfo.key_available with absence treated as available.
 export interface ReadinessAgentModel {
   agentName: string;
   enabled: boolean;
-  modelId: string;
   provider: string;
   keyAvailable: boolean;
+}
+
+// Minimal structural slices of AgentConfig and ModelInfo, so callers pass
+// their app types while node --test can exercise this module standalone.
+export interface ReadinessAgentSource {
+  name: string;
+  enabled: boolean;
+  model_id: string;
+}
+
+export interface ReadinessModelSource {
+  id: string;
+  provider: string;
+  key_available?: boolean;
+}
+
+// A model missing from the registry never blocks readiness: provider stays
+// unknown and the key is treated as available.
+export function toReadinessAgentModels(
+  agents: ReadinessAgentSource[],
+  models: ReadinessModelSource[]
+): ReadinessAgentModel[] {
+  return agents.map((a) => {
+    const model = models.find((m) => m.id === a.model_id);
+    return {
+      agentName: a.name,
+      enabled: a.enabled,
+      provider: model?.provider ?? "",
+      keyAvailable: model?.key_available !== false,
+    };
+  });
 }
 
 export interface SetupReadiness {
