@@ -1,7 +1,7 @@
 """Add per-session token usage records.
 
-Revision ID: 016_token_usage
-Revises: 015
+Revision ID: 017_token_usage
+Revises: 016
 Create Date: 2026-07-22
 """
 
@@ -9,8 +9,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "016_token_usage"
-down_revision = "015"
+revision = "017_token_usage"
+down_revision = "016"
 branch_labels = None
 depends_on = None
 

@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Layout from "./components/Layout";
 import NewSessionModal from "./components/NewSessionModal";
-import AdminPanel, { type AdminTab } from "./components/AdminPanel";
-import OfferingsManager from "./components/OfferingsManager";
-import KnowledgeManager from "./components/KnowledgeManager";
+import ManagementView, { type AdminTab } from "./components/ManagementView";
 import WelcomeView from "./components/WelcomeView";
 import PreCallView from "./components/PreCall/PreCallView";
 import ActiveCallView from "./components/ActiveCall/ActiveCallView";
 import PostCallView from "./components/PostCall/PostCallView";
 import { startSingleFlight, useAudioCapture } from "./hooks/useAudioCapture";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { reconcileRefusedSession } from "./lib/callRefusal";
 import { useSession } from "./hooks/useSession";
 import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
 import { useWhatsNew } from "./hooks/useWhatsNew";
 import * as api from "./services/api";
-import type { PostProcessingProgress, Question, Session, SessionGroup, SessionSynthesis, TranscriptEntry, WSStatusData } from "./types";
+import type { PostProcessingProgress, Question, Session, SessionGroup, SessionSynthesis, StopDrainMode, TranscriptEntry, WSStatusData } from "./types";
 
 function idlePostProcessing(): PostProcessingProgress {
   return {
@@ -58,6 +57,7 @@ function progressFromStatus(prev: PostProcessingProgress, data: WSStatusData): P
     startedAt: prev.startedAt ?? new Date().toISOString(),
     completedAt: null,
     confirmed: false,
+    steps: data.steps ?? prev.steps,
     details: data.details ?? prev.details,
   };
 }
@@ -198,6 +198,7 @@ export default function App() {
   const [processingError, setProcessingError] = useState<string | null>(null);
   const [backendAudioStatus, setBackendAudioStatus] = useState<string | null>(null);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
   const [audioStarting, setAudioStarting] = useState(false);
   const [callStarting, setCallStarting] = useState(false);
   // Track when the current call segment started (resets on each start/resume)
@@ -299,6 +300,45 @@ export default function App() {
             completedAt: null,
             confirmed: false,
           }));
+        } else if (msg.data.state === "transcription_unready") {
+          // Backend refused the call and closed the socket. Undo the
+          // optimistic start so the session is not stranded active with no
+          // call segment, and surface the reason in both views.
+          setStartError(msg.data.message);
+          setCaptureError(msg.data.message);
+          stopCapture();
+          disconnect();
+          liveSessionIdRef.current = null;
+          setLiveSessionId(null);
+          setInterimText("");
+          const refusedSessionId = messageSessionId || activeSessionId;
+          const refusalMessage = msg.data.message;
+          if (refusedSessionId) {
+            void (async () => {
+              const problem = await reconcileRefusedSession(
+                refusedSessionId,
+                savedTranscripts.length,
+                { getSession: api.getSession, updateSession: api.updateSession },
+              );
+              if (problem) {
+                setStartError(
+                  `${refusalMessage} (The session could not be reset automatically: ` +
+                    `${problem} — reload the app if it still shows an active call.)`,
+                );
+              }
+              await refreshSession().catch((err) =>
+                console.error("Session refresh after refused call failed", err),
+              );
+              await api
+                .listSessions()
+                .then(setSessions)
+                .catch((err) =>
+                  console.error("Session list refresh after refused call failed", err),
+                );
+            })();
+          }
+        } else if (msg.data.state === "transcription_error") {
+          setCaptureError(msg.data.message);
         } else if (
           msg.data.state === "audio_received" ||
           msg.data.state === "audio_segment" ||
@@ -343,7 +383,7 @@ export default function App() {
         setRuntimeSynthesis(msg.data);
       }
     }
-  }, [messages, activeSessionId, speakers, refreshSpeakers]);
+  }, [messages, activeSessionId, speakers, refreshSpeakers, stopCapture, disconnect, savedTranscripts.length, refreshSession]);
 
   const runtimeMatchesView = Boolean(activeSessionId && activeSessionId === runtimeSessionId);
   const viewLiveQuestions = runtimeMatchesView ? liveQuestions : [];
@@ -455,6 +495,11 @@ export default function App() {
 
   const handleOpenApiKeys = useCallback(() => openAdmin("keys"), [openAdmin]);
 
+  const handleOpenVoiceSettings = useCallback(
+    () => openAdmin("transcription"),
+    [openAdmin],
+  );
+
   const handleRenameSession = useCallback(async (name: string) => {
     if (!activeSessionId) return;
     await api.updateSession(activeSessionId, { name });
@@ -549,8 +594,19 @@ export default function App() {
       const generation = ++beginCallGenerationRef.current;
       const isCurrent = () => generation === beginCallGenerationRef.current;
       setCallStarting(true);
+      setStartError(null);
 
       try {
+        // A call without a usable batch transcriber saves zero transcript
+        // rows; block Start/Resume up front with the actionable reason. If
+        // the check itself fails the websocket-level gate still refuses.
+        const readiness = await api.getTranscriptionReadiness().catch(() => null);
+        if (!isCurrent()) return;
+        if (readiness && !readiness.ready) {
+          setStartError(readiness.reason);
+          return;
+        }
+
         // Create defaults before publishing the active view, and only once.
         if (speakers.length === 0) {
           await api.createSpeaker(sessionId, { name: "Me / Team Member", role: "", color: "#0d9488", is_user: true, speaker_type: "team" });
@@ -651,7 +707,7 @@ export default function App() {
     await beginCall();
   }, [activeSessionId, refreshQuestions, beginCall]);
 
-  const handleEndCall = useCallback(async () => {
+  const handleEndCall = useCallback(async (drain: StopDrainMode = "full") => {
     setPostProcessing(startPostProcessing());
     beginCallGenerationRef.current += 1;
     beginCallPromiseRef.current = null;
@@ -661,7 +717,7 @@ export default function App() {
     setAudioStarting(false);
     stopCapture();
     stopListening();
-    const backendCompleted = await sendStop();
+    const backendCompleted = await sendStop(drain);
     disconnect();
     liveSessionIdRef.current = null;
     setLiveSessionId(null);
@@ -741,22 +797,19 @@ export default function App() {
   );
 
   const renderContent = () => {
-    if (showAdmin) {
+    if (showAdmin || showOfferings || showKnowledge) {
       return (
-        <AdminPanel
-          onBack={() => setShowAdmin(false)}
-          initialTab={adminTab}
+        <ManagementView
+          showAdmin={showAdmin}
+          showOfferings={showOfferings}
+          showKnowledge={showKnowledge}
+          adminTab={adminTab}
           highlightSince={whatsNew?.since ?? null}
+          onCloseAdmin={() => setShowAdmin(false)}
+          onCloseOfferings={() => setShowOfferings(false)}
+          onCloseKnowledge={() => setShowKnowledge(false)}
         />
       );
-    }
-
-    if (showOfferings) {
-      return <OfferingsManager onBack={() => setShowOfferings(false)} />;
-    }
-
-    if (showKnowledge) {
-      return <KnowledgeManager onBack={() => setShowKnowledge(false)} />;
     }
 
     if (!session) {
@@ -780,8 +833,10 @@ export default function App() {
             transcriptCount={savedTranscripts.length}
             processingTranscript={processingTranscript}
             processingError={processingError}
+            startError={startError}
             isStarting={callStarting}
             onStartCall={handleStartCall}
+            onOpenVoiceSettings={handleOpenVoiceSettings}
             captureSystemAudio={captureSystemAudio}
             onToggleSystemAudio={setCaptureSystemAudio}
             onProcessTranscript={handleProcessTranscript}

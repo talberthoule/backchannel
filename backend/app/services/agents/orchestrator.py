@@ -44,6 +44,20 @@ logger = logging.getLogger(__name__)
 _DEDUP_WINDOW_SECONDS = 60
 ProgressCallback = Callable[[dict[str, object]], Awaitable[None]]
 
+# Drain modes for call finalization: "full" runs every post-call stage,
+# "skip_analysis" stops after insight reconciliation, and "minimal"
+# (disconnect/error path) runs no analysis stages at all.
+DRAIN_MODE_FULL = "full"
+DRAIN_MODE_SKIP_ANALYSIS = "skip_analysis"
+DRAIN_MODE_MINIMAL = "minimal"
+
+
+def drain_progress_percent(current_step: int, total_steps: int) -> int:
+    """Map a finalization step onto the 15..95 band shown by the progress overlay."""
+    if total_steps <= 1:
+        return 95
+    return 15 + round((current_step - 1) * 80 / (total_steps - 1))
+
 # Live orchestrators by session id so REST routes can push mid-call updates.
 # ponytail: in-process dict; needs a shared channel if the app ever runs multi-worker.
 _live_orchestrators: dict[uuid.UUID, "AgentOrchestrator"] = {}
@@ -230,6 +244,25 @@ class AgentOrchestrator:
         # Briefing lenses/arbiter call Gemini directly, so local-only mode skips them.
         return not self.local_only and agent_config_enabled(self._agent_configs, BRIEF_ARBITER_SLUG)
 
+    def drain_stages(self, mode: str = DRAIN_MODE_FULL) -> list[str]:
+        """Ordered analysis stages graceful_drain runs for a drain mode.
+
+        The websocket handler owns the surrounding steps: the transcript
+        flush (speaker_assignment) before these and the session save after.
+        """
+        if mode == DRAIN_MODE_MINIMAL:
+            return []
+        stages = ["final_insights", "insight_reconciliation"]
+        if mode != DRAIN_MODE_SKIP_ANALYSIS:
+            stages.append("opportunity_matching")
+            if self.briefing_enabled():
+                stages.append("call_briefing")
+        return stages
+
+    def drain_total_steps(self, mode: str = DRAIN_MODE_FULL) -> int:
+        # Transcript flush (step 1) + drain stages + the final save step.
+        return 2 + len(self.drain_stages(mode))
+
     async def start(self):
         """Connect all agents and wire event subscriptions."""
         # --- Audio Gateway (silent listener) ---
@@ -375,8 +408,13 @@ class AgentOrchestrator:
     async def graceful_drain(
         self,
         progress_callback: ProgressCallback | None = None,
+        mode: str = DRAIN_MODE_FULL,
     ) -> dict[str, int | bool]:
-        """Run final text-agent passes before shutting down a live call."""
+        """Run final text-agent passes before shutting down a live call.
+
+        mode selects how much analysis runs (see drain_stages); per-agent
+        enablement still applies within each mode.
+        """
         self._stopped = True
         # Unregister up front: mid-drain context edits are pointless (loops are
         # stopping), and a drain error must not leave a dead entry in the registry.
@@ -413,17 +451,22 @@ class AgentOrchestrator:
             "synthesizer_ops": 0,
             "opportunity_ops": 0,
         }
-        briefing_enabled = self.briefing_enabled()
-        drain_total_steps = 6 if briefing_enabled else 5
-        if briefing_enabled:
+        stages = self.drain_stages(mode)
+        drain_total_steps = 2 + len(stages)
+        if "call_briefing" in stages:
             result["synthesis_generated"] = False
+
+        def _stage_step(stage: str) -> int:
+            # Step 1 (transcript flush) lives in the websocket handler.
+            return 2 + stages.index(stage)
 
         transcript_window = await self.transcript_buffer.get_window()
         transcript_available = transcript_window != "(No recent transcript)"
         result["transcript_available"] = transcript_available
 
         if (
-            transcript_available
+            "final_insights" in stages
+            and transcript_available
             and self._is_enabled("consolidated_analyst")
             and self.consolidated_agent.enabled_types
         ):
@@ -431,9 +474,9 @@ class AgentOrchestrator:
                 progress_callback,
                 "final_insights",
                 "Running final insight pass...",
-                2,
+                _stage_step("final_insights"),
                 drain_total_steps,
-                40,
+                drain_progress_percent(_stage_step("final_insights"), drain_total_steps),
             )
             try:
                 insights = await self.consolidated_agent.run_cycle(
@@ -455,14 +498,14 @@ class AgentOrchestrator:
             except Exception as e:
                 logger.error(f"Final consolidated analyst drain error: {e}")
 
-        if self._is_enabled("synthesizer"):
+        if "insight_reconciliation" in stages and self._is_enabled("synthesizer"):
             await _emit_progress(
                 progress_callback,
                 "insight_reconciliation",
                 "Reconciling and enriching saved insights...",
-                3,
+                _stage_step("insight_reconciliation"),
                 drain_total_steps,
-                65,
+                drain_progress_percent(_stage_step("insight_reconciliation"), drain_total_steps),
             )
             try:
                 applied_ops = await run_synthesizer_cycle(
@@ -475,14 +518,18 @@ class AgentOrchestrator:
             except Exception as e:
                 logger.error(f"Final synthesizer drain error: {e}")
 
-        if self._is_enabled("opportunity_specialist") and self._offering_matching_enabled:
+        if (
+            "opportunity_matching" in stages
+            and self._is_enabled("opportunity_specialist")
+            and self._offering_matching_enabled
+        ):
             await _emit_progress(
                 progress_callback,
                 "opportunity_matching",
                 "Matching opportunities to the offerings catalog...",
-                4,
+                _stage_step("opportunity_matching"),
                 drain_total_steps,
-                80,
+                drain_progress_percent(_stage_step("opportunity_matching"), drain_total_steps),
             )
             try:
                 applied_ops = await run_opportunity_specialist_cycle(
@@ -495,14 +542,14 @@ class AgentOrchestrator:
             except Exception as e:
                 logger.error(f"Final opportunity specialist drain error: {e}")
 
-        if briefing_enabled:
+        if "call_briefing" in stages:
             await _emit_progress(
                 progress_callback,
                 "call_briefing",
                 "Settling the call briefing...",
-                5,
+                _stage_step("call_briefing"),
                 drain_total_steps,
-                88,
+                drain_progress_percent(_stage_step("call_briefing"), drain_total_steps),
             )
             try:
                 synthesis = await run_session_synthesis(

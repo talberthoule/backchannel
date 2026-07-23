@@ -130,10 +130,14 @@ class QuestionOut(BaseModel):
 
 
 class EnhanceInsightsOut(BaseModel):
+    status: Literal["unchanged", "completed", "partial"]
     applied_operations: int
     enhanced_insights: int
     speaker_context_dirty: bool
     speaker_context_enhanced_at: datetime | None = None
+    briefing_updated: bool
+    briefing_status: str | None = None
+    error: str | None = None
 
 
 class SynthesisSectionItem(BaseModel):
@@ -193,6 +197,8 @@ class CallSegmentOut(BaseModel):
     started_at: datetime
     ended_at: datetime | None
     audio_path: str | None = None
+    mic_audio_path: str | None = None
+    system_audio_path: str | None = None
 
     model_config = {"from_attributes": True}
 

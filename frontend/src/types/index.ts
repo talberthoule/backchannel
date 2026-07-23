@@ -133,10 +133,14 @@ export interface Question {
 }
 
 export interface EnhanceInsightsResult {
+  status: "unchanged" | "completed" | "partial";
   applied_operations: number;
   enhanced_insights: number;
   speaker_context_dirty: boolean;
   speaker_context_enhanced_at: string | null;
+  briefing_updated: boolean;
+  briefing_status: string | null;
+  error: string | null;
 }
 
 export interface Offering {
@@ -330,6 +334,9 @@ export interface SessionSynthesis {
   clusters: InsightCluster[];
 }
 
+/** How much post-call analysis a deliberate stop should run. */
+export type StopDrainMode = "full" | "skip_analysis";
+
 export interface WSStatusData {
   state: string;
   message: string;
@@ -337,6 +344,7 @@ export interface WSStatusData {
   current_step?: number;
   total_steps?: number;
   progress?: number;
+  steps?: string[];
   details?: Record<string, unknown>;
 }
 
@@ -351,6 +359,7 @@ export interface PostProcessingProgress {
   startedAt: string | null;
   completedAt: string | null;
   confirmed: boolean;
+  steps?: string[];
   details?: Record<string, unknown>;
 }
 

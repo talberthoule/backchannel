@@ -17,6 +17,15 @@ from app.services.token_usage import record_token_usage
 
 logger = logging.getLogger(__name__)
 
+
+class TranscriptionError(RuntimeError):
+    """A real transcription failure (provider, model, or runtime).
+
+    Distinct from a filtered segment: transcribers return None for audio that
+    produced no usable text, and raise this when transcription itself failed.
+    """
+
+
 # Known hallucination patterns that speech models generate from silence/noise.
 # These are well-documented across Whisper, Gemini, and other STT models.
 _HALLUCINATION_PATTERNS: list[re.Pattern] = [
@@ -160,4 +169,4 @@ class BatchTranscriber:
 
         except Exception as e:
             logger.error(f"Transcription failed: {e}")
-            return None
+            raise TranscriptionError(f"Batch transcription failed: {e}") from e

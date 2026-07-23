@@ -13,8 +13,8 @@ def _embedding_from_signal_mean(pcm_float: np.ndarray, sample_rate: int) -> np.n
 
 
 class StubSortformerDiarizer(SortformerDiarizer):
-    def __init__(self, results):
-        super().__init__(embedding_extractor=_embedding_from_signal_mean)
+    def __init__(self, results, **kwargs):
+        super().__init__(embedding_extractor=_embedding_from_signal_mean, **kwargs)
         self._results = list(results)
 
     def _run_sortformer(self, pcm_bytes: bytes):
@@ -23,6 +23,20 @@ class StubSortformerDiarizer(SortformerDiarizer):
 
 
 class SortformerDiarizerTests(unittest.TestCase):
+    def test_segments_record_absolute_start_across_windows(self):
+        diarizer = StubSortformerDiarizer(
+            [["0.00 1.00 speaker_0"], ["0.00 1.00 speaker_0"]],
+            window_ms=1000,
+        )
+        diarizer._min_new_speaker_bytes = 0
+        voice = (np.ones(16000, dtype=np.int16) * 1000).tobytes()
+
+        first = diarizer.feed_audio(voice)
+        second = diarizer.feed_audio(voice)
+
+        self.assertEqual(0, first[0].start_sample)
+        self.assertEqual(16000, second[0].start_sample)
+
     def test_first_short_turn_is_dropped_without_enrollment(self):
         diarizer = StubSortformerDiarizer([["0.00 1.00 speaker_0"]])
         voice = (np.ones(16000, dtype=np.int16) * 1000).tobytes()

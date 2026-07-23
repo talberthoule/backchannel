@@ -1,5 +1,6 @@
 import unittest
 import uuid
+from unittest.mock import AsyncMock, patch
 
 from app.models import Speaker
 from app.services.speaker_assignment import (
@@ -7,7 +8,9 @@ from app.services.speaker_assignment import (
     is_unknown_auto_speaker,
     resolve_existing_auto_speaker,
     resolve_live_mic_speaker,
+    load_live_mic_voice_embedding,
 )
+from app.services.voice_enrollment import LOCAL_VOICE_PROFILE_ID
 
 
 def _speaker(name: str, is_user: bool) -> Speaker:
@@ -38,6 +41,34 @@ class SpeakerAssignmentTests(unittest.TestCase):
 
         self.assertIsNone(resolve_live_mic_speaker("sys_auto_1", [user], True))
         self.assertIsNone(resolve_live_mic_speaker("auto_1", [user], False))
+
+    def test_enrolled_mic_only_voice_resolves_to_sole_user(self):
+        user = _speaker("Me", True)
+
+        self.assertIs(
+            user,
+            resolve_live_mic_speaker(LOCAL_VOICE_PROFILE_ID, [user], False),
+        )
+        self.assertIsNone(resolve_live_mic_speaker("auto_1", [user], False))
+        self.assertIsNone(
+            resolve_live_mic_speaker(
+                f"sys_{LOCAL_VOICE_PROFILE_ID}",
+                [user],
+                True,
+            )
+        )
+
+    def test_enrolled_mic_only_voice_requires_exactly_one_user(self):
+        self.assertIsNone(
+            resolve_live_mic_speaker(LOCAL_VOICE_PROFILE_ID, [], False)
+        )
+        self.assertIsNone(
+            resolve_live_mic_speaker(
+                LOCAL_VOICE_PROFILE_ID,
+                [_speaker("Me", True), _speaker("Other local", True)],
+                False,
+            )
+        )
 
     def test_live_mic_resolution_requires_exactly_one_user(self):
         self.assertIsNone(resolve_live_mic_speaker("auto_1", [], True))
@@ -82,6 +113,39 @@ class SpeakerAssignmentTests(unittest.TestCase):
                 [_speaker("Me", True)],
             )
         )
+
+
+class LiveMicVoiceEmbeddingTests(unittest.IsolatedAsyncioTestCase):
+    @patch(
+        "app.services.speaker_assignment.load_local_voice_embedding",
+        new_callable=AsyncMock,
+    )
+    async def test_loads_enrollment_only_for_sole_user(self, load_embedding):
+        expected = object()
+        load_embedding.return_value = expected
+        db = object()
+
+        actual = await load_live_mic_voice_embedding(
+            db,
+            [_speaker("Me", True), _speaker("Remote", False)],
+        )
+
+        self.assertIs(expected, actual)
+        load_embedding.assert_awaited_once_with(db)
+
+    @patch(
+        "app.services.speaker_assignment.load_local_voice_embedding",
+        new_callable=AsyncMock,
+    )
+    async def test_skips_enrollment_without_exactly_one_user(self, load_embedding):
+        self.assertIsNone(await load_live_mic_voice_embedding(object(), []))
+        self.assertIsNone(
+            await load_live_mic_voice_embedding(
+                object(),
+                [_speaker("One", True), _speaker("Two", True)],
+            )
+        )
+        load_embedding.assert_not_awaited()
 
 
 if __name__ == "__main__":

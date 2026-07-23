@@ -179,6 +179,8 @@ class CallSegment(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     audio_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    mic_audio_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    system_audio_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     session = relationship("Session", back_populates="call_segments")
 

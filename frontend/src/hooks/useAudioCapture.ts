@@ -7,6 +7,13 @@ interface CaptureOptions {
   onSystemAudioStateChange?: (active: boolean) => void;
 }
 
+export const MIC_ONLY_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
+  channelCount: 1,
+  echoCancellation: false,
+  noiseSuppression: false,
+  autoGainControl: true,
+};
+
 export function startSingleFlight<T>(
   inFlight: { current: Promise<T> | null },
   operation: () => Promise<T>,
@@ -178,10 +185,9 @@ export function useAudioCapture() {
     try {
       const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          channelCount: 1,
+          ...MIC_ONLY_AUDIO_CONSTRAINTS,
           echoCancellation: options?.systemAudio ?? false,
           noiseSuppression: options?.systemAudio ?? false,
-          autoGainControl: true,
         },
       });
       if (generation !== captureGenerationRef.current) {

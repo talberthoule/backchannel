@@ -11,7 +11,11 @@ import logging
 import threading
 
 from app.services.audio_utils import pcm16_to_float32
-from app.services.batch_transcriber import _audio_has_speech_energy, filter_transcript_text
+from app.services.batch_transcriber import (
+    TranscriptionError,
+    _audio_has_speech_energy,
+    filter_transcript_text,
+)
 from app.services.secrets import data_dir
 
 logger = logging.getLogger(__name__)
@@ -74,7 +78,9 @@ class LocalTranscriber:
             raw = await asyncio.to_thread(model.recognize, waveform)
         except Exception as e:
             logger.error(f"Local transcription failed ({self._model_id}): {e}")
-            return None
+            raise TranscriptionError(
+                f"Local transcription failed ({self._model_id}): {e}"
+            ) from e
 
         text = filter_transcript_text(raw if isinstance(raw, str) else "")
         if not text:

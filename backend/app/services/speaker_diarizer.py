@@ -203,6 +203,7 @@ class _SpeakerProfile:
     speaker_id: str
     embedding: np.ndarray
     sample_count: int = 1
+    fallback_for_unmatched: bool = True
 
 
 class SpeakerRegistry:
@@ -219,12 +220,23 @@ class SpeakerRegistry:
     def profile_count(self) -> int:
         return len(self._profiles)
 
-    def enroll(self, speaker_id: str, embedding: np.ndarray):
+    def enroll(
+        self,
+        speaker_id: str,
+        embedding: np.ndarray,
+        fallback_for_unmatched: bool = True,
+    ):
         """Pre-register a speaker with a known ID."""
         norm = np.linalg.norm(embedding)
         if norm > 0:
             embedding = embedding / norm
-        self._profiles.append(_SpeakerProfile(speaker_id=speaker_id, embedding=embedding))
+        self._profiles.append(
+            _SpeakerProfile(
+                speaker_id=speaker_id,
+                embedding=embedding,
+                fallback_for_unmatched=fallback_for_unmatched,
+            )
+        )
 
     def match(self, embedding: np.ndarray) -> tuple[str | None, float]:
         """Find best matching speaker. Returns (speaker_id, similarity) or (None, 0)."""
@@ -242,20 +254,30 @@ class SpeakerRegistry:
             self._update_profile(speaker_id, embedding)
             return speaker_id
 
-        if not allow_create and not self._profiles:
-            logger.info("Deferring first short segment without enrolling a speaker")
-            return "auto_unknown"
-
-        best_profile, _ = self._best_profile(embedding)
-        if best_profile and (not allow_create or len(self._profiles) >= self._max_profiles):
-            reason = "short segment" if not allow_create else "profile limit"
+        best_fallback, fallback_sim = self._best_profile(embedding, fallback_only=True)
+        if not allow_create:
+            if not best_fallback:
+                logger.info("Deferring short segment without an eligible speaker profile")
+                return "auto_unknown"
             logger.info(
                 "Reusing closest speaker %s for %s (similarity %.3f)",
-                best_profile.speaker_id,
-                reason,
-                sim,
+                best_fallback.speaker_id,
+                "short segment",
+                fallback_sim,
             )
-            return best_profile.speaker_id
+            return best_fallback.speaker_id
+
+        generic_profile_count = sum(
+            profile.fallback_for_unmatched for profile in self._profiles
+        )
+        if best_fallback and generic_profile_count >= self._max_profiles:
+            logger.info(
+                "Reusing closest speaker %s for %s (similarity %.3f)",
+                best_fallback.speaker_id,
+                "profile limit",
+                fallback_sim,
+            )
+            return best_fallback.speaker_id
 
         # New speaker
         while any(profile.speaker_id == f"auto_{self._next_id}" for profile in self._profiles):
@@ -266,11 +288,21 @@ class SpeakerRegistry:
         logger.info(f"New speaker enrolled: {new_id} (best sim was {sim:.3f})")
         return new_id
 
-    def _best_profile(self, embedding: np.ndarray) -> tuple[_SpeakerProfile | None, float]:
-        if not self._profiles:
+    def _best_profile(
+        self,
+        embedding: np.ndarray,
+        fallback_only: bool = False,
+    ) -> tuple[_SpeakerProfile | None, float]:
+        profiles = [
+            profile
+            for profile in self._profiles
+            if profile.embedding.shape == embedding.shape
+            and (not fallback_only or profile.fallback_for_unmatched)
+        ]
+        if not profiles:
             return None, 0.0
         best_profile = max(
-            self._profiles,
+            profiles,
             key=lambda profile: float(np.dot(embedding, profile.embedding)),
         )
         return best_profile, float(np.dot(embedding, best_profile.embedding))
@@ -296,6 +328,7 @@ class SpeakerRegistry:
 class DiarizedSegment:
     speaker_id: str
     pcm_bytes: bytes
+    start_sample: int | None = None
 
 
 class SpeakerDiarizer:
@@ -327,6 +360,8 @@ class SpeakerDiarizer:
         self._current_segment = bytearray()  # current speech segment PCM16
         self._silence_count = 0  # consecutive silence samples
         self._in_speech = False
+        self._processed_samples = 0
+        self._current_segment_start_sample: int | None = None
 
     @property
     def registry(self) -> SpeakerRegistry:
@@ -339,6 +374,7 @@ class SpeakerDiarizer:
 
         frame_bytes = VoiceActivityDetector.FRAME_SAMPLES * self._bytes_per_sample
         while len(self._pending_audio) >= frame_bytes:
+            frame_start_sample = self._processed_samples
             frame_pcm = bytes(self._pending_audio[:frame_bytes])
             self._pending_audio = self._pending_audio[frame_bytes:]
 
@@ -369,6 +405,8 @@ class SpeakerDiarizer:
                 self._diag_max_rms = 0.0
 
             if is_speech:
+                if not self._in_speech:
+                    self._current_segment_start_sample = frame_start_sample
                 self._current_segment.extend(frame_pcm)
                 self._silence_count = 0
                 self._in_speech = True
@@ -386,6 +424,8 @@ class SpeakerDiarizer:
                     if self._silence_count >= self._silence_gap_samples:
                         # Turn boundary detected
                         completed.extend(self._finalize_segment())
+
+            self._processed_samples += VoiceActivityDetector.FRAME_SAMPLES
 
         return completed
 
@@ -410,13 +450,17 @@ class SpeakerDiarizer:
         self._current_segment.clear()
         self._silence_count = 0
         self._in_speech = False
+        self._processed_samples = 0
+        self._current_segment_start_sample = None
 
     def _finalize_segment(self) -> list[DiarizedSegment]:
         """Extract embeddings, split internally mixed audio, and assign speakers."""
         pcm_bytes = bytes(self._current_segment)
+        start_sample = self._current_segment_start_sample
         self._current_segment.clear()
         self._silence_count = 0
         self._in_speech = False
+        self._current_segment_start_sample = None
 
         segment_samples = len(pcm_bytes) // self._bytes_per_sample
         if segment_samples < self._min_segment_samples:
@@ -427,7 +471,7 @@ class SpeakerDiarizer:
             full_embedding = _extract_embedding(pcm_float, self._sample_rate)
         except Exception as e:
             logger.warning(f"Embedding extraction failed: {e}")
-            return [DiarizedSegment(speaker_id="auto_unknown", pcm_bytes=pcm_bytes)]
+            return [DiarizedSegment("auto_unknown", pcm_bytes, start_sample)]
 
         allow_create = segment_samples >= self._min_new_speaker_samples
 
@@ -438,7 +482,7 @@ class SpeakerDiarizer:
             )
             if speaker_id == "auto_unknown":
                 return []
-            return [DiarizedSegment(speaker_id=speaker_id, pcm_bytes=pcm_bytes)]
+            return [DiarizedSegment(speaker_id, pcm_bytes, start_sample)]
 
         matched_id, _ = self._registry.match(full_embedding)
         if matched_id or not allow_create or self._registry.profile_count == 0:
@@ -452,7 +496,7 @@ class SpeakerDiarizer:
         if groups is None:
             return assign_full()
 
-        return self._assign_coherence_groups(groups)
+        return self._assign_coherence_groups(groups, start_sample)
 
     def _coherence_groups(
         self,
@@ -504,13 +548,17 @@ class SpeakerDiarizer:
     def _assign_coherence_groups(
         self,
         groups: list[tuple[bytes, np.ndarray]],
+        start_sample: int | None = None,
     ) -> list[DiarizedSegment]:
         """Assign non-enrolling speaker IDs and merge adjacent identical groups."""
         segments: list[DiarizedSegment] = []
+        group_start = start_sample
         for group_pcm, group_embedding in groups:
             speaker_id = self._registry.match_or_create(group_embedding, allow_create=False)
             if segments and segments[-1].speaker_id == speaker_id:
                 segments[-1].pcm_bytes += group_pcm
             else:
-                segments.append(DiarizedSegment(speaker_id=speaker_id, pcm_bytes=group_pcm))
+                segments.append(DiarizedSegment(speaker_id, group_pcm, group_start))
+            if group_start is not None:
+                group_start += len(group_pcm) // self._bytes_per_sample
         return segments

@@ -54,6 +54,7 @@ class SortformerDiarizer:
             int(settings.MIN_NEW_SPEAKER_MS * sample_rate / 1000) * self._bytes_per_sample
         )
         self._pending_audio = bytearray()
+        self._processed_samples = 0
         self._speaker_map: dict[str, str] = {}
         self._next_speaker_id = 1
         self._registry = registry or SpeakerRegistry()
@@ -66,7 +67,8 @@ class SortformerDiarizer:
         while len(self._pending_audio) >= self._window_bytes:
             window = bytes(self._pending_audio[:self._window_bytes])
             self._pending_audio = self._pending_audio[self._window_bytes:]
-            segments.extend(self._process_pcm_window(window))
+            segments.extend(self._process_pcm_window(window, self._processed_samples))
+            self._processed_samples += len(window) // self._bytes_per_sample
         return segments
 
     def flush(self) -> DiarizedSegment | None:
@@ -78,14 +80,21 @@ class SortformerDiarizer:
             return []
         window = bytes(self._pending_audio)
         self._pending_audio.clear()
-        return self._process_pcm_window(window)
+        segments = self._process_pcm_window(window, self._processed_samples)
+        self._processed_samples += len(window) // self._bytes_per_sample
+        return segments
 
     def reset(self):
         self._pending_audio.clear()
+        self._processed_samples = 0
         self._speaker_map.clear()
         self._next_speaker_id = 1
 
-    def _process_pcm_window(self, pcm_bytes: bytes) -> list[DiarizedSegment]:
+    def _process_pcm_window(
+        self,
+        pcm_bytes: bytes,
+        window_start_sample: int = 0,
+    ) -> list[DiarizedSegment]:
         try:
             result = self._run_sortformer(pcm_bytes)
             turns = extract_sortformer_turns(result)
@@ -102,7 +111,13 @@ class SortformerDiarizer:
                 continue
             speaker_id = self._speaker_id_for_segment(turn.label, segment_pcm)
             if speaker_id != "auto_unknown":
-                segments.append(DiarizedSegment(speaker_id=speaker_id, pcm_bytes=segment_pcm))
+                segments.append(
+                    DiarizedSegment(
+                        speaker_id,
+                        segment_pcm,
+                        window_start_sample + start // self._bytes_per_sample,
+                    )
+                )
         return segments
 
     def _run_sortformer(self, pcm_bytes: bytes) -> Any:

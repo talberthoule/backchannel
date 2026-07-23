@@ -161,14 +161,8 @@ async def run_speaker_context_enhancement(session_id: uuid.UUID) -> dict:
             source="speaker_context_enhancer",
         )
     except Exception as exc:
-        logger.error(f"[speaker_context_enhancer] API call failed: {exc}")
-        changed_ids = await _rewrite_speaker_labels(session_id, speakers)
-        return {
-            "applied_operations": len(changed_ids),
-            "enhanced_insights": len(changed_ids),
-            "speaker_context_dirty": True,
-            "speaker_context_enhanced_at": None,
-        }
+        logger.exception("[speaker_context_enhancer] API call failed")
+        raise RuntimeError(f"Insight revalidation failed: {exc}") from exc
 
     ops = _parse_ops(raw)
     applied = await _apply_operations(
@@ -193,18 +187,11 @@ async def run_speaker_context_enhancement(session_id: uuid.UUID) -> dict:
     replacement_ids = await _rewrite_speaker_labels(session_id, speakers, now=now)
     enhanced_ids.update(replacement_ids)
 
-    async with async_session() as db:
-        session = await db.get(Session, session_id)
-        if session:
-            session.speaker_context_dirty = False
-            session.speaker_context_enhanced_at = now
-            await db.commit()
-
     return {
         "applied_operations": len(applied) + len(replacement_ids),
         "enhanced_insights": len(enhanced_ids),
-        "speaker_context_dirty": False,
-        "speaker_context_enhanced_at": now,
+        "speaker_context_dirty": True,
+        "speaker_context_enhanced_at": None,
     }
 
 
