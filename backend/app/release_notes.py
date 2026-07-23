@@ -10,10 +10,33 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.1"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.3.1",
+        "date": "2026-07-23",
+        "title": "Guided provider setup, default-browser app window, and tidier sessions",
+        "body": """This release makes the first run genuinely guided, honors your default
+browser for the desktop app window, lets you clean up session groups safely,
+and makes speaker revalidation progress visible and retryable.
+
+- First launch now offers a guided provider setup: pick Google Gemini,
+  OpenAI, or Privacy First local mode, follow a step-by-step API key guide
+  with direct "Get a key" links, and see real readiness checks. Setup no
+  longer reads as complete while the agents' active models still lack a
+  usable credential.
+- On Windows, the dedicated app window now opens in your default browser
+  instead of preferring specific browsers, with a plain browser tab as the
+  fallback when no app-window-capable browser is available.
+- Session groups can be deleted from the sidebar with an accessible,
+  confirmed control. Sessions in a deleted group are preserved and simply
+  become ungrouped.
+- Re-running insight enhancement after speaker corrections now reports its
+  batch progress honestly, records per-batch outcomes, and offers retry for
+  only the failed batches.""",
+    },
     {
         "version": "0.3.0",
         "date": "2026-07-23",
