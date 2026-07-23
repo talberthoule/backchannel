@@ -14,6 +14,7 @@ from google.genai import types
 from app.config import MODEL_REGISTRY
 from app.services.privacy import LocalOnlyModeError, is_local_only
 from app.services.secrets import resolve_provider_key
+from app.services.token_usage import record_token_usage
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ async def _resolve_key(provider: str) -> str:
     return await resolve_provider_key(provider)
 
 
-async def _call_google(model_id: str, prompt: str, system: str | None, temperature: float | None, key: str) -> str:
+async def _call_google(model_id: str, prompt: str, system: str | None, temperature: float | None, key: str) -> tuple[str, object]:
     config_kwargs = {}
     if system is not None:
         config_kwargs["system_instruction"] = system
@@ -57,10 +58,10 @@ async def _call_google(model_id: str, prompt: str, system: str | None, temperatu
         contents=prompt,
         config=types.GenerateContentConfig(**config_kwargs) if config_kwargs else None,
     )
-    return response.text or ""
+    return response.text or "", getattr(response, "usage_metadata", None)
 
 
-async def _call_openai(model_id: str, prompt: str, system: str | None, temperature: float | None, key: str) -> str:
+async def _call_openai(model_id: str, prompt: str, system: str | None, temperature: float | None, key: str) -> tuple[str, object]:
     messages = []
     if system is not None:
         messages.append({"role": "system", "content": system})
@@ -76,7 +77,7 @@ async def _call_openai(model_id: str, prompt: str, system: str | None, temperatu
         )
         resp.raise_for_status()
         data = resp.json()
-    return data["choices"][0]["message"]["content"] or ""
+    return data["choices"][0]["message"]["content"] or "", data.get("usage")
 
 
 async def generate_text(
@@ -85,6 +86,8 @@ async def generate_text(
     *,
     system: str | None = None,
     temperature: float | None = None,
+    session_id: object | None = None,
+    source: str = "",
 ) -> str:
     provider = provider_for(model_id)
     if provider != "local" and await is_local_only():
@@ -93,5 +96,8 @@ async def generate_text(
     if not key:
         raise LLMKeyMissing(provider)
     if provider == "openai":
-        return await _call_openai(model_id, prompt, system, temperature, key)
-    return await _call_google(model_id, prompt, system, temperature, key)
+        text, usage = await _call_openai(model_id, prompt, system, temperature, key)
+    else:
+        text, usage = await _call_google(model_id, prompt, system, temperature, key)
+    await record_token_usage(session_id, source, model_id, usage)
+    return text

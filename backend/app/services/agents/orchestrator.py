@@ -157,9 +157,9 @@ class AgentOrchestrator:
         # Audio Gateway (native-audio model — silent listener only)
         gw_model = _get_model("audio_gateway", settings.GEMINI_MODEL)
         if provider_for(gw_model) == "openai":
-            self.audio_gateway = OpenAIRealtimeSession(model_override=gw_model)
+            self.audio_gateway = OpenAIRealtimeSession(model_override=gw_model, session_id=session_id)
         else:
-            self.audio_gateway = GeminiLiveSession(model_override=gw_model)
+            self.audio_gateway = GeminiLiveSession(model_override=gw_model, session_id=session_id)
 
         # Consolidated text analyst (includes question generation)
         enabled_types: set[str] = set()
@@ -195,6 +195,7 @@ class AgentOrchestrator:
             prompt_override=_get_prompt("consolidated_analyst") or None,
             meeting_context_text=self.meeting_context_text,
             lenses=ca_lenses,
+            session_id=session_id,
         )
 
         # Objection handler (fast scan loop over the freshest transcript)
@@ -202,6 +203,7 @@ class AgentOrchestrator:
             model_override=_get_model("objection_handler", "") or None,
             prompt_override=_get_prompt("objection_handler") or None,
             meeting_context_text=self.meeting_context_text,
+            session_id=session_id,
         )
 
         # Shared transcript buffer

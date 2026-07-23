@@ -5,19 +5,28 @@ from google.genai import types
 
 from app.config import settings
 from app.services.secrets import resolve_provider_key
+from app.services.token_usage import normalize_usage, record_token_usage
 
 logger = logging.getLogger(__name__)
 
 GATEWAY_SYSTEM_PROMPT = """You are a silent audio relay. Your only purpose is to listen to a live conversation and enable transcription. Do not speak, do not analyze, do not comment, and do not generate any output. Just listen."""
 
 
+def _usage_delta(current: tuple[int, int, int], previous: tuple[int, int, int]) -> tuple[int, int, int]:
+    if any(current[index] < previous[index] for index in range(3)):
+        return 0, 0, 0
+    return tuple(current[index] - previous[index] for index in range(3))
+
+
 class GeminiLiveSession:
-    def __init__(self, model_override: str | None = None, api_key: str | None = None):
+    def __init__(self, model_override: str | None = None, api_key: str | None = None, session_id=None):
         self._api_key = api_key
         self.client = None
         self.session = None
         self._context_manager = None
         self._model = model_override or settings.GEMINI_MODEL
+        self._session_id = session_id
+        self._last_usage = (0, 0, 0)
 
     async def connect(self):
         if self.client is None:
@@ -35,6 +44,7 @@ class GeminiLiveSession:
             config=config,
         )
         self.session = await self._context_manager.__aenter__()
+        self._last_usage = (0, 0, 0)
         logger.info("Gemini Live session connected")
         return self.session
 
@@ -54,6 +64,20 @@ class GeminiLiveSession:
         if not self.session:
             return
         async for response in self.session.receive():
+            try:
+                usage = normalize_usage(getattr(response, "usage_metadata", None))
+            except Exception:
+                logger.exception("Failed to parse Gemini Live token usage")
+                usage = None
+            if usage is not None:
+                delta = _usage_delta(usage, self._last_usage)
+                self._last_usage = usage
+                await record_token_usage(
+                    self._session_id,
+                    "audio_gateway",
+                    self._model,
+                    {"input_tokens": delta[0], "output_tokens": delta[1], "total_tokens": delta[2]},
+                )
             sc = response.server_content
             if not sc:
                 continue

@@ -63,12 +63,14 @@ class ObjectionHandlerAgent:
         model_override: str | None = None,
         prompt_override: str | None = None,
         meeting_context_text: str | None = None,
+        session_id: uuid.UUID | None = None,
     ):
         self._model = model_override or DEFAULT_OBJECTION_MODEL
         self._prompt_template = prompt_override or OBJECTION_HANDLER_PROMPT
         self.meeting_context_text = meeting_context_text or build_meeting_context_text()
         self._recent_objections: deque[str] = deque(maxlen=_MAX_RECENT_OBJECTIONS)
         self._last_window = ""
+        self._session_id = session_id
 
     def update_meeting_context(self, meeting_context_text: str):
         self.meeting_context_text = meeting_context_text
@@ -105,7 +107,9 @@ class ObjectionHandlerAgent:
         )
 
         try:
-            raw_text = await generate_text(self._model, prompt)
+            raw_text = await generate_text(
+                self._model, prompt, session_id=self._session_id, source="objection_handler"
+            )
         except Exception as e:
             logger.error(f"[objection_handler] API call failed: {e}")
             return []

@@ -97,7 +97,9 @@ async def _transcribe_audio_diarized(
     registry = SpeakerRegistry(threshold=runtime_config.speaker_similarity_threshold)
     diarizer = create_diarizer(runtime_config.effective_live_diarizer, registry=registry)
     transcription_config = await get_transcription_runtime_config(db)
-    transcriber = create_transcriber(model_id or transcription_config.batch_model_id)
+    transcriber = create_transcriber(
+        model_id or transcription_config.batch_model_id, session_id=session_id
+    )
 
     # Load existing speakers
     result = await db.execute(

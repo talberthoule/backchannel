@@ -1,4 +1,4 @@
-import type { AgentConfig, AppMeta, CallSegment, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, MeetingType, ModelInfo, Offering, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TranscriptionConfig, TranscriptEntry } from "../types";
+import type { AgentConfig, AppMeta, CallSegment, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, MeetingType, ModelInfo, Offering, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptEntry } from "../types";
 
 const BASE = "/api";
 
@@ -40,6 +40,9 @@ export const refreshSynthesis = (id: string, mode = "post_call") =>
 
 export const analyzeSession = (id: string) =>
   request<{ analyzed: number; session_id: string }>(`/sessions/${id}/analyze`, { method: "POST" });
+
+export const getTokenUsage = (id: string) =>
+  request<TokenUsageSummary>(`/sessions/${id}/token-usage`);
 
 // Directives
 export const createDirective = (sessionId: string, text: string) =>

@@ -21,6 +21,22 @@ export interface Session {
   speaker_context_enhanced_at: string | null;
 }
 
+export interface TokenUsageBreakdown {
+  source?: string;
+  model_id: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
+export interface TokenUsageSummary {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  by_source: TokenUsageBreakdown[];
+  by_model: TokenUsageBreakdown[];
+}
+
 export interface SessionGroup {
   id: string;
   name: string;

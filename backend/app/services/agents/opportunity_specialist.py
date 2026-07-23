@@ -146,7 +146,7 @@ async def run_opportunity_specialist_cycle(
     model_id = model_override or settings.REFINEMENT_MODEL
 
     try:
-        raw = await generate_text(model_id, prompt)
+        raw = await generate_text(model_id, prompt, session_id=session_id, source="opportunity_specialist")
     except Exception as e:
         logger.error(f"[opportunity_specialist] API call failed: {e}")
         return []

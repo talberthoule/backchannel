@@ -33,7 +33,23 @@ class Session(Base):
     speakers = relationship("Speaker", back_populates="session", cascade="all, delete-orphan")
     agent_overrides = relationship("SessionAgentOverride", back_populates="session", cascade="all, delete-orphan")
     syntheses = relationship("SessionSynthesis", back_populates="session", cascade="all, delete-orphan")
+    token_usage = relationship("TokenUsage", back_populates="session", cascade="all, delete-orphan")
     group = relationship("SessionGroup", foreign_keys=[group_id])
+
+
+class TokenUsage(Base):
+    __tablename__ = "token_usage"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("sessions.id", ondelete="CASCADE"), index=True)
+    source: Mapped[str] = mapped_column(String(100))
+    model_id: Mapped[str] = mapped_column(String(100))
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    session = relationship("Session", back_populates="token_usage")
 
 
 class Document(Base):

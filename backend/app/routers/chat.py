@@ -201,7 +201,13 @@ async def chat(body: ChatIn, db: AsyncSession = Depends(get_db)):
     prompt = build_chat_prompt(sessions_data, [m.model_dump() for m in body.messages])
 
     try:
-        reply = await generate_text(body.model_id, prompt, system=SYSTEM_PROMPT)
+        reply = await generate_text(
+            body.model_id,
+            prompt,
+            system=SYSTEM_PROMPT,
+            session_id=body.session_ids[0] if len(body.session_ids) == 1 else None,
+            source="session_chat",
+        )
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"reply": reply}

@@ -29,7 +29,7 @@ async def get_document_summaries(session_id: uuid.UUID, db: AsyncSession) -> str
     for doc in docs:
         if doc.gemini_file_uri:
             try:
-                summary = await summarize_document(doc.gemini_file_uri)
+                summary = await summarize_document(doc.gemini_file_uri, session_id=session_id)
                 summaries.append(f"### {doc.filename}\n{summary}")
             except Exception as e:
                 logger.error(f"Failed to summarize {doc.filename}: {e}")

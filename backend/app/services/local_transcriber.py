@@ -43,13 +43,13 @@ def _load_model(model_id: str):
         return _loaded[model_id]
 
 
-def create_transcriber(model_id: str):
+def create_transcriber(model_id: str, session_id=None):
     """LocalTranscriber for local-* ids, Gemini BatchTranscriber otherwise."""
     from app.services.batch_transcriber import BatchTranscriber
 
     if model_id in LOCAL_MODEL_MAP:
         return LocalTranscriber(model_id)
-    return BatchTranscriber(model_id=model_id)
+    return BatchTranscriber(model_id=model_id, session_id=session_id)
 
 
 class LocalTranscriber:

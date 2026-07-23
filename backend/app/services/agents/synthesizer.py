@@ -109,7 +109,7 @@ async def run_synthesizer_cycle(session_id: uuid.UUID, model_override: str | Non
     model_id = model_override or settings.REFINEMENT_MODEL
 
     try:
-        raw = await generate_text(model_id, prompt)
+        raw = await generate_text(model_id, prompt, session_id=session_id, source="synthesizer")
     except Exception as e:
         logger.error(f"[synthesizer] API call failed: {e}")
         return []

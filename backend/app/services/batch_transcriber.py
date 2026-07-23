@@ -13,6 +13,7 @@ from google.genai import types
 from app.config import settings
 from app.services.audio_utils import make_wav_header
 from app.services.secrets import resolve_provider_key
+from app.services.token_usage import record_token_usage
 
 logger = logging.getLogger(__name__)
 
@@ -97,10 +98,11 @@ def filter_transcript_text(text: str) -> str | None:
 class BatchTranscriber:
     """Transcribes PCM16 audio segments into plain text via Gemini."""
 
-    def __init__(self, sample_rate: int = 16000, model_id: str | None = None, client=None):
+    def __init__(self, sample_rate: int = 16000, model_id: str | None = None, client=None, session_id=None):
         self._sample_rate = sample_rate
         self._model_id = model_id or settings.BATCH_TRANSCRIBER_MODEL
         self._client = client
+        self._session_id = session_id
 
     async def _get_client(self):
         # Lazy so the workspace-stored key (Admin -> API Keys) is picked up.
@@ -143,6 +145,12 @@ class BatchTranscriber:
                         ]
                     )
                 ],
+            )
+            await record_token_usage(
+                self._session_id,
+                "batch_transcriber",
+                self._model_id,
+                getattr(response, "usage_metadata", None),
             )
             text = filter_transcript_text(response.text or "")
             if not text:

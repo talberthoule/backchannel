@@ -413,7 +413,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
     sys_diarizer = None
     split_track_established = False
     mixer = TrackMixer()
-    transcriber = create_transcriber(transcription_config.batch_model_id)
+    transcriber = create_transcriber(transcription_config.batch_model_id, session_id=session_id)
 
     # Map auto-assigned speaker IDs ("auto_1", "auto_2") to DB Speaker rows
     auto_speaker_map: dict[str, str] = {}  # "auto_1" -> str(speaker.id)
