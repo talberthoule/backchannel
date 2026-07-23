@@ -10,10 +10,29 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.3.5"
+APP_VERSION = "0.3.6"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.3.6",
+        "date": "2026-07-23",
+        "title": "OpenAI models work everywhere",
+        "body": """This hotfix completes OpenAI support across every agent and adds
+OpenAI batch transcription options.
+
+- The Briefing (Meeting Lens, Discovery Lens, Arbiter) and Strategic
+  Signals agents now work with OpenAI models. Previously they always
+  called Gemini, so selecting an OpenAI model failed with a "model not
+  found" error after the call.
+- When a briefing does fail, the error now explains what happened and
+  how to fix it instead of showing a raw error dump.
+- Batch transcription gains OpenAI options: GPT Audio 1.5 and the
+  cost-efficient GPT Audio Mini. These are OpenAI's audio-capable chat
+  models; OpenAI's GPT-5.6 text models cannot accept audio, so they
+  are not batch transcription options. Both new models are priced in
+  Admin -> About and appear once a working OpenAI key is added.""",
+    },
     {
         "version": "0.3.5",
         "date": "2026-07-23",
