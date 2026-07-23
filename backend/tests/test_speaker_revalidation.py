@@ -13,6 +13,7 @@ from app.models import (
     SpeakerRevalidationRun,
 )
 from app.services.speaker_revalidation import (
+    batch_failure_reason,
     build_batch_specs,
     canonical_speaker_mapping,
     content_version,
@@ -22,6 +23,63 @@ from app.services.speaker_revalidation import (
     start_or_resume_revalidation,
     summarize_run,
 )
+
+
+class _FakeGoogleClientError(Exception):
+    """Stands in for google.genai.errors.ClientError (module starts with google)."""
+
+
+_FakeGoogleClientError.__module__ = "google.genai.errors"
+
+
+class BatchFailureReasonTests(unittest.TestCase):
+    def test_gemini_spending_cap_429_becomes_actionable_guidance(self):
+        exc = _FakeGoogleClientError(
+            "429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': "
+            "'Your project has exceeded its monthly spending cap. To continue "
+            "making API calls, raise the cap.', 'status': 'RESOURCE_EXHAUSTED'}}"
+        )
+
+        reason = batch_failure_reason(exc)
+
+        self.assertEqual(
+            "Gemini quota/spending cap exhausted - raise the cap in "
+            "AI Studio or switch the model in Admin.",
+            reason,
+        )
+
+    def test_non_google_quota_errors_get_generic_quota_guidance(self):
+        reason = batch_failure_reason(RuntimeError("429 Too Many Requests"))
+
+        self.assertEqual(
+            "Model provider quota or rate limit exhausted - raise the limit "
+            "or switch the model in Admin.",
+            reason,
+        )
+
+    def test_auth_errors_point_to_admin_api_keys(self):
+        reason = batch_failure_reason(
+            RuntimeError("403 PERMISSION_DENIED: API key not valid.")
+        )
+
+        self.assertEqual(
+            "The model provider rejected the API key - update it in "
+            "Admin -> API Keys.",
+            reason,
+        )
+
+    def test_other_errors_keep_the_first_line_of_the_original_message(self):
+        reason = batch_failure_reason(
+            RuntimeError("Briefing revalidation did not complete\nTraceback...")
+        )
+
+        self.assertEqual("Briefing revalidation did not complete", reason)
+
+    def test_empty_errors_still_produce_a_message(self):
+        self.assertEqual(
+            "Revalidation batch failed unexpectedly.",
+            batch_failure_reason(RuntimeError("")),
+        )
 
 
 class SpeakerRevalidationRevisionTests(unittest.TestCase):
@@ -214,6 +272,120 @@ class SpeakerRevalidationBatchTests(unittest.TestCase):
         self.assertEqual(155, summary["total_tokens"])
         self.assertEqual(2000, summary["duration_ms"])
         self.assertEqual("model offline", summary["batches"][1]["error"])
+
+    def test_finalization_carries_the_failed_batch_reason_into_the_run(self):
+        now = datetime.now(timezone.utc)
+        reason = batch_failure_reason(
+            _FakeGoogleClientError("429 RESOURCE_EXHAUSTED: monthly spending cap")
+        )
+        batches = [
+            SimpleNamespace(status="failed", error_message=reason),
+            SimpleNamespace(status="queued", error_message=""),
+        ]
+        run = SimpleNamespace(status="running", error_message="", completed_at=None)
+        session = SimpleNamespace(
+            speaker_context_version=2,
+            speaker_context_dirty=True,
+            speaker_context_enhanced_at=None,
+        )
+
+        finalize_run_state(run, batches, session, SimpleNamespace(source_version=2), now)
+
+        self.assertEqual("partial", run.status)
+        self.assertEqual(now, run.completed_at)
+        self.assertEqual(
+            "1 revalidation batch failed. Gemini quota/spending cap exhausted "
+            "- raise the cap in AI Studio or switch the model in Admin.",
+            run.error_message,
+        )
+        self.assertTrue(session.speaker_context_dirty)
+
+    def test_finalization_marks_run_failed_when_every_batch_failed(self):
+        run = SimpleNamespace(status="running", error_message="", completed_at=None)
+        session = SimpleNamespace(
+            speaker_context_version=1,
+            speaker_context_dirty=True,
+            speaker_context_enhanced_at=None,
+        )
+        batches = [
+            SimpleNamespace(status="failed", error_message="model offline"),
+            SimpleNamespace(status="failed", error_message="model offline"),
+        ]
+
+        finalize_run_state(run, batches, session, SimpleNamespace(source_version=1))
+
+        self.assertEqual("failed", run.status)
+        self.assertIn("2 revalidation batches failed.", run.error_message)
+        self.assertIn("model offline", run.error_message)
+
+    def test_failed_run_summary_is_distinguishable_from_in_progress(self):
+        # Production regression: one insights batch hit a provider 429, the
+        # briefing batch never ran, and the UI still showed "Revalidating 0/2".
+        now = datetime.now(timezone.utc)
+        reason = batch_failure_reason(
+            _FakeGoogleClientError(
+                "429 RESOURCE_EXHAUSTED: Your project has exceeded its monthly "
+                "spending cap."
+            )
+        )
+        batches = [
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                batch_index=0,
+                kind="insights",
+                status="failed",
+                attempts=1,
+                processed_entries=0,
+                applied_operations=0,
+                enhanced_insights=0,
+                input_tokens=0,
+                output_tokens=0,
+                total_tokens=0,
+                duration_ms=420,
+                error_message=reason,
+            ),
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                batch_index=1,
+                kind="briefing",
+                status="queued",
+                attempts=0,
+                processed_entries=0,
+                applied_operations=0,
+                enhanced_insights=0,
+                input_tokens=0,
+                output_tokens=0,
+                total_tokens=0,
+                duration_ms=0,
+                error_message="",
+            ),
+        ]
+        run = SimpleNamespace(
+            id=uuid.uuid4(),
+            status="running",
+            content_version="abc",
+            mapping_revision=SimpleNamespace(source_version=3),
+            batches=batches,
+            started_at=now,
+            completed_at=None,
+            error_message="",
+        )
+        session = SimpleNamespace(
+            speaker_context_version=3,
+            speaker_context_dirty=True,
+            speaker_context_enhanced_at=None,
+        )
+
+        finalize_run_state(run, batches, session, run.mapping_revision, now)
+        summary = summarize_run(run, session)
+
+        self.assertEqual("partial", summary["status"])
+        self.assertNotEqual("running", summary["status"])
+        self.assertEqual(0, summary["completed_batches"])
+        self.assertEqual(1, summary["failed_batches"])
+        self.assertIn("1 revalidation batch failed.", summary["error"])
+        self.assertIn("Gemini quota/spending cap exhausted", summary["error"])
+        self.assertEqual(reason, summary["batches"][0]["error"])
 
     def test_finalization_clears_only_the_mapping_version_that_ran(self):
         now = datetime.now(timezone.utc)

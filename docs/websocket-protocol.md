@@ -79,6 +79,14 @@ post-processing progress after stop (`post_processing` with `stage`,
 first post-processing status also carries `steps`, the ordered stage ids for
 the selected drain mode, so the client can render the correct pipeline.
 
+The late post-processing statuses and the final `completed` status carry a
+`details` object summarizing the final analysis pass: `insights_saved` (new
+insights created by the final insight pass), `synthesizer_ops` (updates
+applied to already-saved insights), `opportunity_ops` (offering matches
+applied), `transcription` (queue stats), and `session_insight_total` (the
+session's total insight count at drain completion, so clients can anchor the
+pass counters against the lifetime total).
+
 ```json
 {"type": "status", "data": {"state": "active", "message": "Listening..."}}
 ```

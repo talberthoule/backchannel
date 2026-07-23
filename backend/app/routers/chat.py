@@ -11,7 +11,8 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import Question, Session, SessionSynthesis, Speaker, TranscriptEntry
-from app.services.llm import generate_text, registry_entry
+from app.services.llm import generate_text, provider_for, registry_entry
+from app.services.provider_errors import PROVIDER_ERROR_TYPES, provider_error_to_http
 
 logger = logging.getLogger(__name__)
 
@@ -210,4 +211,8 @@ async def chat(body: ChatIn, db: AsyncSession = Depends(get_db)):
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except PROVIDER_ERROR_TYPES as e:
+        raise provider_error_to_http(
+            provider_for(body.model_id), e, context="Chat failed"
+        ) from e
     return {"reply": reply}

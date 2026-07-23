@@ -1,4 +1,5 @@
 import type { PostProcessingProgress as ProgressState } from "../../types";
+import { formatPostProcessingSummary } from "../../lib/postProcessingSummary";
 
 interface PostProcessingProgressProps {
   progress: ProgressState;
@@ -45,23 +46,10 @@ function stepState(stepIndex: number, currentStep: number, active: boolean): "do
   return "pending";
 }
 
-function detailsText(details?: Record<string, unknown>): string | null {
-  if (!details) return null;
-  const insights = Number(details.insights_saved ?? 0);
-  const synthOps = Number(details.synthesizer_ops ?? 0);
-  const opportunityOps = Number(details.opportunity_ops ?? 0);
-  const parts = [
-    insights ? `${insights} insight${insights === 1 ? "" : "s"} saved` : null,
-    synthOps ? `${synthOps} insight update${synthOps === 1 ? "" : "s"}` : null,
-    opportunityOps ? `${opportunityOps} offering match${opportunityOps === 1 ? "" : "es"}` : null,
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(" | ") : null;
-}
-
 export default function PostProcessingProgress({ progress }: PostProcessingProgressProps) {
   const percent = clampProgress(progress.progress);
   const currentStep = Math.max(0, Math.min(progress.totalSteps, progress.currentStep));
-  const summary = detailsText(progress.details);
+  const summary = formatPostProcessingSummary(progress.details);
   const stepIds = progress.steps && progress.steps.length > 0 ? progress.steps : DEFAULT_STEP_IDS;
 
   return (

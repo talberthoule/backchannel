@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Iterable
@@ -26,6 +27,61 @@ from app.services.speaker_context_enhancer import run_speaker_context_batch
 
 REVALIDATION_BATCH_SIZE = 25
 logger = logging.getLogger(__name__)
+
+_QUOTA_MARKERS = (
+    "resource_exhausted",
+    "spending cap",
+    "quota",
+    "rate limit",
+    "too many requests",
+)
+_AUTH_MARKERS = (
+    "api key",
+    "api_key",
+    "unauthenticated",
+    "unauthorized",
+    "permission_denied",
+    "permission denied",
+)
+# Status codes must match as standalone numbers; a bare substring check would
+# misclassify unrelated digit runs like "timed out after 14290 ms".
+_QUOTA_CODE = re.compile(r"\b429\b")
+_AUTH_CODE = re.compile(r"\b(?:401|403)\b")
+_GOOGLE_MARKERS = ("gemini", "google", "generativelanguage", "ai studio")
+
+
+def batch_failure_reason(error: Exception | str) -> str:
+    """Convert a batch failure into a short, actionable human-readable reason.
+
+    Recognizes provider quota and auth errors from the exception text (and, for
+    exceptions, the raising module); anything else keeps the first line of the
+    original message so the real detail is not lost.
+    """
+    text = str(error).strip()
+    lowered = text.lower()
+    module = type(error).__module__ if isinstance(error, Exception) else ""
+    from_google = module.startswith("google") or any(
+        marker in lowered for marker in _GOOGLE_MARKERS
+    )
+    if any(marker in lowered for marker in _QUOTA_MARKERS) or _QUOTA_CODE.search(lowered):
+        if from_google:
+            return (
+                "Gemini quota/spending cap exhausted - raise the cap in "
+                "AI Studio or switch the model in Admin."
+            )
+        return (
+            "Model provider quota or rate limit exhausted - raise the limit "
+            "or switch the model in Admin."
+        )
+    if any(marker in lowered for marker in _AUTH_MARKERS) or _AUTH_CODE.search(lowered):
+        return (
+            "The model provider rejected the API key - update it in "
+            "Admin -> API Keys."
+        )
+    if not text:
+        return "Revalidation batch failed unexpectedly."
+    first_line = text.splitlines()[0].strip()
+    return first_line if len(first_line) <= 200 else first_line[:197] + "..."
 
 
 def _value(source: Any, field: str, default: Any = None) -> Any:
@@ -146,8 +202,17 @@ def finalize_run_state(
     failed = sum(batch.status == "failed" for batch in batches)
     run.completed_at = now
     if failed:
-        run.status = "partial"
-        run.error_message = f"{failed} revalidation batch{'es' if failed != 1 else ''} failed."
+        run.status = "failed" if failed == len(batches) else "partial"
+        summary = f"{failed} revalidation batch{'es' if failed != 1 else ''} failed."
+        reason = next(
+            (
+                batch.error_message
+                for batch in batches
+                if batch.status == "failed" and batch.error_message
+            ),
+            "",
+        )
+        run.error_message = f"{summary} {reason}".strip()
         session.speaker_context_dirty = True
         return
 
@@ -388,7 +453,7 @@ async def _run_batch(
         await db.rollback()
         failed = await db.get(SpeakerRevalidationBatch, batch.id)
         failed.status = "failed"
-        failed.error_message = str(exc)
+        failed.error_message = batch_failure_reason(exc)
         failed.duration_ms = max(
             0,
             int((datetime.now(timezone.utc) - started).total_seconds() * 1000),

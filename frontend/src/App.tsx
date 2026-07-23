@@ -12,6 +12,7 @@ import { reconcileRefusedSession } from "./lib/callRefusal";
 import { useSession } from "./hooks/useSession";
 import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
 import { useWhatsNew } from "./hooks/useWhatsNew";
+import { useConfirm } from "./components/ConfirmProvider";
 import * as api from "./services/api";
 import type { PostProcessingProgress, Question, Session, SessionGroup, SessionSynthesis, StopDrainMode, TranscriptEntry, WSStatusData } from "./types";
 
@@ -166,6 +167,7 @@ export default function App() {
   const [adminOnboarding, setAdminOnboarding] = useState(false);
   const [showNewSession, setShowNewSession] = useState(false);
   const { whatsNew, bannerOpen, acknowledge: acknowledgeWhatsNew } = useWhatsNew();
+  const { confirm, notice } = useConfirm();
 
   const {
     session,
@@ -529,19 +531,31 @@ export default function App() {
   const handleDeleteSession = useCallback(async () => {
     if (!activeSessionId) return;
     if (activeSessionId === liveSessionIdRef.current) {
-      alert("End the active call before deleting this session.");
+      await notice({
+        title: "Call in progress",
+        message: "End the active call before deleting this session.",
+      });
       return;
     }
-    if (!confirm("Delete this session and all its data?")) return;
+    const ok = await confirm({
+      title: "Delete session",
+      message: "Delete this session and all its data? This cannot be undone.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     await api.deleteSession(activeSessionId);
     setActiveSessionId(null);
     if (!liveSessionIdRef.current) resetSessionRuntimeState();
     await refreshSessions();
-  }, [activeSessionId, refreshSessions, resetSessionRuntimeState]);
+  }, [activeSessionId, confirm, notice, refreshSessions, resetSessionRuntimeState]);
 
   const handleDeleteSessionById = useCallback(async (sessionId: string) => {
     if (sessionId === liveSessionIdRef.current) {
-      alert("End the active call before deleting this session.");
+      await notice({
+        title: "Call in progress",
+        message: "End the active call before deleting this session.",
+      });
       return;
     }
     await api.deleteSession(sessionId);
@@ -550,7 +564,7 @@ export default function App() {
       if (!liveSessionIdRef.current) resetSessionRuntimeState();
     }
     await refreshSessions();
-  }, [activeSessionId, refreshSessions, resetSessionRuntimeState]);
+  }, [activeSessionId, notice, refreshSessions, resetSessionRuntimeState]);
 
   const startAudioFeed = useCallback((
     sessionId: string,
@@ -598,8 +612,10 @@ export default function App() {
     if (!activeSessionId) return Promise.resolve();
     const sessionId = activeSessionId;
     if (liveSessionIdRef.current && liveSessionIdRef.current !== sessionId) {
-      alert("End the current active call before starting another session.");
-      return Promise.resolve();
+      return notice({
+        title: "Call in progress",
+        message: "End the current active call before starting another session.",
+      });
     }
 
     return startSingleFlight(beginCallPromiseRef, async () => {
@@ -661,7 +677,7 @@ export default function App() {
         if (isCurrent()) setCallStarting(false);
       }
     });
-  }, [activeSessionId, messages.length, refreshSession, refreshSessions, refreshSpeakers, speakers, startAudioFeed]);
+  }, [activeSessionId, messages.length, notice, refreshSession, refreshSessions, refreshSpeakers, speakers, startAudioFeed]);
 
   const handleStartCall = useCallback(() => beginCall(), [beginCall]);
 

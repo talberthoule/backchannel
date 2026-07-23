@@ -17,10 +17,20 @@ await build({
       import React from "react";
       import { renderToStaticMarkup } from "react-dom/server";
       import SpeakerNameMapper, * as speakerModule from "./SpeakerNameMapper.tsx";
+      import { ConfirmProvider } from "./ConfirmProvider.tsx";
       export const enhancementOutcome = speakerModule.enhancementOutcome;
       export const enhancementProgressLabel = speakerModule.enhancementProgressLabel;
+      export const shouldOfferRetry = speakerModule.shouldOfferRetry;
       export function renderMapper(props) {
-        return renderToStaticMarkup(React.createElement(SpeakerNameMapper, props));
+        // The mapper's confirmations use the themed useConfirm() hook, which
+        // requires a ConfirmProvider ancestor.
+        return renderToStaticMarkup(
+          React.createElement(
+            ConfirmProvider,
+            null,
+            React.createElement(SpeakerNameMapper, props),
+          ),
+        );
       }
     `,
     resolveDir: dirname(componentPath),
@@ -33,7 +43,7 @@ await build({
   outfile: outputPath,
 });
 
-const { enhancementOutcome, enhancementProgressLabel, renderMapper } = createRequire(import.meta.url)(outputPath);
+const { enhancementOutcome, enhancementProgressLabel, renderMapper, shouldOfferRetry } = createRequire(import.meta.url)(outputPath);
 
 after(async () => {
   await rm(outputDir, { recursive: true, force: true });
@@ -105,4 +115,38 @@ test("running revalidation reports observable batch progress", () => {
     }),
     "Revalidating 2/5 batches...",
   );
+});
+
+test("finished runs never keep an in-progress banner", () => {
+  for (const status of ["completed", "partial", "failed", "unchanged"]) {
+    assert.equal(
+      enhancementProgressLabel({ status, completed_batches: 0, total_batches: 2 }),
+      "",
+      `expected no progress label for status ${status}`,
+    );
+  }
+});
+
+test("only finished-with-failures runs offer the failed-batch retry", () => {
+  assert.equal(shouldOfferRetry(null), false);
+  assert.equal(shouldOfferRetry({ status: "running" }), false);
+  assert.equal(shouldOfferRetry({ status: "completed" }), false);
+  assert.equal(shouldOfferRetry({ status: "unchanged" }), false);
+  assert.equal(shouldOfferRetry({ status: "partial" }), true);
+  assert.equal(shouldOfferRetry({ status: "failed" }), true);
+});
+
+test("failure outcomes surface the persisted run reason", () => {
+  const outcome = enhancementOutcome({
+    status: "partial",
+    briefing_updated: false,
+    briefing_status: "pending",
+    speaker_context_dirty: true,
+    speaker_context_enhanced_at: null,
+    enhanced_insights: 0,
+    error: "1 revalidation batch failed. Gemini quota/spending cap exhausted - raise the cap in AI Studio or switch the model in Admin.",
+  });
+
+  assert.equal(outcome.tone, "warning");
+  assert.match(outcome.message, /Gemini quota\/spending cap exhausted/);
 });

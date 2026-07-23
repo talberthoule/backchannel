@@ -68,6 +68,17 @@ function DraggableSession({ session, isActive, onClick, groups, onMoveToGroup, o
   const nameInputRef = useRef<HTMLInputElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const { confirm } = useConfirm();
+
+  const handleDelete = async () => {
+    const ok = await confirm({
+      title: "Delete session",
+      message: "Delete this session and all its data? This cannot be undone.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (ok) await onDelete(session.id);
+  };
 
   // Close menu on outside click
   useEffect(() => {
@@ -150,7 +161,7 @@ function DraggableSession({ session, isActive, onClick, groups, onMoveToGroup, o
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (confirm("Delete this session and all its data?")) onDelete(session.id);
+            void handleDelete();
           }}
           className="ml-1 mt-0.5 flex-shrink-0 rounded p-1 text-brand-light-gray-1 opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 transition-all"
           title="Delete session"
@@ -197,7 +208,7 @@ function DraggableSession({ session, isActive, onClick, groups, onMoveToGroup, o
 
 // ── Droppable group folder ─────────────────────────────────────────────
 
-type GroupDeleteDependencies = ReturnType<typeof useConfirm> & {
+type GroupDeleteDependencies = Pick<ReturnType<typeof useConfirm>, "confirm" | "toast"> & {
   deleteGroup: (id: string) => Promise<void>;
   refreshGroups: () => void;
   refreshSessions: () => void;
@@ -208,8 +219,8 @@ export async function deleteGroupWithConfirmation(
   dependencies: GroupDeleteDependencies,
 ): Promise<void> {
   const confirmed = await dependencies.confirm({
-    title: `Delete ${group.name}?`,
-    message: "Sessions in this group will move to Sessions and will not be deleted.",
+    title: "Delete group",
+    message: `Delete "${group.name}"? Sessions in this group will move to Sessions and will not be deleted.`,
     confirmLabel: "Delete group",
     tone: "danger",
   });

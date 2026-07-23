@@ -21,9 +21,12 @@ from app.services.voice_enrollment import LOCAL_VOICE_PROFILE_ID
 
 
 class FakeSessionContext:
-    def __init__(self, session, last_segment_number=None):
+    def __init__(self, session, last_segment_number=None, insight_total=0):
         self.session = session
         self.last_segment_number = last_segment_number
+        # The session's total Question row count; an Exception instance makes
+        # the count query fail so tests can prove finalize survives it.
+        self.insight_total = insight_total
         self.added = []
         self.commits = 0
 
@@ -40,6 +43,11 @@ class FakeSessionContext:
         return SimpleNamespace(
             scalar_one_or_none=lambda: self.last_segment_number
         )
+
+    async def scalar(self, statement):
+        if isinstance(self.insight_total, Exception):
+            raise self.insight_total
+        return self.insight_total
 
     def add(self, item):
         self.added.append(item)
@@ -266,11 +274,11 @@ class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
         orchestrator.close_all = AsyncMock()
         return orchestrator
 
-    async def _run_finalize(self, orchestrator, drain_mode=None):
+    async def _run_finalize(self, orchestrator, drain_mode=None, insight_total=23):
         websocket = MagicMock()
         websocket.send_json = AsyncMock()
         session = SimpleNamespace(state="active", ended_at=None)
-        db = FakeSessionContext(session, last_segment_number=None)
+        db = FakeSessionContext(session, last_segment_number=None, insight_total=insight_total)
         transcription_queue = MagicMock()
         transcription_queue.drain = AsyncMock()
         transcription_queue.stats = {"jobs": 0, "emitted": 0, "failed": 0}
@@ -323,6 +331,11 @@ class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(6, last["total_steps"])
         self.assertEqual(100, last["progress"])
         self.assertIn("details", last)
+        # The drain counters describe only the final analysis pass; the
+        # session-wide total rides alongside so the client can anchor them.
+        self.assertEqual(2, last["details"]["insights_saved"])
+        self.assertEqual(1, last["details"]["synthesizer_ops"])
+        self.assertEqual(23, last["details"]["session_insight_total"])
         self.assertEqual("completed", session.state)
         self.assertIsNotNone(session.ended_at)
 
@@ -365,15 +378,33 @@ class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
         saving = statuses[-2]
         self.assertEqual("saving_session", saving["stage"])
         self.assertEqual(2, saving["current_step"])
-        # Minimal mode still reports honest transcription stats, but carries
-        # no analysis output in the details.
-        minimal_details = {"transcription": {"jobs": 0, "emitted": 0, "failed": 0}}
+        # Minimal mode still reports honest transcription stats and the
+        # session-wide insight total, but carries no analysis output.
+        minimal_details = {
+            "transcription": {"jobs": 0, "emitted": 0, "failed": 0},
+            "session_insight_total": 23,
+        }
         self.assertEqual(minimal_details, saving.get("details"))
         self.assertEqual("completed", last["state"])
         self.assertEqual(2, last["total_steps"])
         self.assertEqual(minimal_details, last.get("details"))
         self.assertEqual("completed", session.state)
         self.assertIsNotNone(session.ended_at)
+
+    async def test_finalize_survives_insight_count_failure(self):
+        orchestrator = self._make_orchestrator(briefing=True)
+
+        with self.assertLogs("app.ws.audio_handler", level="WARNING"):
+            statuses, session, _ = await self._run_finalize(
+                orchestrator, insight_total=RuntimeError("db unavailable")
+            )
+
+        last = statuses[-1]
+        self.assertEqual("completed", last["state"])
+        # The drain counters still arrive; only the optional total is missing.
+        self.assertEqual(2, last["details"]["insights_saved"])
+        self.assertNotIn("session_insight_total", last["details"])
+        self.assertEqual("completed", session.state)
 
     async def test_minimal_finalize_survives_orchestrator_shutdown_failure(self):
         orchestrator = self._make_orchestrator(briefing=True)

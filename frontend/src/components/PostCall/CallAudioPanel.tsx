@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CallSegment, ModelInfo, Session } from "../../types";
 import * as api from "../../services/api";
+import { useConfirm } from "../ConfirmProvider";
 
 interface CallAudioPanelProps {
   session: Session;
@@ -13,6 +14,7 @@ export default function CallAudioPanel({ session, segments, onRetranscribed }: C
   const [modelId, setModelId] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const { confirm } = useConfirm();
 
   const audioSegments = segments.filter((s) => s.audio_path);
 
@@ -28,7 +30,13 @@ export default function CallAudioPanel({ session, segments, onRetranscribed }: C
 
   const handleRetranscribe = async () => {
     if (!modelId) return;
-    if (!window.confirm("Re-transcribing replaces the entire existing transcript for this session. Continue?")) return;
+    const ok = await confirm({
+      title: "Re-transcribe call audio",
+      message: "Re-transcribing replaces the entire existing transcript for this session.",
+      confirmLabel: "Re-transcribe",
+      tone: "danger",
+    });
+    if (!ok) return;
     setBusy(true);
     setMessage(null);
     try {

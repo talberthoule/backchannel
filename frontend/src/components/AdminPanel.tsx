@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AgentConfig, AnalystLens, KnowledgeSource, ModelInfo, PrivacyConfig } from "../types";
 import * as api from "../services/api";
+import { useConfirm } from "./ConfirmProvider";
 import DiarizationCapabilityCard from "./DiarizationCapabilityCard";
 import BatchTranscriptionCard from "./BatchTranscriptionCard";
 import ApiKeysCard from "./ApiKeysCard";
@@ -147,6 +148,7 @@ function LensEditor({
   onDraftChange: (slug: string, field: "prompt" | "interval_seconds" | "lenses", value: string | number) => void;
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const { confirm } = useConfirm();
   const lenses = parseLenses(agent.lenses);
   const missingPlaceholder = !agent.prompt.includes("{lens_sections}");
 
@@ -163,8 +165,14 @@ function LensEditor({
     setExpandedKey(key);
   };
 
-  const deleteLens = (lens: AnalystLens) => {
-    if (!window.confirm(`Delete the "${lens.label}" lens and its prompt section?`)) return;
+  const deleteLens = async (lens: AnalystLens) => {
+    const ok = await confirm({
+      title: "Delete lens",
+      message: `Delete the "${lens.label}" lens and its prompt section?`,
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     if (expandedKey === lens.key) setExpandedKey(null);
     save(lenses.filter((l) => l.key !== lens.key));
   };

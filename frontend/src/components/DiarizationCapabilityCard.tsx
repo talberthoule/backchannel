@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DiarizationBenchmarkResult, DiarizationDiagnostics } from "../types";
 import * as api from "../services/api";
+import { useConfirm } from "./ConfirmProvider";
 import { MIC_ONLY_AUDIO_CONSTRAINTS } from "../hooks/useAudioCapture";
 
 const RECORDING_MIME_TYPES = [
@@ -35,6 +36,7 @@ export default function DiarizationCapabilityCard() {
   const chunksRef = useRef<BlobPart[]>([]);
   const timerRef = useRef<number | null>(null);
   const recordingGenerationRef = useRef(0);
+  const { confirm } = useConfirm();
 
   const load = useCallback(async () => {
     setLoadingDiagnostics(true);
@@ -135,7 +137,13 @@ export default function DiarizationCapabilityCard() {
   };
 
   const removeVoiceProfile = async () => {
-    if (!window.confirm("Delete your saved voice profile?")) return;
+    const ok = await confirm({
+      title: "Delete voice profile",
+      message: "Delete your saved voice profile?",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     setVoiceSaving(true);
     setDiagnosticError(null);
     try {

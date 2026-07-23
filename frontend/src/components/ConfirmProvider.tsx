@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 // One small primitive for the app's destructive-action guard: an accessible
-// confirm dialog (Promise-based) plus a lightweight feedback toast. Wrap the
-// app once in <ConfirmProvider>; call useConfirm() anywhere.
+// confirm dialog (Promise-based), a single-button notice variant sharing the
+// same chrome, plus a lightweight feedback toast. Wrap the app once in
+// <ConfirmProvider>; call useConfirm() anywhere.
 
 interface ConfirmOptions {
   title?: string;
@@ -12,6 +13,12 @@ interface ConfirmOptions {
   tone?: "danger" | "default";
 }
 
+interface NoticeOptions {
+  title?: string;
+  message: string;
+  acknowledgeLabel?: string;
+}
+
 interface ToastItem {
   id: number;
   message: string;
@@ -19,6 +26,7 @@ interface ToastItem {
 
 interface ConfirmContextValue {
   confirm: (opts: ConfirmOptions) => Promise<boolean>;
+  notice: (opts: NoticeOptions) => Promise<void>;
   toast: (message: string) => void;
 }
 
@@ -30,7 +38,10 @@ export function useConfirm(): ConfirmContextValue {
   return ctx;
 }
 
-type PendingDialog = ConfirmOptions & { resolve: (value: boolean) => void };
+type PendingDialog = ConfirmOptions & {
+  resolve: (value: boolean) => void;
+  kind: "confirm" | "notice";
+};
 
 export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const [dialog, setDialog] = useState<PendingDialog | null>(null);
@@ -39,7 +50,24 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
 
   const confirm = useCallback(
-    (opts: ConfirmOptions) => new Promise<boolean>((resolve) => setDialog({ ...opts, resolve })),
+    (opts: ConfirmOptions) =>
+      new Promise<boolean>((resolve) => setDialog({ ...opts, kind: "confirm", resolve })),
+    [],
+  );
+
+  // Single-button acknowledge dialog: same chrome as confirm, no cancel path.
+  // Resolves once the user dismisses it (button, Escape, or backdrop).
+  const notice = useCallback(
+    ({ acknowledgeLabel, ...opts }: NoticeOptions) =>
+      new Promise<void>((resolve) =>
+        setDialog({
+          tone: "default",
+          confirmLabel: acknowledgeLabel ?? "OK",
+          ...opts,
+          kind: "notice",
+          resolve: () => resolve(),
+        }),
+      ),
     [],
   );
 
@@ -70,7 +98,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const danger = dialog?.tone !== "default";
 
   return (
-    <ConfirmContext.Provider value={{ confirm, toast }}>
+    <ConfirmContext.Provider value={{ confirm, notice, toast }}>
       {children}
 
       {dialog && (
@@ -86,16 +114,18 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             onClick={(e) => e.stopPropagation()}
           >
             <h2 id="confirm-title" className="font-display text-base font-semibold text-brand-dark-gray">
-              {dialog.title ?? "Are you sure?"}
+              {dialog.title ?? (dialog.kind === "notice" ? "Notice" : "Are you sure?")}
             </h2>
             <p className="mt-1.5 font-body text-sm text-brand-gray">{dialog.message}</p>
             <div className="mt-5 flex justify-end gap-2">
-              <button
-                onClick={() => settle(false)}
-                className="rounded-lg px-3 py-1.5 font-body text-sm font-medium text-brand-gray transition-colors hover:bg-brand-light-gray-2"
-              >
-                {dialog.cancelLabel ?? "Cancel"}
-              </button>
+              {dialog.kind !== "notice" && (
+                <button
+                  onClick={() => settle(false)}
+                  className="rounded-lg px-3 py-1.5 font-body text-sm font-medium text-brand-gray transition-colors hover:bg-brand-light-gray-2"
+                >
+                  {dialog.cancelLabel ?? "Cancel"}
+                </button>
+              )}
               <button
                 ref={confirmBtnRef}
                 onClick={() => settle(true)}

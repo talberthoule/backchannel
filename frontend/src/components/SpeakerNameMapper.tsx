@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import type { EnhanceInsightsResult, Session, Speaker } from "../types";
 import * as api from "../services/api";
+import { useConfirm } from "./ConfirmProvider";
 
 export function enhancementOutcome(result: EnhanceInsightsResult): {
   tone: "success" | "warning";
@@ -31,6 +32,12 @@ export function enhancementProgressLabel(
     : "";
 }
 
+export function shouldOfferRetry(
+  result: Pick<EnhanceInsightsResult, "status"> | null,
+): boolean {
+  return !!result && (result.status === "partial" || result.status === "failed");
+}
+
 interface SpeakerNameMapperProps {
   session: Session;
   speakers: Speaker[];
@@ -56,17 +63,16 @@ export default function SpeakerNameMapper({
   const [enhancementMessage, setEnhancementMessage] = useState("");
   const [enhancementWarning, setEnhancementWarning] = useState("");
   const [enhancementError, setEnhancementError] = useState("");
+  const [lastResult, setLastResult] = useState<EnhanceInsightsResult | null>(null);
+  const { confirm } = useConfirm();
 
   if (speakers.length === 0) return null;
 
-  const handleEnhance = async () => {
-    if (disabled || !session.speaker_context_dirty) return;
-    if (!confirm("Enhance Insights will revalidate the Briefing and every Insight using the corrected speaker names and internal/external roles. Continue?")) {
-      return;
-    }
+  const runEnhancement = async () => {
     setEnhancementMessage("");
     setEnhancementWarning("");
     setEnhancementError("");
+    setLastResult(null);
     setEnhancing(true);
     try {
       const initial = await api.enhanceInsights(session.id);
@@ -81,15 +87,47 @@ export default function SpeakerNameMapper({
         onRefresh(),
         onRefreshSynthesis(),
       ]);
+      setLastResult(result);
       const outcome = enhancementOutcome(result);
-      if (outcome.tone === "success") setEnhancementMessage(outcome.message);
-      else setEnhancementWarning(outcome.message);
+      if (outcome.tone === "success") {
+        setEnhancementMessage(outcome.message);
+        setEnhancementWarning("");
+      } else {
+        // The run is finished: drop the stale "Revalidating x/y batches..."
+        // progress banner so it cannot contradict the failure notice.
+        setEnhancementMessage("");
+        setEnhancementWarning(outcome.message);
+      }
     } catch (error) {
+      setEnhancementMessage("");
       setEnhancementError(error instanceof Error ? error.message : "Enhancement failed. Try again.");
     } finally {
       setEnhancing(false);
     }
   };
+
+  const handleEnhance = async () => {
+    if (disabled || !session.speaker_context_dirty) return;
+    const ok = await confirm({
+      title: "Enhance Insights",
+      message: "Enhance Insights will revalidate the Briefing and every Insight using the corrected speaker names and internal/external roles.",
+      confirmLabel: "Continue",
+      tone: "default",
+    });
+    if (!ok) return;
+    await runEnhancement();
+  };
+
+  const handleRetry = async () => {
+    if (disabled || enhancing || !session.speaker_context_dirty) return;
+    await runEnhancement();
+  };
+
+  const offerRetry =
+    shouldOfferRetry(lastResult)
+    && !enhancing
+    && !disabled
+    && session.speaker_context_dirty;
 
   return (
     <div className="rounded-xl bg-surface p-5 shadow-sm">
@@ -140,9 +178,20 @@ export default function SpeakerNameMapper({
         </p>
       )}
       {enhancementWarning && (
-        <p className="mb-3 rounded-md bg-brand-amber/10 px-3 py-2 font-body text-xs text-brand-amber" role="alert">
-          {enhancementWarning}
-        </p>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-brand-amber/10 px-3 py-2" role="alert">
+          <p className="min-w-0 flex-1 font-body text-xs text-brand-amber">
+            {enhancementWarning}
+          </p>
+          {offerRetry && (
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="shrink-0 rounded border border-brand-amber px-2 py-1 font-body text-xs font-semibold text-brand-amber transition-colors hover:bg-brand-amber/20"
+            >
+              Retry failed batches
+            </button>
+          )}
+        </div>
       )}
       {enhancementError && (
         <p className="mb-3 rounded-md bg-red-500/10 px-3 py-2 font-body text-xs text-red-600" role="alert">
@@ -186,6 +235,7 @@ function SpeakerRow({
   const [merging, setMerging] = useState(false);
   const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { confirm } = useConfirm();
   const mergeTargets = speakers.filter((candidate) => candidate.id !== speaker.id);
 
   useEffect(() => {
@@ -237,9 +287,13 @@ function SpeakerRow({
 
     const sourceLabel = displayLabel(speaker);
     const targetLabel = displayLabel(target);
-    if (!confirm(`Merge ${sourceLabel} into ${targetLabel}? Transcript and insight attribution will move to ${targetLabel}.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Merge speakers",
+      message: `Merge ${sourceLabel} into ${targetLabel}? Transcript and insight attribution will move to ${targetLabel}.`,
+      confirmLabel: "Merge",
+      tone: "danger",
+    });
+    if (!ok) return;
 
     setMerging(true);
     try {

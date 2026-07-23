@@ -7,7 +7,7 @@ from time import monotonic
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.database import async_session
 from app.models import AgentConfig, CallSegment, Directive, Question, Session, SessionAgentOverride, Speaker, TranscriptEntry
@@ -518,6 +518,19 @@ async def _finalize_call(
 
     tq_stats = transcription_queue.stats
     drain_result["transcription"] = tq_stats
+    # Anchor the drain counters (insights_saved / synthesizer_ops describe only
+    # the final analysis pass) against the session's total insight count so the
+    # client can present both without guessing from possibly stale state.
+    try:
+        async with async_session() as db:
+            total_insights = await db.scalar(
+                select(func.count())
+                .select_from(Question)
+                .where(Question.session_id == session_id)
+            )
+        drain_result["session_insight_total"] = int(total_insights or 0)
+    except Exception as e:
+        logger.warning(f"Failed to count session insights for the post-processing summary: {e}")
     completion_message = "Post-processing complete"
     if tq_stats["failed"]:
         if tq_stats["emitted"] == 0:
