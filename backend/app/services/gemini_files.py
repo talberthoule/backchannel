@@ -7,6 +7,7 @@ from google import genai
 from app.config import settings
 from app.services.privacy import LocalOnlyModeError, is_local_only
 from app.services.secrets import resolve_provider_key
+from app.services.token_usage import record_token_usage
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ async def upload_and_summarize(content: bytes, filename: str, mime_type: str) ->
         os.unlink(tmp_path)
 
 
-async def summarize_document(file_uri: str) -> str:
+async def summarize_document(file_uri: str, session_id=None) -> str:
     """Use Gemini to summarize an uploaded document for context injection."""
     if await is_local_only():
         raise LocalOnlyModeError("document summarization via Gemini")
@@ -47,5 +48,11 @@ async def summarize_document(file_uri: str) -> str:
                 ]
             }
         ],
+    )
+    await record_token_usage(
+        session_id,
+        "document_summary",
+        settings.REFINEMENT_MODEL,
+        getattr(response, "usage_metadata", None),
     )
     return response.text

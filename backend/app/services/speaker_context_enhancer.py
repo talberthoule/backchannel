@@ -154,7 +154,12 @@ async def run_speaker_context_enhancement(session_id: uuid.UUID) -> dict:
         )
 
     try:
-        raw = await generate_text(settings.REFINEMENT_MODEL, prompt)
+        raw = await generate_text(
+            settings.REFINEMENT_MODEL,
+            prompt,
+            session_id=session_id,
+            source="speaker_context_enhancer",
+        )
     except Exception as exc:
         logger.exception("[speaker_context_enhancer] API call failed")
         raise RuntimeError(f"Insight revalidation failed: {exc}") from exc

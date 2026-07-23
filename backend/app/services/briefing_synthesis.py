@@ -20,6 +20,7 @@ from app.models import AgentConfig, Directive, InsightCluster, Question, Session
 from app.services.agents.prompts import BRIEF_ARBITER_PROMPT, BRIEF_DISCOVERY_LENS_PROMPT, BRIEF_MEETING_LENS_PROMPT
 from app.services.agents.speaker_context import format_speakers_list, format_transcript_segment
 from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
+from app.services.token_usage import record_token_usage
 from app.services.session_manager import get_document_summaries
 
 logger = logging.getLogger(__name__)
@@ -196,7 +197,14 @@ async def run_session_synthesis(
             transcript_text=context.transcript_text,
         )
         try:
-            return await _generate_structured(client, cfg.model_id, prompt, BriefLensOutput)
+            return await _generate_structured(
+                client,
+                cfg.model_id,
+                prompt,
+                BriefLensOutput,
+                session_id=session_id,
+                source=slug,
+            )
         except Exception as exc:
             logger.error("[%s] briefing lens failed: %s", slug, exc)
             errors.append(f"{slug}: {exc}")
@@ -229,7 +237,14 @@ async def run_session_synthesis(
         discovery_lens_json=_model_json(discovery_output),
     )
     try:
-        arbiter_output = await _generate_structured(client, arbiter_cfg.model_id, arbiter_prompt, BriefArbiterOutput)
+        arbiter_output = await _generate_structured(
+            client,
+            arbiter_cfg.model_id,
+            arbiter_prompt,
+            BriefArbiterOutput,
+            session_id=session_id,
+            source=BRIEF_ARBITER_SLUG,
+        )
     except Exception as exc:
         logger.error("[brief_arbiter] failed: %s", exc)
         errors.append(f"{BRIEF_ARBITER_SLUG}: {exc}")
@@ -377,7 +392,14 @@ def _format_insights(items: list[dict]) -> str:
     return "\n".join(lines)
 
 
-async def _generate_structured(client, model_id: str, prompt: str, response_schema: type[BaseModel]):
+async def _generate_structured(
+    client,
+    model_id: str,
+    prompt: str,
+    response_schema: type[BaseModel],
+    session_id=None,
+    source: str = "",
+):
     from google.genai import types
 
     contents = [types.Content(parts=[types.Part(text=prompt)])]
@@ -399,6 +421,10 @@ async def _generate_structured(client, model_id: str, prompt: str, response_sche
             exc,
         )
         response = await _generate_json_contract(client, model_id, prompt, response_schema, types)
+
+    await record_token_usage(
+        session_id, source, model_id, getattr(response, "usage_metadata", None)
+    )
 
     parsed = getattr(response, "parsed", None)
     if parsed is not None:

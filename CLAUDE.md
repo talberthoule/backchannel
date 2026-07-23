@@ -221,6 +221,7 @@ Primary route modules:
 - Artifacts: transcript TXT, insights XLSX, and summary HTML exports
 - Credentials: `GET/PUT/DELETE /api/credentials[/{provider}]` and `POST /api/credentials/{provider}/test` for encrypted workspace API keys (providers: `google`, `openai`)
 - Re-transcription: `POST /api/sessions/{id}/retranscribe` replays stored segment audio through any batch-capable model (destructive to existing transcript entries); `GET /api/sessions/{id}/segments/{n}/audio` serves the recorded WAV
+- Token usage: `GET /api/sessions/{id}/token-usage` returns session totals with per-source and per-model input/output breakdowns; the post-call Tokens tab renders this persisted data and shows zero cleanly for sessions without captured usage
 - Chat: `POST /api/chat` answers questions over selected sessions' transcripts via the provider-routed text LLM
 - Meta: `GET /api/meta` (current app version) and `GET /api/meta/release-notes` (in-app release notes); both read `backend/app/release_notes.py`, the version's single source of truth, which every release must update
 
@@ -230,7 +231,7 @@ Main state lives in `frontend/src/App.tsx`.
 
 - `PreCallView`: session setup, speaker setup, directives, document upload, transcript/audio import, per-session agent selection
 - `ActiveCallView`: live call controls, transcript/interim transcript display, insight list, audio indicator, mid-call directive bar
-- `PostCallView`: review tabs for insights, transcript, speakers, documents, and directives; supports resume, export, delete, and speaker rename
+- `PostCallView`: review tabs for insights, transcript, speakers, documents, directives, and token usage; supports resume, export, delete, and speaker rename
 - Admin surfaces: `AdminPanel` (tabs: Agents, Transcription & Audio, API Keys, About with version + release notes) and `OfferingsManager` for catalog management
 - `WelcomeView`: shown when no session is selected; with zero sessions it becomes a first-run checklist (connect a provider or Privacy First, create a session, start/import a call) driven by live credential and privacy state
 - What's-new banner: `useWhatsNew` keeps `backchannel.last_seen_version` in localStorage; when the served version differs, App shows a dismissible toast linking to Admin -> About, where releases since that version are badged "New" (first launch baselines silently)

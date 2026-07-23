@@ -39,6 +39,29 @@ class SessionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TokenUsageSourceOut(BaseModel):
+    source: str
+    model_id: str
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+
+class TokenUsageModelOut(BaseModel):
+    model_id: str
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+
+class TokenUsageSummaryOut(BaseModel):
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    by_source: list[TokenUsageSourceOut]
+    by_model: list[TokenUsageModelOut]
+
+
 # --- Directives ---
 class DirectiveCreate(BaseModel):
     text: str

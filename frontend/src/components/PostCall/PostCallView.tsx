@@ -1,5 +1,5 @@
-import { useState } from "react";
-import type { CallSegment, Directive, Document, PostProcessingProgress, Question, Session, SessionSynthesis, Speaker, TranscriptEntry } from "../../types";
+import { useEffect, useState } from "react";
+import type { CallSegment, Directive, Document, PostProcessingProgress, Question, Session, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptEntry } from "../../types";
 import TranscriptReview from "./TranscriptReview";
 import CallAudioPanel from "./CallAudioPanel";
 import MeetingChat from "./MeetingChat";
@@ -79,7 +79,7 @@ function postProcessingSummary(progress?: PostProcessingProgress): string | null
   return parts.length > 0 ? parts.join(" | ") : null;
 }
 
-type Tab = "briefing" | "insights" | "transcript" | "chat" | "speakers" | "directives" | "documents";
+type Tab = "briefing" | "insights" | "transcript" | "chat" | "speakers" | "directives" | "documents" | "tokens";
 
 export default function PostCallView({
   session,
@@ -102,9 +102,31 @@ export default function PostCallView({
 }: PostCallViewProps) {
   const [activeTab, setActiveTab] = useState<Tab>("briefing");
   const [refreshingBriefing, setRefreshingBriefing] = useState(false);
+  const [tokenUsage, setTokenUsage] = useState<TokenUsageSummary | null>(null);
+  const [tokenUsageLoading, setTokenUsageLoading] = useState(false);
+  const [tokenUsageError, setTokenUsageError] = useState(false);
+  const [tokenUsageRequest, setTokenUsageRequest] = useState(0);
   const [briefingError, setBriefingError] = useState<string | null>(null);
   const speakerActionsLocked = Boolean(postProcessing?.active || postProcessing?.state === "timeout" || postProcessing?.state === "error");
   const progressSummary = postProcessingSummary(postProcessing);
+
+  useEffect(() => {
+    if (activeTab !== "tokens") return;
+    let cancelled = false;
+    setTokenUsageLoading(true);
+    setTokenUsageError(false);
+    api.getTokenUsage(session.id)
+      .then((usage) => {
+        if (!cancelled) setTokenUsage(usage);
+      })
+      .catch(() => {
+        if (!cancelled) setTokenUsageError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setTokenUsageLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeTab, postProcessing?.state, session.id, tokenUsageRequest]);
 
   const handleRenameSpeaker = async (speakerId: string, newName: string) => {
     await api.updateSpeaker(session.id, speakerId, { name: newName });
@@ -122,6 +144,7 @@ export default function PostCallView({
     { key: "speakers", label: "Speakers", count: speakers.length },
     { key: "documents", label: "Documents", count: documents.length },
     { key: "directives", label: "Directives", count: directives.length },
+    { key: "tokens", label: "Tokens" },
   ];
 
   // Calculate total duration across all segments
@@ -287,12 +310,13 @@ export default function PostCallView({
       </div>
 
       {/* Tab navigation */}
-      <div className="flex gap-1 rounded-lg bg-brand-light-gray-2 p-1">
+      <div className="flex flex-wrap gap-1 rounded-lg bg-brand-light-gray-2 p-1" aria-label="Post-call review">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+            aria-pressed={activeTab === tab.key}
+            className={`min-w-24 flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === tab.key
                 ? "bg-surface text-brand-teal shadow-sm"
                 : "text-brand-gray hover:text-brand-dark-gray"
@@ -446,6 +470,95 @@ export default function PostCallView({
           )}
         </div>
       )}
+
+      {activeTab === "tokens" && (
+        <div className="rounded-xl bg-surface p-6 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-brand-dark-gray">Token usage</h2>
+              <p className="mt-1 text-sm text-brand-mid-gray">LLM activity recorded for this session.</p>
+            </div>
+            {!tokenUsageLoading && (
+              <button
+                type="button"
+                onClick={() => setTokenUsageRequest((value) => value + 1)}
+                className="rounded-md border border-brand-light-gray-1 px-3 py-1.5 text-sm font-medium text-brand-teal hover:bg-brand-light-gray-2"
+              >
+                Refresh
+              </button>
+            )}
+          </div>
+
+          {tokenUsageLoading ? (
+            <p className="mt-6 text-sm text-brand-mid-gray" role="status">Loading token usage...</p>
+          ) : tokenUsageError ? (
+            <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4" role="alert">
+              <p className="text-sm text-red-700">Token usage could not be loaded.</p>
+            </div>
+          ) : tokenUsage ? (
+            <div className="mt-6 space-y-6">
+              <div className="rounded-lg border border-brand-teal/20 bg-brand-teal/5 p-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-brand-gray">Total tokens</p>
+                <p className="mt-1 font-display text-3xl font-semibold tabular-nums text-brand-dark-gray">
+                  {tokenUsage.total_tokens.toLocaleString()}
+                </p>
+                <p className="mt-2 text-sm text-brand-mid-gray">
+                  {tokenUsage.input_tokens.toLocaleString()} input / {tokenUsage.output_tokens.toLocaleString()} output
+                </p>
+              </div>
+
+              {tokenUsage.total_tokens === 0 ? (
+                <p className="text-sm text-brand-mid-gray">No token usage was recorded for this session.</p>
+              ) : (
+                <>
+                  <TokenBreakdownTable title="By source" rows={tokenUsage.by_source} showSource />
+                  <TokenBreakdownTable title="By model" rows={tokenUsage.by_model} />
+                </>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
     </div>
+  );
+}
+
+function TokenBreakdownTable({
+  title,
+  rows,
+  showSource = false,
+}: {
+  title: string;
+  rows: TokenUsageSummary["by_source"];
+  showSource?: boolean;
+}) {
+  return (
+    <section>
+      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-brand-gray">{title}</h3>
+      <div className="overflow-x-auto rounded-lg border border-brand-light-gray-1">
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-brand-light-gray-2 text-xs uppercase tracking-wide text-brand-gray">
+            <tr>
+              {showSource && <th scope="col" className="px-4 py-3 font-semibold">Source</th>}
+              <th scope="col" className="px-4 py-3 font-semibold">Model</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Input</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Output</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Total</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-brand-light-gray-1">
+            {rows.map((row) => (
+              <tr key={`${row.source ?? "model"}-${row.model_id}`}>
+                {showSource && <th scope="row" className="px-4 py-3 font-medium text-brand-dark-gray">{row.source}</th>}
+                <td className="px-4 py-3 font-mono text-xs text-brand-gray">{row.model_id}</td>
+                <td className="px-4 py-3 text-right tabular-nums text-brand-gray">{row.input_tokens.toLocaleString()}</td>
+                <td className="px-4 py-3 text-right tabular-nums text-brand-gray">{row.output_tokens.toLocaleString()}</td>
+                <td className="px-4 py-3 text-right font-semibold tabular-nums text-brand-dark-gray">{row.total_tokens.toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }

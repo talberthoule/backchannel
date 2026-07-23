@@ -19,6 +19,7 @@ import websockets
 
 from app.services.batch_transcriber import _is_hallucination
 from app.services.secrets import resolve_provider_key
+from app.services.token_usage import record_token_usage
 
 logger = logging.getLogger(__name__)
 
@@ -91,12 +92,13 @@ def _parse_event(event: dict) -> str | None:
 
 
 class OpenAIRealtimeSession:
-    def __init__(self, api_key: str | None = None, model_override: str | None = None):
+    def __init__(self, api_key: str | None = None, model_override: str | None = None, session_id=None):
         self._api_key = api_key
         self._ws = None
         self._transcribe_model = resolve_transcribe_model(model_override)
         self._bytes_since_commit = 0
         self.session = None  # parity with GeminiLiveSession's "connected" marker
+        self._session_id = session_id
 
     async def connect(self):
         key = self._api_key or await resolve_provider_key("openai")
@@ -138,6 +140,13 @@ class OpenAIRealtimeSession:
             if event.get("type") == "error":
                 logger.warning(f"OpenAI Realtime error event: {event.get('error')}")
                 continue
+            if event.get("type") == "conversation.item.input_audio_transcription.completed":
+                await record_token_usage(
+                    self._session_id,
+                    "audio_gateway",
+                    self._transcribe_model,
+                    event.get("usage"),
+                )
             text = _parse_event(event)
             if text:
                 yield {"type": "transcript", "data": text}

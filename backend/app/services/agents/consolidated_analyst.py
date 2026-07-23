@@ -114,6 +114,7 @@ class ConsolidatedAnalystAgent:
         prompt_override: str | None = None,
         meeting_context_text: str | None = None,
         lenses: list[dict] | None = None,
+        session_id: uuid.UUID | None = None,
     ):
         self._model = model_override or settings.REFINEMENT_MODEL
         prompt_template = prompt_override or CONSOLIDATED_ANALYST_BASE_PROMPT
@@ -154,6 +155,7 @@ class ConsolidatedAnalystAgent:
             prompt_template = f"{prompt_template.rstrip()}{SPEAKER_ATTRIBUTION_APPENDIX}"
         self._prompt_template = prompt_template
         self.meeting_context_text = meeting_context_text or build_meeting_context_text()
+        self._session_id = session_id
 
     async def run_cycle(
         self,
@@ -185,7 +187,9 @@ class ConsolidatedAnalystAgent:
         )
 
         try:
-            raw_text = await generate_text(self._model, prompt)
+            raw_text = await generate_text(
+                self._model, prompt, session_id=self._session_id, source="consolidated_analyst"
+            )
         except Exception as e:
             logger.error(f"[consolidated_analyst] API call failed: {e}")
             return []

@@ -181,7 +181,10 @@ async def _transcribe_audio_diarized(
         registry = SpeakerRegistry(threshold=runtime_config.speaker_similarity_threshold)
     diarizer = create_diarizer(runtime_config.effective_live_diarizer, registry=registry)
     transcription_config = await get_transcription_runtime_config(db)
-    transcriber = create_transcriber(model_id or transcription_config.batch_model_id)
+    transcriber = create_transcriber(
+        model_id or transcription_config.batch_model_id,
+        session_id=session_id,
+    )
 
     result = await db.execute(
         select(Speaker).where(Speaker.session_id == session_id).order_by(Speaker.created_at)
@@ -219,7 +222,10 @@ async def _transcribe_split_audio_diarized(
     mic_diarizer = create_diarizer(runtime_config.effective_live_diarizer, registry=mic_registry)
     system_diarizer = create_diarizer(runtime_config.effective_live_diarizer, registry=remote_registry)
     transcription_config = await get_transcription_runtime_config(db)
-    transcriber = create_transcriber(model_id or transcription_config.batch_model_id)
+    transcriber = create_transcriber(
+        model_id or transcription_config.batch_model_id,
+        session_id=session_id,
+    )
     result = await db.execute(
         select(Speaker).where(Speaker.session_id == session_id).order_by(Speaker.created_at)
     )

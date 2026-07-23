@@ -86,7 +86,9 @@ Rules:
 
 Output the JSON array:"""
 
-    raw = await generate_text(settings.REFINEMENT_MODEL, prompt)
+    raw = await generate_text(
+        settings.REFINEMENT_MODEL, prompt, session_id=session_id, source="analyze"
+    )
 
 
     # Parse the JSON array from the response

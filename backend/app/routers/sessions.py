@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.services.secrets import data_dir
-from app.models import AgentConfig, CallSegment, Session, SessionAgentOverride
+from app.models import AgentConfig, CallSegment, Session, SessionAgentOverride, TokenUsage
 from app.schemas import (
     CallSegmentOut,
     EnhanceInsightsOut,
@@ -18,11 +18,13 @@ from app.schemas import (
     SessionCreate,
     SessionOut,
     SessionUpdate,
+    TokenUsageSummaryOut,
 )
 from app.services.agents.orchestrator import get_live_orchestrator
 from app.services import briefing_synthesis
 from app.services.meeting_context import normalize_meeting_type
 from app.services.speaker_context_enhancer import run_speaker_context_enhancement
+from app.services.token_usage import summarize_usage
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 logger = logging.getLogger(__name__)
@@ -102,6 +104,14 @@ async def list_segments(session_id: uuid.UUID, db: AsyncSession = Depends(get_db
         .order_by(CallSegment.segment_number)
     )
     return result.scalars().all()
+
+
+@router.get("/{session_id}/token-usage", response_model=TokenUsageSummaryOut)
+async def get_token_usage(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    if not await db.get(Session, session_id):
+        raise HTTPException(404, "Session not found")
+    result = await db.execute(select(TokenUsage).where(TokenUsage.session_id == session_id))
+    return summarize_usage(result.scalars().all())
 
 
 @router.get("/{session_id}/segments/{segment_number}/audio")

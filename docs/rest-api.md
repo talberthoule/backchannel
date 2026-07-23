@@ -36,9 +36,14 @@ source of truth, which is updated as part of every release.
 | DELETE | `/api/sessions/{id}` | Delete a session and its children |
 | GET | `/api/sessions/{id}/segments` | List call segments |
 | GET | `/api/sessions/{id}/segments/{n}/audio` | Download a segment's recorded WAV |
+| GET | `/api/sessions/{id}/token-usage` | Token totals with per-source and per-model breakdowns |
 | POST | `/api/sessions/{id}/enhance-insights` | Re-run insight enrichment after speaker changes |
 | GET | `/api/sessions/{id}/agents` | Effective per-session agent list |
 | PUT | `/api/sessions/{id}/agents` | Set per-session agent enable/disable overrides |
+
+Token usage is persisted per provider response and shown in the post-call
+**Tokens** tab. Sessions without recorded LLM activity return zero totals and
+empty `by_source` / `by_model` lists; historical sessions are not backfilled.
 
 ## Session groups (`routers/groups.py`)
 

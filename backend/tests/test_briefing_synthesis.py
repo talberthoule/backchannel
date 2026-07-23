@@ -1,8 +1,9 @@
 import sys
 import types
 import unittest
+import uuid
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.briefing_synthesis import (
     BRIEF_ARBITER_SLUG,
@@ -88,6 +89,27 @@ class BriefingSynthesisAsyncTests(unittest.IsolatedAsyncioTestCase):
         retry_prompt = client.models.calls[1]["contents"][0].parts[0].text
         self.assertIn("Required JSON Contract", retry_prompt)
         self.assertIn("top_outcomes", retry_prompt)
+
+    async def test_generate_structured_records_usage_for_its_source(self):
+        response = SimpleNamespace(
+            parsed=BriefLensOutput(),
+            text="",
+            usage_metadata=SimpleNamespace(prompt_token_count=4, candidates_token_count=1, total_token_count=5),
+        )
+        client = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(
+            generate_content=AsyncMock(return_value=response),
+        )))
+        session_id = uuid.uuid4()
+        with patch("app.services.briefing_synthesis.record_token_usage", new=AsyncMock()) as record:
+            await _generate_structured(
+                client,
+                "gemini-test",
+                "Base prompt",
+                BriefLensOutput,
+                session_id=session_id,
+                source="brief_meeting_lens",
+            )
+        record.assert_awaited_once_with(session_id, "brief_meeting_lens", "gemini-test", response.usage_metadata)
 
 
 if __name__ == "__main__":

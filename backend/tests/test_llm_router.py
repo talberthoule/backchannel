@@ -16,23 +16,42 @@ class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_openai_model_dispatches_to_openai(self):
         with mock.patch.object(llm, "_resolve_key", mock.AsyncMock(return_value="k")), \
-             mock.patch.object(llm, "_call_openai", mock.AsyncMock(return_value="openai says")) as call:
+             mock.patch.object(llm, "_call_openai", mock.AsyncMock(return_value=("openai says", {"total_tokens": 3}))) as call:
             reply = await llm.generate_text("gpt-5.4-mini", "hello")
         self.assertEqual("openai says", reply)
         call.assert_awaited_once()
 
     async def test_gemini_model_dispatches_to_google(self):
         with mock.patch.object(llm, "_resolve_key", mock.AsyncMock(return_value="k")), \
-             mock.patch.object(llm, "_call_google", mock.AsyncMock(return_value="gemini says")) as call:
+             mock.patch.object(llm, "_call_google", mock.AsyncMock(return_value=("gemini says", None))) as call:
             reply = await llm.generate_text("gemini-3.5-flash", "hello")
         self.assertEqual("gemini says", reply)
         call.assert_awaited_once()
 
     async def test_unknown_model_defaults_to_google(self):
         with mock.patch.object(llm, "_resolve_key", mock.AsyncMock(return_value="k")), \
-             mock.patch.object(llm, "_call_google", mock.AsyncMock(return_value="ok")) as call:
+             mock.patch.object(llm, "_call_google", mock.AsyncMock(return_value=("ok", None))) as call:
             await llm.generate_text("gemini-9.9-legacy-preview", "hello")
         call.assert_awaited_once()
+
+    async def test_attributed_call_records_provider_usage(self):
+        usage = {"prompt_tokens": 8, "completion_tokens": 2, "total_tokens": 10}
+        with mock.patch.object(llm, "_resolve_key", mock.AsyncMock(return_value="k")), \
+             mock.patch.object(llm, "_call_openai", mock.AsyncMock(return_value=("reply", usage))), \
+             mock.patch.object(llm, "record_token_usage", mock.AsyncMock()) as record:
+            reply = await llm.generate_text(
+                "gpt-5.4-mini",
+                "hello",
+                session_id="d3e8467e-6ba7-4692-9aa5-bfc4c0ab1f2e",
+                source="session_chat",
+            )
+        self.assertEqual("reply", reply)
+        record.assert_awaited_once_with(
+            "d3e8467e-6ba7-4692-9aa5-bfc4c0ab1f2e",
+            "session_chat",
+            "gpt-5.4-mini",
+            usage,
+        )
 
     async def test_missing_key_raises_with_admin_hint(self):
         with mock.patch.object(llm, "_resolve_key", mock.AsyncMock(return_value="")):

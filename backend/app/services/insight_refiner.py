@@ -121,7 +121,7 @@ async def run_refinement_cycle(session_id: uuid.UUID) -> list[dict]:
     model_id = settings.REFINEMENT_MODEL
 
     try:
-        raw = await generate_text(model_id, prompt)
+        raw = await generate_text(model_id, prompt, session_id=session_id, source="insight_refiner")
     except Exception as e:
         logger.error(f"Refinement API call failed: {e}")
         return []
