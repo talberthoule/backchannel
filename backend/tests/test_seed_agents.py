@@ -16,6 +16,17 @@ from app.services.transcription_runtime import SETTING_BATCH_TRANSCRIBER_MODEL
 
 
 class SeedAgentConfigTests(unittest.TestCase):
+    def test_strategic_signals_is_a_configurable_live_agent(self):
+        cfg = _seed_config("strategic_signals")
+
+        self.assertEqual("Strategic Signals", cfg["name"])
+        self.assertEqual("meta", cfg["agent_type"])
+        self.assertEqual("gemini-3.6-flash", cfg["model_id"])
+        self.assertEqual(45, cfg["interval_seconds"])
+        self.assertTrue(cfg["enabled"])
+        self.assertIn("{insights_text}", cfg["prompt"])
+        self.assertIn("evidence_refs", cfg["prompt"])
+
     def test_v025_seed_model_defaults(self):
         expected = {
             "consolidated_analyst": "gemini-3.6-flash",

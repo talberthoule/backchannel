@@ -451,7 +451,42 @@ For bundles (combining multiple entries):
 """
 
 # ---------------------------------------------------------------------------
-# Dual-Lens Call Briefing (Meeting Lens + Discovery Lens + Arbiter)
+# Live Strategic Signals
+# ---------------------------------------------------------------------------
+STRATEGIC_SIGNALS_PROMPT = """You are the live strategic-signals agent for a conversation assistant.
+
+Return one compact structured view for action during the active call. Populate:
+- strategic_signals: the most important changing signal.
+- risks_blockers: the most important active risk.
+- unresolved_discovery_questions: the best next question.
+- top_opportunities: the strongest supported opportunity.
+- action_plan: the best immediate action cue.
+
+Link every supported card directly to existing insight IDs in evidence_refs.
+Do not create new insights, repeat unsupported claims, or invent evidence.
+Leave post-call-only sections empty.
+
+## Meeting Context
+{meeting_context_text}
+
+## Participants
+{speakers_text}
+
+## Call Directives
+{directives_text}
+
+## Pre-Call Context
+{document_summaries}
+
+## Existing Insights
+{insights_text}
+
+## Transcript
+{transcript_text}
+"""
+
+# ---------------------------------------------------------------------------
+# Post-Call Briefing (Meeting Lens + Discovery Lens + Arbiter)
 # ---------------------------------------------------------------------------
 BRIEF_MEETING_LENS_PROMPT = """You are the meeting-record lens for a conversation assistant.
 
@@ -471,7 +506,7 @@ Sections to populate:
 - risks_blockers: blockers, risks, dependencies, objections, or unresolved constraints.
 - action_plan: concrete next actions with owner/status when known.
 - unresolved_discovery_questions: open questions that must be answered later.
-- strategic_signals: short live-call signals if this is an active-call run.
+- strategic_signals: leave empty; live signals are owned by the standalone Strategic Signals agent.
 
 Rules:
 - Use Meeting Context and speaker metadata together; `external` does not automatically mean client.
@@ -517,7 +552,7 @@ Sections to populate:
 - risks_blockers: reasons the objective, learning goal, program, project, or opportunity may stall or fail.
 - action_plan: next actions for the user or responsible stakeholders.
 - unresolved_discovery_questions: high-leverage questions to clarify concepts, needs, urgency, authority, timeline, program motion, fit, or next steps.
-- strategic_signals: short live-call signals if this is an active-call run.
+- strategic_signals: leave empty; live signals are owned by the standalone Strategic Signals agent.
 
 Rules:
 - Use Meeting Context and speaker metadata together; `external` does not automatically mean client.
@@ -565,7 +600,7 @@ Required final sections:
 - risks_blockers.
 - action_plan.
 - unresolved_discovery_questions.
-- strategic_signals: for live mode, include only the few changing signals the user should act on now.
+- strategic_signals: leave empty; live signals are owned by the standalone Strategic Signals agent.
 - insight_clusters: thematic clusters that connect related outcomes, opportunities, risks, actions, and questions.
 - arbiter_notes: explain agreement, disagreement, and why the final settled view was chosen.
 
@@ -573,7 +608,7 @@ Rules:
 - Evidence beats inference. Direct participant evidence beats unsupported framing.
 - Do not invent client needs, vendor positions, learning gaps, program asks, or offerings.
 - Use Meeting Context and speaker metadata together; `external` does not automatically mean client.
-- Keep live-mode output compact and action-oriented.
+- This pipeline is post-call only.
 - Use transcript IDs or insight IDs in evidence_refs when available.
 - Return only valid JSON for the schema.
 

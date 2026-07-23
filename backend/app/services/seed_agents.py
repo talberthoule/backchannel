@@ -17,6 +17,7 @@ from app.services.agents.prompts import (
     OBJECTION_HANDLER_PROMPT,
     OPPORTUNITY_SPECIALIST_PROMPT,
     PRINCIPAL_AGENT_PROMPT,
+    STRATEGIC_SIGNALS_PROMPT,
 )
 from app.services.transcription_runtime import SETTING_BATCH_TRANSCRIBER_MODEL
 
@@ -27,6 +28,7 @@ DEFAULT_PROMPTS = {
     "objection_handler": OBJECTION_HANDLER_PROMPT,
     "synthesizer": PRINCIPAL_AGENT_PROMPT,
     "opportunity_specialist": OPPORTUNITY_SPECIALIST_PROMPT,
+    "strategic_signals": STRATEGIC_SIGNALS_PROMPT,
     "brief_meeting_lens": BRIEF_MEETING_LENS_PROMPT,
     "brief_discovery_lens": BRIEF_DISCOVERY_LENS_PROMPT,
     "brief_arbiter": BRIEF_ARBITER_PROMPT,
@@ -146,6 +148,18 @@ SEED_CONFIGS = [
         "sub_types": "",
         "interval_seconds": 55,
         "display_order": 4,
+    },
+    {
+        "slug": "strategic_signals",
+        "name": "Strategic Signals",
+        "description": "Single-pass live synthesis that surfaces the signal, risk, next question, opportunity, and action cue while linking supported cards to saved insights.",
+        "agent_type": "meta",
+        "model_id": "gemini-3.6-flash",
+        "prompt": STRATEGIC_SIGNALS_PROMPT,
+        "enabled": True,
+        "sub_types": "",
+        "interval_seconds": 45,
+        "display_order": 9,
     },
     {
         "slug": "brief_meeting_lens",
