@@ -30,6 +30,7 @@ export default defineConfig({
           items: [
             { label: 'Overview', link: '/' },
             'quickstart',
+            'api-keys',
             'architecture',
           ],
         },
