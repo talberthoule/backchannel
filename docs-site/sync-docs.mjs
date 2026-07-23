@@ -21,7 +21,10 @@ for (const file of readdirSync(SRC).filter((f) => f.endsWith('.md'))) {
 
   const h1 = text.match(/^# (.+)$/m);
   if (!h1) throw new Error(`${file}: no H1 to derive a title from`);
-  text = text.replace(h1[0] + '\n', '');
+  // Replace only the heading text, not the trailing newline: on Windows
+  // checkouts the line ends \r\n, and "h1[0] + '\n'" would fail to match,
+  // leaving a duplicate H1 under Starlight's own page title.
+  text = text.replace(h1[0], '');
 
   // Links to repo files outside docs/ go to GitHub.
   text = text

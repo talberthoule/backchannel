@@ -1,14 +1,47 @@
-/* Match the landing page's teal accent (site/style.css). */
+/* Match the landing page's "Briefing" design (site/style.css): teal accent,
+   teal-tinted paper, and the Newsreader serif for display headings. The woff2
+   files are the same latin subsets the landing page self-hosts; /docs/fonts/
+   resolves under the Starlight base in dev and in the assembled Worker. */
+
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/docs/fonts/newsreader-latin-500.woff2') format('woff2');
+}
+
 :root {
-  --sl-color-accent-low: #113c37;
+  --sl-color-accent-low: #123430;
   --sl-color-accent: #0d9488;
   --sl-color-accent-high: #99f6e4;
+  /* Teal-tinted dark paper instead of Starlight's neutral gray. */
+  --sl-color-bg: #0c1413;
+  --sl-color-bg-nav: #101b19;
+  --sl-color-bg-sidebar: #0c1413;
+  --sl-color-hairline: #223330;
+  --sl-color-hairline-light: #1a2825;
 }
 
 :root[data-theme='light'] {
-  --sl-color-accent-low: #ccfbf1;
+  --sl-color-accent-low: #e3f2ef;
   --sl-color-accent: #0f766e;
-  --sl-color-accent-high: #134e4a;
+  --sl-color-accent-high: #0b5750;
+  --sl-color-bg: #f9fbfa;
+  --sl-color-bg-nav: #f9fbfa;
+  --sl-color-bg-sidebar: #f9fbfa;
+  --sl-color-hairline: #dbe4e1;
+  --sl-color-hairline-light: #e8efec;
+}
+
+/* Serif display for page titles and section headings, matching the landing
+   page: serif carries h1/h2, smaller headings stay sans. */
+.content-panel h1,
+.sl-markdown-content h1,
+.sl-markdown-content h2 {
+  font-family: 'Newsreader', Georgia, 'Times New Roman', serif;
+  font-weight: 500;
+  letter-spacing: -0.01em;
 }
 
 /* Tables: scroll instead of overflow the page on mobile, and align figures.

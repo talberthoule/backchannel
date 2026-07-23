@@ -1,42 +1,70 @@
-/* Backchannel landing/site stylesheet. Self-contained: system fonts, no CDNs. */
+/* Backchannel landing/site stylesheet. Self-contained: self-hosted fonts, no CDNs.
+   Design language: "The Briefing" - the page reads like the typeset briefing the
+   product produces. Serif display (Newsreader), teal-tinted paper, hairline rules
+   as structure, mono for timestamps and labels, one teal accent. */
+
+@font-face {
+  font-family: "Newsreader";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("assets/fonts/newsreader-latin-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Newsreader";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/fonts/newsreader-latin-italic-400.woff2") format("woff2");
+}
 
 :root {
   color-scheme: light dark;
-  --ink: #0f172a;
-  --ink-soft: #334155;
-  /* #475569 keeps muted copy readable at body sizes (APCA ~Lc 75 on paper);
-     #64748b only cleared the WCAG 2 floor. */
-  --muted: #475569;
-  --paper: #f8fafc;
+  --ink: #101c1a;
+  --ink-soft: #3c4f4a;
+  /* Muted copy keeps APCA ~Lc 75 on paper; do not lighten below this. */
+  --muted: #4a5d59;
+  --paper: #f9fbfa;
   --surface: #ffffff;
-  --border: #e2e8f0;
-  /* Light teal must stay dark enough for AA text contrast on paper/surface:
-     #0f766e is ~5.4:1 on white; the old #0d9488 was ~3.7:1 and failed for
-     links, kickers, and white-on-teal button labels. */
+  --border: #dbe4e1;
+  --rule-soft: #e8efec;
+  /* Teal must stay dark enough for AA text on paper/surface: #0f766e is ~5.4:1
+     on white; lighter teals fail for links, kickers, and button labels. */
   --accent: #0f766e;
-  --accent-strong: #115e59;
-  --accent-soft: #ccfbf1;
+  --accent-strong: #0b5750;
+  --accent-soft: #e3f2ef;
   --danger: #b91c1c;
-  --code-bg: #0f172a;
-  --code-ink: #e2e8f0;
-  --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.06);
+  --code-bg: #101c1a;
+  --code-ink: #d9e4e1;
+  --shadow: 0 1px 2px rgba(16, 28, 26, 0.05), 0 10px 30px rgba(16, 28, 26, 0.07);
+  --serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  /* The live console is the product's dark second screen on either theme. */
+  --console-bg: #060b14;
+  --console-surface: #0b1322;
+  --console-line: #172236;
+  --console-ink: #e8eef6;
+  --console-muted: #8ca3b5;
+  --console-accent: #2dd4bf;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --ink: #e2e8f0;
-    --ink-soft: #cbd5e1;
-    --muted: #94a3b8;
-    --paper: #0b1120;
-    --surface: #101a30;
-    --border: #1e293b;
+    --ink: #e4ecea;
+    --ink-soft: #c3d1cd;
+    --muted: #94a7a3;
+    --paper: #0c1413;
+    --surface: #101b19;
+    --border: #223330;
+    --rule-soft: #1a2825;
     --accent: #2dd4bf;
     --accent-strong: #5eead4;
-    --accent-soft: #113c37;
+    --accent-soft: #123430;
     --danger: #fca5a5;
-    --code-bg: #060b16;
-    --code-ink: #cbd5e1;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --code-bg: #060c0b;
+    --code-ink: #c4d4d0;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 30px rgba(0, 0, 0, 0.4);
   }
 }
 
@@ -61,11 +89,17 @@ body {
 }
 
 code, pre {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: var(--mono);
 }
 
 h1, h2, h3 {
   text-wrap: balance;
+}
+
+/* Display typography: serif carries the page's voice; h3 stays sans. */
+h1, h2 {
+  font-family: var(--serif);
+  font-weight: 500;
 }
 
 .nowrap {
@@ -137,13 +171,13 @@ button:focus-visible {
   top: 8px;
 }
 
-/* Header */
+/* Header: a running head, not an app bar. */
 
 header.site {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
 }
@@ -153,22 +187,23 @@ header.site .wrap {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding-top: 14px;
-  padding-bottom: 14px;
+  padding-top: 16px;
+  padding-bottom: 16px;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 700;
+  font-weight: 650;
   font-size: 19px;
   color: var(--ink);
-  letter-spacing: -0.3px;
+  letter-spacing: -0.01em;
 }
 
 .brand:hover {
   text-decoration: none;
+  color: var(--ink);
 }
 
 .brand img {
@@ -180,12 +215,12 @@ header.site .wrap {
 nav.site-nav {
   display: flex;
   align-items: center;
-  gap: 22px;
+  gap: 24px;
   font-size: 15px;
 }
 
 nav.site-nav a {
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 
 nav.site-nav a:hover {
@@ -193,24 +228,26 @@ nav.site-nav a:hover {
   text-decoration: none;
 }
 
-/* Compact nav CTA button (third CTA level) */
+/* Compact nav CTA: quiet outline pill; the page saves teal fill for the
+   conversion moments. */
 .nav-cta {
   padding: 8px 16px;
   font-size: 14px;
-  border-radius: 8px;
+  border-radius: 999px;
   line-height: 1.2;
+  font-weight: 550;
 }
 
-nav.site-nav a.nav-cta,
+nav.site-nav a.nav-cta {
+  border: 1px solid var(--border);
+  color: var(--ink);
+  background: transparent;
+}
+
 nav.site-nav a.nav-cta:hover {
-  color: #ffffff;
-}
-
-@media (prefers-color-scheme: dark) {
-  nav.site-nav a.nav-cta,
-  nav.site-nav a.nav-cta:hover {
-    color: #04211d;
-  }
+  border-color: var(--accent);
+  color: var(--accent);
+  text-decoration: none;
 }
 
 #gh-stars:not(:empty) {
@@ -220,98 +257,264 @@ nav.site-nav a.nav-cta:hover {
   font-variant-numeric: tabular-nums;
 }
 
-/* Hero */
+/* Hero: the document opening. Asymmetric on the landing page (copy beside the
+   live console); release and comparison pages reuse the same classes as a
+   left-aligned single column. */
 
 .hero {
-  padding: 96px 0 80px;
-  text-align: center;
+  padding: 84px 0 72px;
+  text-align: left;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  gap: 64px;
+  align-items: center;
 }
 
 .hero h1 {
-  margin: 0 auto 20px;
+  margin: 0 0 24px;
   max-width: 880px;
-  font-size: clamp(32px, 4.8vw, 52px);
-  line-height: 1.12;
-  letter-spacing: -0.028em;
+  font-size: clamp(36px, 5vw, 58px);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
 }
 
 .hero h1 .accent {
+  font-style: italic;
+  font-weight: 400;
   color: var(--accent);
 }
 
 .hero p.lede {
-  margin: 0 auto 36px;
-  max-width: 680px;
+  margin: 0 0 32px;
+  max-width: 560px;
   font-size: 19px;
   color: var(--muted);
 }
 
 .cta-row {
   display: flex;
-  justify-content: center;
   gap: 14px;
   flex-wrap: wrap;
 }
 
-.hero-shot {
-  position: relative;
-  margin: 64px auto 0;
-  max-width: 940px;
+/* The platform facts line reads as document metadata, not marketing copy. */
+.hero .quickstart-note {
+  margin-top: 28px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
 }
 
-/* Floating proof card: the one deliberate asymmetry riding the hero shot.
-   Numbers match the #results section's real call. */
-.hero-proof {
-  position: absolute;
-  top: -22px;
-  right: 20px;
-  margin: 0;
-  max-width: 250px;
-  padding: 12px 16px;
-  text-align: left;
-  font-size: 13.5px;
-  line-height: 1.45;
-  color: var(--muted);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+/* Signature: the live second screen - a dark console object on the paper page.
+   Fixed dark palette on purpose: it is the product's screen, not page chrome. */
+
+.console {
+  background: var(--console-bg);
+  border: 1px solid var(--console-line);
+  border-radius: 14px;
+  overflow: hidden;
   box-shadow: var(--shadow);
 }
 
+.console-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--console-line);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--console-muted);
+}
+
+.console .listening {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.console .wave {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 16px;
+}
+
+.console .wave i {
+  width: 3.5px;
+  border-radius: 2px;
+  background: var(--console-accent);
+  height: 6px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .console .wave i {
+    animation: console-wave 1.15s ease-in-out infinite;
+  }
+
+  .console .wave i:nth-child(1) { animation-delay: 0s; }
+  .console .wave i:nth-child(2) { animation-delay: 0.15s; }
+  .console .wave i:nth-child(3) { animation-delay: 0.3s; }
+  .console .wave i:nth-child(4) { animation-delay: 0.45s; }
+  .console .wave i:nth-child(5) { animation-delay: 0.6s; }
+
+  @keyframes console-wave {
+    0%, 100% { height: 5px; }
+    50% { height: 15px; }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .console .wave i:nth-child(odd) { height: 12px; }
+  .console .wave i:nth-child(even) { height: 7px; }
+}
+
+.console-bar .clock {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--console-ink);
+}
+
+.console-body {
+  padding: 18px 18px 20px;
+  display: grid;
+  gap: 14px;
+}
+
+.console .caption {
+  min-height: 60px;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 13.5px;
+  color: var(--console-muted);
+  line-height: 1.55;
+}
+
+.console .caption .who {
+  color: var(--console-accent);
+  font-size: 11px;
+  margin-right: 8px;
+}
+
+.console .caret {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  background: var(--console-accent);
+  vertical-align: -2px;
+  margin-left: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .console .caret {
+    animation: console-blink 1s steps(1) infinite;
+  }
+
+  @keyframes console-blink {
+    50% { opacity: 0; }
+  }
+}
+
+.insight-card {
+  border: 1px solid var(--console-line);
+  border-left: 2px solid var(--console-accent);
+  background: var(--console-surface);
+  border-radius: 10px;
+  padding: 13px 16px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 300ms ease-out, transform 300ms ease-out;
+}
+
+.insight-card.on {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .insight-card {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+.insight-card .tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  font-weight: 700;
+  color: var(--console-accent);
+  margin-bottom: 6px;
+}
+
+.insight-card p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--console-ink);
+}
+
+.insight-card p strong {
+  font-weight: 650;
+}
+
+/* Hero figure */
+
+.hero-shot {
+  position: relative;
+  margin: 64px auto 0;
+  max-width: 960px;
+}
+
+/* The proof line reads as part of the figure caption, not a floating card. */
+.hero-proof {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
 .hero-proof strong {
-  display: block;
-  font-size: 17px;
-  letter-spacing: -0.2px;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 
-/* Browser-frame mockup: neutral window chrome so dark-only product shots read
-   as intentional on either theme. Three dots drawn from one pseudo-element. */
+/* Figure captions: document grammar. The FIG label is set by .fig-no. */
+.fig-caption {
+  display: flex;
+  gap: 14px;
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-align: left;
+}
+
+.fig-no {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* Product-shot frame: a plain hairline plate. The old browser-chrome bar is
+   retired; the class stays for the lightbox selector contract. */
 .browser-frame {
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
   background: var(--surface);
   box-shadow: var(--shadow);
 }
 
 .browser-frame > .bar {
-  display: flex;
-  align-items: center;
-  padding: 11px 15px;
-  background: var(--paper);
-  border-bottom: 1px solid var(--border);
-}
-
-.browser-frame > .bar::before {
-  content: "";
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--muted) 45%, transparent);
-  box-shadow: 18px 0 color-mix(in srgb, var(--muted) 45%, transparent),
-              36px 0 color-mix(in srgb, var(--muted) 45%, transparent);
+  display: none;
 }
 
 .browser-frame img {
@@ -323,7 +526,7 @@ nav.site-nav a.nav-cta:hover {
 /* Ultrawide banner strip: bordered, rounded, no window chrome. */
 .shot-strip {
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
   background: var(--surface);
   box-shadow: var(--shadow);
@@ -387,7 +590,7 @@ figure.shot + p.sub {
 }
 
 .lightbox::backdrop {
-  background: rgba(2, 6, 23, 0.82);
+  background: rgba(4, 12, 11, 0.84);
   backdrop-filter: blur(3px);
 }
 
@@ -412,15 +615,15 @@ figure.shot + p.sub {
   justify-content: center;
   font-size: 30px;
   line-height: 1;
-  color: #e2e8f0;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(226, 232, 240, 0.25);
+  color: #e4ecea;
+  background: rgba(16, 28, 26, 0.7);
+  border: 1px solid rgba(228, 236, 234, 0.25);
   border-radius: 10px;
   cursor: pointer;
 }
 
 .lightbox-close:hover {
-  background: rgba(15, 23, 42, 0.92);
+  background: rgba(16, 28, 26, 0.92);
   color: #ffffff;
 }
 
@@ -450,7 +653,7 @@ figure.shot + p.sub {
 .btn {
   display: inline-block;
   padding: 12px 26px;
-  border-radius: 10px;
+  border-radius: 8px;
   font-weight: 600;
   font-size: 16px;
   border: 1px solid transparent;
@@ -495,7 +698,7 @@ figure.shot + p.sub {
 .btn.ghost {
   border-color: var(--border);
   color: var(--ink);
-  background: var(--surface);
+  background: transparent;
 }
 
 .btn.ghost:hover {
@@ -503,36 +706,41 @@ figure.shot + p.sub {
   color: var(--accent);
 }
 
-/* Sections */
+/* Sections: parts of one document, separated by hairline rules instead of
+   alternating background bands. */
 
 section {
-  padding: 96px 0;
+  padding: 88px 0;
+}
+
+main > section + section {
+  border-top: 1px solid var(--border);
 }
 
 section.alt {
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  background: transparent;
 }
 
 .kicker {
   display: block;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--accent);
-  margin-bottom: 8px;
+  margin-bottom: 14px;
 }
 
 section h2 {
-  margin: 0 0 14px;
-  font-size: clamp(30px, 3.4vw, 38px);
-  letter-spacing: -0.025em;
+  margin: 0 0 16px;
+  font-size: clamp(30px, 3.6vw, 42px);
+  line-height: 1.12;
+  letter-spacing: -0.01em;
 }
 
 section p.sub {
-  margin: 0 0 48px;
+  margin: 0 0 44px;
   max-width: 640px;
   color: var(--muted);
 }
@@ -543,14 +751,53 @@ section.center {
   text-align: center;
 }
 
-section.center p.sub {
+section.center p.sub,
+section.center .fig-caption {
   margin-left: auto;
   margin-right: auto;
 }
 
+section.center .fig-caption {
+  justify-content: center;
+}
+
+/* Big serif proof numerals (the 158 -> 1 distillation). */
+.proof-line {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin: 0 0 40px;
+}
+
+.proof-line .big {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: clamp(56px, 7vw, 92px);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.proof-line .arrow {
+  font-size: 28px;
+  color: var(--muted);
+}
+
+.proof-line .desc {
+  font-size: 15px;
+  color: var(--muted);
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+.proof-line .desc strong {
+  color: var(--ink);
+}
+
 /* The one conversion moment gets a soft accent wash; everywhere else stays neutral. */
 section.early-access {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 30%, transparent), transparent 55%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 32%, transparent), transparent 55%);
 }
 
 .early-access-grid {
@@ -558,6 +805,12 @@ section.early-access {
   grid-template-columns: minmax(0, 0.85fr) minmax(360px, 1.15fr);
   gap: 64px;
   align-items: center;
+}
+
+/* Let both columns shrink below content width on narrow screens; the fixed
+   ~300px Turnstile widget must clip inside the form, not scroll the page. */
+.early-access-grid > * {
+  min-width: 0;
 }
 
 .early-access-copy .sub {
@@ -575,7 +828,7 @@ section.early-access {
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: var(--shadow);
 }
 
@@ -624,6 +877,8 @@ section.early-access {
 .cf-turnstile {
   min-height: 65px;
   margin-top: 14px;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .interest-consent,
@@ -663,8 +918,9 @@ section.early-access {
 
 .feature-copy h3 {
   margin: 0 0 12px;
-  font-size: 24px;
-  letter-spacing: -0.4px;
+  font-size: 23px;
+  letter-spacing: -0.015em;
+  font-weight: 650;
 }
 
 .feature-copy p {
@@ -678,7 +934,7 @@ section.early-access {
   width: 100%;
   height: auto;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   box-shadow: var(--shadow);
 }
 
@@ -690,13 +946,13 @@ section.early-access {
   gap: 32px;
   margin-top: 56px;
   padding-top: 28px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--rule-soft);
 }
 
 .more-strip h3 {
   margin: 0 0 6px;
   font-size: 16px;
-  letter-spacing: -0.2px;
+  letter-spacing: -0.01em;
 }
 
 .more-strip p {
@@ -705,7 +961,7 @@ section.early-access {
   color: var(--muted);
 }
 
-/* Feature grid */
+/* Feature grid (comparison pages) */
 
 .grid {
   display: grid;
@@ -716,19 +972,15 @@ section.early-access {
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 24px;
   box-shadow: var(--shadow);
-}
-
-section.alt .card {
-  background: var(--paper);
 }
 
 .card h3 {
   margin: 0 0 8px;
   font-size: 18px;
-  letter-spacing: -0.3px;
+  letter-spacing: -0.01em;
 }
 
 .card p {
@@ -750,7 +1002,7 @@ section.alt .card {
   margin-bottom: 14px;
 }
 
-/* Steps */
+/* Steps: an actual sequence, typeset as a ruled list with serif numerals. */
 
 ol.steps {
   list-style: none;
@@ -758,44 +1010,32 @@ ol.steps {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 14px;
 }
 
 ol.steps li {
   counter-increment: step;
   display: flex;
-  gap: 16px;
+  gap: 22px;
   align-items: baseline;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px 20px;
+  padding: 18px 4px;
+  border-top: 1px solid var(--rule-soft);
 }
 
-section.alt ol.steps li {
-  background: var(--paper);
+ol.steps li:last-child {
+  border-bottom: 1px solid var(--rule-soft);
 }
 
 ol.steps li::before {
   content: counter(step);
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #ffffff;
-  font-weight: 700;
-  font-size: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  align-self: center;
-}
-
-@media (prefers-color-scheme: dark) {
-  ol.steps li::before {
-    color: #04211d;
-  }
+  min-width: 34px;
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 ol.steps li strong {
@@ -810,9 +1050,9 @@ ol.steps li span {
 /* Architecture */
 
 .diagram {
-  background: #fcfcfd;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 12px;
   overflow-x: auto;
   box-shadow: var(--shadow);
@@ -830,7 +1070,7 @@ ol.steps li span {
 .table-scroll {
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--surface);
 }
 
@@ -843,7 +1083,7 @@ table {
 th, td {
   text-align: left;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--rule-soft);
   vertical-align: top;
 }
 
@@ -860,10 +1100,13 @@ thead th {
   top: 0;
   z-index: 1;
   background: var(--surface);
-  font-size: 13px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.1em;
   color: var(--muted);
+  border-bottom: 1px solid var(--border);
 }
 
 td code {
@@ -879,7 +1122,7 @@ td code {
 pre {
   background: var(--code-bg);
   color: var(--code-ink);
-  border-radius: 12px;
+  border-radius: 10px;
   padding: 20px 24px;
   overflow-x: auto;
   font-size: 14.5px;
@@ -888,7 +1131,7 @@ pre {
 }
 
 pre .cmt {
-  color: #94a3b8;
+  color: #7d918d;
 }
 
 .quickstart-note {
@@ -911,7 +1154,7 @@ pre .cmt {
   min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 24px;
   box-shadow: var(--shadow);
 }
@@ -926,7 +1169,7 @@ pre .cmt {
 .setup-panel h3 {
   margin: -6px 0 0;
   font-size: 22px;
-  letter-spacing: 0;
+  letter-spacing: -0.01em;
 }
 
 .setup-panel p {
@@ -986,6 +1229,7 @@ pre .cmt {
   margin: 0 0 18px;
   font-size: clamp(34px, 5vw, 54px);
   line-height: 1.08;
+  letter-spacing: -0.015em;
 }
 
 .release-copy .lede {
@@ -999,7 +1243,7 @@ pre .cmt {
   min-width: 0;
   background: var(--surface);
   border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 24px;
   box-shadow: var(--shadow);
 }
@@ -1012,6 +1256,8 @@ pre .cmt {
 }
 
 .release-panel h2 {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-weight: 650;
   font-size: 21px;
 }
 
@@ -1031,7 +1277,7 @@ pre .cmt {
   justify-content: space-between;
   gap: 18px;
   padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--rule-soft);
 }
 
 .release-facts li:last-child {
@@ -1057,9 +1303,9 @@ pre .cmt {
   gap: 14px;
   min-width: 0;
   padding: 24px;
-  background: var(--paper);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: var(--shadow);
 }
 
@@ -1099,7 +1345,7 @@ pre .cmt {
   padding: 22px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: var(--shadow);
 }
 
@@ -1119,13 +1365,13 @@ pre .cmt {
 
 .faq-item {
   padding: 22px 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--rule-soft);
 }
 
 .faq-item h3 {
   margin: 0 0 8px;
   font-size: 17px;
-  letter-spacing: -0.2px;
+  letter-spacing: -0.01em;
 }
 
 .faq-item p {
@@ -1146,7 +1392,7 @@ pre .cmt {
   display: block;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   padding: 16px 20px;
   color: var(--ink);
 }
@@ -1187,7 +1433,7 @@ pre .cmt {
 .prose h3 {
   margin: 28px 0 8px;
   font-size: 20px;
-  letter-spacing: -0.3px;
+  letter-spacing: -0.01em;
 }
 
 .prose p {
@@ -1216,7 +1462,7 @@ footer.site .wrap.footer-compare {
   gap: 8px 20px;
   padding-bottom: 14px;
   margin-bottom: 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--rule-soft);
 }
 
 /* Responsive */
@@ -1233,6 +1479,10 @@ footer.site .wrap.footer-compare {
   .feature-row {
     gap: 32px;
   }
+
+  .hero-grid {
+    gap: 44px;
+  }
 }
 
 @media (max-width: 760px) {
@@ -1240,9 +1490,14 @@ footer.site .wrap.footer-compare {
   .feature-row.reverse,
   .setup-grid,
   .early-access-grid,
+  .hero-grid,
   .release-hero .wrap {
     grid-template-columns: 1fr;
     gap: 20px;
+  }
+
+  .hero-grid {
+    gap: 36px;
   }
 
   .feature-row.reverse .feature-copy {
@@ -1271,12 +1526,8 @@ footer.site .wrap.footer-compare {
     min-height: 44px;
   }
 
-  .hero-proof {
-    display: none;
-  }
-
   .hero {
-    padding: 64px 0 48px;
+    padding: 56px 0 48px;
   }
 
   .hero-shot {
@@ -1299,6 +1550,10 @@ footer.site .wrap.footer-compare {
   .more-strip {
     gap: 20px;
     margin-top: 40px;
+  }
+
+  .proof-line .big {
+    font-size: clamp(48px, 14vw, 72px);
   }
 
   .release-facts li {
@@ -1338,5 +1593,4 @@ footer.site .wrap.footer-compare {
   .interest-form {
     padding: 20px;
   }
-
 }

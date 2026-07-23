@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
-  <meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#f9fbfa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0c1413" media="(prefers-color-scheme: dark)" />
   <title>Backchannel - Open-source, self-hosted AI meeting assistant</title>
   <meta name="description" content="Backchannel is an open-source, self-hosted AI meeting assistant: live speaker-diarized transcripts and real-time insights, no bot joining your call." />
   <link rel="canonical" href="https://backchannel.page/" />
@@ -121,29 +121,47 @@
 
   <section class="hero">
     <div class="wrap">
-      <h1>Your meetings, transcribed live.<br />Your next move, <span class="accent">surfaced <span class="nowrap">mid-call</span></span> &mdash; on your own hardware.</h1>
-      <p class="lede">
-        A self-hosted, open-source AI meeting assistant: live speaker-attributed
-        transcripts and real-time insight agents, with no bot in the call.
-      </p>
-      <div class="cta-row">
-        <a class="btn primary" href="#early-access">Request early access</a>
-        <a class="btn ghost" href="#quickstart">Self-host in minutes</a>
+      <div class="hero-grid">
+        <div>
+          <h1>Your meetings, transcribed live.<br />Your next move, <span class="accent">surfaced <span class="nowrap">mid-call</span></span> &mdash; on your own hardware.</h1>
+          <p class="lede">
+            A self-hosted, open-source AI meeting assistant: live speaker-attributed
+            transcripts and real-time insight agents, with no bot in the call.
+          </p>
+          <div class="cta-row">
+            <a class="btn primary" href="#early-access">Request early access</a>
+            <a class="btn ghost" href="#quickstart">Self-host in minutes</a>
+          </div>
+          <p class="quickstart-note">Private desktop preview for Windows, macOS &amp; Linux &middot; self-host anytime with Docker Compose &middot; works with Zoom, Meet, and Teams &middot; MIT licensed</p>
+        </div>
+        <aside class="console" aria-label="Live listening console demonstration">
+          <div class="console-bar">
+            <span class="listening"><span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span> Listening&hellip;</span>
+            <span class="clock" id="console-clock">03:52</span>
+          </div>
+          <div class="console-body">
+            <p class="caption"><span class="who">REMOTE PARTICIPANT 8</span><span id="console-caption"></span><span class="caret" aria-hidden="true"></span></p>
+            <div class="insight-card" id="console-insight">
+              <span class="tag">OBJECTION &middot; RESPONSE READY</span>
+              <p><strong>Respond now:</strong> mapping everything mid-flight is overwhelming &mdash; propose a structured discovery and mapping phase directly in the SoW to carry that lifting.</p>
+            </div>
+          </div>
+        </aside>
       </div>
-      <p class="quickstart-note">Private desktop preview for Windows, macOS &amp; Linux &middot; self-host anytime with Docker Compose &middot; works with Zoom, Meet, and Teams &middot; MIT licensed</p>
-      <div class="hero-shot">
+      <figure class="hero-shot">
         <div class="browser-frame">
           <div class="bar" aria-hidden="true"></div>
           <img src="assets/shots/user-live-early.webp" data-full="assets/shots/user-live-early-full.webp" width="1600" height="765" fetchpriority="high"
                alt="Backchannel live mid-call at 03:52: dual Listening indicators, five strategic-signal cards attributed to the Question Hunter, Objection Handler, and Opportunity Scout agents, beside a live speaker-attributed transcript." />
         </div>
-        <p class="hero-proof"><strong>158 insights</strong> from one real 32-minute call, distilled into a single briefing</p>
-      </div>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 1</span><span>Live call, 03:52 &mdash; five strategic signals beside the running transcript, every line attributed to a speaker. <strong>158 insights</strong> from this one real 32-minute call, distilled into a single briefing.</span></figcaption>
+      </figure>
     </div>
   </section>
 
   <section id="features" class="alt">
     <div class="wrap">
+      <span class="kicker">During the call</span>
       <h2>Everything a second set of ears should do</h2>
       <p class="sub">Built for sales, discovery, and client calls. Provider-flexible, centered on a transcript you can trust.</p>
 
@@ -217,6 +235,7 @@
           <img src="assets/shots/user-live-answered.webp" data-full="assets/shots/user-live-answered-full.webp" width="1600" height="755" loading="lazy"
                alt="A live insight card flipping to Answered and Refined with a green answer summary, above a Needs Follow-up child question, at 05:10 into a call." />
         </div>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 2</span><span>05:10 &mdash; a question flips to Answered with a summarized answer, and the follow-up you still owe spins off beneath it.</span></figcaption>
       </figure>
     </div>
   </section>
@@ -237,6 +256,7 @@
           <img src="assets/shots/user-session-header.webp" width="1600" height="183" loading="lazy"
                alt="Post-call session header: two call segments totaling 32 minutes 27 seconds, and 158 insights." />
         </div>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 3</span><span>32:27 &mdash; post-processing drains the last segments, then the session settles into one reviewable record.</span></figcaption>
       </figure>
     </div>
   </section>
@@ -245,6 +265,12 @@
     <div class="wrap">
       <h2>The briefing does the reading for you</h2>
       <p class="sub">A real 32-minute call threw off 158 raw signals. You never wade through them. Backchannel distills the whole conversation into one briefing of outcomes and objectives, so you start from the point instead of the pile.</p>
+      <div class="proof-line">
+        <span class="big">158</span>
+        <span class="arrow">&rarr;</span>
+        <span class="big">1</span>
+        <span class="desc"><strong>One briefing</strong> of outcomes, objectives, and follow-ups &mdash; with every underlying insight kept, attributed, and exportable.</span>
+      </div>
       <figure class="shot">
         <div class="browser-frame">
           <div class="bar" aria-hidden="true"></div>
@@ -254,6 +280,7 @@
                  alt="Post-call briefing: a distilled panel of call outcomes beside the objectives that came out of the conversation." />
           </picture>
         </div>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 4</span><span>The settled briefing &mdash; two independent lens drafts reconciled by an arbiter into outcomes and objectives.</span></figcaption>
       </figure>
       <p class="sub">The detail is all still there: every one of the 158, each attributed to who said it, ready to take with you as Excel, HTML, or text.</p>
       <figure class="shot">
@@ -262,6 +289,7 @@
           <img src="assets/shots/user-insights-158.webp" data-full="assets/shots/user-insights-158-full.webp" width="1600" height="696" loading="lazy"
                alt="Insights tab: stat tiles reading 158 total, 13 action items, 31 opportunities, 43 observations, and 44 questions, above three speaker-attributed action items." />
         </div>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 5</span><span>All 158, kept and attributed &mdash; 13 action items, 31 opportunities, 43 observations, 44 questions.</span></figcaption>
       </figure>
     </div>
   </section>
@@ -311,6 +339,7 @@
           <img src="assets/shots/user-chat-tech.webp" data-full="assets/shots/user-chat-tech-full.webp" width="1400" height="787" loading="lazy"
                alt="Cross-session chat answering which technologies were mentioned, with a grounded multi-session answer and session scope pickers." />
         </div>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 6</span><span>One question asked across every saved meeting, answered with the sessions it came from.</span></figcaption>
       </figure>
     </div>
   </section>
@@ -529,6 +558,7 @@ docker compose up --build
   <section id="early-access" class="early-access">
     <div class="wrap early-access-grid">
       <div class="early-access-copy">
+        <span class="kicker">Early access</span>
         <h2>Get the next desktop build</h2>
         <p class="sub">Request access to the private Windows, macOS, and Linux preview. We will also send meaningful release updates and occasional Backchannel news.</p>
         <p class="early-access-proof">No weekly drip campaign. Just invites and product updates worth opening.</p>
@@ -600,6 +630,48 @@ docker compose up --build
     });
     dlg.querySelector(".lightbox-close").addEventListener("click", function () { dlg.close(); });
     dlg.addEventListener("close", function () { big.removeAttribute("src"); });
+  })();
+</script>
+
+<script>
+  // Live listening console in the hero: types a real objection from the demo
+  // call, then reveals the handler's response card, on a loop. Typing progress
+  // is wall-clock based so background-tab timer throttling can't stretch it.
+  // Reduced motion gets the completed state with no animation.
+  (function () {
+    var target = document.getElementById("console-caption");
+    var card = document.getElementById("console-insight");
+    var clock = document.getElementById("console-clock");
+    if (!target || !card || !clock) return;
+    var line = "We don't know how to define our new network segments, map our systems, or safely execute the migration.";
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      target.textContent = line;
+      card.classList.add("on");
+      return;
+    }
+    var t = 232; // the call clock starts at 03:52, matching FIG. 1
+    setInterval(function () {
+      t += 1;
+      var m = String(Math.floor(t / 60));
+      var s = String(t % 60);
+      clock.textContent = (m.length < 2 ? "0" + m : m) + ":" + (s.length < 2 ? "0" + s : s);
+    }, 1000);
+    var CHARS_PER_SEC = 58;
+    function run() {
+      var start = performance.now();
+      target.textContent = "";
+      card.classList.remove("on");
+      var timer = setInterval(function () {
+        var i = Math.floor(((performance.now() - start) / 1000) * CHARS_PER_SEC);
+        target.textContent = line.slice(0, i);
+        if (i >= line.length) {
+          clearInterval(timer);
+          setTimeout(function () { card.classList.add("on"); }, 500);
+          setTimeout(run, 9000);
+        }
+      }, 34);
+    }
+    run();
   })();
 </script>
 
