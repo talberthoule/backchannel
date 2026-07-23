@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+test("voice enrollment uses live mic-only capture constraints", async () => {
+  const { MIC_ONLY_AUDIO_CONSTRAINTS } = await import("./useAudioCapture.ts");
+
+  assert.deepEqual(MIC_ONLY_AUDIO_CONSTRAINTS, {
+    channelCount: 1,
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: true,
+  });
+});
+
 test("capture startup is single-flight and reusable after settlement", async () => {
   const captureModule = await import("./useAudioCapture.ts");
   assert.equal(typeof captureModule.startSingleFlight, "function");

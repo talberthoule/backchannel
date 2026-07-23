@@ -456,6 +456,11 @@ export default function App() {
 
   const handleOpenApiKeys = useCallback(() => openAdmin("keys"), [openAdmin]);
 
+  const handleOpenVoiceSettings = useCallback(
+    () => openAdmin("transcription"),
+    [openAdmin],
+  );
+
   const handleRenameSession = useCallback(async (name: string) => {
     if (!activeSessionId) return;
     await api.updateSession(activeSessionId, { name });
@@ -783,6 +788,7 @@ export default function App() {
             processingError={processingError}
             isStarting={callStarting}
             onStartCall={handleStartCall}
+            onOpenVoiceSettings={handleOpenVoiceSettings}
             captureSystemAudio={captureSystemAudio}
             onToggleSystemAudio={setCaptureSystemAudio}
             onProcessTranscript={handleProcessTranscript}

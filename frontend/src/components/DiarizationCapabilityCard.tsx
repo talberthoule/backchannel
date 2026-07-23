@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DiarizationBenchmarkResult, DiarizationDiagnostics } from "../types";
 import * as api from "../services/api";
+import { MIC_ONLY_AUDIO_CONSTRAINTS } from "../hooks/useAudioCapture";
 
 const RECORDING_MIME_TYPES = [
   "audio/webm;codecs=opus",
@@ -11,14 +12,18 @@ const RECORDING_MIME_TYPES = [
 // plus 5s of slack, after which recording stops and validation runs.
 const MIN_BENCHMARK_SECONDS = 15;
 const MAX_RECORDING_SECONDS = MIN_BENCHMARK_SECONDS + 5;
+const MAX_VOICE_RECORDING_SECONDS = 10;
+type RecordingMode = "benchmark" | "voice";
 
 export default function DiarizationCapabilityCard() {
   const [diarization, setDiarization] = useState<DiarizationDiagnostics | null>(null);
   const [benchmark, setBenchmark] = useState<DiarizationBenchmarkResult | null>(null);
   const [benchmarkFile, setBenchmarkFile] = useState<File | null>(null);
   const [benchmarking, setBenchmarking] = useState(false);
-  const [recording, setRecording] = useState(false);
+  const [recordingMode, setRecordingMode] = useState<RecordingMode | null>(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [voiceEnrolled, setVoiceEnrolled] = useState<boolean | null>(null);
+  const [voiceSaving, setVoiceSaving] = useState(false);
   const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
   const [loadingDiagnostics, setLoadingDiagnostics] = useState(true);
   const [savingSelection, setSavingSelection] = useState(false);
@@ -33,8 +38,12 @@ export default function DiarizationCapabilityCard() {
   const load = useCallback(async () => {
     setLoadingDiagnostics(true);
     try {
-      const result = await api.getDiarizationDiagnostics();
+      const [result, voiceProfile] = await Promise.all([
+        api.getDiarizationDiagnostics(),
+        api.getVoiceProfileStatus(),
+      ]);
       setDiarization(result);
+      setVoiceEnrolled(voiceProfile.enrolled);
       setDiagnosticError(null);
     } catch (err) {
       console.error("Failed to load diarization diagnostics", err);
@@ -103,14 +112,45 @@ export default function DiarizationCapabilityCard() {
     }
   };
 
-  const startMicBenchmark = async () => {
+  const saveVoiceProfile = async (file: File) => {
+    setVoiceSaving(true);
+    setDiagnosticError(null);
+    try {
+      const result = await api.replaceVoiceProfile(file);
+      setVoiceEnrolled(result.enrolled);
+    } catch (err) {
+      console.error("Voice enrollment failed", err);
+      setDiagnosticError(err instanceof Error ? err.message : "Voice enrollment failed.");
+    } finally {
+      setVoiceSaving(false);
+    }
+  };
+
+  const removeVoiceProfile = async () => {
+    if (!window.confirm("Delete your saved voice profile?")) return;
+    setVoiceSaving(true);
+    setDiagnosticError(null);
+    try {
+      await api.deleteVoiceProfile();
+      setVoiceEnrolled(false);
+    } catch (err) {
+      console.error("Voice profile deletion failed", err);
+      setDiagnosticError(err instanceof Error ? err.message : "Unable to delete voice profile.");
+    } finally {
+      setVoiceSaving(false);
+    }
+  };
+
+  const startMicRecording = async (mode: RecordingMode) => {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setDiagnosticError("Browser microphone recording is not available.");
       return;
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: mode === "voice" ? MIC_ONLY_AUDIO_CONSTRAINTS : true,
+      });
       const recorder = new MediaRecorder(stream, getRecorderOptions());
       streamRef.current = stream;
       recorderRef.current = recorder;
@@ -123,36 +163,41 @@ export default function DiarizationCapabilityCard() {
       };
       recorder.onstop = () => {
         const file = createRecordedFile(chunksRef.current, recorder.mimeType);
-        setBenchmarkFile(file);
         stopMediaTracks();
         clearRecordingTimer();
-        setRecording(false);
+        setRecordingMode(null);
         setRecordingSeconds(0);
-        void runBenchmark(file);
+        if (mode === "voice") {
+          void saveVoiceProfile(file);
+        } else {
+          setBenchmarkFile(file);
+          void runBenchmark(file);
+        }
       };
 
       recorder.start();
-      setRecording(true);
+      setRecordingMode(mode);
       setRecordingSeconds(0);
       timerRef.current = window.setInterval(() => {
         setRecordingSeconds((seconds) => {
           const next = seconds + 1;
-          if (next >= MAX_RECORDING_SECONDS && recorder.state === "recording") {
+          const limit = mode === "voice" ? MAX_VOICE_RECORDING_SECONDS : MAX_RECORDING_SECONDS;
+          if (next >= limit && recorder.state === "recording") {
             recorder.stop();
           }
           return next;
         });
       }, 1000);
     } catch (err) {
-      console.error("Microphone benchmark recording failed", err);
+      console.error("Microphone recording failed", err);
       setDiagnosticError(err instanceof Error ? err.message : "Unable to start microphone recording.");
       stopMediaTracks();
       clearRecordingTimer();
-      setRecording(false);
+      setRecordingMode(null);
     }
   };
 
-  const stopMicBenchmark = () => {
+  const stopMicRecording = () => {
     const recorder = recorderRef.current;
     if (recorder?.state === "recording") {
       recorder.stop();
@@ -330,6 +375,51 @@ export default function DiarizationCapabilityCard() {
         </div>
       </div>
 
+      <div className="mb-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="font-body text-[10px] uppercase text-brand-mid-gray">My voice profile</p>
+            <p className="mt-1 font-body text-xs text-brand-gray">
+              {voiceEnrolled
+                ? "Your encrypted voice signature is ready for mic-only speaker matching."
+                : "Record 4-10 seconds of your voice. Calibration audio is discarded; only its encrypted voice signature is kept."}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={recordingMode === "voice"
+                ? stopMicRecording
+                : () => void startMicRecording("voice")}
+              disabled={
+                voiceSaving
+                || benchmarking
+                || (recordingMode !== null && recordingMode !== "voice")
+              }
+              className="rounded border border-brand-teal px-3 py-1.5 font-body text-xs font-medium text-brand-teal transition-colors hover:bg-brand-teal hover:text-white disabled:cursor-not-allowed disabled:border-brand-light-gray-1 disabled:text-brand-mid-gray"
+            >
+              {recordingMode === "voice"
+                ? `Stop (${recordingSeconds}s)`
+                : voiceSaving
+                  ? "Saving..."
+                  : voiceEnrolled
+                    ? "Replace Voice Profile"
+                    : "Record Voice Profile"}
+            </button>
+            {voiceEnrolled && (
+              <button
+                type="button"
+                onClick={() => void removeVoiceProfile()}
+                disabled={voiceSaving || recordingMode !== null}
+                className="rounded border border-brand-light-gray-1 px-3 py-1.5 font-body text-xs text-brand-gray transition-colors hover:border-red-300 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="mb-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-2">
         <p className="font-body text-xs text-brand-gray">
           {loadingDiagnostics
@@ -351,17 +441,25 @@ export default function DiarizationCapabilityCard() {
         />
         <button
           onClick={handleUploadedBenchmark}
-          disabled={!benchmarkFile || benchmarking || recording}
+          disabled={!benchmarkFile || benchmarking || recordingMode !== null}
           className="rounded bg-brand-teal px-3 py-1.5 font-body text-xs font-medium text-white transition-colors hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:bg-brand-light-gray-1"
         >
-          {benchmarking && !recording ? "Benchmarking..." : "Run Benchmark"}
+          {benchmarking ? "Benchmarking..." : "Run Benchmark"}
         </button>
         <button
-          onClick={recording ? stopMicBenchmark : startMicBenchmark}
-          disabled={benchmarking && !recording}
+          onClick={recordingMode === "benchmark"
+            ? stopMicRecording
+            : () => void startMicRecording("benchmark")}
+          disabled={
+            voiceSaving
+            || (benchmarking && recordingMode !== "benchmark")
+            || (recordingMode !== null && recordingMode !== "benchmark")
+          }
           className="rounded border border-brand-teal px-3 py-1.5 font-body text-xs font-medium text-brand-teal transition-colors hover:bg-brand-teal hover:text-white disabled:cursor-not-allowed disabled:border-brand-light-gray-1 disabled:text-brand-mid-gray"
         >
-          {recording ? `Stop Recording (${recordingSeconds}s)` : "Record Mic Benchmark"}
+          {recordingMode === "benchmark"
+            ? `Stop Recording (${recordingSeconds}s)`
+            : "Record Mic Benchmark"}
         </button>
         {benchmark ? (
           <span className="font-body text-xs text-brand-mid-gray">
