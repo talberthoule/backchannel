@@ -271,9 +271,9 @@ async def start_or_resume_revalidation(
     if run and run.status in {"partial", "failed"}:
         requeue_failed_batches(run, run.batches)
         await db.commit()
-        return run, True
+        return await get_revalidation_run(run.id, db), True
     if run:
-        return run, False
+        return await get_revalidation_run(run.id, db), False
 
     run = SpeakerRevalidationRun(
         session_id=session_id,

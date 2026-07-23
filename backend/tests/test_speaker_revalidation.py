@@ -2,7 +2,16 @@ import unittest
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
+from sqlalchemy import inspect
+
+from app.models import (
+    Session,
+    SpeakerMappingRevision,
+    SpeakerRevalidationBatch,
+    SpeakerRevalidationRun,
+)
 from app.services.speaker_revalidation import (
     build_batch_specs,
     canonical_speaker_mapping,
@@ -10,6 +19,7 @@ from app.services.speaker_revalidation import (
     finalize_run_state,
     mapping_hash,
     requeue_failed_batches,
+    start_or_resume_revalidation,
     summarize_run,
 )
 
@@ -241,6 +251,102 @@ class SpeakerRevalidationBatchTests(unittest.TestCase):
         self.assertEqual("completed", stale_run.status)
         self.assertTrue(stale_session.speaker_context_dirty)
         self.assertIn("changed again", stale_run.error_message)
+
+
+class SpeakerRevalidationOrmTests(unittest.IsolatedAsyncioTestCase):
+    async def test_resume_returns_a_run_with_mapping_revision_eagerly_loaded(self):
+        session_id = uuid.uuid4()
+        revision = SpeakerMappingRevision(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            source_version=3,
+            mapping_hash="hash",
+            mapping_snapshot=[],
+        )
+        batch = SpeakerRevalidationBatch(
+            id=uuid.uuid4(),
+            batch_index=0,
+            kind="insights",
+            status="failed",
+            attempts=1,
+            processed_entries=0,
+            applied_operations=0,
+            enhanced_insights=0,
+            input_tokens=0,
+            output_tokens=0,
+            total_tokens=0,
+            duration_ms=0,
+            error_message="model offline",
+        )
+        unloaded_run = SpeakerRevalidationRun(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            mapping_revision_id=revision.id,
+            content_version="content",
+            status="partial",
+            started_at=datetime.now(timezone.utc),
+            batches=[batch],
+        )
+        loaded_run = SpeakerRevalidationRun(
+            id=unloaded_run.id,
+            session_id=session_id,
+            mapping_revision_id=revision.id,
+            content_version="content",
+            status="running",
+            started_at=unloaded_run.started_at,
+            mapping_revision=revision,
+            batches=[batch],
+        )
+        session = Session(
+            id=session_id,
+            name="Call",
+            state="completed",
+            speaker_context_dirty=True,
+            speaker_context_version=3,
+        )
+        self.assertIn("mapping_revision", inspect(unloaded_run).unloaded)
+
+        db = SimpleNamespace(
+            execute=AsyncMock(
+                side_effect=[
+                    _OrmResult(one=session),
+                    _OrmResult(values=[]),
+                    _OrmResult(values=[]),
+                    _OrmResult(values=[]),
+                    _OrmResult(one=revision),
+                    _OrmResult(values=[unloaded_run]),
+                    _OrmResult(one=loaded_run),
+                ]
+            ),
+            commit=AsyncMock(),
+        )
+
+        run, should_start = await start_or_resume_revalidation(session_id, db)
+
+        self.assertTrue(should_start)
+        self.assertNotIn("mapping_revision", inspect(run).unloaded)
+        self.assertEqual(3, summarize_run(run, session)["mapping_revision"])
+
+
+class _OrmResult:
+    def __init__(self, *, one=None, values=None):
+        self.one = one
+        self.values = values or []
+
+    def scalar_one(self):
+        return self.one
+
+    def scalar_one_or_none(self):
+        return self.one
+
+    def scalars(self):
+        return self
+
+    def first(self):
+        return self.values[0] if self.values else None
+
+    def __iter__(self):
+        return iter(self.values)
 
 
 if __name__ == "__main__":
