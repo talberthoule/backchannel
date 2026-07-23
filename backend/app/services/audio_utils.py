@@ -1,6 +1,7 @@
 """Shared audio utility functions."""
 
 import struct
+from math import ceil
 
 import numpy as np
 
@@ -41,7 +42,12 @@ def pcm16_to_float32(pcm_bytes: bytes) -> np.ndarray:
     return samples.astype(np.float32) / 32768.0
 
 
-def convert_to_pcm16(file_bytes: bytes, source_format: str) -> bytes:
+def convert_to_pcm16(
+    file_bytes: bytes,
+    source_format: str,
+    *,
+    max_seconds: float | None = None,
+) -> bytes:
     """Convert audio file bytes to PCM16 16kHz mono using soundfile/ffmpeg."""
     import io
     import subprocess
@@ -50,7 +56,11 @@ def convert_to_pcm16(file_bytes: bytes, source_format: str) -> bytes:
     # Try soundfile first (handles WAV, FLAC, OGG)
     try:
         import soundfile as sf
-        data, sr = sf.read(io.BytesIO(file_bytes), dtype="int16", always_2d=True)
+        with sf.SoundFile(io.BytesIO(file_bytes)) as source:
+            sr = source.samplerate
+            target_samples = int(max_seconds * 16000) + 1 if max_seconds is not None else None
+            source_frames = ceil(target_samples * sr / 16000) if target_samples is not None else -1
+            data = source.read(frames=source_frames, dtype="int16", always_2d=True)
         # Mix to mono
         if data.shape[1] > 1:
             data = data.mean(axis=1).astype(np.int16)
@@ -73,9 +83,12 @@ def convert_to_pcm16(file_bytes: bytes, source_format: str) -> bytes:
 
     tmp_out_path = tmp_in_path + ".raw"
     try:
+        output_limit = int(max_seconds * 16000) + 1 if max_seconds is not None else None
+        duration_args = ["-t", f"{output_limit / 16000:.8f}"] if output_limit is not None else []
         subprocess.run(
             [
                 "ffmpeg", "-y", "-i", tmp_in_path,
+                *duration_args,
                 "-ar", "16000", "-ac", "1", "-f", "s16le",
                 tmp_out_path,
             ],
@@ -83,7 +96,7 @@ def convert_to_pcm16(file_bytes: bytes, source_format: str) -> bytes:
             check=True,
         )
         with open(tmp_out_path, "rb") as f:
-            return f.read()
+            return f.read(output_limit * 2 if output_limit is not None else -1)
     finally:
         import os
         os.unlink(tmp_in_path)

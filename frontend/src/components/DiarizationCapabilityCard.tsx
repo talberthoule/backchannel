@@ -34,6 +34,7 @@ export default function DiarizationCapabilityCard() {
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const timerRef = useRef<number | null>(null);
+  const recordingGenerationRef = useRef(0);
 
   const load = useCallback(async () => {
     setLoadingDiagnostics(true);
@@ -87,6 +88,13 @@ export default function DiarizationCapabilityCard() {
   }, []);
 
   useEffect(() => () => {
+    recordingGenerationRef.current += 1;
+    const recorder = recorderRef.current;
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onstop = null;
+      if (recorder.state === "recording") recorder.stop();
+    }
     clearRecordingTimer();
     stopMediaTracks();
   }, [clearRecordingTimer, stopMediaTracks]);
@@ -147,10 +155,16 @@ export default function DiarizationCapabilityCard() {
       return;
     }
 
+    const generation = recordingGenerationRef.current + 1;
+    recordingGenerationRef.current = generation;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: mode === "voice" ? MIC_ONLY_AUDIO_CONSTRAINTS : true,
       });
+      if (generation !== recordingGenerationRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       const recorder = new MediaRecorder(stream, getRecorderOptions());
       streamRef.current = stream;
       recorderRef.current = recorder;
@@ -162,6 +176,7 @@ export default function DiarizationCapabilityCard() {
         }
       };
       recorder.onstop = () => {
+        if (generation !== recordingGenerationRef.current) return;
         const file = createRecordedFile(chunksRef.current, recorder.mimeType);
         stopMediaTracks();
         clearRecordingTimer();
@@ -189,6 +204,7 @@ export default function DiarizationCapabilityCard() {
         });
       }, 1000);
     } catch (err) {
+      if (generation !== recordingGenerationRef.current) return;
       console.error("Microphone recording failed", err);
       setDiagnosticError(err instanceof Error ? err.message : "Unable to start microphone recording.");
       stopMediaTracks();

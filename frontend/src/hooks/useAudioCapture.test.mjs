@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 test("voice enrollment uses live mic-only capture constraints", async () => {
@@ -54,4 +55,16 @@ test("capture startup can retry after a rejected attempt", async () => {
   await startSingleFlight(inFlight, operation);
 
   assert.equal(attempts, 2);
+});
+
+test("admin recorder cancels pending and active capture on unmount", () => {
+  const card = readFileSync(
+    new URL("../components/DiarizationCapabilityCard.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(card, /recordingGenerationRef\.current \+= 1/);
+  assert.match(card, /recorder\.ondataavailable = null/);
+  assert.match(card, /recorder\.onstop = null/);
+  assert.match(card, /generation !== recordingGenerationRef\.current/);
 });

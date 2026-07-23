@@ -21,7 +21,11 @@ from app.services.diarization_diagnostics import (
     classify_benchmark,
     probe_sortformer_environment,
 )
-from app.services.voice_enrollment import MAX_ENROLLMENT_UPLOAD_BYTES, VoiceEnrollmentError
+from app.services.voice_enrollment import (
+    MAX_ENROLLMENT_SECONDS,
+    MAX_ENROLLMENT_UPLOAD_BYTES,
+    VoiceEnrollmentError,
+)
 
 
 class DiarizationDiagnosticsTests(unittest.TestCase):
@@ -88,7 +92,7 @@ class VoiceProfileEndpointTests(unittest.IsolatedAsyncioTestCase):
         embedding = np.array([1.0, 0.0], dtype=np.float32)
 
         with (
-            patch("app.routers.diagnostics.convert_to_pcm16", return_value=b"pcm"),
+            patch("app.routers.diagnostics.convert_to_pcm16", return_value=b"pcm") as convert,
             patch(
                 "app.routers.diagnostics.extract_enrollment_embedding",
                 return_value=embedding,
@@ -101,6 +105,11 @@ class VoiceProfileEndpointTests(unittest.IsolatedAsyncioTestCase):
             result = await replace_voice_profile(file, db)
 
         self.assertEqual({"enrolled": True}, result)
+        convert.assert_called_once_with(
+            b"encoded",
+            "webm",
+            max_seconds=MAX_ENROLLMENT_SECONDS,
+        )
         save.assert_awaited_once_with(db, embedding)
         db.commit.assert_awaited_once()
 

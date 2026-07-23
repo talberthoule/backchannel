@@ -24,6 +24,7 @@ from app.services.transcription_runtime import (
     set_live_preview_model,
 )
 from app.services.voice_enrollment import (
+    MAX_ENROLLMENT_SECONDS,
     MAX_ENROLLMENT_UPLOAD_BYTES,
     VoiceEnrollmentError,
     clear_local_voice_embedding,
@@ -115,7 +116,11 @@ async def replace_voice_profile(
         raise HTTPException(413, "Voice sample is too large.")
 
     try:
-        pcm_data = convert_to_pcm16(content, ext.lstrip("."))
+        pcm_data = convert_to_pcm16(
+            content,
+            ext.lstrip("."),
+            max_seconds=MAX_ENROLLMENT_SECONDS,
+        )
     except Exception as exc:
         raise HTTPException(400, f"Audio conversion failed: {exc}") from exc
     try:
