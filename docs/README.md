@@ -27,6 +27,7 @@ and access events live in D1, not the local application's PostgreSQL database.
 | Page | What it covers |
 | --- | --- |
 | [Quickstart](quickstart.md) | Running with Docker Compose, local development, database migrations, tests |
+| [Getting API Keys](api-keys.md) | Creating a Google Gemini or OpenAI key and connecting it under Admin -> API Keys |
 | [Architecture](architecture.md) | The live call path end to end, frontend structure, backend key files |
 | [Agent System](agents.md) | The orchestrator, each agent's trigger and purpose, configuration and overrides |
 | [Audio Pipeline](audio-pipeline.md) | Capture format, VAD and diarization, batch transcription routing, audio storage |
