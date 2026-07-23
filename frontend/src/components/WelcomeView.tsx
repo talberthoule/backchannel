@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { PrivacyConfig } from "../types";
 import * as api from "../services/api";
 import type { CredentialInfo } from "../services/api";
-import { setupReadiness, type ReadinessAgentModel, type SetupReadiness } from "../lib/providerOnboarding";
+import { setupReadiness, toReadinessAgentModels, type SetupReadiness } from "../lib/providerOnboarding";
 
 interface WelcomeViewProps {
   hasSessions: boolean;
@@ -89,18 +89,12 @@ export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }
         api.listModels().catch(() => []),
       ]).then(([p, transcription, agents, models]) => {
         setPrivacy(p);
-        const agentModels: ReadinessAgentModel[] = agents.map((a) => {
-          const model = models.find((m) => m.id === a.model_id);
-          return {
-            agentName: a.name,
-            enabled: a.enabled,
-            modelId: a.model_id,
-            provider: model?.provider ?? "",
-            keyAvailable: model?.key_available !== false,
-          };
-        });
         setReadiness(
-          setupReadiness({ localOnly: p?.local_only === true, transcription, agentModels })
+          setupReadiness({
+            localOnly: p?.local_only === true,
+            transcription,
+            agentModels: toReadinessAgentModels(agents, models),
+          })
         );
       });
     }

@@ -12,20 +12,8 @@ const geminiTranscription = (ready, reason = "") => ({
 });
 
 const geminiAgents = (keyAvailable) => [
-  {
-    agentName: "Consolidated Analyst",
-    enabled: true,
-    modelId: "gemini-2.5-flash",
-    provider: "Google",
-    keyAvailable,
-  },
-  {
-    agentName: "Objection Handler",
-    enabled: true,
-    modelId: "gemini-2.5-flash-lite",
-    provider: "Google",
-    keyAvailable,
-  },
+  { agentName: "Consolidated Analyst", enabled: true, provider: "Google", keyAvailable },
+  { agentName: "Objection Handler", enabled: true, provider: "Google", keyAvailable },
 ];
 
 test("an OpenAI-only key with the seeded Gemini defaults is not ready and explains why", async () => {
@@ -70,12 +58,27 @@ test("disabled and local agent models never block readiness", async () => {
     localOnly: false,
     transcription: geminiTranscription(true),
     agentModels: [
-      { agentName: "Off Agent", enabled: false, modelId: "gpt-4o", provider: "OpenAI", keyAvailable: false },
-      { agentName: "Local Agent", enabled: true, modelId: "local-whisper", provider: "Local", keyAvailable: false },
+      { agentName: "Off Agent", enabled: false, provider: "OpenAI", keyAvailable: false },
+      { agentName: "Local Agent", enabled: true, provider: "Local", keyAvailable: false },
     ],
   });
   assert.equal(result.ready, true);
   assert.equal(result.reason, "");
+});
+
+test("agent/model join treats registry gaps as non-blocking", async () => {
+  const { toReadinessAgentModels } = await load();
+  const result = toReadinessAgentModels(
+    [
+      { name: "Analyst", enabled: true, model_id: "gemini-2.5-flash" },
+      { name: "Ghost", enabled: true, model_id: "not-in-registry" },
+    ],
+    [{ id: "gemini-2.5-flash", provider: "Google", key_available: false }]
+  );
+  assert.deepEqual(result, [
+    { agentName: "Analyst", enabled: true, provider: "Google", keyAvailable: false },
+    { agentName: "Ghost", enabled: true, provider: "", keyAvailable: true },
+  ]);
 });
 
 test("Privacy First local mode is ready regardless of credentials", async () => {

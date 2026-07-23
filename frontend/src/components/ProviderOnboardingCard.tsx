@@ -4,7 +4,7 @@ import * as api from "../services/api";
 import {
   onboardingStage,
   setupReadiness,
-  type ReadinessAgentModel,
+  toReadinessAgentModels,
   type ReadinessTranscription,
   type SetupReadiness,
 } from "../lib/providerOnboarding";
@@ -43,21 +43,11 @@ export default function ProviderOnboardingCard({
         api.listModels(),
       ]);
       setAnyKeySaved(credentials.some((c) => c.configured || c.env_fallback));
-      const agentModels: ReadinessAgentModel[] = agents.map((a) => {
-        const model = models.find((m) => m.id === a.model_id);
-        return {
-          agentName: a.name,
-          enabled: a.enabled,
-          modelId: a.model_id,
-          provider: model?.provider ?? "",
-          keyAvailable: model?.key_available !== false,
-        };
-      });
       setReadiness(
         setupReadiness({
           localOnly,
           transcription: transcription as ReadinessTranscription | null,
-          agentModels,
+          agentModels: toReadinessAgentModels(agents, models),
         })
       );
     } catch (err) {
