@@ -49,8 +49,8 @@ class TokenCaptureTests(unittest.IsolatedAsyncioTestCase):
         session_id = uuid.uuid4()
         gateway = GeminiLiveSession(session_id=session_id)
         gateway.session = SimpleNamespace(receive=lambda: _AsyncEvents([
-            SimpleNamespace(server_content=None, usage_metadata=SimpleNamespace(prompt_token_count=10, candidates_token_count=1, total_token_count=11)),
-            SimpleNamespace(server_content=None, usage_metadata=SimpleNamespace(prompt_token_count=14, candidates_token_count=2, total_token_count=16)),
+            SimpleNamespace(server_content=None, usage_metadata=SimpleNamespace(prompt_token_count=10, response_token_count=1, total_token_count=11)),
+            SimpleNamespace(server_content=None, usage_metadata=SimpleNamespace(prompt_token_count=14, response_token_count=2, total_token_count=16)),
         ]))
         with mock.patch("app.services.gemini_live.record_token_usage", mock.AsyncMock()) as record:
             self.assertEqual([], [item async for item in gateway.receive_responses()])

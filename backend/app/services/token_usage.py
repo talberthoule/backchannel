@@ -9,6 +9,16 @@ from app.models import TokenUsage
 
 logger = logging.getLogger(__name__)
 
+_INPUT_FIELDS = ("prompt_token_count", "prompt_tokens", "input_tokens")
+_OUTPUT_FIELDS = (
+    "candidates_token_count",
+    "response_token_count",
+    "completion_tokens",
+    "output_tokens",
+)
+_TOTAL_FIELDS = ("total_token_count", "total_tokens")
+_warned_usage_sources: set[str] = set()
+
 
 def _value(usage: Any, *names: str) -> int | None:
     for name in names:
@@ -18,14 +28,28 @@ def _value(usage: Any, *names: str) -> int | None:
     return None
 
 
-def normalize_usage(usage: Any) -> tuple[int, int, int] | None:
+def _has_known_field(usage: Any) -> bool:
+    fields = _INPUT_FIELDS + _OUTPUT_FIELDS + _TOTAL_FIELDS
+    if isinstance(usage, dict):
+        return any(field in usage for field in fields)
+    return any(getattr(usage, field, None) is not None for field in fields)
+
+
+def normalize_usage(usage: Any, source: str = "") -> tuple[int, int, int] | None:
     if usage is None:
         return None
-    input_tokens = _value(usage, "prompt_token_count", "prompt_tokens", "input_tokens") or 0
-    output_tokens = _value(usage, "candidates_token_count", "completion_tokens", "output_tokens") or 0
-    total_tokens = _value(usage, "total_token_count", "total_tokens")
+    input_tokens = _value(usage, *_INPUT_FIELDS) or 0
+    output_tokens = _value(usage, *_OUTPUT_FIELDS) or 0
+    total_tokens = _value(usage, *_TOTAL_FIELDS)
     total_tokens = input_tokens + output_tokens if total_tokens is None else total_tokens
     if input_tokens == output_tokens == total_tokens == 0:
+        if source and not _has_known_field(usage) and source not in _warned_usage_sources:
+            _warned_usage_sources.add(source)
+            logger.warning(
+                "Dropped unrecognized token usage for source %s (%s)",
+                source,
+                type(usage).__name__,
+            )
         return None
     return input_tokens, output_tokens, total_tokens
 
@@ -37,7 +61,7 @@ async def record_token_usage(
     usage: Any,
 ) -> None:
     try:
-        normalized = normalize_usage(usage)
+        normalized = normalize_usage(usage, source)
         if session_id is None or normalized is None:
             return
         async with async_session() as db:

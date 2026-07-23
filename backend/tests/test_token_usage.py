@@ -26,6 +26,31 @@ class TokenUsageTests(unittest.IsolatedAsyncioTestCase):
             token_usage.normalize_usage({"input_tokens": 7, "output_tokens": 2}),
         )
 
+    def test_normalizes_gemini_live_response_tokens(self):
+        live = SimpleNamespace(
+            prompt_token_count=12,
+            response_token_count=5,
+            total_token_count=17,
+        )
+        self.assertEqual((12, 5, 17), token_usage.normalize_usage(live))
+
+    async def test_unrecognized_usage_warns_only_once_per_source(self):
+        token_usage._warned_usage_sources.clear()
+        self.addCleanup(token_usage._warned_usage_sources.clear)
+        with mock.patch.object(token_usage.logger, "warning") as warning:
+            await token_usage.record_token_usage(
+                uuid.uuid4(), "audio_gateway", "live-model", {"mystery_tokens": 4}
+            )
+            await token_usage.record_token_usage(
+                uuid.uuid4(), "audio_gateway", "live-model", {"mystery_tokens": 5}
+            )
+            await token_usage.record_token_usage(
+                uuid.uuid4(), "batch_transcriber", "batch-model", {"mystery_tokens": 6}
+            )
+        self.assertEqual(2, warning.call_count)
+        self.assertIn("audio_gateway", warning.call_args_list[0].args)
+        self.assertIn("batch_transcriber", warning.call_args_list[1].args)
+
     def test_summarizes_by_source_and_model(self):
         rows = [
             SimpleNamespace(source="batch_transcriber", model_id="gemini-flash", input_tokens=10, output_tokens=2, total_tokens=12),

@@ -65,7 +65,9 @@ class GeminiLiveSession:
             return
         async for response in self.session.receive():
             try:
-                usage = normalize_usage(getattr(response, "usage_metadata", None))
+                usage = normalize_usage(
+                    getattr(response, "usage_metadata", None), "audio_gateway"
+                )
             except Exception:
                 logger.exception("Failed to parse Gemini Live token usage")
                 usage = None
