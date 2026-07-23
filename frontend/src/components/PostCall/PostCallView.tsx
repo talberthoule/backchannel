@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { CallSegment, Directive, Document, PostProcessingProgress, Question, Session, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptEntry } from "../../types";
+import type { CallSegment, Directive, Document, ModelPricingResponse, PostProcessingProgress, Question, Session, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptEntry } from "../../types";
 import TranscriptReview from "./TranscriptReview";
 import CallAudioPanel from "./CallAudioPanel";
 import MeetingChat from "./MeetingChat";
@@ -8,6 +8,8 @@ import BriefingView from "./BriefingView";
 import SpeakerNameMapper from "../SpeakerNameMapper";
 import EditableSessionName from "../EditableSessionName";
 import * as api from "../../services/api";
+import { formatPostProcessingSummary } from "../../lib/postProcessingSummary";
+import { estimateCostUsd, estimateSessionCostUsd, formatEstimatedCost } from "../../lib/modelPricing";
 
 interface PostCallViewProps {
   session: Session;
@@ -66,19 +68,6 @@ function formatFileSize(mimeType: string): string {
   return parts[parts.length - 1].replace("vnd.openxmlformats-officedocument.", "").replace("spreadsheetml.sheet", "xlsx").replace("presentationml.presentation", "pptx").replace("wordprocessingml.document", "docx").toUpperCase();
 }
 
-function postProcessingSummary(progress?: PostProcessingProgress): string | null {
-  if (!progress?.details) return null;
-  const insights = Number(progress.details.insights_saved ?? 0);
-  const synthOps = Number(progress.details.synthesizer_ops ?? 0);
-  const opportunityOps = Number(progress.details.opportunity_ops ?? 0);
-  const parts = [
-    insights ? `${insights} insight${insights === 1 ? "" : "s"} saved` : null,
-    synthOps ? `${synthOps} insight update${synthOps === 1 ? "" : "s"}` : null,
-    opportunityOps ? `${opportunityOps} offering match${opportunityOps === 1 ? "" : "es"}` : null,
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(" | ") : null;
-}
-
 type Tab = "briefing" | "insights" | "transcript" | "chat" | "speakers" | "directives" | "documents" | "tokens";
 
 export default function PostCallView({
@@ -106,9 +95,10 @@ export default function PostCallView({
   const [tokenUsageLoading, setTokenUsageLoading] = useState(false);
   const [tokenUsageError, setTokenUsageError] = useState(false);
   const [tokenUsageRequest, setTokenUsageRequest] = useState(0);
+  const [modelPricing, setModelPricing] = useState<ModelPricingResponse | null>(null);
   const [briefingError, setBriefingError] = useState<string | null>(null);
   const speakerActionsLocked = Boolean(postProcessing?.active || postProcessing?.state === "timeout" || postProcessing?.state === "error");
-  const progressSummary = postProcessingSummary(postProcessing);
+  const progressSummary = formatPostProcessingSummary(postProcessing?.details);
 
   useEffect(() => {
     if (activeTab !== "tokens") return;
@@ -127,6 +117,19 @@ export default function PostCallView({
       });
     return () => { cancelled = true; };
   }, [activeTab, postProcessing?.state, session.id, tokenUsageRequest]);
+
+  // Pricing powers the Est. cost column; best-effort so a failed fetch just
+  // hides the column instead of breaking the token tables.
+  useEffect(() => {
+    if (activeTab !== "tokens" || modelPricing) return;
+    let cancelled = false;
+    api.getModelPricing()
+      .then((response) => {
+        if (!cancelled) setModelPricing(response);
+      })
+      .catch(() => { /* leave modelPricing null; tables render without costs */ });
+    return () => { cancelled = true; };
+  }, [activeTab, modelPricing]);
 
   const handleRenameSpeaker = async (speakerId: string, newName: string) => {
     await api.updateSpeaker(session.id, speakerId, { name: newName });
@@ -512,7 +515,7 @@ export default function PostCallView({
               ) : (
                 <>
                   <TokenBreakdownTable title="By source" rows={tokenUsage.by_source} showSource />
-                  <TokenBreakdownTable title="By model" rows={tokenUsage.by_model} />
+                  <TokenBreakdownTable title="By model" rows={tokenUsage.by_model} pricing={modelPricing} />
                 </>
               )}
             </div>
@@ -527,11 +530,15 @@ function TokenBreakdownTable({
   title,
   rows,
   showSource = false,
+  pricing = null,
 }: {
   title: string;
   rows: TokenUsageSummary["by_source"];
   showSource?: boolean;
+  // When set, adds an Est. cost column plus a session total row.
+  pricing?: ModelPricingResponse | null;
 }) {
+  const sessionCost = pricing ? estimateSessionCostUsd(rows, pricing.models) : null;
   return (
     <section>
       <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-brand-gray">{title}</h3>
@@ -544,6 +551,7 @@ function TokenBreakdownTable({
               <th scope="col" className="px-4 py-3 text-right font-semibold">Input</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold">Output</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold">Total</th>
+              {pricing && <th scope="col" className="px-4 py-3 text-right font-semibold">Est. cost</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-brand-light-gray-1">
@@ -554,11 +562,33 @@ function TokenBreakdownTable({
                 <td className="px-4 py-3 text-right tabular-nums text-brand-gray">{row.input_tokens.toLocaleString()}</td>
                 <td className="px-4 py-3 text-right tabular-nums text-brand-gray">{row.output_tokens.toLocaleString()}</td>
                 <td className="px-4 py-3 text-right font-semibold tabular-nums text-brand-dark-gray">{row.total_tokens.toLocaleString()}</td>
+                {pricing && (
+                  <td className="px-4 py-3 text-right tabular-nums text-brand-gray">
+                    {formatEstimatedCost(estimateCostUsd(pricing.models[row.model_id], row.input_tokens, row.output_tokens))}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
+          {pricing && (
+            <tfoot className="border-t border-brand-light-gray-1 bg-brand-light-gray-2/60">
+              <tr>
+                <th scope="row" colSpan={showSource ? 5 : 4} className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-brand-gray">
+                  Session estimate
+                </th>
+                <td className="px-4 py-3 text-right font-semibold tabular-nums text-brand-dark-gray">
+                  {formatEstimatedCost(sessionCost)}
+                </td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
+      {pricing && (
+        <p className="mt-2 text-xs text-brand-mid-gray">
+          Est. cost is an estimate at standard text rates (prices as of {pricing.as_of}); models without published pricing show - and are excluded from the total.
+        </p>
+      )}
     </section>
   );
 }

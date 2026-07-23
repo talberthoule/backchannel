@@ -1,4 +1,4 @@
-import type { AgentConfig, AppMeta, CallSegment, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, MeetingType, ModelInfo, Offering, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptEntry } from "../types";
+import type { AgentConfig, AppMeta, CallSegment, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, MeetingType, ModelInfo, ModelPricingResponse, Offering, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptEntry } from "../types";
 
 const BASE = "/api";
 
@@ -9,7 +9,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`API error ${res.status}: ${text}`);
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed.detail === "string") detail = parsed.detail;
+    } catch {
+      // Non-JSON error body (e.g. a bare proxy error page); show it as-is.
+    }
+    throw new Error(`API error ${res.status}: ${detail}`);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -173,6 +180,8 @@ export const importAudio = async (sessionId: string, file: File): Promise<{ impo
 
 // Models
 export const listModels = () => request<ModelInfo[]>("/models");
+
+export const getModelPricing = () => request<ModelPricingResponse>("/models/pricing");
 
 // App metadata (version + release notes)
 export const getAppMeta = () => request<AppMeta>("/meta");

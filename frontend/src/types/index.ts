@@ -230,6 +230,22 @@ export interface ModelInfo {
   supports_live_audio?: boolean;
 }
 
+// USD per 1M tokens at standard text-tier rates (no long-context or
+// cache-storage surcharges); null means no published rate.
+export interface ModelPricing {
+  input_per_million: number | null;
+  output_per_million: number | null;
+  cached_input_per_million: number | null;
+  audio_input_per_million: number | null;
+}
+
+// GET /api/models/pricing: rates keyed by model id; a null entry means the
+// model is in the registry but has no published per-token pricing.
+export interface ModelPricingResponse {
+  as_of: string;
+  models: Record<string, ModelPricing | null>;
+}
+
 export interface DiarizationDiagnostics {
   torch_available: boolean;
   sortformer_available: boolean;

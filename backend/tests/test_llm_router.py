@@ -77,11 +77,14 @@ class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
         for entry in MODEL_REGISTRY:
             self.assertIn("requires_key", entry, f"{entry['id']} missing requires_key")
         ids = {m["id"] for m in MODEL_REGISTRY}
+        self.assertIn("gpt-5.6-sol", ids)
+        self.assertIn("gpt-5.6-terra", ids)
+        self.assertIn("gpt-5.6-luna", ids)
         self.assertIn("gpt-5.5", ids)
         self.assertIn("gpt-5.4", ids)
         self.assertIn("gpt-5.4-mini", ids)
         self.assertIn("gpt-5.4-nano", ids)
-        self.assertIn("gpt-5.2", ids)
+        self.assertNotIn("gpt-5.2", ids)  # superseded; removed from the lineup
         self.assertIn("gpt-realtime-whisper", ids)
         self.assertIn("gpt-4o-transcribe", ids)
         self.assertIn("gpt-4o-mini-transcribe", ids)
@@ -99,16 +102,37 @@ class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(model["supports_batch_audio"])
             self.assertFalse(model["supports_live_audio"])
 
-    def test_openai_realtime_entries_are_live_audio_only(self):
+    def test_gpt56_family_is_selectable_for_text_only(self):
         from app.config import MODEL_REGISTRY
 
-        realtime_ids = {"gpt-realtime-whisper", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"}
-        for entry in MODEL_REGISTRY:
-            if entry["id"] in realtime_ids:
-                self.assertTrue(entry["supports_live_audio"], entry["id"])
-                self.assertFalse(entry["supports_text"], entry["id"])
-                self.assertFalse(entry["supports_batch_audio"], entry["id"])
-                self.assertEqual("openai", entry["requires_key"], entry["id"])
+        by_id = {model["id"]: model for model in MODEL_REGISTRY}
+        for model_id in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
+            model = by_id[model_id]
+            self.assertEqual("OpenAI", model["provider"], model_id)
+            self.assertEqual("stable", model["tier"], model_id)
+            self.assertEqual("openai", model["requires_key"], model_id)
+            self.assertTrue(model["supports_text"], model_id)
+            self.assertFalse(model["supports_batch_audio"], model_id)
+            self.assertFalse(model["supports_live_audio"], model_id)
+
+    def test_openai_speech_entries_have_expected_capabilities(self):
+        from app.config import MODEL_REGISTRY
+
+        by_id = {model["id"]: model for model in MODEL_REGISTRY}
+        # Streaming-only realtime gateway model: live audio, nothing else.
+        whisper = by_id["gpt-realtime-whisper"]
+        self.assertTrue(whisper["supports_live_audio"])
+        self.assertFalse(whisper["supports_text"])
+        self.assertFalse(whisper["supports_batch_audio"])
+        self.assertEqual("openai", whisper["requires_key"])
+        # gpt-4o transcribe models serve both the realtime gateway and the
+        # REST /v1/audio/transcriptions batch path.
+        for model_id in ("gpt-4o-transcribe", "gpt-4o-mini-transcribe"):
+            entry = by_id[model_id]
+            self.assertTrue(entry["supports_live_audio"], model_id)
+            self.assertTrue(entry["supports_batch_audio"], model_id)
+            self.assertFalse(entry["supports_text"], model_id)
+            self.assertEqual("openai", entry["requires_key"], model_id)
 
 
 if __name__ == "__main__":

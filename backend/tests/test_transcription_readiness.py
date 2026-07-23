@@ -136,6 +136,32 @@ class TranscriptionReadinessTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("openai", result.provider)
         self.assertEqual(["openai"], self.provider_status_calls)
 
+    async def test_openai_batch_model_blocked_without_openai_key(self):
+        self.runtime_result = _runtime("gpt-4o-transcribe")
+        self.provider_status_result = _provider_status("openai", key_available=False)
+
+        result = await self.readiness.get_transcription_readiness(self.db)
+
+        self.assertFalse(result.ready)
+        self.assertEqual("openai", result.provider)
+        self.assertEqual(["openai"], self.provider_status_calls)
+        self.assertIn("OpenAI", result.reason)
+        self.assertIn("API key", result.reason)
+        self.assertIn("Admin", result.reason)
+        self.assertIn("gpt-4o-transcribe", result.reason)
+
+    async def test_openai_batch_model_blocked_when_key_failed_its_test(self):
+        self.runtime_result = _runtime("gpt-4o-mini-transcribe")
+        self.provider_status_result = _provider_status(
+            "openai", key_available=False, configured=True
+        )
+
+        result = await self.readiness.get_transcription_readiness(self.db)
+
+        self.assertFalse(result.ready)
+        self.assertEqual("openai", result.provider)
+        self.assertIn("connection test", result.reason)
+
     async def test_to_dict_shape(self):
         self.runtime_result = _runtime("local-whisper-base")
         self.local_available = True

@@ -1,14 +1,25 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ReleaseNote } from "../types";
+import type { ModelInfo, ModelPricingResponse, ReleaseNote } from "../types";
 import * as api from "../services/api";
+import { formatRate } from "../lib/modelPricing";
 
 interface AboutCardProps {
   version: string | null;
   // Version last seen by this browser before an upgrade; releases newer than
   // it get a "New" badge. Null when there is nothing unread.
   highlightSince?: string | null;
+}
+
+// Compact capability summary for the Models & pricing table.
+function capabilityLabel(model: ModelInfo): string {
+  const caps = [
+    model.supports_text ? "text" : null,
+    model.supports_live_audio ? "live" : null,
+    model.supports_batch_audio ? "batch" : null,
+  ].filter(Boolean);
+  return caps.length > 0 ? caps.join(", ") : "-";
 }
 
 // True when a is a strictly newer semver than b; malformed input sorts as 0.
@@ -29,6 +40,10 @@ export default function AboutCard({ version, highlightSince }: AboutCardProps) {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [pricing, setPricing] = useState<ModelPricingResponse | null>(null);
+  const [pricingLoading, setPricingLoading] = useState(true);
+  const [pricingFailed, setPricingFailed] = useState(false);
 
   useEffect(() => {
     api.listReleaseNotes()
@@ -41,6 +56,19 @@ export default function AboutCard({ version, highlightSince }: AboutCardProps) {
         setFailed(true);
       })
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    Promise.all([api.listModels(), api.getModelPricing()])
+      .then(([modelList, pricingResponse]) => {
+        setModels(modelList);
+        setPricing(pricingResponse);
+      })
+      .catch((err) => {
+        console.error("Failed to load model pricing", err);
+        setPricingFailed(true);
+      })
+      .finally(() => setPricingLoading(false));
   }, []);
 
   return (
@@ -115,6 +143,72 @@ export default function AboutCard({ version, highlightSince }: AboutCardProps) {
             );
           })}
         </div>
+      </section>
+
+      <section>
+        <div className="mb-3">
+          <h2 className="font-display text-sm font-bold uppercase tracking-wider text-brand-mid-gray">Models &amp; Pricing</h2>
+          <p className="mt-0.5 font-body text-xs text-brand-mid-gray">
+            Models available in this app with published USD rates per 1M tokens (standard text-tier
+            rates; long-context and caching surcharges not included).
+          </p>
+        </div>
+
+        {pricingLoading && (
+          <p className="font-body text-sm text-brand-mid-gray">Loading model pricing...</p>
+        )}
+        {pricingFailed && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-body text-xs text-amber-900">
+            Model pricing could not be loaded. The rest of the app is unaffected.
+          </p>
+        )}
+
+        {!pricingLoading && !pricingFailed && (
+          <div className="rounded-xl bg-surface shadow-sm ring-1 ring-brand-light-gray-1/60">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left font-body text-sm">
+                <thead className="text-xs uppercase tracking-wide text-brand-gray">
+                  <tr className="border-b border-brand-light-gray-1/70">
+                    <th scope="col" className="px-5 py-3 font-semibold">Model</th>
+                    <th scope="col" className="px-5 py-3 font-semibold">Provider</th>
+                    <th scope="col" className="px-5 py-3 font-semibold">Capabilities</th>
+                    <th scope="col" className="px-5 py-3 text-right font-semibold">Input / 1M</th>
+                    <th scope="col" className="px-5 py-3 text-right font-semibold">Output / 1M</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-brand-light-gray-1/70">
+                  {models.map((model) => {
+                    const rates = pricing?.models[model.id] ?? null;
+                    const isFree = rates !== null && rates.input_per_million === 0 && rates.output_per_million === 0;
+                    return (
+                      <tr key={model.id}>
+                        <td className="px-5 py-2.5">
+                          <span className="font-medium text-brand-dark-gray">{model.name}</span>
+                          <span className="ml-2 font-mono text-[11px] text-brand-mid-gray">{model.id}</span>
+                        </td>
+                        <td className="px-5 py-2.5 text-brand-gray">{model.provider}</td>
+                        <td className="px-5 py-2.5 text-xs text-brand-mid-gray">{capabilityLabel(model)}</td>
+                        {isFree ? (
+                          <td colSpan={2} className="px-5 py-2.5 text-right">
+                            <span className="rounded-full bg-brand-teal/10 px-2 py-0.5 text-[11px] font-semibold text-brand-teal">Free</span>
+                          </td>
+                        ) : (
+                          <>
+                            <td className="px-5 py-2.5 text-right tabular-nums text-brand-gray">{formatRate(rates?.input_per_million)}</td>
+                            <td className="px-5 py-2.5 text-right tabular-nums text-brand-gray">{formatRate(rates?.output_per_million)}</td>
+                          </>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="border-t border-brand-light-gray-1/70 px-5 py-3 font-body text-xs text-brand-mid-gray">
+              Prices as of {pricing?.as_of ?? "unknown"}; check provider pricing pages for changes.
+            </p>
+          </div>
+        )}
       </section>
     </div>
   );

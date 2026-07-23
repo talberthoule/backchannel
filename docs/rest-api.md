@@ -143,6 +143,7 @@ empty `by_source` / `by_model` lists; historical sessions are not backfilled.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/models` | Model registry with capabilities and key requirements |
+| GET | `/api/models/pricing` | Published USD-per-1M-token rates keyed by model id, plus the as-of date (standard text-tier rates; `null` = no published pricing) |
 
 ### Credentials (`routers/credentials.py`)
 

@@ -124,9 +124,11 @@ required key, and capabilities:
 Current entries include Google Gemini text/audio models
 (`gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.5-flash`, `gemini-3-flash-preview`, `gemini-3.1-pro-preview`,
 `gemini-3.1-flash-lite`, the `gemini-2.5` family), the live gateway model
-`gemini-3.1-flash-live-preview`, OpenAI text models (`gpt-5.5`, `gpt-5.4`,
-`gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.2`), OpenAI realtime transcription
-gateways (`gpt-realtime-whisper`, `gpt-4o-transcribe`,
-`gpt-4o-mini-transcribe`), and key-free local ASR models
+`gemini-3.1-flash-live-preview`, OpenAI text models (the GPT-5.6 family
+`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, plus `gpt-5.5`, `gpt-5.4`,
+`gpt-5.4-mini`, `gpt-5.4-nano`), OpenAI speech-to-text models
+(`gpt-realtime-whisper` as a realtime-only gateway; `gpt-4o-transcribe` and
+`gpt-4o-mini-transcribe` usable both as realtime gateways and as batch
+transcription models), and key-free local ASR models
 (`local-whisper-base`, `local-parakeet-tdt-0.6b`). Add new models by
 appending to the registry.
