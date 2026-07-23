@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from app.routers.sessions import enhance_insights_after_speaker_changes
 from app.services.speaker_context_enhancer import (
     build_enhancement_prompt,
+    mark_speaker_context_dirty_if_completed,
     run_speaker_context_enhancement,
     speaker_update_changes_enhancement_context,
 )
@@ -120,6 +121,20 @@ class SpeakerContextEnhancerTests(unittest.TestCase):
 
 
 class SpeakerContextEnhancerFailureTests(unittest.IsolatedAsyncioTestCase):
+    async def test_completed_session_context_change_advances_version(self):
+        session = SimpleNamespace(
+            state="completed",
+            speaker_context_dirty=False,
+            speaker_context_version=4,
+        )
+        db = SimpleNamespace(get=AsyncMock(return_value=session))
+
+        changed = await mark_speaker_context_dirty_if_completed(db, uuid4())
+
+        self.assertTrue(changed)
+        self.assertTrue(session.speaker_context_dirty)
+        self.assertEqual(5, session.speaker_context_version)
+
     async def test_insight_model_failure_is_raised_for_an_honest_api_failure(self):
         session = SimpleNamespace(meeting_type="general", meeting_context="")
         db = SimpleNamespace(

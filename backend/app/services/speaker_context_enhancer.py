@@ -89,6 +89,9 @@ async def mark_speaker_context_dirty_if_completed(db: AsyncSession, session_id: 
     if not session or session.state != "completed":
         return False
     session.speaker_context_dirty = True
+    session.speaker_context_version = (
+        getattr(session, "speaker_context_version", 0) or 0
+    ) + 1
     return True
 
 

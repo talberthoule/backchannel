@@ -1,0 +1,247 @@
+import unittest
+import uuid
+from datetime import datetime, timezone
+from types import SimpleNamespace
+
+from app.services.speaker_revalidation import (
+    build_batch_specs,
+    canonical_speaker_mapping,
+    content_version,
+    finalize_run_state,
+    mapping_hash,
+    requeue_failed_batches,
+    summarize_run,
+)
+
+
+class SpeakerRevalidationRevisionTests(unittest.TestCase):
+    def test_mapping_snapshot_and_hash_are_canonical(self):
+        speakers = [
+            SimpleNamespace(
+                id=uuid.UUID("22222222-2222-2222-2222-222222222222"),
+                name="Participant 2",
+                role="Client",
+                speaker_type="external",
+                is_user=False,
+                display_name="Morgan",
+                display_name_enabled=True,
+            ),
+            SimpleNamespace(
+                id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
+                name="Participant 1",
+                role="Seller",
+                speaker_type="team",
+                is_user=True,
+                display_name="Alex",
+                display_name_enabled=True,
+            ),
+        ]
+
+        snapshot = canonical_speaker_mapping(speakers)
+
+        self.assertEqual(
+            [
+                "11111111-1111-1111-1111-111111111111",
+                "22222222-2222-2222-2222-222222222222",
+            ],
+            [speaker["id"] for speaker in snapshot],
+        )
+        self.assertEqual(mapping_hash(snapshot), mapping_hash(list(reversed(snapshot))))
+
+    def test_content_version_changes_with_source_content_not_input_order(self):
+        question_a = SimpleNamespace(
+            id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
+            question="Original",
+            rationale="Why",
+            source_context="Evidence",
+            speaker_id=None,
+            dismissed=False,
+            answered=False,
+            answer_summary="",
+            revision_count=0,
+        )
+        question_b = SimpleNamespace(
+            id=uuid.UUID("22222222-2222-2222-2222-222222222222"),
+            question="Second",
+            rationale="",
+            source_context="",
+            speaker_id=None,
+            dismissed=False,
+            answered=False,
+            answer_summary="",
+            revision_count=0,
+        )
+        transcript = [
+            SimpleNamespace(
+                id=uuid.UUID("33333333-3333-3333-3333-333333333333"),
+                sequence=1,
+                text="Source statement",
+                speaker_id=None,
+            )
+        ]
+        session = SimpleNamespace(meeting_type="client_sales", meeting_context="Context")
+
+        first = content_version(session, [question_a, question_b], transcript)
+        reordered = content_version(session, [question_b, question_a], transcript)
+        question_a.question = "Changed"
+        changed = content_version(session, [question_a, question_b], transcript)
+
+        self.assertEqual(first, reordered)
+        self.assertNotEqual(first, changed)
+
+
+class SpeakerRevalidationBatchTests(unittest.TestCase):
+    def test_builds_bounded_insight_batches_then_one_briefing_batch(self):
+        ids = [str(uuid.uuid4()) for _ in range(5)]
+
+        specs = build_batch_specs(ids, batch_size=2)
+
+        self.assertEqual(
+            [
+                ("insights", ids[:2]),
+                ("insights", ids[2:4]),
+                ("insights", ids[4:]),
+                ("briefing", []),
+            ],
+            specs,
+        )
+
+    def test_retry_requeues_failed_batches_only(self):
+        completed = SimpleNamespace(
+            status="completed",
+            error_message="",
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+        )
+        failed = SimpleNamespace(
+            status="failed",
+            error_message="model offline",
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+        )
+        queued = SimpleNamespace(
+            status="queued",
+            error_message="",
+            started_at=None,
+            completed_at=None,
+        )
+        run = SimpleNamespace(
+            status="partial",
+            error_message="1 batch failed",
+            completed_at=datetime.now(timezone.utc),
+        )
+
+        count = requeue_failed_batches(run, [completed, failed, queued])
+
+        self.assertEqual(1, count)
+        self.assertEqual("completed", completed.status)
+        self.assertEqual("queued", failed.status)
+        self.assertEqual("queued", queued.status)
+        self.assertEqual("", failed.error_message)
+        self.assertIsNone(failed.started_at)
+        self.assertIsNone(failed.completed_at)
+        self.assertEqual("running", run.status)
+        self.assertEqual("", run.error_message)
+        self.assertIsNone(run.completed_at)
+
+    def test_summary_reports_batch_progress_metrics_and_failures(self):
+        started = datetime(2026, 7, 23, 12, 0, tzinfo=timezone.utc)
+        completed = datetime(2026, 7, 23, 12, 0, 2, tzinfo=timezone.utc)
+        batches = [
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                batch_index=0,
+                kind="insights",
+                status="completed",
+                attempts=1,
+                processed_entries=2,
+                applied_operations=1,
+                enhanced_insights=1,
+                input_tokens=100,
+                output_tokens=20,
+                total_tokens=120,
+                duration_ms=750,
+                error_message="",
+            ),
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                batch_index=1,
+                kind="briefing",
+                status="failed",
+                attempts=2,
+                processed_entries=0,
+                applied_operations=0,
+                enhanced_insights=0,
+                input_tokens=30,
+                output_tokens=5,
+                total_tokens=35,
+                duration_ms=1250,
+                error_message="model offline",
+            ),
+        ]
+        run = SimpleNamespace(
+            id=uuid.uuid4(),
+            status="partial",
+            content_version="abc123",
+            mapping_revision=SimpleNamespace(source_version=7),
+            batches=batches,
+            started_at=started,
+            completed_at=completed,
+            error_message="1 batch failed",
+        )
+        session = SimpleNamespace(
+            speaker_context_dirty=True,
+            speaker_context_enhanced_at=None,
+        )
+
+        summary = summarize_run(run, session)
+
+        self.assertEqual(2, summary["total_batches"])
+        self.assertEqual(1, summary["completed_batches"])
+        self.assertEqual(1, summary["failed_batches"])
+        self.assertEqual(0.5, summary["failure_rate"])
+        self.assertEqual(2, summary["processed_entries"])
+        self.assertEqual(155, summary["total_tokens"])
+        self.assertEqual(2000, summary["duration_ms"])
+        self.assertEqual("model offline", summary["batches"][1]["error"])
+
+    def test_finalization_clears_only_the_mapping_version_that_ran(self):
+        now = datetime.now(timezone.utc)
+        mapping = SimpleNamespace(source_version=4)
+        completed_batches = [
+            SimpleNamespace(status="completed"),
+            SimpleNamespace(status="completed"),
+        ]
+        run = SimpleNamespace(status="running", error_message="", completed_at=None)
+        session = SimpleNamespace(
+            speaker_context_version=4,
+            speaker_context_dirty=True,
+            speaker_context_enhanced_at=None,
+        )
+
+        finalize_run_state(run, completed_batches, session, mapping, now)
+
+        self.assertEqual("completed", run.status)
+        self.assertFalse(session.speaker_context_dirty)
+        self.assertEqual(now, session.speaker_context_enhanced_at)
+
+        stale_run = SimpleNamespace(
+            status="running",
+            error_message="",
+            completed_at=None,
+        )
+        stale_session = SimpleNamespace(
+            speaker_context_version=5,
+            speaker_context_dirty=True,
+            speaker_context_enhanced_at=None,
+        )
+
+        finalize_run_state(stale_run, completed_batches, stale_session, mapping, now)
+
+        self.assertEqual("completed", stale_run.status)
+        self.assertTrue(stale_session.speaker_context_dirty)
+        self.assertIn("changed again", stale_run.error_message)
+
+
+if __name__ == "__main__":
+    unittest.main()
