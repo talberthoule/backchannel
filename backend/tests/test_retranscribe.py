@@ -61,7 +61,190 @@ class ScheduledDiarizer:
         return [DiarizedSegment("auto_1", text.encode())] if text else []
 
 
+class LatencyDiarizer:
+    def __init__(self, schedule):
+        self.schedule = schedule
+        self.calls = 0
+
+    def feed_audio(self, pcm):
+        self.calls += 1
+        item = self.schedule.get(self.calls)
+        if not item:
+            return []
+        text, start_sample = item
+        segment = DiarizedSegment("auto_1", text.encode())
+        segment.start_sample = start_sample
+        return [segment]
+
+
 class SplitTrackRetranscriptionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_mic_track_with_no_user_falls_back_to_external_mapping(self):
+        session_id = uuid.uuid4()
+        remote = Speaker(
+            id=uuid.uuid4(), session_id=session_id, name="Remote", is_user=False,
+            speaker_type="external",
+        )
+        db = FakeSpeakerDB([remote])
+        await self._transcribe_local_fallback(session_id, db)
+
+        entries = [value for value in db.added if isinstance(value, TranscriptEntry)]
+        self.assertEqual([remote.id], [entry.speaker_id for entry in entries])
+
+    async def test_mic_track_with_multiple_users_falls_back_to_external_mapping(self):
+        session_id = uuid.uuid4()
+        speakers = [
+            Speaker(id=uuid.uuid4(), session_id=session_id, name="User 1", is_user=True),
+            Speaker(id=uuid.uuid4(), session_id=session_id, name="User 2", is_user=True),
+            Speaker(
+                id=uuid.uuid4(), session_id=session_id, name="Remote", is_user=False,
+                speaker_type="external",
+            ),
+        ]
+        db = FakeSpeakerDB(speakers)
+        await self._transcribe_local_fallback(session_id, db)
+
+        entries = [value for value in db.added if isinstance(value, TranscriptEntry)]
+        self.assertEqual([speakers[2].id], [entry.speaker_id for entry in entries])
+
+    async def _transcribe_local_fallback(self, session_id, db):
+        runtime_config = SimpleNamespace(
+            effective_live_diarizer="speaker",
+            speaker_similarity_threshold=0.68,
+        )
+        with (
+            patch("app.routers.imports.convert_to_pcm16", return_value=b"pcm"),
+            patch("app.routers.imports.create_diarizer", return_value=FakeDiarizer()),
+            patch("app.routers.imports.flush_diarizer_segments", return_value=[]),
+            patch(
+                "app.routers.imports.get_transcription_runtime_config",
+                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model")),
+            ),
+            patch(
+                "app.routers.imports.create_transcriber",
+                return_value=SimpleNamespace(
+                    transcribe_segment=AsyncMock(return_value="hello")
+                ),
+            ),
+            patch("app.routers.imports.get_next_sequence", new=AsyncMock(return_value=1)),
+        ):
+            await _transcribe_audio_diarized(
+                b"mic", "wav", session_id, db, model_id="model",
+                registry=SpeakerRegistry(), auto_speaker_map={},
+                runtime_config=runtime_config, local_track=True,
+            )
+
+    async def test_orders_by_speech_start_when_earlier_turn_completes_later(self):
+        session_id = uuid.uuid4()
+        remote = Speaker(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            name="Remote",
+            is_user=False,
+            speaker_type="external",
+        )
+        db = FakeSpeakerDB([remote])
+        runtime_config = SimpleNamespace(
+            effective_live_diarizer="speaker",
+            speaker_similarity_threshold=0.68,
+        )
+        chunk = b"\x00" * 3200
+        mic_diarizer = LatencyDiarizer({3: ("earlier-long-mic", 0)})
+        system_diarizer = LatencyDiarizer({2: ("later-short-system", 1600)})
+
+        with (
+            patch("app.routers.imports.convert_to_pcm16", side_effect=[chunk * 3, chunk * 3]),
+            patch("app.routers.imports.create_diarizer", side_effect=[mic_diarizer, system_diarizer]),
+            patch("app.routers.imports.flush_diarizer_segments", return_value=[]),
+            patch(
+                "app.routers.imports.get_transcription_runtime_config",
+                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model")),
+            ),
+            patch(
+                "app.routers.imports.create_transcriber",
+                return_value=SimpleNamespace(
+                    transcribe_segment=AsyncMock(side_effect=lambda pcm: pcm.decode())
+                ),
+            ),
+            patch("app.routers.imports.get_next_sequence", new=AsyncMock(side_effect=[1, 2])),
+        ):
+            await import_router._transcribe_split_audio_diarized(
+                b"mic-wav",
+                b"system-wav",
+                session_id,
+                db,
+                model_id="model",
+                mic_registry=SpeakerRegistry(),
+                remote_registry=SpeakerRegistry(),
+                mic_auto_speaker_map={},
+                remote_auto_speaker_map={},
+                runtime_config=runtime_config,
+            )
+
+        entries = [value for value in db.added if isinstance(value, TranscriptEntry)]
+        self.assertEqual(
+            ["earlier-long-mic", "later-short-system"],
+            [entry.text for entry in entries],
+        )
+
+    async def test_flush_only_turns_order_by_speech_start(self):
+        session_id = uuid.uuid4()
+        remote = Speaker(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            name="Remote",
+            is_user=False,
+            speaker_type="external",
+        )
+        db = FakeSpeakerDB([remote])
+        runtime_config = SimpleNamespace(
+            effective_live_diarizer="speaker",
+            speaker_similarity_threshold=0.68,
+        )
+        mic_diarizer = LatencyDiarizer({})
+        system_diarizer = LatencyDiarizer({})
+        mic_tail = DiarizedSegment("auto_1", b"later-mic")
+        mic_tail.start_sample = 3200
+        system_tail = DiarizedSegment("auto_1", b"earlier-system")
+        system_tail.start_sample = 1600
+
+        with (
+            patch("app.routers.imports.convert_to_pcm16", return_value=b"pcm"),
+            patch("app.routers.imports.create_diarizer", side_effect=[mic_diarizer, system_diarizer]),
+            patch(
+                "app.routers.imports.flush_diarizer_segments",
+                side_effect=[[mic_tail], [system_tail]],
+            ),
+            patch(
+                "app.routers.imports.get_transcription_runtime_config",
+                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model")),
+            ),
+            patch(
+                "app.routers.imports.create_transcriber",
+                return_value=SimpleNamespace(
+                    transcribe_segment=AsyncMock(side_effect=lambda pcm: pcm.decode())
+                ),
+            ),
+            patch("app.routers.imports.get_next_sequence", new=AsyncMock(side_effect=[1, 2])),
+        ):
+            await import_router._transcribe_split_audio_diarized(
+                b"mic-wav",
+                b"system-wav",
+                session_id,
+                db,
+                model_id="model",
+                mic_registry=SpeakerRegistry(),
+                remote_registry=SpeakerRegistry(),
+                mic_auto_speaker_map={},
+                remote_auto_speaker_map={},
+                runtime_config=runtime_config,
+            )
+
+        entries = [value for value in db.added if isinstance(value, TranscriptEntry)]
+        self.assertEqual(
+            ["earlier-system", "later-mic"],
+            [entry.text for entry in entries],
+        )
+
     async def test_aligned_tracks_persist_transcript_in_conversation_order(self):
         self.assertTrue(hasattr(import_router, "_transcribe_split_audio_diarized"))
         session_id = uuid.uuid4()

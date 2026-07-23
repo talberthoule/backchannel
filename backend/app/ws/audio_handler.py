@@ -272,8 +272,11 @@ def _close_audio_writers(
 def _append_audio_frames(
     audio_writers: dict[str, SegmentAudioWriter | None],
     frames: tuple[bytes, bytes, bytes],
+    split_track_established: bool = True,
 ) -> None:
     for track, pcm in zip(("mixed", "mic", "system"), frames):
+        if track != "mixed" and not split_track_established:
+            continue
         writer = audio_writers[track]
         if not writer:
             continue
@@ -287,6 +290,32 @@ def _append_audio_frames(
                     (data_dir() / failed_path).unlink(missing_ok=True)
             except Exception:
                 pass
+            audio_writers[track] = None
+
+
+def _establish_split_audio_persistence(
+    audio_writers: dict[str, SegmentAudioWriter | None],
+) -> None:
+    mixed = audio_writers["mixed"]
+    if not mixed:
+        return
+    try:
+        for pcm in mixed.pcm_chunks():
+            for track, backfill in (("mic", pcm), ("system", bytes(len(pcm)))):
+                writer = audio_writers[track]
+                if writer:
+                    writer.append(backfill)
+    except Exception as exc:
+        logger.warning("Failed to backfill split-track audio: %s", exc)
+        for track in ("mic", "system"):
+            writer = audio_writers[track]
+            if writer:
+                try:
+                    path = writer.close()
+                    if path:
+                        (data_dir() / path).unlink(missing_ok=True)
+                except Exception:
+                    pass
             audio_writers[track] = None
 
 
@@ -624,12 +653,21 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                             },
                         )
 
+                    if track == 1 and not split_track_established:
+                        if audio_writers:
+                            _establish_split_audio_persistence(audio_writers)
+                        split_track_established = True
+
                     # Mix tracks into one stream for the gateway and the session recording
                     mixed_frames = mixer.add(track, pcm_data)
                     if mixed_frames:
                         mixed, mic, system = mixed_frames
                         if audio_writers:
-                            _append_audio_frames(audio_writers, (mixed, mic, system))
+                            _append_audio_frames(
+                                audio_writers,
+                                (mixed, mic, system),
+                                split_track_established,
+                            )
                         # Forward to orchestrator for the audio gateway and text-agent context
                         await orchestrator.send_audio(mixed)
 
@@ -679,7 +717,12 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
 
             elif "text" in message:
                 data = json.loads(message["text"])
-                split_track_established = _split_track_established_after_message(data, split_track_established)
+                updated_split_state = _split_track_established_after_message(
+                    data, split_track_established
+                )
+                if updated_split_state and not split_track_established and audio_writers:
+                    _establish_split_audio_persistence(audio_writers)
+                split_track_established = updated_split_state
                 if data.get("type") == "stop":
                     stopped = True
                     break

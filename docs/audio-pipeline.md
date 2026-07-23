@@ -103,7 +103,9 @@ Mixed call audio is appended per call segment to
 `call_segments` row when the segment closes. Split-track calls also retain
 time-aligned `segment_<n>_mic.wav` and `segment_<n>_sys.wav` files, including
 silence on the absent side. This uses about three times the PCM storage of a
-mixed-only call; mic-only calls discard the temporary track files.
+mixed-only call. Auxiliary files are created only after a system track is
+observed, so mic-only calls stay at one copy; startup removes unreferenced
+auxiliary files left by an interrupted split-track call.
 
 Migration `016_add_call_segment_track_paths` adds nullable
 `mic_audio_path` and `system_audio_path` columns, and startup schema patching
@@ -114,7 +116,9 @@ Because raw audio is retained, a session can be re-transcribed later through
 any batch-capable model with `POST /api/sessions/{id}/retranscribe`
 (destructive to existing transcript entries). Retranscription prefers the
 split paths when present so mic speech stays bound to the sole local user and
-remote voice matching continues across call segments. Individual mixed segment
+remote voice matching continues across call segments. Split-track turns are
+ordered by their source speech start rather than diarizer completion time.
+Individual mixed segment
 recordings can be fetched from
 `GET /api/sessions/{id}/segments/{n}/audio`.
 

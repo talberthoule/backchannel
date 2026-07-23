@@ -281,6 +281,36 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SegmentAudioPersistenceTests(unittest.TestCase):
+    def test_mic_only_frames_write_only_the_mixed_file(self):
+        writers = {
+            "mixed": MagicMock(),
+            "mic": MagicMock(),
+            "system": MagicMock(),
+        }
+
+        audio_handler._append_audio_frames(
+            writers,
+            (b"mixed", b"mic", b"system"),
+            split_track_established=False,
+        )
+
+        writers["mixed"].append.assert_called_once_with(b"mixed")
+        writers["mic"].append.assert_not_called()
+        writers["system"].append.assert_not_called()
+
+    def test_establishing_split_backfills_aligned_track_prefixes(self):
+        writers = {
+            "mixed": MagicMock(),
+            "mic": MagicMock(),
+            "system": MagicMock(),
+        }
+        writers["mixed"].pcm_chunks.return_value = [b"past-mic"]
+
+        audio_handler._establish_split_audio_persistence(writers)
+
+        writers["mic"].append.assert_called_once_with(b"past-mic")
+        writers["system"].append.assert_called_once_with(bytes(len(b"past-mic")))
+
     def test_auxiliary_append_failure_keeps_mixed_writer_active(self):
         self.assertTrue(hasattr(audio_handler, "_append_audio_frames"))
         writers = {

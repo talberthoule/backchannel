@@ -16,8 +16,9 @@ IDLE_FLUSH_SECONDS = 0.2
 class TrackMixer:
     def __init__(self, now=monotonic):
         self._buffers = {0: bytearray(), 1: bytearray()}
-        self._last_seen = {0: 0.0, 1: 0.0}
         self._now = now
+        started_at = now()
+        self._last_seen = {0: started_at, 1: started_at}
 
     def add(self, track: int, pcm: bytes) -> tuple[bytes, bytes, bytes] | None:
         t = self._now()

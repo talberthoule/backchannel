@@ -29,6 +29,18 @@ class TrackMixerTests(unittest.TestCase):
         self.assertTrue(np.all(np.frombuffer(mic, dtype=np.int16) == 1000))
         self.assertTrue(np.all(np.frombuffer(system, dtype=np.int16) == 2000))
 
+    def test_first_frames_align_with_production_like_clock(self):
+        clock = [12_345.0]
+        mixer = TrackMixer(now=lambda: clock[0])
+        self.assertIsNone(mixer.add(0, frame(1000)))
+
+        clock[0] += 0.05
+        mixed, mic, system = mixer.add(1, frame(2000))
+
+        self.assertTrue(np.all(np.frombuffer(mixed, dtype=np.int16) == 3000))
+        self.assertTrue(np.all(np.frombuffer(mic, dtype=np.int16) == 1000))
+        self.assertTrue(np.all(np.frombuffer(system, dtype=np.int16) == 2000))
+
     def test_sum_clamps_at_int16_range(self):
         self.mixer.add(0, frame(30000))
         mixed_bytes, _, _ = self.mixer.add(1, frame(30000))

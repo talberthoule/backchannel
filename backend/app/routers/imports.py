@@ -218,21 +218,34 @@ async def _transcribe_split_audio_diarized(
 
     chunk_size = 16000 * 2 // 10
     ordered_segments = []
+    emitted_order = 0
     tracks = (
         (mic_pcm, mic_diarizer, True, mic_auto_speaker_map),
         (system_pcm, system_diarizer, False, remote_auto_speaker_map),
     )
     for offset in range(0, max(len(mic_pcm), len(system_pcm)), chunk_size):
-        for priority, (pcm, diarizer, local_track, speaker_map) in enumerate(tracks):
+        for pcm, diarizer, local_track, speaker_map in tracks:
             chunk = pcm[offset:offset + chunk_size]
             if chunk:
                 for segment in diarizer.feed_audio(chunk):
-                    ordered_segments.append((offset, priority, segment, local_track, speaker_map))
+                    consumed_bytes = offset + len(chunk)
+                    start_sample = segment.start_sample
+                    if start_sample is None:
+                        start_sample = max(0, consumed_bytes - len(segment.pcm_bytes)) // 2
+                    ordered_segments.append(
+                        (start_sample, emitted_order, segment, local_track, speaker_map)
+                    )
+                    emitted_order += 1
 
-    final_offset = max(len(mic_pcm), len(system_pcm))
-    for priority, (_, diarizer, local_track, speaker_map) in enumerate(tracks):
+    for pcm, diarizer, local_track, speaker_map in tracks:
         for segment in flush_diarizer_segments(diarizer):
-            ordered_segments.append((final_offset, priority, segment, local_track, speaker_map))
+            start_sample = segment.start_sample
+            if start_sample is None:
+                start_sample = max(0, len(pcm) - len(segment.pcm_bytes)) // 2
+            ordered_segments.append(
+                (start_sample, emitted_order, segment, local_track, speaker_map)
+            )
+            emitted_order += 1
 
     ordered_segments.sort(key=lambda item: (item[0], item[1]))
     count = await _persist_diarized_segments(
