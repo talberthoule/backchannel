@@ -24,8 +24,10 @@ The app runs from your system tray / menu bar and stores data per-user, no Docke
   An OpenAI key is optional and only needed for OpenAI-routed agents.
   New to either provider? [Getting API Keys](api-keys.md) is a two-minute
   walkthrough.
-- `ffmpeg` on `PATH` if you want to import compressed audio (MP3, M4A)
-  outside Docker
+- `ffmpeg` on `PATH` when running outside Docker, if you want compressed
+  audio imports (MP3, M4A) or the browser-recorded voice profile and mic
+  benchmark clips (WebM). Desktop releases after v0.3.1 bundle ffmpeg on
+  Windows and Linux; the macOS desktop bundle still needs a system install
 
 API keys can be supplied two ways:
 

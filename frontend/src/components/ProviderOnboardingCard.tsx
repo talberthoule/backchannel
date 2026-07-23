@@ -92,11 +92,12 @@ export default function ProviderOnboardingCard({
             Cloud AI
           </h4>
           <p className="mt-1.5 font-body text-xs leading-relaxed text-brand-gray">
-            Add an API key from Google (Gemini) or OpenAI -- one key from
-            either provider is enough. Use the <strong>Get a key</strong> link
-            below, paste the key into that provider's field, and click
-            <strong> Save</strong> -- saving runs a connection test
-            automatically.
+            Add an API key from Google (Gemini) or OpenAI. Either provider
+            powers the analysis agents and live captions; the saved transcript
+            comes from Gemini or the built-in local transcription models. Use
+            the <strong>Get a key</strong> link below, paste the key into that
+            provider's field, and click <strong>Save</strong> -- saving runs a
+            connection test automatically.
           </p>
         </div>
 

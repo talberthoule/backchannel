@@ -198,9 +198,13 @@ Providers: `google`, `openai`. Keys are stored encrypted (see
 | --- | --- | --- |
 | GET | `/api/diagnostics/diarization` | Diarizer capability and runtime config |
 | PATCH | `/api/diagnostics/diarization/config` | Update diarizer runtime config |
+| GET | `/api/diagnostics/diarization/voice-profile` | Whether a local voice profile is enrolled |
+| PUT | `/api/diagnostics/diarization/voice-profile` | Replace the voice profile from an uploaded clip (audio discarded, only the embedding is kept) |
+| DELETE | `/api/diagnostics/diarization/voice-profile` | Delete the enrolled voice profile |
 | GET | `/api/diagnostics/transcription` | Batch transcription config |
+| GET | `/api/diagnostics/transcription/readiness` | Whether the selected transcription models have usable credentials |
 | PATCH | `/api/diagnostics/transcription/config` | Update batch transcription config |
-| POST | `/api/diagnostics/diarization/sortformer/benchmark` | Benchmark Sortformer on an uploaded file |
+| POST | `/api/diagnostics/diarization/sortformer/benchmark` | Benchmark Sortformer on an uploaded file (needs at least 15 seconds of audio) |
 
 ## WebSocket
 

@@ -42,7 +42,9 @@ class Settings(BaseSettings):
     MIN_SEGMENT_MS: int = 750
     SORTFORMER_WINDOW_MS: int = 15000
 
-    model_config = {"env_file": ".env"}
+    # extra="ignore": a .env with unrelated keys (compose database settings,
+    # legacy entries) must not crash startup.
+    model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 settings = Settings()

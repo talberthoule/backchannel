@@ -69,6 +69,35 @@ Required ONNX models are expected at `backend/models/silero_vad.onnx` and
 absent); fetch them with `backend/scripts/download_models.py` (the Docker
 build does this for you).
 
+## Diarization modes, benchmark, and voice profile
+
+The Diarization Capability card (Admin -> Transcription & Audio) controls
+which live diarizer runs and how strictly speakers are matched:
+
+- **Fallback** is the lightweight VAD+embedding pipeline described above.
+  It runs on CPU everywhere and is the default.
+- **Enhanced** runs NVIDIA NeMo Sortformer. It stays locked until the
+  machine passes a benchmark proving it can process one full live window
+  (15 seconds, `SORTFORMER_WINDOW_MS`) faster than real time. Benchmark
+  audio must therefore be at least 15 seconds long; only the first 20
+  seconds are measured. The benchmark accepts an uploaded file or a fresh
+  mic recording, and its result (device, GPU backend, real-time factor)
+  persists across restarts.
+
+The speaker matching slider on the same card adjusts
+`SPEAKER_SIMILARITY_THRESHOLD` at runtime: lower values merge more (fewer,
+broader speaker identities), higher values split more.
+
+### My voice profile
+
+Recording a short clip (4-10 seconds) enrolls your voice for mic-only
+speaker matching: the backend extracts a speaker embedding and keeps only
+that encrypted voice signature -- the calibration audio itself is
+discarded. Recording again replaces the profile; Delete removes it.
+Browser recordings for both voice enrollment and the mic benchmark arrive
+as WebM/Opus, which is decoded through the same ffmpeg fallback described
+under [Audio file import](#audio-file-import).
+
 ## Batch transcription
 
 Diarized segments are transcribed in original audio order through
@@ -127,4 +156,8 @@ recordings can be fetched from
 `POST /api/sessions/{id}/import/audio` accepts `.wav`, `.mp3`, `.m4a`,
 `.ogg`, and `.flac`, decodes with `soundfile` first and falls back to
 `ffmpeg` for compressed formats, then runs the file through the same
-diarization and transcription pipeline as a live call.
+diarization and transcription pipeline as a live call. The ffmpeg fallback
+resolves the executable from `BACKCHANNEL_FFMPEG` first (the desktop
+launcher points it at the copy bundled with Windows and Linux desktop
+builds), then from `PATH`, and reports a clear "FFmpeg is required" error
+when neither is available.
