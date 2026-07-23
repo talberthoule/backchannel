@@ -9,10 +9,12 @@ interface Props {
   showKnowledge: boolean;
   showOfferings: boolean;
   adminTab: AdminTab;
+  adminOnboarding: boolean;
   highlightSince: string | null;
   onCloseAdmin: () => void;
   onCloseKnowledge: () => void;
   onCloseOfferings: () => void;
+  onAdminOnboardingContinue: () => void;
 }
 
 export default function ManagementView({
@@ -20,10 +22,12 @@ export default function ManagementView({
   showKnowledge,
   showOfferings,
   adminTab,
+  adminOnboarding,
   highlightSince,
   onCloseAdmin,
   onCloseKnowledge,
   onCloseOfferings,
+  onAdminOnboardingContinue,
 }: Props) {
   if (showAdmin) {
     return (
@@ -31,6 +35,8 @@ export default function ManagementView({
         onBack={onCloseAdmin}
         initialTab={adminTab}
         highlightSince={highlightSince}
+        onboarding={adminOnboarding}
+        onOnboardingContinue={onAdminOnboardingContinue}
       />
     );
   }
