@@ -1,5 +1,6 @@
 """Backchannel desktop launcher: embedded Postgres + uvicorn + tray icon."""
 
+import ctypes
 import json
 import logging
 import os
@@ -55,47 +56,23 @@ def bind_app_socket() -> socket.socket:
 
 def _windows_browser_path() -> str | None:
     try:
-        import winreg
-    except ImportError:
-        winreg = None
-
-    if winreg is not None:
-        for executable in WINDOWS_BROWSERS:
-            key_name = (
-                "Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\"
-                + executable
-            )
-            for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
-                try:
-                    key = winreg.OpenKey(hive, key_name)
-                    try:
-                        value = winreg.QueryValue(key, None)
-                    finally:
-                        winreg.CloseKey(key)
-                except OSError:
-                    continue
-                path = Path(str(value).strip('"'))
-                if path.is_file():
-                    return str(path)
-
-    installs = (
-        ("PROGRAMFILES(X86)", "Microsoft", "Edge", "Application", "msedge.exe"),
-        ("PROGRAMFILES", "Microsoft", "Edge", "Application", "msedge.exe"),
-        ("LOCALAPPDATA", "Microsoft", "Edge", "Application", "msedge.exe"),
-        ("PROGRAMFILES", "Google", "Chrome", "Application", "chrome.exe"),
-        ("PROGRAMFILES(X86)", "Google", "Chrome", "Application", "chrome.exe"),
-        ("LOCALAPPDATA", "Google", "Chrome", "Application", "chrome.exe"),
-    )
-    for environment, *parts in installs:
-        root = os.environ.get(environment)
-        if root:
-            path = Path(root).joinpath(*parts)
-            if path.is_file():
-                return str(path)
+        query = ctypes.windll.shlwapi.AssocQueryStringW
+        size = ctypes.c_uint()
+        if query(0, 2, "http", None, None, ctypes.byref(size)) != 1:
+            return None
+        value = ctypes.create_unicode_buffer(size.value)
+        if query(0, 2, "http", None, value, ctypes.byref(size)) != 0:
+            return None
+        path = Path(value.value)
+        if path.name.casefold() in WINDOWS_BROWSERS and path.is_file():
+            return str(path)
+    except (AttributeError, OSError, ValueError):
+        pass
     return None
 
 
 def browser_opener(url: str) -> None:
+    """Use Chromium app mode; unsupported defaults use normal system open."""
     if sys.platform == "darwin":
         for application in MACOS_BROWSERS:
             try:
@@ -193,8 +170,6 @@ def _error_dialog(message: str) -> None:
     """Best-effort native error popup; falls back to stderr."""
     try:
         if sys.platform == "win32":
-            import ctypes
-
             ctypes.windll.user32.MessageBoxW(0, message, "Backchannel", 0x10)
             return
         if sys.platform == "darwin":

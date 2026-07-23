@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { PrivacyConfig } from "../types";
 import * as api from "../services/api";
 import type { CredentialInfo } from "../services/api";
+import { setupReadiness, toReadinessAgentModels, type SetupReadiness } from "../lib/providerOnboarding";
 
 interface WelcomeViewProps {
   hasSessions: boolean;
@@ -22,12 +23,16 @@ function StepCard({
   done,
   title,
   description,
+  notice,
   action,
 }: {
   step: number;
   done: boolean;
   title: string;
   description: string;
+  // Plain-language explanation of why the step is still incomplete even
+  // though the user already did something (e.g. saved a mismatched key).
+  notice?: string;
   action?: { label: string; onClick: () => void };
 }) {
   return (
@@ -43,6 +48,11 @@ function StepCard({
       <div className="min-w-0 flex-1">
         <h3 className="font-display text-sm font-bold text-brand-dark-gray">{title}</h3>
         <p className="mt-1 font-body text-xs leading-relaxed text-brand-gray">{description}</p>
+        {notice && !done && (
+          <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 font-body text-[11px] leading-relaxed text-amber-900">
+            {notice}
+          </p>
+        )}
       </div>
       {action && !done && (
         <button
@@ -64,12 +74,29 @@ function StepCard({
 export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }: WelcomeViewProps) {
   const [credentials, setCredentials] = useState<CredentialInfo[] | null>(null);
   const [privacy, setPrivacy] = useState<PrivacyConfig | null>(null);
+  const [readiness, setReadiness] = useState<SetupReadiness | null>(null);
   const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hasSessions) {
       api.listCredentials().then(setCredentials).catch(() => setCredentials([]));
-      api.getPrivacyConfig().then(setPrivacy).catch(() => null);
+      // Step 1 completes only when the currently selected transcription and
+      // agent configuration can actually run, not when any key merely exists.
+      Promise.all([
+        api.getPrivacyConfig().catch(() => null),
+        api.getTranscriptionReadiness().catch(() => null),
+        api.listAgents().catch(() => []),
+        api.listModels().catch(() => []),
+      ]).then(([p, transcription, agents, models]) => {
+        setPrivacy(p);
+        setReadiness(
+          setupReadiness({
+            localOnly: p?.local_only === true,
+            transcription,
+            agentModels: toReadinessAgentModels(agents, models),
+          })
+        );
+      });
     }
     api.getAppMeta().then((m) => setVersion(m.version)).catch(() => null);
   }, [hasSessions]);
@@ -90,12 +117,13 @@ export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }
     );
   }
 
-  // Local-only mode needs no cloud key; otherwise any saved or env-provided
-  // provider key counts as connected.
-  const providerReady =
-    privacy?.local_only === true ||
-    (credentials?.some((c) => c.configured || c.env_fallback) ?? false);
-  const checklistLoaded = credentials !== null;
+  const providerReady = readiness?.ready === true;
+  const anyKeySaved = credentials?.some((c) => c.configured || c.env_fallback) ?? false;
+  const checklistLoaded = credentials !== null && readiness !== null;
+  // A saved key that still cannot run the selected models (e.g. OpenAI-only
+  // with the seeded Gemini defaults) surfaces its explanation on the step.
+  const providerNotice =
+    checklistLoaded && anyKeySaved && !providerReady ? readiness?.reason : undefined;
 
   return (
     <div className="flex h-full items-start justify-center overflow-auto bg-brand-light-gray-2 p-6">
@@ -114,7 +142,8 @@ export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }
             step={1}
             done={checklistLoaded && providerReady}
             title="Connect an AI provider"
-            description="Add a Google or OpenAI API key so transcription and the analysis agents can run. Prefer to stay offline? Turn on Privacy First mode in Administration to use local models instead."
+            description="One provider is enough: a free Google (Gemini) key covers the built-in transcription and analysis models. Prefer to stay offline? Turn on Privacy First mode instead to use local models."
+            notice={providerNotice}
             action={{ label: "Add API key", onClick: onOpenApiKeys }}
           />
           <StepCard

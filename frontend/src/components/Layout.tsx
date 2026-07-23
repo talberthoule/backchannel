@@ -11,6 +11,7 @@ import {
 import type { DragEndEvent } from "@dnd-kit/core";
 import type { Session, SessionGroup } from "../types";
 import * as api from "../services/api";
+import { useConfirm } from "./ConfirmProvider";
 
 interface LayoutProps {
   sessions: Session[];
@@ -196,7 +197,36 @@ function DraggableSession({ session, isActive, onClick, groups, onMoveToGroup, o
 
 // ── Droppable group folder ─────────────────────────────────────────────
 
-function DroppableGroup({ group, children, isExpanded, onToggle, onDelete, sessionCount }: {
+type GroupDeleteDependencies = ReturnType<typeof useConfirm> & {
+  deleteGroup: (id: string) => Promise<void>;
+  refreshGroups: () => void;
+  refreshSessions: () => void;
+};
+
+export async function deleteGroupWithConfirmation(
+  group: Pick<SessionGroup, "id" | "name">,
+  dependencies: GroupDeleteDependencies,
+): Promise<void> {
+  const confirmed = await dependencies.confirm({
+    title: `Delete ${group.name}?`,
+    message: "Sessions in this group will move to Sessions and will not be deleted.",
+    confirmLabel: "Delete group",
+    tone: "danger",
+  });
+  if (!confirmed) return;
+
+  try {
+    await dependencies.deleteGroup(group.id);
+    dependencies.refreshGroups();
+    dependencies.refreshSessions();
+  } catch {
+    dependencies.toast(
+      `Could not delete "${group.name}". Check your connection and try again.`,
+    );
+  }
+}
+
+export function DroppableGroup({ group, children, isExpanded, onToggle, onDelete, sessionCount }: {
   group: SessionGroup;
   children: React.ReactNode;
   isExpanded: boolean;
@@ -219,9 +249,15 @@ function DroppableGroup({ group, children, isExpanded, onToggle, onDelete, sessi
           <span className="text-sm font-semibold text-brand-dark-gray truncate">{group.name}</span>
           <span className="text-[10px] font-medium text-brand-mid-gray bg-brand-light-gray-2 px-1.5 py-0.5 rounded-full">{sessionCount}</span>
         </button>
-        <button onClick={onDelete} className="rounded p-0.5 text-brand-mid-gray opacity-0 hover:opacity-100 hover:text-red-500 transition-all" title="Delete group">
-          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label={`Delete ${group.name} group`}
+          title="Delete group"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-brand-mid-gray transition-colors hover:bg-red-50 hover:text-red-600"
+        >
+          <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.35 9m-4.78 0L9.26 9m9.97-3.21c.34.05.68.1 1.02.16m-1.02-.16L18.16 19.67A2.25 2.25 0 0 1 15.92 21H8.08a2.25 2.25 0 0 1-2.24-1.33L4.77 5.79m14.46 0A48.1 48.1 0 0 0 15.75 5.25m-10.98.54c-.34.05-.68.1-1.02.16m1.02-.16A48.1 48.1 0 0 1 8.25 5.25m7.5 0V4.33c0-1.18-.91-2.16-2.09-2.2a52.7 52.7 0 0 0-3.32 0c-1.18.04-2.09 1.02-2.09 2.2v.92m7.5 0a48.7 48.7 0 0 0-7.5 0" />
           </svg>
         </button>
       </div>
@@ -271,6 +307,7 @@ export default function Layout({
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const { confirm, toast } = useConfirm();
 
   // Track the md breakpoint so the sidebar is an off-canvas drawer on mobile
   // (full width, never the icon rail) and an in-flow collapsible rail on desktop.
@@ -346,10 +383,14 @@ export default function Layout({
     onRefreshGroups();
   };
 
-  const handleDeleteGroup = async (id: string) => {
-    await api.deleteGroup(id);
-    onRefreshGroups();
-    onRefreshSessions();
+  const handleDeleteGroup = async (group: SessionGroup) => {
+    await deleteGroupWithConfirmation(group, {
+      confirm,
+      deleteGroup: api.deleteGroup,
+      refreshGroups: onRefreshGroups,
+      refreshSessions: onRefreshSessions,
+      toast,
+    });
   };
 
   const handleMoveToGroup = async (sessionId: string, groupId: string | null) => {
@@ -600,7 +641,7 @@ export default function Layout({
                       group={group}
                       isExpanded={expandedGroups.has(group.id)}
                       onToggle={() => toggleGroup(group.id)}
-                      onDelete={() => handleDeleteGroup(group.id)}
+                      onDelete={() => handleDeleteGroup(group)}
                       sessionCount={groupSessions.length}
                     >
                       {groupSessions.map((session) => (

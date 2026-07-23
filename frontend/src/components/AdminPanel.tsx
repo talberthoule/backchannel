@@ -5,6 +5,7 @@ import DiarizationCapabilityCard from "./DiarizationCapabilityCard";
 import BatchTranscriptionCard from "./BatchTranscriptionCard";
 import ApiKeysCard from "./ApiKeysCard";
 import PrivacyModeCard from "./PrivacyModeCard";
+import ProviderOnboardingCard from "./ProviderOnboardingCard";
 import AboutCard from "./AboutCard";
 
 const TYPE_BADGES: Record<string, { label: string; color: string }> = {
@@ -61,6 +62,11 @@ interface AdminPanelProps {
   // Version this browser last ran before an upgrade; forwarded to the About
   // tab so releases since then are badged, with an unread dot on the tab.
   highlightSince?: string | null;
+  // True only when opened from the welcome checklist's "Add API key" action:
+  // the API Keys tab then leads with the contextual first-run setup card.
+  // Direct entry through Administration stays the normal expert view.
+  onboarding?: boolean;
+  onOnboardingContinue?: () => void;
 }
 
 // Compact filter-chip toggle used for multi-select groups (knowledge sources,
@@ -529,7 +535,7 @@ function AgentCard({
   );
 }
 
-export default function AdminPanel({ onBack, initialTab, highlightSince }: AdminPanelProps) {
+export default function AdminPanel({ onBack, initialTab, highlightSince, onboarding, onOnboardingContinue }: AdminPanelProps) {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>([]);
@@ -538,6 +544,8 @@ export default function AdminPanel({ onBack, initialTab, highlightSince }: Admin
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab ?? "agents");
+  // Bumped on credential changes so the onboarding card re-checks readiness.
+  const [keysRefresh, setKeysRefresh] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -676,8 +684,9 @@ export default function AdminPanel({ onBack, initialTab, highlightSince }: Admin
           <div className="mx-auto max-w-4xl">
             {/* Global switch shown on every settings tab: it changes which
                 models and agents below can run at all. About is read-only, so
-                it skips the switch. */}
-            {activeTab !== "about" && (
+                it skips the switch. In first-run onboarding the keys tab
+                frames Privacy First inside the setup card instead. */}
+            {activeTab !== "about" && !(activeTab === "keys" && onboarding) && (
               <div className="mb-6">
                 <PrivacyModeCard config={privacy} onChanged={setPrivacy} />
               </div>
@@ -739,7 +748,20 @@ export default function AdminPanel({ onBack, initialTab, highlightSince }: Admin
             </div>
 
             <div className={activeTab === "keys" ? "space-y-4" : "hidden"}>
-              <ApiKeysCard onChanged={refreshModels} />
+              {onboarding && (
+                <ProviderOnboardingCard
+                  privacy={privacy}
+                  onPrivacyChanged={setPrivacy}
+                  refreshToken={keysRefresh}
+                  onContinue={() => onOnboardingContinue?.()}
+                />
+              )}
+              <ApiKeysCard
+                onChanged={() => {
+                  refreshModels();
+                  setKeysRefresh((n) => n + 1);
+                }}
+              />
             </div>
 
             <div className={activeTab === "about" ? "" : "hidden"}>

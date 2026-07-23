@@ -8,6 +8,13 @@ const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
 };
 
+// Direct links to each provider's key-creation page so users never hunt
+// through console menus.
+const PROVIDER_KEY_PAGES: Record<string, string> = {
+  google: "https://aistudio.google.com/apikey",
+  openai: "https://platform.openai.com/api-keys",
+};
+
 interface ApiKeysCardProps {
   onChanged?: () => void;
 }
@@ -123,6 +130,16 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
                   <span className="inline-flex rounded-full bg-brand-light-gray-1 px-2 py-0.5 text-[10px] font-medium text-brand-dark-gray">
                     Not configured
                   </span>
+                )}
+                {PROVIDER_KEY_PAGES[cred.provider] && (
+                  <a
+                    href={PROVIDER_KEY_PAGES[cred.provider]}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-body text-[10px] font-medium text-brand-teal hover:underline"
+                  >
+                    Get a key
+                  </a>
                 )}
               </div>
               <div className="flex items-center gap-2">
