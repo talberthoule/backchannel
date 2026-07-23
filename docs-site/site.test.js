@@ -38,11 +38,29 @@ const customerContent = customerFiles.map((path) => [path, read(path)]);
 const portal = 'https://downloads.backchannel.page/';
 
 const html = readFileSync(new URL('../site/index.html', import.meta.url), 'utf8');
+const seededAgents = read('../backend/app/services/seed_agents.py')
+  .split('SEED_CONFIGS = [')[1]
+  .split('async def seed_agent_configs')[0];
 const marker = 'var form = document.getElementById("interest-form")';
 const markerAt = html.indexOf(marker);
 const scriptStart = html.lastIndexOf('<script>', markerAt) + '<script>'.length;
 const scriptEnd = html.indexOf('</script>', markerAt);
 const interestScript = html.slice(scriptStart, scriptEnd);
+
+test('public agent crew matches the shipped defaults and triggers', () => {
+  const section = html.split('<section id="agents"')[1].split('</section>')[0];
+  const slugs = [...section.matchAll(/<code>([^<]+)<\/code>/g)].map((match) => match[1]);
+  const defaults = [...seededAgents.matchAll(/"slug": "([^"]+)"/g)].map((match) => match[1]);
+
+  assert.deepEqual(slugs, defaults);
+  assert.match(section, /consolidated_analyst[\s\S]*Every 40s \+ final pass/);
+  assert.match(section, /objection_handler[\s\S]*Every 10s over the last 90s/);
+  assert.match(section, /synthesizer[\s\S]*New or updated insights; 75s cooldown, 120s fallback/);
+  assert.match(section, /opportunity_specialist[\s\S]*New opportunities; 55s cooldown \+ final match/);
+  for (const slug of ['brief_meeting_lens', 'brief_discovery_lens', 'brief_arbiter']) {
+    assert.match(section, new RegExp(`${slug}[\\s\\S]*Every 45s live, at call end, or on demand`));
+  }
+});
 
 test('network failures keep the email valid and show an actionable retry', async () => {
   let submit;

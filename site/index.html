@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)" />
   <title>Backchannel - Open-source, self-hosted AI meeting assistant</title>
   <meta name="description" content="Backchannel is an open-source, self-hosted AI meeting assistant: live speaker-diarized transcripts and real-time insights, no bot joining your call." />
   <link rel="canonical" href="https://backchannel.page/" />
@@ -52,7 +54,7 @@
             "name": "Does my meeting audio leave my machine?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API -- you can route agents to OpenAI instead, or transcribe fully offline with local ONNX Whisper or Parakeet models. Recordings and transcripts stay on your server."
+              "text": "Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API. You can route agents to OpenAI instead, or transcribe fully offline with local ONNX Whisper or Parakeet models. Recordings and transcripts stay on your server."
             }
           },
           {
@@ -60,7 +62,7 @@
             "name": "Does it work with Zoom, Google Meet, and Teams?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Yes -- with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration to install."
+              "text": "Yes, with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration to install."
             }
           },
           {
@@ -119,7 +121,7 @@
 
   <section class="hero">
     <div class="wrap">
-      <h1>Your meetings, transcribed live.<br />Your next move, <span class="accent">surfaced mid-call</span> -- on your own hardware.</h1>
+      <h1>Your meetings, transcribed live.<br />Your next move, <span class="accent">surfaced <span class="nowrap">mid-call</span></span> &mdash; on your own hardware.</h1>
       <p class="lede">
         A self-hosted, open-source AI meeting assistant: live speaker-attributed
         transcripts and real-time insight agents, with no bot in the call.
@@ -135,6 +137,7 @@
           <img src="assets/shots/user-live-early.webp" data-full="assets/shots/user-live-early-full.webp" width="1600" height="765" fetchpriority="high"
                alt="Backchannel live mid-call at 03:52: dual Listening indicators, five strategic-signal cards attributed to the Question Hunter, Objection Handler, and Opportunity Scout agents, beside a live speaker-attributed transcript." />
         </div>
+        <p class="hero-proof"><strong>158 insights</strong> from one real 32-minute call, distilled into a single briefing</p>
       </div>
     </div>
   </section>
@@ -142,7 +145,7 @@
   <section id="features" class="alt">
     <div class="wrap">
       <h2>Everything a second set of ears should do</h2>
-      <p class="sub">Built for sales, discovery, and client calls -- provider-flexible and centered on a transcript you can trust.</p>
+      <p class="sub">Built for sales, discovery, and client calls. Provider-flexible, centered on a transcript you can trust.</p>
 
       <div class="feature-row">
         <div class="feature-copy">
@@ -175,7 +178,7 @@
       <div class="feature-row">
         <div class="feature-copy">
           <h3>Provider-routed models, on your keys</h3>
-          <p>Mix Google Gemini and OpenAI per agent, flip on Privacy First to keep every byte on the machine, or transcribe fully offline with local ONNX Whisper and Parakeet -- no API key needed for transcription.</p>
+          <p>Mix Google Gemini and OpenAI per agent, flip on Privacy First to keep every byte on the machine, or transcribe fully offline with local ONNX Whisper and Parakeet &mdash; no API key needed for transcription.</p>
         </div>
         <div class="feature-visual">
           <picture>
@@ -186,37 +189,28 @@
         </div>
       </div>
 
-      <div class="grid feature-extras">
-        <div class="card">
-          <span class="icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="9" height="7" rx="2" /><rect x="13" y="13" width="9" height="7" rx="2" /><path d="M6.5 11v4a2 2 0 0 0 2 2H13" /></svg>
-          </span>
-          <h3>Dual-track audio</h3>
-          <p>Microphone and tab/system audio are captured as separate tracks, so remote participants get their own speaker identities.</p>
+      <div class="more-strip">
+        <div>
+          <h3>Mid-call directives</h3>
+          <p>Drop a note while the call runs and the analysis agents factor it into what they surface next.</p>
         </div>
-        <div class="card">
-          <span class="icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M12 15l-4-4M12 15l4-4" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></svg>
-          </span>
+        <div>
           <h3>Import and re-transcribe</h3>
-          <p>Bring in existing transcripts or audio files, and replay any recorded call through a different transcription model later.</p>
+          <p>Bring in existing transcripts or audio files, and replay any recorded call through a different model later.</p>
         </div>
-        <div class="card">
-          <span class="icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-          </span>
+        <div>
           <h3>Exports and chat</h3>
-          <p>Transcript, insight, and summary exports -- plus cross-session chat that answers questions over your past meetings.</p>
+          <p>Transcript, insight, and summary exports, plus cross-session chat over your past meetings.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <section id="answered">
+  <section id="answered" class="center">
     <div class="wrap">
       <span class="kicker">Live</span>
       <h2>Questions answer themselves</h2>
-      <p class="sub">The synthesizer keeps reading the room. When a question gets answered mid-call, it marks the card Answered, summarizes the answer, and spins off the follow-up you still owe -- no bookkeeping from you.</p>
+      <p class="sub">The synthesizer keeps reading the room. When a question gets answered mid-call, it marks the card Answered, summarizes the answer, and spins off the follow-up you still owe. No bookkeeping from you.</p>
       <figure class="shot">
         <div class="browser-frame">
           <div class="bar" aria-hidden="true"></div>
@@ -231,7 +225,7 @@
     <div class="wrap">
       <span class="kicker">After the call</span>
       <h2>When the call ends, the wrap-up runs itself</h2>
-      <p class="sub">Stop the call and Backchannel drains the last segments, runs the final analysis, and saves the session -- then rolls the whole conversation into one reviewable record.</p>
+      <p class="sub">Stop the call and Backchannel drains the last segments, runs the final analysis, and saves the session, then rolls the whole conversation into one reviewable record.</p>
       <figure class="shot wide">
         <div class="shot-strip">
           <img src="assets/shots/user-postprocessing.webp" width="1600" height="151" loading="lazy"
@@ -249,9 +243,8 @@
 
   <section id="results">
     <div class="wrap">
-      <span class="kicker">Proof</span>
       <h2>The briefing does the reading for you</h2>
-      <p class="sub">A real 32-minute call threw off 158 raw signals. You never wade through them -- Backchannel distills the whole conversation into one briefing of outcomes and objectives, so you start from the point instead of the pile.</p>
+      <p class="sub">A real 32-minute call threw off 158 raw signals. You never wade through them. Backchannel distills the whole conversation into one briefing of outcomes and objectives, so you start from the point instead of the pile.</p>
       <figure class="shot">
         <div class="browser-frame">
           <div class="bar" aria-hidden="true"></div>
@@ -262,7 +255,7 @@
           </picture>
         </div>
       </figure>
-      <p class="sub">The detail is all still there. Drill into every one of the 158 -- action items, opportunities, observations, and questions, each attributed to who said it -- or take the whole set with you as Excel, HTML, or text.</p>
+      <p class="sub">The detail is all still there: every one of the 158, each attributed to who said it, ready to take with you as Excel, HTML, or text.</p>
       <figure class="shot">
         <div class="browser-frame">
           <div class="bar" aria-hidden="true"></div>
@@ -270,26 +263,18 @@
                alt="Insights tab: stat tiles reading 158 total, 13 action items, 31 opportunities, 43 observations, and 44 questions, above three speaker-attributed action items." />
         </div>
       </figure>
-      <figure class="shot sm">
-        <div class="browser-frame">
-          <div class="bar" aria-hidden="true"></div>
-          <img src="assets/shots/user-export-menu.webp" data-full="assets/shots/user-export-menu-full.webp" width="1400" height="317" loading="lazy"
-               alt="Export menu offering Full Summary as HTML, Insights as Excel, Enhanced Insights, and Transcript as TXT." />
-        </div>
-      </figure>
     </div>
   </section>
 
   <section id="speakers" class="alt">
     <div class="wrap">
-      <span class="kicker">Speakers</span>
       <h2>Diarization gets close. You get it right.</h2>
-      <p class="sub">Automatic diarization is fast, but it mislabels -- splitting one person across several voices, or blending two into one. Rename, merge, and tag speakers by hand, then re-run the analysis so every insight reflects who actually said it.</p>
+      <p class="sub">Automatic diarization is fast, but it mislabels: splitting one person across several voices, or blending two into one. Rename, merge, and tag speakers by hand, then re-run the analysis so every insight reflects who actually said it.</p>
 
       <div class="feature-row">
         <div class="feature-copy">
           <h3>Rename, merge, and tag</h3>
-          <p>Silero VAD and WeSpeaker embeddings assign a voice to every line before anyone is named -- and they don't always match reality. Map each auto ID to a real person, tag your side and theirs, and merge the duplicates a long call inevitably throws off.</p>
+          <p>Silero VAD and WeSpeaker embeddings assign a voice to every line before anyone is named, and they don't always match reality. Map each auto ID to a real person, tag your side and theirs, and merge the duplicates a long call inevitably throws off.</p>
         </div>
         <div class="feature-visual">
           <div class="browser-frame">
@@ -303,7 +288,7 @@
       <div class="feature-row reverse">
         <div class="feature-copy">
           <h3>Re-run, and every insight updates</h3>
-          <p>Hit Enhance and Backchannel replays the analysis over the corrected speakers -- "Me to draft the SOW" instead of "Speaker 4" -- so every action item and observation is re-attributed to the right person.</p>
+          <p>Hit Enhance and Backchannel replays the analysis over the corrected speakers &mdash; &ldquo;Me to draft the SOW&rdquo; instead of &ldquo;Speaker 4&rdquo; &mdash; so every action item and observation is re-attributed to the right person.</p>
         </div>
         <div class="feature-visual">
           <div class="browser-frame">
@@ -316,9 +301,8 @@
     </div>
   </section>
 
-  <section id="chat">
+  <section id="chat" class="center">
     <div class="wrap">
-      <span class="kicker">Across meetings</span>
       <h2>Ask across every meeting</h2>
       <p class="sub">Every transcript stays on your server, and stays queryable. Ask a question against one call or all of them at once, and get a grounded answer with the meetings it came from.</p>
       <figure class="shot">
@@ -348,7 +332,7 @@
             <li>Add provider keys after launch in <strong>Admin -&gt; API Keys</strong>.</li>
           </ul>
           <div class="setup-actions">
-            <a class="btn primary" href="https://downloads.backchannel.page/">Open download portal</a>
+            <a class="btn primary" id="desktop-cta" href="#early-access">Request early access</a>
             <a class="btn ghost" href="releases/v0.3.2/">Read v0.3.2 notes</a>
           </div>
         </article>
@@ -382,7 +366,6 @@ docker compose up --build
 
   <section id="how-it-works" class="alt">
     <div class="wrap">
-      <span class="kicker">How it works</span>
       <h2>From spoken word to actionable insight</h2>
       <p class="sub">The live call path, end to end.</p>
       <ol class="steps">
@@ -397,13 +380,12 @@ docker compose up --build
 
   <section id="architecture">
     <div class="wrap">
-      <span class="kicker">Architecture</span>
       <h2>Three services, two AI paths, one transcript</h2>
       <p class="sub">
-        A React SPA, a FastAPI backend, and PostgreSQL -- with a low-latency
+        A React SPA, a FastAPI backend, and PostgreSQL: a low-latency
         interim path for feedback and a durable batch path for the record.
       </p>
-      <div class="diagram">
+      <div class="diagram" tabindex="0" role="region" aria-label="Architecture diagram, scrollable">
         <img src="assets/architecture.svg" width="1200" height="800" alt="Backchannel architecture diagram: client layer, backend layer, AI layer, and persistence" />
       </div>
     </div>
@@ -411,39 +393,53 @@ docker compose up --build
 
   <section id="agents" class="alt">
     <div class="wrap">
-      <span class="kicker">Agents</span>
       <h2>A crew, not a monolith</h2>
       <p class="sub">Each agent has one job, its own trigger, and a configurable model and prompt.</p>
-      <div class="table-scroll">
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Agent roster table, scrollable">
         <table>
           <thead>
-            <tr><th>Agent</th><th>Trigger</th><th>Purpose</th></tr>
+            <tr><th scope="col">Agent</th><th scope="col">Trigger</th><th scope="col">Purpose</th></tr>
           </thead>
           <tbody>
             <tr>
-              <td><code>audio_gateway</code></td>
+              <td><strong>Audio Bridge</strong><br /><code>audio_gateway</code></td>
               <td>Continuous audio stream</td>
               <td>Listens silently via Gemini Live or OpenAI Realtime and streams interim transcription</td>
             </tr>
             <tr>
-              <td><code>consolidated_analyst</code></td>
-              <td>Every 15s</td>
-              <td>Produces questions, observations, opportunities, and action items in one LLM pass</td>
+              <td><strong>Consolidated Analyst</strong><br /><code>consolidated_analyst</code></td>
+              <td>Every 40s + final pass</td>
+              <td>Runs configurable lenses for questions, observations, opportunities, and action items in one pass</td>
             </tr>
             <tr>
-              <td><code>objection_handler</code></td>
-              <td>Every 5s over the last ~90s</td>
-              <td>Scans for objections and pairs an immediate response with the strategic angle</td>
+              <td><strong>Objection Handler</strong><br /><code>objection_handler</code></td>
+              <td>Every 10s over the last 90s</td>
+              <td>Flags objections with an immediate response and the underlying strategic concern</td>
             </tr>
             <tr>
-              <td><code>synthesizer</code></td>
-              <td>New-insight events</td>
-              <td>Reconciles and enriches insights, detects answered questions, elevates item types</td>
+              <td><strong>Principal Agent</strong><br /><code>synthesizer</code></td>
+              <td>New or updated insights; 75s cooldown, 120s fallback</td>
+              <td>Quality-checks insights and connects them into broader objectives, initiatives, and patterns</td>
             </tr>
             <tr>
-              <td><code>opportunity_specialist</code></td>
-              <td>New-opportunity events</td>
-              <td>Matches opportunities against your offerings and knowledge catalog</td>
+              <td><strong>Opportunity Specialist</strong><br /><code>opportunity_specialist</code></td>
+              <td>New opportunities; 55s cooldown + final match</td>
+              <td>Matches opportunity insights against the configured knowledge sources without creating new insights</td>
+            </tr>
+            <tr>
+              <td><strong>Briefing Meeting Lens</strong><br /><code>brief_meeting_lens</code></td>
+              <td>Every 45s live, at call end, or on demand</td>
+              <td>Drafts the meeting record: outcomes, decisions, blockers, commitments, and follow-ups</td>
+            </tr>
+            <tr>
+              <td><strong>Briefing Discovery Lens</strong><br /><code>brief_discovery_lens</code></td>
+              <td>Every 45s live, at call end, or on demand</td>
+              <td>Drafts the broader signal: objectives, pains, gaps, opportunities, risks, and open paths</td>
+            </tr>
+            <tr>
+              <td><strong>Briefing Arbiter</strong><br /><code>brief_arbiter</code></td>
+              <td>Every 45s live, at call end, or on demand</td>
+              <td>Reconciles the two independent lens drafts into the settled briefing</td>
             </tr>
           </tbody>
         </table>
@@ -455,28 +451,28 @@ docker compose up --build
     <div class="wrap">
       <h2>Privacy, data flow, and what it takes to run</h2>
       <p class="sub">The questions that decide whether you self-host, answered plainly.</p>
-      <div class="grid">
-        <div class="card">
+      <div class="faq-list">
+        <div class="faq-item">
           <h3>Is Backchannel free?</h3>
           <p>Yes. Backchannel is open source under the MIT License, with no hosted tier, no seat pricing, and no feature paywall. Your only costs are your own hardware and any Gemini or OpenAI API usage you configure.</p>
         </div>
-        <div class="card">
+        <div class="faq-item">
           <h3>Does my meeting audio leave my machine?</h3>
-          <p>Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API -- you can route agents to OpenAI instead, or transcribe fully offline with local ONNX Whisper or Parakeet models. Recordings and transcripts stay on your server.</p>
+          <p>Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API. You can route agents to OpenAI instead, or transcribe fully offline with local ONNX Whisper or Parakeet models. Recordings and transcripts stay on your server.</p>
         </div>
-        <div class="card">
+        <div class="faq-item">
           <h3>Does it work with Zoom, Google Meet, and Teams?</h3>
-          <p>Yes -- with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration to install.</p>
+          <p>Yes, with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration to install.</p>
         </div>
-        <div class="card">
+        <div class="faq-item">
           <h3>How is it different from Otter.ai and other cloud note-takers?</h3>
           <p>Cloud note-takers such as Otter.ai, Fireflies.ai, and Granola send your meetings to their cloud and deliver most of their value after the call. Backchannel is self-hosted and works during the meeting: agents push questions, objection responses, opportunities, and action items while you can still act on them.</p>
         </div>
-        <div class="card">
+        <div class="faq-item">
           <h3>Do I need a GPU?</h3>
           <p>No. CPU-only Docker Compose is the default. An NVIDIA GPU can accelerate diarization via a compose override, and AMD GPUs on Windows are supported with a native backend setup script.</p>
         </div>
-        <div class="card">
+        <div class="faq-item">
           <h3>What do I need to run it?</h3>
           <p>Use the desktop app for the easiest start: download the build for Windows, macOS, or Linux, unpack it, run the app, and add a Gemini API key in Admin. Use Docker Compose when you want the full self-hosted stack, local development, or GPU diarization. An OpenAI key is optional for OpenAI-routed agents, and local ONNX transcription needs no key at all.</p>
         </div>
@@ -536,7 +532,7 @@ docker compose up --build
         <label for="interest-email">Email address</label>
         <div class="interest-control-row">
           <input id="interest-email" name="email" type="email" autocomplete="email" inputmode="email" maxlength="254" aria-describedby="interest-consent interest-status" required />
-          <button class="btn primary" type="submit">Request access</button>
+          <button class="btn primary" type="submit">Request early access</button>
         </div>
         <div class="cf-turnstile" data-sitekey="0x4AAAAAADzsy7I_nGWf_fZB" data-action="interest" data-theme="auto"></div>
         <p id="interest-consent" class="interest-consent">By requesting access, you agree to receive an invite and occasional Backchannel product news. Every update will include an unsubscribe option.</p>
@@ -556,7 +552,7 @@ docker compose up --build
     <a href="/vs-meetily/">Backchannel vs Meetily</a>
   </div>
   <div class="wrap">
-    <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
+    <span>Backchannel is an open-source, self-hosted AI meeting assistant.</span>
     <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>. <a href="https://github.com/talberthoule/backchannel/issues">Report an issue</a>.</span>
   </div>
 </footer>
@@ -603,18 +599,26 @@ docker compose up --build
 </script>
 
 <script>
-  // Live GitHub star count for the nav CTA. Unauthenticated GitHub API
-  // (60 req/hr/IP); silently keeps the plain "Star on GitHub" label on any
-  // failure or rate-limit, and hides small counts so a freshly open-sourced
-  // repo shows a clean CTA rather than weak social proof.
+  // One unauthenticated GitHub API call (60 req/hr/IP) drives two progressive
+  // enhancements. (1) Star count on the nav CTA: silently keeps the plain
+  // "Star on GitHub" label on any failure or rate-limit, and hides small
+  // counts so a freshly open-sourced repo shows a clean CTA rather than weak
+  // social proof. (2) Desktop panel CTA: while the source repo is private the
+  // API returns 404, so the button stays on the early-access form; once the
+  // repo is publicly visible the same button flips to the download portal.
   (function () {
     var el = document.getElementById("gh-stars");
-    if (!el) return;
+    var cta = document.getElementById("desktop-cta");
     fetch("https://api.github.com/repos/talberthoule/backchannel")
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
-        var n = d && d.stargazers_count;
-        if (typeof n === "number" && n >= 25) {
+        if (!d) return;
+        if (cta) {
+          cta.href = "https://downloads.backchannel.page/";
+          cta.textContent = "Open download portal";
+        }
+        var n = d.stargazers_count;
+        if (el && typeof n === "number" && n >= 25) {
           el.textContent = " " + n.toLocaleString();
         }
       })
@@ -650,7 +654,7 @@ docker compose up --build
       fetch(form.action, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: data.get("email"), token: token })
+        body: JSON.stringify({ email: String(data.get("email") || "").trim(), token: token })
       })
         .then(function (response) {
           return response.json().then(function (body) {
@@ -670,7 +674,10 @@ docker compose up --build
           if (window.turnstile) window.turnstile.reset();
         })
         .catch(function (error) {
-          if (error && error.field === "email") email.setAttribute("aria-invalid", "true");
+          if (error && error.field === "email") {
+            email.setAttribute("aria-invalid", "true");
+            if (email.focus) email.focus();
+          }
           status.textContent = (error && error.userMessage) || "We couldn't save this right now. Please try again.";
           status.dataset.state = "error";
           if (window.turnstile) window.turnstile.reset();
