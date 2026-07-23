@@ -10,10 +10,42 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.2.5"
+APP_VERSION = "0.3.0"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.3.0",
+        "date": "2026-07-23",
+        "title": "Voice enrollment, flexible call endings, and cost visibility",
+        "body": """This release adds local voice calibration for reliable mic-only
+speaker identity, gives you control over end-of-call analysis spend, tracks
+per-call token usage, and makes the app easier to start with and keep current.
+
+- Enroll your voice once in Administration -> Transcription & Audio so
+  mic-only calls reliably map your speech to you. Only an encrypted voice
+  fingerprint is stored; the calibration recording itself is never saved.
+- End Call is now a split button: the primary action keeps the full
+  briefing pipeline, while "End without briefing" skips briefing synthesis
+  and opportunity matching for a faster, cheaper wrap-up.
+- Unintentional disconnects (closed tab, network drop) now finalize the
+  session with no analysis spend at all, and post-call review offers a
+  one-click "Generate Briefing" whenever a briefing is missing.
+- A new Tokens view shows per-call token usage with a breakdown by agent,
+  transcription path, and model, persisted for every past session.
+- Calls now refuse to start with a clear, actionable message when the
+  selected transcription model has no usable credential, and runtime
+  transcription failures are surfaced instead of ending in a silently
+  empty transcript.
+- Split-track calls now store per-track audio provenance so retranscription
+  preserves who said what, including local/remote identity, across segments.
+- The post-call Speakers tab shows full names with accessible controls, and
+  re-running insight enhancement after speaker corrections reports partial
+  or failed briefing work honestly with a retry path.
+- Administration gains an About tab with the app version and release notes,
+  first launch gets a guided setup checklist, and upgrades show a what's-new
+  notice with unread release badges.""",
+    },
     {
         "version": "0.2.5",
         "date": "2026-07-22",
