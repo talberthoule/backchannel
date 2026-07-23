@@ -14,7 +14,7 @@ for the current asset inventory.
   package-manager installer): `tar -xzf` it and run `Backchannel/Backchannel`.
   Data lives in `~/.local/share/backchannel`.
 
-The app runs from your system tray / menu bar and stores data per-user, no Docker needed. Set a Gemini API key in Admin -> API Keys on first run. For the full self-hosted stack, use Docker Compose below.
+The app runs from your system tray / menu bar and stores data per-user, no Docker needed. Set a Gemini API key in Admin -> API Keys on first run ([Getting API Keys](api-keys.md) shows how to create one in about two minutes). For the full self-hosted stack, use Docker Compose below.
 
 ## Prerequisites
 
@@ -22,6 +22,8 @@ The app runs from your system tray / menu bar and stores data per-user, no Docke
   Node 20+ / Python 3.11+ / PostgreSQL 16 for local development
 - A Google Gemini API key (transcription and default analysis models).
   An OpenAI key is optional and only needed for OpenAI-routed agents.
+  New to either provider? [Getting API Keys](api-keys.md) is a two-minute
+  walkthrough.
 - `ffmpeg` on `PATH` if you want to import compressed audio (MP3, M4A)
   outside Docker
 
