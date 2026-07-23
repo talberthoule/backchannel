@@ -1,8 +1,6 @@
 import uuid
-import logging
-from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,13 +19,16 @@ from app.schemas import (
     TokenUsageSummaryOut,
 )
 from app.services.agents.orchestrator import get_live_orchestrator
-from app.services import briefing_synthesis
 from app.services.meeting_context import normalize_meeting_type
-from app.services.speaker_context_enhancer import run_speaker_context_enhancement
+from app.services.speaker_revalidation import (
+    get_revalidation_run,
+    run_revalidation,
+    start_or_resume_revalidation,
+    summarize_run,
+)
 from app.services.token_usage import summarize_usage
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
-logger = logging.getLogger(__name__)
 
 
 @router.post("", response_model=SessionOut, status_code=201)
@@ -141,7 +142,11 @@ async def delete_session(session_id: uuid.UUID, db: AsyncSession = Depends(get_d
 
 
 @router.post("/{session_id}/enhance-insights", response_model=EnhanceInsightsOut)
-async def enhance_insights_after_speaker_changes(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def enhance_insights_after_speaker_changes(
+    session_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
     session = await db.get(Session, session_id)
     if not session:
         raise HTTPException(404, "Session not found")
@@ -150,56 +155,32 @@ async def enhance_insights_after_speaker_changes(session_id: uuid.UUID, db: Asyn
     if not session.speaker_context_dirty:
         return {
             "status": "unchanged",
-            "applied_operations": 0,
-            "enhanced_insights": 0,
             "speaker_context_dirty": False,
             "speaker_context_enhanced_at": session.speaker_context_enhanced_at,
             "briefing_updated": False,
             "briefing_status": None,
             "error": None,
         }
-    try:
-        result = await run_speaker_context_enhancement(session_id)
-    except ValueError as exc:
-        raise HTTPException(404, str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(
-            502,
-            "Insight revalidation failed. Speaker changes remain pending; retry Enhance Insights.",
-        ) from exc
+    run, should_start = await start_or_resume_revalidation(session_id, db)
+    if should_start:
+        background_tasks.add_task(run_revalidation, run.id)
+    return summarize_run(run, session)
 
-    try:
-        synthesis = await briefing_synthesis.run_session_synthesis(session_id, mode="post_call")
-        briefing_status = synthesis.status if synthesis else "error"
-    except Exception:
-        logger.exception("[sessions] Briefing revalidation failed")
-        briefing_status = "error"
 
-    if briefing_status == "completed":
-        now = datetime.now(timezone.utc)
-        session.speaker_context_dirty = False
-        session.speaker_context_enhanced_at = now
-        await db.commit()
-        return {
-            **result,
-            "status": "completed",
-            "speaker_context_dirty": False,
-            "speaker_context_enhanced_at": now,
-            "briefing_updated": True,
-            "briefing_status": briefing_status,
-            "error": None,
-        }
-
-    session.speaker_context_dirty = True
-    return {
-        **result,
-        "status": "partial",
-        "speaker_context_dirty": True,
-        "speaker_context_enhanced_at": session.speaker_context_enhanced_at,
-        "briefing_updated": False,
-        "briefing_status": briefing_status,
-        "error": "Briefing revalidation did not complete. Retry Enhance Insights.",
-    }
+@router.get(
+    "/{session_id}/enhance-insights/{run_id}",
+    response_model=EnhanceInsightsOut,
+)
+async def get_enhance_insights_status(
+    session_id: uuid.UUID,
+    run_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    session = await db.get(Session, session_id)
+    run = await get_revalidation_run(run_id, db)
+    if not session or not run or run.session_id != session_id:
+        raise HTTPException(404, "Speaker revalidation run not found")
+    return summarize_run(run, session)
 
 
 # --- Per-session agent overrides ---

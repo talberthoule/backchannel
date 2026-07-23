@@ -159,6 +159,24 @@ async def _add_missing_columns(conn):
                 connection.execute(
                     text("ALTER TABLE sessions ADD COLUMN speaker_context_enhanced_at TIMESTAMP WITH TIME ZONE")
                 )
+            if "speaker_context_version" not in columns:
+                connection.execute(
+                    text("ALTER TABLE sessions ADD COLUMN speaker_context_version INTEGER NOT NULL DEFAULT 0")
+                )
+
+        if "questions" in tables:
+            columns = {c["name"] for c in inspector.get_columns("questions")}
+            if "speaker_mapping_revision_id" not in columns:
+                connection.execute(
+                    text("ALTER TABLE questions ADD COLUMN speaker_mapping_revision_id UUID")
+                )
+
+        if "session_syntheses" in tables:
+            columns = {c["name"] for c in inspector.get_columns("session_syntheses")}
+            if "speaker_mapping_revision_id" not in columns:
+                connection.execute(
+                    text("ALTER TABLE session_syntheses ADD COLUMN speaker_mapping_revision_id UUID")
+                )
 
         if "call_segments" in tables:
             columns = {c["name"] for c in inspector.get_columns("call_segments")}

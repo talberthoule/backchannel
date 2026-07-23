@@ -24,6 +24,7 @@ class Session(Base):
     group_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(), ForeignKey("session_groups.id", use_alter=True), nullable=True)
     speaker_context_dirty: Mapped[bool] = mapped_column(Boolean, default=False)
     speaker_context_enhanced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    speaker_context_version: Mapped[int] = mapped_column(Integer, default=0)
 
     documents = relationship("Document", back_populates="session", cascade="all, delete-orphan")
     directives = relationship("Directive", back_populates="session", cascade="all, delete-orphan")
@@ -34,7 +35,105 @@ class Session(Base):
     agent_overrides = relationship("SessionAgentOverride", back_populates="session", cascade="all, delete-orphan")
     syntheses = relationship("SessionSynthesis", back_populates="session", cascade="all, delete-orphan")
     token_usage = relationship("TokenUsage", back_populates="session", cascade="all, delete-orphan")
+    speaker_mapping_revisions = relationship("SpeakerMappingRevision", cascade="all, delete-orphan")
+    speaker_revalidation_runs = relationship("SpeakerRevalidationRun", cascade="all, delete-orphan")
     group = relationship("SessionGroup", foreign_keys=[group_id])
+
+
+class SpeakerMappingRevision(Base):
+    __tablename__ = "speaker_mapping_revisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id",
+            "source_version",
+            name="uq_speaker_mapping_revision_session_version",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("sessions.id", ondelete="CASCADE")
+    )
+    source_version: Mapped[int] = mapped_column(Integer)
+    mapping_hash: Mapped[str] = mapped_column(String(64))
+    mapping_snapshot: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class SpeakerRevalidationRun(Base):
+    __tablename__ = "speaker_revalidation_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id",
+            "mapping_revision_id",
+            "content_version",
+            name="uq_speaker_revalidation_run_revision",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("sessions.id", ondelete="CASCADE")
+    )
+    mapping_revision_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("speaker_mapping_revisions.id", ondelete="CASCADE")
+    )
+    content_version: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(20), default="running")
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    mapping_revision = relationship("SpeakerMappingRevision")
+    batches = relationship(
+        "SpeakerRevalidationBatch",
+        cascade="all, delete-orphan",
+        order_by="SpeakerRevalidationBatch.batch_index",
+    )
+
+
+class SpeakerRevalidationBatch(Base):
+    __tablename__ = "speaker_revalidation_batches"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "batch_index",
+            name="uq_speaker_revalidation_batch_index",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("speaker_revalidation_runs.id", ondelete="CASCADE")
+    )
+    batch_index: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(20))
+    item_ids: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    processed_entries: Mapped[int] = mapped_column(Integer, default=0)
+    applied_operations: Mapped[int] = mapped_column(Integer, default=0)
+    enhanced_insights: Mapped[int] = mapped_column(Integer, default=0)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class TokenUsage(Base):
@@ -117,6 +216,11 @@ class Question(Base):
     offering_match: Mapped[str] = mapped_column(Text, default="")
     vote: Mapped[int] = mapped_column(Integer, default=0)  # -1 downvote, 0 neutral, 1 upvote
     enhanced: Mapped[bool] = mapped_column(Boolean, default=False)
+    speaker_mapping_revision_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(),
+        ForeignKey("speaker_mapping_revisions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     session = relationship("Session", back_populates="questions")
     directive = relationship("Directive")
@@ -148,6 +252,11 @@ class SessionSynthesis(Base):
     error_message: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    speaker_mapping_revision_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(),
+        ForeignKey("speaker_mapping_revisions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     session = relationship("Session", back_populates="syntheses")
     clusters = relationship("InsightCluster", back_populates="synthesis", cascade="all, delete-orphan", order_by="InsightCluster.priority")

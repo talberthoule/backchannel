@@ -129,15 +129,42 @@ class QuestionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class RevalidationBatchOut(BaseModel):
+    id: uuid.UUID
+    index: int
+    kind: str
+    status: str
+    attempts: int
+    processed_entries: int
+    duration_ms: int
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    error: str | None = None
+
+
 class EnhanceInsightsOut(BaseModel):
-    status: Literal["unchanged", "completed", "partial"]
-    applied_operations: int
-    enhanced_insights: int
+    status: Literal["unchanged", "running", "completed", "partial", "failed"]
+    run_id: uuid.UUID | None = None
+    mapping_revision: int | None = None
+    content_version: str | None = None
+    total_batches: int = 0
+    completed_batches: int = 0
+    failed_batches: int = 0
+    failure_rate: float = 0
+    processed_entries: int = 0
+    applied_operations: int = 0
+    enhanced_insights: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    duration_ms: int = 0
     speaker_context_dirty: bool
     speaker_context_enhanced_at: datetime | None = None
     briefing_updated: bool
     briefing_status: str | None = None
     error: str | None = None
+    batches: list[RevalidationBatchOut] = Field(default_factory=list)
 
 
 class SynthesisSectionItem(BaseModel):

@@ -18,6 +18,7 @@ await build({
       import { renderToStaticMarkup } from "react-dom/server";
       import SpeakerNameMapper, * as speakerModule from "./SpeakerNameMapper.tsx";
       export const enhancementOutcome = speakerModule.enhancementOutcome;
+      export const enhancementProgressLabel = speakerModule.enhancementProgressLabel;
       export function renderMapper(props) {
         return renderToStaticMarkup(React.createElement(SpeakerNameMapper, props));
       }
@@ -32,7 +33,7 @@ await build({
   outfile: outputPath,
 });
 
-const { enhancementOutcome, renderMapper } = createRequire(import.meta.url)(outputPath);
+const { enhancementOutcome, enhancementProgressLabel, renderMapper } = createRequire(import.meta.url)(outputPath);
 
 after(async () => {
   await rm(outputDir, { recursive: true, force: true });
@@ -93,4 +94,15 @@ test("partial and error Briefing outcomes stay retryable and never use success c
     assert.match(outcome.message, /Retry Enhance Insights/);
     assert.doesNotMatch(outcome.message, /Revalidated the Briefing and all Insights/);
   }
+});
+
+test("running revalidation reports observable batch progress", () => {
+  assert.equal(
+    enhancementProgressLabel({
+      status: "running",
+      completed_batches: 2,
+      total_batches: 5,
+    }),
+    "Revalidating 2/5 batches...",
+  );
 });

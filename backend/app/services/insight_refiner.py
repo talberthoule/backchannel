@@ -166,6 +166,28 @@ async def _apply_operations(
     enhanced: bool = False,
 ) -> list[dict]:
     """Apply refinement operations to the database. Returns list of applied ops with results."""
+    async with async_session() as db:
+        applied = await _apply_operations_in_db(
+            db,
+            session_id,
+            ops,
+            questions,
+            agent_source=agent_source,
+            enhanced=enhanced,
+        )
+        await db.commit()
+        return applied
+
+
+async def _apply_operations_in_db(
+    db,
+    session_id: uuid.UUID,
+    ops: list[dict],
+    questions: list[Question],
+    agent_source: str = "refiner",
+    enhanced: bool = False,
+) -> list[dict]:
+    """Apply operations in the caller's transaction."""
     q_map = {str(q.id): q for q in questions}
     applied = []
     now = datetime.now(timezone.utc)
@@ -179,24 +201,30 @@ async def _apply_operations(
         "merge": _apply_merge_operation,
     }
 
-    async with async_session() as db:
-        for op in ops:
-            if not isinstance(op, dict):
-                continue
+    for op in ops:
+        if not isinstance(op, dict):
+            continue
 
-            op_type = op.get("op")
-            handler = handlers.get(op_type)
-            if handler is None or _touches_dismissed_question(op, q_map):
-                continue
+        op_type = op.get("op")
+        handler = handlers.get(op_type)
+        if handler is None or _touches_dismissed_question(op, q_map):
+            continue
 
-            try:
-                applied.extend(await handler(db, session_id, op, q_map, agent_source, enhanced, now))
-            except Exception as e:
-                logger.warning(f"Failed to apply refinement op {op_type}: {e}")
-                continue
-
-        await db.commit()
-
+        try:
+            applied.extend(
+                await handler(
+                    db,
+                    session_id,
+                    op,
+                    q_map,
+                    agent_source,
+                    enhanced,
+                    now,
+                )
+            )
+        except Exception as e:
+            logger.warning(f"Failed to apply refinement op {op_type}: {e}")
+            continue
     return applied
 
 

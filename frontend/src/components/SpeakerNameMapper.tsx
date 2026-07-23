@@ -23,6 +23,14 @@ export function enhancementOutcome(result: EnhanceInsightsResult): {
   };
 }
 
+export function enhancementProgressLabel(
+  result: Pick<EnhanceInsightsResult, "status" | "completed_batches" | "total_batches">,
+): string {
+  return result.status === "running"
+    ? `Revalidating ${result.completed_batches}/${result.total_batches} batches...`
+    : "";
+}
+
 interface SpeakerNameMapperProps {
   session: Session;
   speakers: Speaker[];
@@ -61,7 +69,12 @@ export default function SpeakerNameMapper({
     setEnhancementError("");
     setEnhancing(true);
     try {
-      const result = await api.enhanceInsights(session.id);
+      const initial = await api.enhanceInsights(session.id);
+      const result = await api.waitForEnhancement(
+        session.id,
+        initial,
+        (progress) => setEnhancementMessage(enhancementProgressLabel(progress)),
+      );
       await Promise.all([
         onRefreshQuestions(),
         onRefreshSession(),
