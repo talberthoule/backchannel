@@ -10,10 +10,32 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.3.1"
+APP_VERSION = "0.3.2"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.3.2",
+        "date": "2026-07-23",
+        "title": "Voice calibration works out of the box",
+        "body": """This release makes voice calibration and audio imports work out of
+the box on the Windows and Linux desktop bundles and clears up two confusing
+Administration labels.
+
+- The Windows and Linux desktop bundles now include ffmpeg, so recording
+  your voice profile, running a mic benchmark, and importing MP3, M4A, or
+  WebM audio need no separate install. The macOS bundle still uses a
+  system ffmpeg.
+- When ffmpeg is unavailable or cannot read a file, the app now explains
+  what is missing and how to fix it instead of showing a raw system error.
+- The Diarization Capability card no longer shows a status tag that could
+  read as "diarization is unavailable" when only the optional Enhanced
+  mode was locked behind a benchmark.
+- First-run setup now describes the Cloud AI path accurately for both
+  providers: a Google or OpenAI key powers the analysis agents and live
+  captions, while saved transcripts come from Gemini or the built-in local
+  transcription models.""",
+    },
     {
         "version": "0.3.1",
         "date": "2026-07-23",
