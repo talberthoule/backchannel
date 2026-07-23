@@ -27,10 +27,13 @@ from app.services.agents.consolidated_analyst import ConsolidatedAnalystAgent
 from app.services.agents.event_bus import CooldownSubscriber, EventBus
 from app.services.agents.objection_handler import ObjectionHandlerAgent
 from app.services.agents.opportunity_specialist import run_opportunity_specialist_cycle
+from app.services.agents.strategic_signals import (
+    STRATEGIC_SIGNALS_SLUG,
+    run_strategic_signals_cycle,
+)
 from app.services.agents.synthesizer import run_synthesizer_cycle
 from app.services.briefing_synthesis import (
     BRIEF_ARBITER_SLUG,
-    LIVE_SYNTHESIS_INTERVAL_SECONDS,
     agent_config_enabled,
     run_session_synthesis,
 )
@@ -234,7 +237,7 @@ class AgentOrchestrator:
         self._consolidated_task: asyncio.Task | None = None
         self._objection_task: asyncio.Task | None = None
         self._gateway_task: asyncio.Task | None = None
-        self._briefing_task: asyncio.Task | None = None
+        self._strategic_signals_task: asyncio.Task | None = None
         self._stopped = False
 
         # Recent insights for dedup (text -> timestamp)
@@ -296,8 +299,10 @@ class AgentOrchestrator:
         # --- Event-driven: Opportunity Specialist ---
         self._wire_opportunity_specialist()
 
-        if self.briefing_enabled():
-            self._briefing_task = asyncio.create_task(self._live_briefing_loop())
+        if self._is_enabled(STRATEGIC_SIGNALS_SLUG, False):
+            self._strategic_signals_task = asyncio.create_task(
+                self._strategic_signals_loop()
+            )
 
         ca_interval = self._get_interval("consolidated_analyst", settings.TEXT_AGENT_INTERVAL_SECONDS)
         logger.info(
@@ -307,7 +312,8 @@ class AgentOrchestrator:
             f"types={self.consolidated_agent.enabled_types} "
             f"objection={self._is_enabled('objection_handler')} "
             f"synth={self._is_enabled('synthesizer')}(event-driven) "
-            f"opp_specialist={self._is_enabled('opportunity_specialist')}(event-driven)"
+            f"opp_specialist={self._is_enabled('opportunity_specialist')}(event-driven) "
+            f"strategic_signals={self._is_enabled(STRATEGIC_SIGNALS_SLUG, False)}"
         )
         _live_orchestrators[self.session_id] = self
 
@@ -394,7 +400,12 @@ class AgentOrchestrator:
         self._event_bus.clear()
 
         # Cancel tasks
-        for task in [self._consolidated_task, self._objection_task, self._gateway_task, self._briefing_task]:
+        for task in [
+            self._consolidated_task,
+            self._objection_task,
+            self._gateway_task,
+            self._strategic_signals_task,
+        ]:
             if task and not task.done():
                 task.cancel()
                 try:
@@ -438,10 +449,13 @@ class AgentOrchestrator:
                 await self._objection_task
             except (asyncio.CancelledError, Exception):
                 pass
-        if self._briefing_task and not self._briefing_task.done():
-            self._briefing_task.cancel()
+        if (
+            self._strategic_signals_task
+            and not self._strategic_signals_task.done()
+        ):
+            self._strategic_signals_task.cancel()
             try:
-                await self._briefing_task
+                await self._strategic_signals_task
             except (asyncio.CancelledError, Exception):
                 pass
 
@@ -756,15 +770,15 @@ class AgentOrchestrator:
 
             await asyncio.sleep(interval)
 
-    async def _live_briefing_loop(self):
-        await asyncio.sleep(LIVE_SYNTHESIS_INTERVAL_SECONDS)
+    async def _strategic_signals_loop(self):
+        interval = self._get_interval(STRATEGIC_SIGNALS_SLUG, 45)
+        await asyncio.sleep(interval)
         while not self._stopped:
             try:
                 transcript_window = await self.transcript_buffer.get_window()
                 if transcript_window != "(No recent transcript)":
-                    synthesis = await run_session_synthesis(
+                    synthesis = await run_strategic_signals_cycle(
                         self.session_id,
-                        mode="live",
                         agent_configs=self._agent_configs,
                         transcript_window=transcript_window,
                         directives=self.directives,
@@ -777,8 +791,8 @@ class AgentOrchestrator:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Live briefing loop error: {e}")
-            await asyncio.sleep(LIVE_SYNTHESIS_INTERVAL_SECONDS)
+                logger.error(f"Strategic signals loop error: {e}")
+            await asyncio.sleep(interval)
 
     async def _send_synthesis_update(self, synthesis):
         try:

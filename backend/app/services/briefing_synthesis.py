@@ -29,7 +29,6 @@ BRIEF_MEETING_LENS_SLUG = "brief_meeting_lens"
 BRIEF_DISCOVERY_LENS_SLUG = "brief_discovery_lens"
 BRIEF_ARBITER_SLUG = "brief_arbiter"
 BRIEF_AGENT_SLUGS = {BRIEF_MEETING_LENS_SLUG, BRIEF_DISCOVERY_LENS_SLUG, BRIEF_ARBITER_SLUG}
-LIVE_SYNTHESIS_INTERVAL_SECONDS = 45
 SYNTHESIS_MODES = {"live", "post_call"}
 SynthesisMode = Literal["live", "post_call"]
 
@@ -149,6 +148,8 @@ async def run_session_synthesis(
 ) -> SessionSynthesis | None:
     """Run the dual-lens briefing pipeline and persist the settled synthesis."""
     _validate_synthesis_mode(mode)
+    if mode != "post_call":
+        raise ValueError("Live synthesis is owned by the strategic_signals agent")
     from app.services.privacy import LocalOnlyModeError, is_local_only
 
     if await is_local_only():

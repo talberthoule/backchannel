@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -235,6 +236,37 @@ class AgentOrchestratorGracefulDrainTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(15, drain_progress_percent(1, 2))
         self.assertEqual(95, drain_progress_percent(2, 2))
         self.assertEqual(42, drain_progress_percent(2, 4))
+
+    async def test_live_cycle_calls_only_strategic_signals(self):
+        orchestrator = self._build_orchestrator(include_briefing=True)
+        orchestrator._agent_configs["strategic_signals"] = MagicMock(
+            enabled=True,
+            model_id="signal-model",
+            prompt="signal-prompt",
+            interval_seconds=45,
+        )
+
+        with (
+            patch(
+                "app.services.agents.orchestrator.asyncio.sleep",
+                new=AsyncMock(
+                    side_effect=[None, asyncio.CancelledError()]
+                ),
+            ),
+            patch(
+                "app.services.agents.orchestrator.run_strategic_signals_cycle",
+                new=AsyncMock(return_value=None),
+            ) as signals,
+            patch(
+                "app.services.agents.orchestrator.run_session_synthesis",
+                new=AsyncMock(),
+            ) as briefing,
+        ):
+            with self.assertRaises(asyncio.CancelledError):
+                await orchestrator._strategic_signals_loop()
+
+        signals.assert_awaited_once()
+        briefing.assert_not_awaited()
 
     async def test_graceful_drain_skip_analysis_skips_opportunity_and_briefing(self):
         orchestrator = self._build_orchestrator(include_briefing=True)
