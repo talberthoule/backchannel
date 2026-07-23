@@ -116,7 +116,20 @@ function validRevokeResult({ item }, current) {
   ].every(Boolean);
 }
 
+function validReactivateResult({ item }, current) {
+  return [
+    preserves(item, current, [
+      'must_change_password', 'password_expires_at', 'password_changed_at',
+    ]),
+    item.state === 'active',
+    item.revoked_at === null,
+    item.active_session_count === 0,
+    item.latest_session_expires_at === null,
+  ].every(Boolean);
+}
+
 const resultValidators = {
+  reactivate: validReactivateResult,
   'reset-password': validResetResult,
   'sign-out': validSignOutResult,
   revoke: validRevokeResult,
@@ -148,6 +161,11 @@ const commandCopy = {
     label: 'Revoke',
     description: ({ email }) => `Revoke access for ${email}? Sessions end immediately. Request and audit history remain.`,
     success: ({ email }) => `Revoked access for ${email}.`,
+  },
+  reactivate: {
+    label: 'Reactivate',
+    description: ({ email }) => `Reactivate access for ${email}? Existing credentials and release grants will become usable again.`,
+    success: ({ email }) => `Reactivated access for ${email}.`,
   },
 };
 
@@ -199,7 +217,8 @@ function restoreCommandButtons(buttons) {
 }
 
 async function runUserCommand(context, record, action, button) {
-    if (context.commandPending || record.state !== 'active') return;
+    if (context.commandPending
+      || (action === 'reactivate' ? record.state !== 'revoked' : record.state !== 'active')) return;
     const copy = commandCopy[action];
     const confirmed = await context.dialogs.confirm({
       title: copy.label,
@@ -295,6 +314,17 @@ function showUserDetail(context, view, record, trigger, nextFocusAction) {
         revoke.addEventListener('click', () => runUserCommand(context, record, 'revoke', revoke));
         commandButtons.set('revoke', revoke);
         actions.append(revoke);
+        content.push(commandTitle, actions);
+      } else {
+        const commandTitle = element('h3', '', 'Security commands', document);
+        const actions = element('div', 'security-actions', undefined, document);
+        const reactivate = element('button', 'primary-button', 'Reactivate', document);
+        reactivate.type = 'button';
+        reactivate.addEventListener('click', () => (
+          runUserCommand(context, record, 'reactivate', reactivate)
+        ));
+        commandButtons.set('reactivate', reactivate);
+        actions.append(reactivate);
         content.push(commandTitle, actions);
       }
       view.detailPane.replaceChildren(...content);

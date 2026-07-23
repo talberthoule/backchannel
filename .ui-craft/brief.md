@@ -57,6 +57,13 @@ without password and authorization commands sharing a surface.
 ### Out of scope
 
 - Admin accounts, roles, permissions, organizations, or generic policy rules.
-- Recipient reactivation, deletion, email changes, merge, or bulk operations.
+- ~~Recipient reactivation~~ (deprecated 2026-07-23: access state must be reversible),
+  deletion, email changes, merge, or bulk operations.
 - Audit export, saved filters, server-side search, or pagination.
 - A frontend framework, component library, client router, or second Worker.
+
+## Learned constraints
+
+- **2026-07-23** - Revoked recipient accounts must expose a deliberate Reactivate
+  command in the user detail UI. *Why:* the operator needs to reverse access state
+  without editing D1 outside the admin console.

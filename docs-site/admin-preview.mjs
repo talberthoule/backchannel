@@ -231,6 +231,16 @@ function revokePreview(response, fixtures, email) {
   return sendJson(response, 200, { ok: true, item });
 }
 
+function reactivatePreview(response, fixtures, email) {
+  const user = fixtures.users.find((entry) => entry.email === email);
+  if (!user || user.state !== 'revoked') return fail(response, 409);
+  const item = { ...user, state: 'active', revoked_at: null };
+  replace(fixtures.users, item);
+  const authorization = fixtures.authorization.find((entry) => entry.email === email);
+  if (authorization) replace(fixtures.authorization, { ...authorization, account_state: 'active' });
+  return sendJson(response, 200, { ok: true, item });
+}
+
 function replacePreviewGrants(response, fixtures, email, body) {
   const authorization = fixtures.authorization.find((entry) => entry.email === email);
   const versions = body.versions;
@@ -260,6 +270,7 @@ const mutationRoutes = {
   'POST /api/admin/users/reset-password': resetPreviewPassword,
   'POST /api/admin/users/sign-out': signOutPreview,
   'POST /api/admin/users/revoke': revokePreview,
+  'POST /api/admin/users/reactivate': reactivatePreview,
   'PUT /api/admin/authorization/grants': replacePreviewGrants,
 };
 

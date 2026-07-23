@@ -225,7 +225,7 @@ test('Sign out all sessions clears session metadata locally without changing ide
   assert.equal(route.document.activeElement.name, 'h2');
 });
 
-test('Revoke explains the lifecycle, patches state, and exposes no reactivation path', async () => {
+test('Revoke explains the lifecycle, patches state, and exposes reactivation', async () => {
   const revoked = {
     ...user,
     state: 'revoked',
@@ -252,9 +252,10 @@ test('Revoke explains the lifecycle, patches state, and exposes no reactivation 
   assert.equal(route.calls.length, 2);
   const detail = textOf(route.shell.content.querySelectorAll('.detail-pane')[0]);
   assert.match(detail, /revoked/i);
-  for (const command of ['Reset password', 'Sign out all sessions', 'Revoke', 'Reactivate']) {
+  for (const command of ['Reset password', 'Sign out all sessions', 'Revoke']) {
     assert.equal(buttonNamed(route.shell.content, command), undefined);
   }
+  assert.ok(buttonNamed(route.shell.content, 'Reactivate'));
   assert.equal(route.shell.content.querySelectorAll('.list-detail')[0].dataset.view, 'detail');
   assert.equal(route.document.activeElement.isConnected, true);
 });
@@ -481,7 +482,7 @@ test('malformed command success bodies do not patch state or expose credentials'
   }
 });
 
-test('revoked users expose identity and security history without any command path', async () => {
+test('revoked users can be reactivated without changing identity or security history', async () => {
   const revoked = {
     ...user,
     state: 'revoked',
@@ -489,7 +490,10 @@ test('revoked users expose identity and security history without any command pat
     active_session_count: 0,
     latest_session_expires_at: null,
   };
-  const route = harness(() => jsonResponse({ items: [revoked] }));
+  const active = { ...revoked, state: 'active', revoked_at: null };
+  const route = harness((call) => call.method === 'GET'
+    ? jsonResponse({ items: [revoked] })
+    : jsonResponse({ ok: true, item: active }));
   await openUser(route);
   const pane = route.shell.content.querySelectorAll('.detail-pane')[0];
   const detail = textOf(pane);
@@ -510,8 +514,17 @@ test('revoked users expose identity and security history without any command pat
       revoked.password_changed_at,
     ],
   );
-  for (const command of ['Reset password', 'Sign out all sessions', 'Revoke', 'Reactivate']) {
+  for (const command of ['Reset password', 'Sign out all sessions', 'Revoke']) {
     assert.equal(buttonNamed(route.shell.content, command), undefined);
   }
-  assert.equal(route.calls.length, 1);
+  await confirmCommand(route, 'Reactivate');
+  assert.deepEqual(route.calls[1], {
+    path: '/api/admin/users/reactivate',
+    method: 'POST',
+    body: { email: revoked.email },
+  });
+  assert.match(textOf(route.shell.content), /Stateactive/);
+  assert.match(textOf(route.shell.content), /RevokedNot revoked/);
+  assert.ok(buttonNamed(route.shell.content, 'Reset password'));
+  assert.ok(buttonNamed(route.shell.content, 'Revoke'));
 });

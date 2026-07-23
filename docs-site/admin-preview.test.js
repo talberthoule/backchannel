@@ -160,6 +160,22 @@ test('admin preview mutations match Worker shapes and update in-memory fixtures'
     'revoked',
   );
 
+  const reactivate = await requestJson(
+    url,
+    '/api/admin/users/reactivate',
+    json('POST', { email: revoke.value.item.email }),
+  );
+  assert.equal(reactivate.response.status, 200);
+  assert.equal(reactivate.value.item.state, 'active');
+  assert.equal(reactivate.value.item.revoked_at, null);
+  const authorizationAfterReactivation = await requestJson(url, '/api/admin/authorization');
+  assert.equal(
+    authorizationAfterReactivation.value.items.find(
+      ({ email }) => email === reactivate.value.item.email,
+    ).account_state,
+    'active',
+  );
+
   const grants = await requestJson(
     url,
     '/api/admin/authorization/grants',

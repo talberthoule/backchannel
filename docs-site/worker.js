@@ -30,6 +30,7 @@ const ADMIN_MUTATIONS = new Map([
   ['/api/admin/users/reset-password', ['POST', 'reset']],
   ['/api/admin/users/sign-out', ['POST', 'sign-out']],
   ['/api/admin/users/revoke', ['POST', 'revoke']],
+  ['/api/admin/users/reactivate', ['POST', 'reactivate']],
   ['/api/admin/authorization/grants', ['PUT', 'grants']],
 ]);
 const ADMIN_ASSETS = new Map([
@@ -666,6 +667,34 @@ async function revoke(env, email, now) {
   }
 }
 
+async function reactivate(env, email, now) {
+  try {
+    const results = await env.INTEREST_DB.batch([
+      statement(env, `
+        UPDATE release_accounts SET state = 'active', revoked_at = NULL
+        WHERE email = ? AND state = 'revoked' AND EXISTS (
+          SELECT 1 FROM interest_subscribers
+          WHERE email = ? AND release_decision = 'approved'
+        )
+      `, email, email),
+      statement(env, `
+        INSERT INTO release_access_events (email, action, version, created_at)
+        SELECT ?, 'reactivation', NULL, ? WHERE changes() = 1 AND EXISTS (
+          SELECT 1 FROM release_accounts a
+          JOIN interest_subscribers i ON i.email = a.email
+          WHERE a.email = ? AND a.state = 'active' AND a.revoked_at IS NULL
+            AND i.release_decision = 'approved'
+        )
+      `, email, now, email),
+    ]);
+    if (results.length !== 2
+      || results.some((result) => (result?.meta?.changes ?? 0) !== 1)) return dbError(409);
+    return privateJson(200, { ok: true, item: await loadAdminUser(env, email, now) });
+  } catch {
+    return dbError();
+  }
+}
+
 function exactApprovalBody(body) {
   return Object.keys(body).length === 1 && Object.hasOwn(body, 'email');
 }
@@ -685,6 +714,7 @@ const adminMutationHandlers = {
   reset: (env, email, body, dependencies, now) => resetPassword(env, email, dependencies, now),
   'sign-out': (env, email, body, dependencies, now) => signOutSessions(env, email, now),
   revoke: (env, email, body, dependencies, now) => revoke(env, email, now),
+  reactivate: (env, email, body, dependencies, now) => reactivate(env, email, now),
 };
 
 export async function handleAdminMutation(request, env, action, dependencies = {}) {

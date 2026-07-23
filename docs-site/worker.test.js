@@ -758,6 +758,54 @@ test('sign-out deletes sessions without changing identity or authorization', asy
   `).get('person@example.com').count, 1);
 });
 
+test('reactivation restores a revoked account without changing credentials or authorization', async (context) => {
+  const bindings = sqliteReleaseBindings();
+  context.after(() => bindings.db.close());
+  seedApprovedReleaseAccount(bindings.db, {
+    email: 'person@example.com',
+    includeLatest: 0,
+    version: 'v0.2.1',
+  });
+  const accountBefore = bindings.db.prepare(`
+    SELECT password_hash, password_salt, password_iterations,
+           must_change_password, password_expires_at
+    FROM release_accounts WHERE email = ?
+  `).get('person@example.com');
+  const revokeResponse = await workerModule.route(
+    adminJson('/api/admin/users/revoke', { email: 'person@example.com' }),
+    bindings.env,
+    allowOwner,
+    fixedDependencies,
+  );
+  assert.equal(revokeResponse.status, 200);
+
+  const response = await workerModule.route(
+    adminJson('/api/admin/users/reactivate', { email: 'person@example.com' }),
+    bindings.env,
+    allowOwner,
+    fixedDependencies,
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.item.state, 'active');
+  assert.equal(body.item.revoked_at, null);
+  assert.deepEqual(bindings.db.prepare(`
+    SELECT password_hash, password_salt, password_iterations,
+           must_change_password, password_expires_at
+    FROM release_accounts WHERE email = ?
+  `).get('person@example.com'), accountBefore);
+  assert.equal(bindings.db.prepare(`
+    SELECT include_latest FROM release_access_policies WHERE email = ?
+  `).get('person@example.com').include_latest, 0);
+  assert.equal(bindings.db.prepare(`
+    SELECT count(*) AS count FROM release_account_versions WHERE email = ?
+  `).get('person@example.com').count, 1);
+  assert.equal(bindings.db.prepare(`
+    SELECT count(*) AS count FROM release_access_events
+    WHERE email = ? AND action = 'reactivation'
+  `).get('person@example.com').count, 1);
+});
+
 test('admin authorization runs before mutation body parsing', async () => {
   const { env, calls } = adminBindings();
   const response = await workerModule.route(
