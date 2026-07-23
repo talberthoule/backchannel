@@ -5,7 +5,7 @@
 Prefer the shortest path? Download the latest desktop build from the
 [authenticated Backchannel portal](https://downloads.backchannel.page/).
 An approved Backchannel account is required; no GitHub identity or repository
-membership is required. See the public [v0.3.4 release notes](https://backchannel.page/releases/v0.3.4/)
+membership is required. See the public [v0.3.5 release notes](https://backchannel.page/releases/v0.3.5/)
 for the current asset inventory.
 
 - **Windows** -- `Backchannel-windows-x64.zip`; unzip and run `Backchannel.exe`.

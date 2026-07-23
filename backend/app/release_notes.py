@@ -10,10 +10,34 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.3.4"
+APP_VERSION = "0.3.5"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.3.5",
+        "date": "2026-07-23",
+        "title": "Clear provider errors, current OpenAI models, cost visibility",
+        "body": """This release makes provider failures actionable, refreshes the
+OpenAI lineup, and shows what calls cost.
+
+- Chat and Enhance Insights no longer fail with a bare server error
+  when a provider hits its quota or rejects a key. They now explain
+  what happened and how to fix it, and failed Enhance runs offer a
+  one-click "Retry failed batches".
+- The post-call summary banner now reads like "Final analysis pass:
+  3 new insights, 7 insights updated - 23 insights total for this
+  session" instead of unexplained counts.
+- Every confirmation and notice now uses the app's own themed dialogs
+  instead of raw browser popups.
+- The OpenAI model lineup is current, including the GPT-5.6 family,
+  and OpenAI transcription models (gpt-4o-transcribe and
+  gpt-4o-mini-transcribe) can be selected as the batch transcription
+  model once a working OpenAI API key is added.
+- Admin -> About gains a Models & Pricing table, and the post-call
+  Tokens tab shows an estimated cost per model and for the session,
+  at standard text rates as of July 23, 2026.""",
+    },
     {
         "version": "0.3.4",
         "date": "2026-07-23",
