@@ -103,13 +103,18 @@ class LauncherHelperTests(unittest.TestCase):
         query = Mock(side_effect=resolve)
         windll = Mock()
         windll.shlwapi.AssocQueryStringW = query
+        browser_path = Mock(name="browser_path")
+        browser_path.name = "chrome.exe"
+        browser_path.is_file.return_value = True
+        browser_path.__str__ = Mock(return_value=chrome)
         with (
             patch.object(launcher.ctypes, "windll", windll, create=True),
-            patch.object(Path, "is_file", return_value=True),
+            patch.object(launcher, "Path", return_value=browser_path) as path,
         ):
             self.assertEqual(launcher._windows_browser_path(), chrome)
 
         self.assertEqual(query.call_count, 2)
+        path.assert_called_once_with(chrome)
 
     def test_windows_browser_opener_uses_default_chrome_in_app_mode(self):
         opener = self._browser_opener()
