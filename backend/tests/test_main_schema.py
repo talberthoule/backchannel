@@ -1,4 +1,7 @@
+import importlib.util
 import unittest
+from pathlib import Path
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from app.main import _add_missing_columns, _cleanup_orphan_audio
@@ -64,6 +67,41 @@ class StartupSchemaPatchTests(unittest.IsolatedAsyncioTestCase):
                 "audio/session/segment_1_sys.wav",
                 "audio/session/segment_2_sys.wav",
             }
+        )
+
+
+class AlembicTrackPathRevisionTests(unittest.TestCase):
+    def test_revision_016_upgrade_and_downgrade(self):
+        path = (
+            Path(__file__).parents[1]
+            / "alembic"
+            / "versions"
+            / "016_add_call_segment_track_paths.py"
+        )
+        spec = importlib.util.spec_from_file_location("alembic_revision_016", path)
+        self.assertIsNotNone(spec)
+        revision = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(revision)
+        revision.op = MagicMock()
+
+        revision.upgrade()
+
+        added = revision.op.add_column.call_args_list
+        self.assertEqual(
+            ["mic_audio_path", "system_audio_path"],
+            [call.args[1].name for call in added],
+        )
+        self.assertEqual([500, 500], [call.args[1].type.length for call in added])
+        self.assertEqual([True, True], [call.args[1].nullable for call in added])
+
+        revision.downgrade()
+
+        self.assertEqual(
+            [
+                (("call_segments", "system_audio_path"), {}),
+                (("call_segments", "mic_audio_path"), {}),
+            ],
+            [(call.args, call.kwargs) for call in revision.op.drop_column.call_args_list],
         )
 
 
