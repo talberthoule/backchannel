@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -107,8 +108,15 @@ async def set_selected_diarizer(db: AsyncSession, selected_mode: str) -> Diarize
 
 async def record_sortformer_benchmark(db: AsyncSession, result: BenchmarkResult) -> None:
     await set_app_setting(db, SETTING_SORTFORMER_BENCHMARK_STATUS, result.status)
-    if result.real_time_factor is not None:
-        await set_app_setting(db, SETTING_SORTFORMER_BENCHMARK_RTF, str(result.real_time_factor))
+    # A non-finite RTF (inf marks an unmeasurable benchmark) must never be
+    # persisted: it is not JSON-serializable in diagnostics responses. Clear
+    # any stale value instead so the stored RTF matches the stored status.
+    rtf = result.real_time_factor
+    await set_app_setting(
+        db,
+        SETTING_SORTFORMER_BENCHMARK_RTF,
+        str(rtf) if math.isfinite(rtf) else "",
+    )
     await db.commit()
 
 
@@ -146,9 +154,12 @@ def _selection_reason(
 
 def _parse_float(value: str) -> float | None:
     try:
-        return float(value)
+        parsed = float(value)
     except (TypeError, ValueError):
         return None
+    # Databases written before non-finite RTFs were rejected may hold "inf";
+    # treat those like an absent value so diagnostics stay serializable.
+    return parsed if math.isfinite(parsed) else None
 
 
 def _parse_threshold(value: str) -> float:
