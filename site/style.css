@@ -559,7 +559,7 @@ figure.shot + figure.shot {
 /* A caption between two figures aligns with the section header and sits
    close to the figure it introduces, not the one it follows. */
 figure.shot + p.sub {
-  margin: 56px 0 24px;
+  margin: 56px 0 40px;
 }
 
 /* Click-to-enlarge: zoom affordance + native <dialog> lightbox.
@@ -783,6 +783,9 @@ section.center .fig-caption {
   font-size: clamp(28px, 3.5vw, 44px);
   line-height: 1;
   color: var(--muted);
+  /* Digits render above their box center (line box includes descender space),
+     so lift the arrow to the numerals' visual midpoint. */
+  transform: translateY(-0.14em);
 }
 
 .proof-line .desc {
