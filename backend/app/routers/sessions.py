@@ -1,4 +1,5 @@
 import uuid
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,6 +25,7 @@ from app.services.meeting_context import normalize_meeting_type
 from app.services.speaker_context_enhancer import run_speaker_context_enhancement
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("", response_model=SessionOut, status_code=201)
@@ -137,23 +139,57 @@ async def enhance_insights_after_speaker_changes(session_id: uuid.UUID, db: Asyn
         raise HTTPException(400, "Insight enhancement is available after the session is completed")
     if not session.speaker_context_dirty:
         return {
+            "status": "unchanged",
             "applied_operations": 0,
             "enhanced_insights": 0,
             "speaker_context_dirty": False,
             "speaker_context_enhanced_at": session.speaker_context_enhanced_at,
             "briefing_updated": False,
+            "briefing_status": None,
+            "error": None,
         }
     try:
         result = await run_speaker_context_enhancement(session_id)
-        result["briefing_updated"] = False
-        if not result["speaker_context_dirty"]:
-            synthesis = await briefing_synthesis.run_session_synthesis(session_id, mode="post_call")
-            result["briefing_updated"] = bool(
-                synthesis and synthesis.status in {"completed", "partial"}
-            )
-        return result
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            502,
+            "Insight revalidation failed. Speaker changes remain pending; retry Enhance Insights.",
+        ) from exc
+
+    try:
+        synthesis = await briefing_synthesis.run_session_synthesis(session_id, mode="post_call")
+        briefing_status = synthesis.status if synthesis else "error"
+    except Exception:
+        logger.exception("[sessions] Briefing revalidation failed")
+        briefing_status = "error"
+
+    if briefing_status == "completed":
+        now = datetime.now(timezone.utc)
+        session.speaker_context_dirty = False
+        session.speaker_context_enhanced_at = now
+        await db.commit()
+        return {
+            **result,
+            "status": "completed",
+            "speaker_context_dirty": False,
+            "speaker_context_enhanced_at": now,
+            "briefing_updated": True,
+            "briefing_status": briefing_status,
+            "error": None,
+        }
+
+    session.speaker_context_dirty = True
+    return {
+        **result,
+        "status": "partial",
+        "speaker_context_dirty": True,
+        "speaker_context_enhanced_at": session.speaker_context_enhanced_at,
+        "briefing_updated": False,
+        "briefing_status": briefing_status,
+        "error": "Briefing revalidation did not complete. Retry Enhance Insights.",
+    }
 
 
 # --- Per-session agent overrides ---

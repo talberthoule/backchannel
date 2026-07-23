@@ -107,11 +107,14 @@ class QuestionOut(BaseModel):
 
 
 class EnhanceInsightsOut(BaseModel):
+    status: Literal["unchanged", "completed", "partial"]
     applied_operations: int
     enhanced_insights: int
     speaker_context_dirty: bool
     speaker_context_enhanced_at: datetime | None = None
     briefing_updated: bool
+    briefing_status: str | None = None
+    error: str | None = None
 
 
 class SynthesisSectionItem(BaseModel):

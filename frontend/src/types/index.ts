@@ -117,11 +117,14 @@ export interface Question {
 }
 
 export interface EnhanceInsightsResult {
+  status: "unchanged" | "completed" | "partial";
   applied_operations: number;
   enhanced_insights: number;
   speaker_context_dirty: boolean;
   speaker_context_enhanced_at: string | null;
   briefing_updated: boolean;
+  briefing_status: string | null;
+  error: string | null;
 }
 
 export interface Offering {

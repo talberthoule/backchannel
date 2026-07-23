@@ -1,6 +1,27 @@
 import { useState, useRef, useEffect } from "react";
-import type { Session, Speaker } from "../types";
+import type { EnhanceInsightsResult, Session, Speaker } from "../types";
 import * as api from "../services/api";
+
+export function enhancementOutcome(result: EnhanceInsightsResult): {
+  tone: "success" | "warning";
+  message: string;
+} {
+  if (
+    result.status === "completed"
+    && result.briefing_updated
+    && result.briefing_status === "completed"
+    && !result.speaker_context_dirty
+  ) {
+    return {
+      tone: "success",
+      message: `Revalidated the Briefing and all Insights; ${result.enhanced_insights} insight${result.enhanced_insights === 1 ? "" : "s"} changed.`,
+    };
+  }
+  return {
+    tone: "warning",
+    message: result.error || "Revalidation did not complete. Retry Enhance Insights.",
+  };
+}
 
 interface SpeakerNameMapperProps {
   session: Session;
@@ -25,6 +46,7 @@ export default function SpeakerNameMapper({
 }: SpeakerNameMapperProps) {
   const [enhancing, setEnhancing] = useState(false);
   const [enhancementMessage, setEnhancementMessage] = useState("");
+  const [enhancementWarning, setEnhancementWarning] = useState("");
   const [enhancementError, setEnhancementError] = useState("");
 
   if (speakers.length === 0) return null;
@@ -35,6 +57,7 @@ export default function SpeakerNameMapper({
       return;
     }
     setEnhancementMessage("");
+    setEnhancementWarning("");
     setEnhancementError("");
     setEnhancing(true);
     try {
@@ -45,11 +68,9 @@ export default function SpeakerNameMapper({
         onRefresh(),
         onRefreshSynthesis(),
       ]);
-      setEnhancementMessage(
-        result.briefing_updated
-          ? `Revalidated the Briefing and all Insights; ${result.enhanced_insights} insight${result.enhanced_insights === 1 ? "" : "s"} changed.`
-          : `Revalidated all Insights; ${result.enhanced_insights} changed, but the Briefing was not regenerated.`,
-      );
+      const outcome = enhancementOutcome(result);
+      if (outcome.tone === "success") setEnhancementMessage(outcome.message);
+      else setEnhancementWarning(outcome.message);
     } catch (error) {
       setEnhancementError(error instanceof Error ? error.message : "Enhancement failed. Try again.");
     } finally {
@@ -103,6 +124,11 @@ export default function SpeakerNameMapper({
       {enhancementMessage && (
         <p className="mb-3 rounded-md bg-brand-teal/10 px-3 py-2 font-body text-xs text-brand-teal" role="status">
           {enhancementMessage}
+        </p>
+      )}
+      {enhancementWarning && (
+        <p className="mb-3 rounded-md bg-brand-amber/10 px-3 py-2 font-body text-xs text-brand-amber" role="alert">
+          {enhancementWarning}
         </p>
       )}
       {enhancementError && (
