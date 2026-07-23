@@ -1,4 +1,4 @@
-"""Dual-lens briefing synthesis for live and post-call views."""
+"""Shared synthesis storage plus the post-call dual-lens briefing pipeline."""
 
 from __future__ import annotations
 
