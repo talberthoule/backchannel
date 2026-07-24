@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Where Backchannel Fits Alongside Gong | Backchannel</title>
+  <meta name="description" content="Gong is the post-call revenue record for your team. Backchannel is the live seller-side layer on your own machine. How the two fit together, honestly." />
+  <link rel="canonical" href="https://backchannel.page/gong-and-backchannel/" />
+  <meta property="og:title" content="Where Backchannel Fits Alongside Gong | Backchannel" />
+  <meta property="og:description" content="Gong is the post-call revenue record for your team. Backchannel is the live seller-side layer on your own machine. How the two fit together, honestly." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Backchannel" />
+  <meta property="og:url" content="https://backchannel.page/gong-and-backchannel/" />
+  <meta property="og:image" content="https://backchannel.page/assets/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Backchannel: live meeting transcription and real-time insight agents, self-hosted." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <link rel="stylesheet" href="../style.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebPage",
+        "url": "https://backchannel.page/gong-and-backchannel/",
+        "name": "Where Backchannel Fits Alongside Gong | Backchannel",
+        "description": "Gong is the post-call revenue record for your team. Backchannel is the live seller-side layer on your own machine. How the two fit together, honestly.",
+        "dateModified": "2026-07-24",
+        "isPartOf": {
+          "@id": "https://backchannel.page/#website"
+        },
+        "about": {
+          "@id": "https://backchannel.page/#software"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Backchannel",
+            "item": "https://backchannel.page/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Backchannel and Gong"
+          }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does Gong give real-time coaching during a call?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Gong's own coaching documentation describes reviewing recorded calls: feedback requests, comments and tagging, call sharing, call scoring, and AI Call Reviewer. The only live-call feature Gong documents is a manager listening in on or joining a call marked ON AIR, capped at two listeners. Gong tells you about the objection after the call. Backchannel's objection handler runs every 10 seconds over the last 90 seconds of transcript and writes a response you could say in the next ten seconds."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is Backchannel a replacement for Gong?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No, and we will not pretend otherwise. Backchannel has no CRM sync, no pipeline or forecast, no scorecards, no call library, no team analytics, and no user accounts or authentication of any kind. If your revenue team runs on Gong, keep running on Gong. Backchannel is the live layer on one seller's machine underneath it."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can Backchannel recordings end up in Gong?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Architecturally yes, but nothing ships today. Backchannel writes each call segment to a WAV file on your own disk and serves it over its REST API, and Gong's public API has an add-new-call endpoint that accepts WAV, MP3, MP4, MKV, and FLAC files up to 1.5GB. Connecting the two is custom work you would build yourself. There is no Gong integration in Backchannel."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What does Backchannel cost next to Gong?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Gong does not publish prices; its pricing page says licenses are priced per user with a platform fee based on the number of users supported. Procurement data from Vendr puts the median Gong contract at $54,900 a year across 1,126 purchases, as of July 2026. Backchannel is MIT-licensed software that costs nothing: you pay for your own hardware and any Gemini or OpenAI API usage."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <img src="/assets/favicon.svg" alt="" />
+      backchannel
+    </a>
+    <nav class="site-nav">
+      <a href="/#features">Features</a>
+      <a href="/#quickstart">Quickstart</a>
+      <a href="/docs/">Docs</a>
+      <a class="btn primary nav-cta" href="https://github.com/talberthoule/backchannel">Star on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="wrap">
+      <h1>Where Backchannel fits <span class="accent">alongside Gong</span></h1>
+      <p class="lede">
+        This is not a "Gong alternative" page. Gong is the revenue record your
+        team runs on after the call, and it is very good at that. Backchannel
+        is a different layer: the live, seller-side assistant that runs on your
+        own machine while the call is still happening, with nothing joining the
+        meeting. If you already have Gong, this page is about what sits
+        underneath it.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+      <p class="quickstart-note">Not a Gong replacement &middot; no bot joins the call &middot; runs on hardware you control &middot; MIT licensed</p>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">Two different jobs</span>
+      <h2>Gong is built for after the call. Backchannel is built for during it.</h2>
+      <p class="sub">This is a difference in design intent, not a defect in either product.</p>
+      <div class="grid">
+        <div class="card">
+          <h3>Gong owns the record</h3>
+          <p>Gong's coaching documentation describes reviewing recorded calls: feedback requests, comments, call sharing, call scoring, and AI Call Reviewer. Deals, pipeline, forecast, and the call library all live there. More than 5,000 companies run on it.</p>
+        </div>
+        <div class="card">
+          <h3>The live surface is thin by design</h3>
+          <p>The one live-call feature Gong documents is a manager listening in on or joining a call marked ON AIR, capped at two listeners. That is monitoring for a manager, not guidance for the person talking.</p>
+        </div>
+        <div class="card">
+          <h3>Backchannel owns the next sentence</h3>
+          <p>An objection handler cycles every 10 seconds over the last 90 seconds of transcript and returns a response you could say in the next ten seconds, plus the underlying concern and the strategic angle behind it.</p>
+        </div>
+        <div class="card">
+          <h3>They do not compete for the same budget</h3>
+          <p>Gong is an annual per-user contract with a platform fee, deployed org-wide by an admin. Backchannel is MIT-licensed software one person can run on a laptop. Adopting one does not displace the other.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">The honest version</span>
+      <h2>What Backchannel is not</h2>
+      <div class="prose">
+        <p>
+          Lead with the concession, because it is the whole reason this is an
+          ecosystem page. <strong>Backchannel is not a revenue intelligence
+          platform and cannot replace one.</strong> There is no CRM sync, no
+          deal or pipeline object, no forecasting, no scorecards, no call
+          library, and no team analytics. There are no user accounts,
+          roles, or authentication of any kind -- the application has no user
+          model at all, so there is no manager view, no permissions, and no way
+          to roll a team up. If those are the things you buy Gong for, Gong
+          remains the answer and nothing here changes that.
+        </p>
+        <p>
+          The second concession matters just as much. Backchannel ships a
+          Privacy First mode that keeps everything on your machine, but the
+          local transcription models cannot do text analysis -- so turning it on
+          gives you fully local transcription and speaker diarization and turns
+          <em>off</em> every live agent, including the objection handler. The
+          realistic middle setting is local transcription with the interim
+          audio gateway disabled: your audio never leaves the machine, while
+          transcript <em>text</em> goes to Gemini or OpenAI on your own API key.
+          That is meaningfully different from sending all your audio to a
+          vendor, and it is not the same thing as "nothing leaves."
+        </p>
+        <p>
+          And to be clear about Gong: their published security posture is
+          genuinely strong. Gong lets new customers choose US or EU data
+          centers, publishes SOC 2 Type II along with ISO 27001, 27017, 27018,
+          27701, and ISO 42001 for AI management, states that your data is never
+          used to train generative models, and commits to irreversible deletion
+          within 30 days of a contract ending. We are not going to pretend
+          otherwise to sell you something. The difference is architectural and
+          it is about who the tool serves, not about anyone being careless.
+        </p>
+      </div>
+      <div class="cta-row" style="justify-content: flex-start; margin-top: 24px;">
+        <a class="btn primary" href="/#quickstart">Self-host in minutes</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">Side by side</span>
+      <h2>Gong and Backchannel</h2>
+      <p class="sub">Pricing and plan details are as of July 2026 and may change; Gong does not publish prices, so check with Gong for current numbers.</p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Dimension</th><th>Gong</th><th>Backchannel</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>What it is for</td>
+              <td>Team revenue intelligence: deals, pipeline, forecast, coaching, call library</td>
+              <td>One seller's live assistant during the conversation</td>
+            </tr>
+            <tr>
+              <td>Capture</td>
+              <td>A bot joins as "a virtual participant" on all supported web conferencing platforms; native recording with no extra participant is Zoom only</td>
+              <td>Browser capture of mic plus tab/system audio; nothing joins the call</td>
+            </tr>
+            <tr>
+              <td>Where audio is processed</td>
+              <td>Gong's cloud on AWS, with a US or EU data centre choice</td>
+              <td>Your machine; diarization always local, transcription local or via your own API key</td>
+            </tr>
+            <tr>
+              <td>Live in-call help for the rep</td>
+              <td>Not documented; the live feature is a manager listening in or joining an ON AIR call, max two listeners</td>
+              <td>Objection handler every 10 seconds over the last 90 seconds, plus four more live agents</td>
+            </tr>
+            <tr>
+              <td>Post-call analysis</td>
+              <td>Extensive: scorecards, AI Call Reviewer, Gong Assistant, deal and account boards</td>
+              <td>A three-agent briefing pass and exports; no scorecards, no call library</td>
+            </tr>
+            <tr>
+              <td>Speaker diarization</td>
+              <td>Yes, across 70+ languages</td>
+              <td>Yes -- local Silero VAD plus WeSpeaker ResNet152 embeddings</td>
+            </tr>
+            <tr>
+              <td>CRM, pipeline, forecast</td>
+              <td>Yes, deeply integrated</td>
+              <td>None</td>
+            </tr>
+            <tr>
+              <td>Users, roles, permissions</td>
+              <td>Seat-based with admin controls; unassigned members are free Collaborators</td>
+              <td>None at all -- there is no user model in the application</td>
+            </tr>
+            <tr>
+              <td>Pricing</td>
+              <td>Not published; "licenses are priced per user" plus a platform fee based on users supported. Vendr puts the median contract at $54,900/yr across 1,126 purchases</td>
+              <td>$0; hardware plus optional LLM API usage</td>
+            </tr>
+            <tr>
+              <td>License and hosting</td>
+              <td>Closed source, cloud SaaS</td>
+              <td>MIT open source, self-hosted with Docker Compose or a desktop build</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>The differences that actually matter</h2>
+      <div class="prose">
+        <h3>Nine agents, five of them live</h3>
+        <p>
+          Backchannel seeds nine agents. An audio gateway streams interim
+          transcription. Five live insight agents read the transcript as it
+          grows: a consolidated analyst on a 40-second cycle, the objection
+          handler every 10 seconds over the last 90 seconds, a synthesizer with
+          a 75-second cooldown that reconciles and answers open items, an
+          opportunity specialist on a 55-second cooldown that matches openings
+          against your own catalog, and strategic signals every 45 seconds
+          producing the live signal, risk, next question, opportunity, and
+          action cards. A further three-agent briefing pass runs after the call
+          to settle the record. Each agent's
+          <a href="/docs/agents/">model, prompt, and trigger</a> is
+          configurable, and you route them to Gemini or OpenAI on your own keys.
+        </p>
+        <h3>Real-time objection help is no longer novel. The mechanism still is.</h3>
+        <p>
+          As of July 2026 you can buy live in-call objection guidance from
+          several vendors. Zoom took Sales Assist to general availability on 22
+          July 2026 inside Zoom Revenue Accelerator, surfacing "competitive
+          intelligence, objection guidance, discovery prompts, battlecards, and
+          configurable framework capture in real time" at $66 per user per month
+          for Essentials and $99.99 for Premium, billed annually. That is a real
+          product and we are not going to claim we invented the category. The
+          difference is how the help is produced: Zoom's documentation has an
+          admin configure the talking points for each topic ahead of time.
+          Backchannel writes the response to the objection that was actually
+          raised, from the last 90 seconds of what was actually said, and
+          returns both an immediate reply and the underlying concern behind it.
+          The honest trade is that pre-written guidance is deterministic and
+          enablement-approved, and a generated response is neither.
+        </p>
+        <h3>Nothing to admit, nothing to eject</h3>
+        <p>
+          Gong's bot recording adds a virtual participant to the meeting, and
+          with a waiting room enabled the host has to admit it. Bot-free capture
+          exists, but only through native Zoom recording. Backchannel captures
+          from a browser tab on your side of the call, so there is nothing in
+          the participant list on Zoom, Meet, or Teams, nothing to admit, and
+          nothing to remove if a prospect changes their mind mid-call.
+        </p>
+        <h3>Your recordings do not have to be a dead end</h3>
+        <p>
+          Backchannel appends each call segment to a WAV file on your own disk
+          and serves it back over its REST API. Gong's public API has an
+          add-new-call endpoint that accepts WAV, MP3, MP4, MKV, and FLAC files
+          up to 1.5GB, intended for recordings from systems Gong has no
+          pre-built integration with. So a pipeline from one to the other is
+          architecturally straightforward. <strong>To be completely clear: no
+          such integration ships in Backchannel today.</strong> Building it is
+          your work, not a feature you can turn on.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Who should use which</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Gong is the right tool when you...</h3>
+          <p>Run a revenue team and need CRM hygiene, pipeline and forecast, scorecards, a searchable call library, talk-time and team analytics, coaching workflow, 70+ languages, and compliance attestations procurement recognizes. Nothing on this page is an argument against any of that.</p>
+        </div>
+        <div class="card">
+          <h3>Add Backchannel underneath when you...</h3>
+          <p>Want help while you are still talking rather than a review afterwards, take calls where a recording bot is a liability, want the audio to stay on hardware you control, or are one person who cannot buy an org-wide platform contract to get a little help on a hard call.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>What running both looks like</h2>
+      <div class="prose">
+        <p>
+          Nothing about Backchannel touches your Gong deployment. Gong keeps
+          recording the way it already does, through its bot or native Zoom
+          recording, and your team's record stays intact. Backchannel runs on
+          your own machine and captures from your browser, so the two do not
+          contend for the meeting or for the audio device. Setup is a git clone
+          and <code>docker compose up --build</code> plus a Gemini API key, or a
+          desktop build, or a local ONNX Whisper or Parakeet model if you want
+          transcription to stay offline. The
+          <a href="/docs/quickstart/">quickstart</a> is upfront about the
+          friction: the first start builds images and downloads models, so plan
+          for a few minutes rather than seconds.
+        </p>
+        <p>
+          Past conversations can come in as transcripts (.txt, .md, .docx) or
+          audio (.mp3, .m4a, .wav, .ogg, .flac) and be analyzed after the fact.
+          There is no automated Gong export migration, and there is no Gong
+          connector -- see the note above about what is and is not shipped.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Common questions</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Does Gong give real-time coaching during a call?</h3>
+          <p>Gong's own coaching documentation describes reviewing recorded calls: feedback requests, comments and tagging, call sharing, call scoring, and AI Call Reviewer. The only live-call feature Gong documents is a manager listening in on or joining a call marked ON AIR, capped at two listeners. Gong tells you about the objection after the call. Backchannel's objection handler runs every 10 seconds over the last 90 seconds of transcript and writes a response you could say in the next ten seconds.</p>
+        </div>
+        <div class="card">
+          <h3>Is Backchannel a replacement for Gong?</h3>
+          <p>No, and we will not pretend otherwise. Backchannel has no CRM sync, no pipeline or forecast, no scorecards, no call library, no team analytics, and no user accounts or authentication of any kind. If your revenue team runs on Gong, keep running on Gong. Backchannel is the live layer on one seller's machine underneath it.</p>
+        </div>
+        <div class="card">
+          <h3>Can Backchannel recordings end up in Gong?</h3>
+          <p>Architecturally yes, but nothing ships today. Backchannel writes each call segment to a WAV file on your own disk and serves it over its REST API, and Gong's public API has an add-new-call endpoint that accepts WAV, MP3, MP4, MKV, and FLAC files up to 1.5GB. Connecting the two is custom work you would build yourself. There is no Gong integration in Backchannel.</p>
+        </div>
+        <div class="card">
+          <h3>What does Backchannel cost next to Gong?</h3>
+          <p>Gong does not publish prices; its pricing page says licenses are priced per user with a platform fee based on the number of users supported. Procurement data from Vendr puts the median Gong contract at $54,900 a year across 1,126 purchases, as of July 2026. Backchannel is MIT-licensed software that costs nothing: you pay for your own hardware and any Gemini or OpenAI API usage.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final">
+    <div class="wrap">
+      <h2>The live layer, on your own hardware</h2>
+      <p class="sub">Keep your revenue platform. Add the assistant that helps while you are still talking.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Other comparisons</h2>
+            <div class="doc-list">
+        <a class="doc" href="/vs-clari-copilot/">
+          <strong>Backchannel vs Clari Copilot</strong>
+          <span>Generated responses vs pre-written battlecards</span>
+        </a>
+        <a class="doc" href="/teams-premium-alternative/">
+          <strong>Teams Premium alternative</strong>
+          <span>One assistant for every meeting platform, self-hosted</span>
+        </a>
+        <a class="doc" href="/open-source-meeting-assistants/">
+          <strong>Open-source meeting assistants</strong>
+          <span>The self-hosted landscape, compared honestly</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site">
+    <div class="wrap footer-compare">
+    <span>Compare:</span>
+    <a href="/open-source-meeting-assistants/">Open-source meeting assistants</a>
+    <a href="/otter-alternative/">Open-source Otter.ai alternative</a>
+    <a href="/fireflies-alternative/">Fireflies.ai alternative without the bot</a>
+    <a href="/granola-alternative/">Open-source Granola alternative</a>
+    <a href="/fathom-alternative/">Fathom alternative</a>
+    <a href="/gong-and-backchannel/">Gong and Backchannel</a>
+    <a href="/teams-premium-alternative/">Teams Premium alternative</a>
+  </div>
+  <div class="wrap">
+    <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
+    <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

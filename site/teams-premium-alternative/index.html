@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Teams Premium Alternative: Free, Self-Hosted Meeting AI | Backchannel</title>
+  <meta name="description" content="An open-source Microsoft Teams Premium and Copilot alternative: live meeting assistance across Teams, Zoom, and Meet, self-hosted, with no per-seat license. MIT licensed." />
+  <link rel="canonical" href="https://backchannel.page/teams-premium-alternative/" />
+  <meta property="og:title" content="Teams Premium Alternative: Free, Self-Hosted Meeting AI | Backchannel" />
+  <meta property="og:description" content="An open-source Microsoft Teams Premium and Copilot alternative: live meeting assistance across Teams, Zoom, and Meet, self-hosted, with no per-seat license. MIT licensed." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Backchannel" />
+  <meta property="og:url" content="https://backchannel.page/teams-premium-alternative/" />
+  <meta property="og:image" content="https://backchannel.page/assets/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Backchannel: live meeting transcription and real-time insight agents, self-hosted." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <link rel="stylesheet" href="../style.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebPage",
+        "url": "https://backchannel.page/teams-premium-alternative/",
+        "name": "Teams Premium Alternative: Free, Self-Hosted Meeting AI | Backchannel",
+        "description": "An open-source Microsoft Teams Premium and Copilot alternative: live meeting assistance across Teams, Zoom, and Meet, self-hosted, with no per-seat license. MIT licensed.",
+        "dateModified": "2026-07-24",
+        "isPartOf": {
+          "@id": "https://backchannel.page/#website"
+        },
+        "about": {
+          "@id": "https://backchannel.page/#software"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Backchannel",
+            "item": "https://backchannel.page/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Teams Premium alternative"
+          }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Do I need Teams Premium or Microsoft 365 Copilot to get AI meeting recap in Teams?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. As of July 2026, Microsoft's licensing documentation puts Intelligent Meeting Recap, AI-generated notes and tasks, recap for meetings you missed, speaker timeline markers, and multilingual meeting support in Teams Premium, not in base Teams. Those recap experiences are also available with a Microsoft 365 Copilot license. Base Teams gets transcripts and recordings, not AI recap."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "If my company already pays for Teams Premium or Copilot, is there any reason to add Backchannel?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Often no, and we would rather say so. If you have the license and you want post-call recap of Teams meetings, Microsoft already does that with better speaker accuracy, no setup, and your compliance team's approval. Backchannel is worth adding only for three specific needs: one assistant across every meeting app instead of one, tactical prompts pushed to you during the call rather than a summary after it, or audio and transcripts that never leave hardware you control."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Backchannel work with Zoom, Google Meet, and Teams?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes, with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration. It works the same way on a platform that has no AI features at all, on a recorded call playing in a browser tab, and on a phone call on speaker."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What about Zoom AI Companion and Google Meet's take notes for me?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Both are genuinely bundled and both now reach past their own platform, so we will not pretend cross-platform is ours alone. Zoom's assistant can join Google Meet and Microsoft Teams meetings as a visible participant that shows Zoom branding and a Transcribing status. Google's take notes for me covers in-person and on-the-go meetings and, per Google's Cloud Next announcement in April 2026, meetings hosted on another provider like Zoom or Teams. What neither does is push tactical suggestions at you during the call, and neither keeps the audio on your own hardware."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What do Teams Premium and Microsoft 365 Copilot do better than Backchannel?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Several things, and they matter. Microsoft knows exactly who is speaking because it owns the participant list, while Backchannel infers speakers acoustically and will sometimes be wrong. Microsoft's recap covers roughly 25 languages; Backchannel documents none and is English-first in practice. Microsoft can recap a meeting you never attended, which device-audio capture cannot do. And Microsoft brings SSO, DLP, eDiscovery, retention, and sensitivity labels; Backchannel has no user-authentication boundary at all."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What does running Backchannel actually involve?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Either download a desktop build for Windows, macOS, or Linux, or run docker compose up --build and open the browser app. You add a Gemini or OpenAI API key, or pick a local ONNX Whisper or Parakeet model to transcribe fully offline. Speaker diarization always runs locally. There are no seats to buy, no minutes to meter, and no tenant to configure, because the whole thing runs on your own machine."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <img src="/assets/favicon.svg" alt="" />
+      backchannel
+    </a>
+    <nav class="site-nav">
+      <a href="/#features">Features</a>
+      <a href="/#quickstart">Quickstart</a>
+      <a href="/docs/">Docs</a>
+      <a class="btn primary nav-cta" href="https://github.com/talberthoule/backchannel">Star on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="wrap">
+      <h1>An open-source <span class="accent">Teams Premium alternative</span></h1>
+      <p class="lede">
+        Microsoft's AI meeting recap is not in base Teams. As of July 2026 it
+        needs a Teams Premium add-on at $10.00 per user per month paid yearly,
+        or a Microsoft 365 Copilot license at $30.00 per user per month paid
+        yearly. Most people who live in Teams have neither. Backchannel is
+        MIT-licensed, runs on your own hardware, works on every meeting app
+        rather than one, and pushes tactical suggestions while the call is
+        still happening.
+      </p>
+      <p class="lede">
+        The honest version first: if your employer already bought you Teams
+        Premium or Copilot, you already have working post-call recap at no
+        extra cost, with better speaker accuracy than we can offer and with
+        your security team's sign-off. Backchannel is an addition for three
+        specific needs, not a replacement. If none of those three apply to
+        you, stay where you are.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+      <p class="quickstart-note">MIT licensed &middot; no per-seat license &middot; no bot joins the call &middot; pricing and licensing as of July 2026</p>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">Why switch</span>
+      <h2>Why people look for a Teams Premium alternative</h2>
+      <p class="sub">Microsoft builds good meeting AI. The reasons people go looking elsewhere are about licensing and scope, not quality.</p>
+      <div class="grid">
+        <div class="card">
+          <h3>Recap is behind a paywall</h3>
+          <p>Microsoft's own licensing documentation puts Intelligent Meeting Recap, AI-generated notes and tasks, recap for meetings you missed, and speaker timeline markers in Teams Premium, not base Teams. As of July 2026 that is $10.00 per user per month paid yearly, or a Microsoft 365 Copilot license instead.</p>
+        </div>
+        <div class="card">
+          <h3>Almost nobody actually has the license</h3>
+          <p>Microsoft reported more than 20 million paid Microsoft 365 Copilot seats in its FY26 Q3 results in April 2026, against roughly 450 million Microsoft 365 commercial seats reported that January. That is under 5 percent. For everyone else, the choice is not Backchannel versus Copilot -- it is Backchannel versus nothing.</p>
+        </div>
+        <div class="card">
+          <h3>It only covers Teams meetings</h3>
+          <p>Teams recap works on Teams calls. If you also sit in customers' Zoom rooms, partners' Google Meet calls, a Webex bridge, or a phone call on speaker, your employer's Teams investment covers none of it. One assistant per platform is three assistants.</p>
+        </div>
+        <div class="card">
+          <h3>IT can withhold it or switch it off</h3>
+          <p>The license is the first gate and the biggest one. Beyond it, many Teams Premium features need admin configuration before anyone can use them, meeting AI can be locked off at tenant level, and from July 2026 organizers and presenters can disable Copilot, Facilitator, and recap during a live meeting.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">The alternative</span>
+      <h2>Backchannel: your own meeting assistant, on your own hardware</h2>
+      <div class="prose">
+        <p>
+          Backchannel is an open-source AI meeting assistant you run yourself,
+          as a desktop build for Windows, macOS, and Linux or with Docker
+          Compose. It captures your microphone and, optionally, tab or system
+          audio directly in the browser -- no bot joins the meeting, so it
+          works with Teams, Zoom, Google Meet, Webex, or any app at all.
+          Voice activity detection and
+          <a href="/docs/audio-pipeline/">speaker diarization run locally</a>,
+          building a live speaker-attributed transcript as you talk.
+        </p>
+        <p>
+          While the call is still happening, a crew of
+          <a href="/docs/agents/">nine seeded agents</a> works on that
+          transcript. An audio gateway produces interim transcription. Five
+          live insight agents run on their own schedules: a consolidated
+          analyst every 40 seconds for questions, observations, opportunities,
+          and action items; an objection handler every 10 seconds over only the
+          last 90 seconds of speech, pairing an immediate suggested response
+          with the underlying concern; a synthesizer that reconciles and
+          elevates saved insights; an opportunity specialist that matches
+          opportunities against your own offerings catalog; and a strategic
+          signals agent every 45 seconds producing Signal, Risk, Next Question,
+          Opportunity, and Action Cue cards. When the call ends, a three-agent
+          briefing pass drafts, cross-checks, and settles the written record.
+          Every agent's model, prompt, and trigger is editable, and any of them
+          can be turned off per session.
+        </p>
+        <p>
+          The trade is real. You give up Microsoft's exact speaker identity,
+          its roughly 25-language recap, its ability to summarize meetings you
+          never attended, and the whole enterprise compliance apparatus. In
+          exchange, recordings and transcripts stay on your disk, nothing is
+          metered or licensed per seat, the same tool covers every platform you
+          join, and the entire pipeline is MIT-licensed and auditable.
+        </p>
+      </div>
+      <div class="cta-row" style="justify-content: flex-start; margin-top: 24px;">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">Side by side</span>
+      <h2>The bundled assistants vs Backchannel</h2>
+      <p class="sub">Licensing, pricing, and feature details are as of July 2026 and change often -- Microsoft's especially. Check each vendor's own pricing and admin documentation for current terms.</p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Dimension</th><th>Teams Premium / M365 Copilot</th><th>Zoom AI Companion</th><th>Google Meet Gemini</th><th>Backchannel</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Cost of the meeting AI</td>
+              <td>Teams Premium $10.00/user/mo paid yearly, or M365 Copilot $30.00/user/mo paid yearly ($31.50 monthly); Copilot Business for smaller orgs $18.00/user/mo paid yearly, regular price $21.00</td>
+              <td>Included on paid Zoom Workplace plans; metered on the free tier</td>
+              <td>Included with Gemini in Workspace Business Standard and above, or a Google AI Pro or Ultra plan</td>
+              <td>$0; your hardware plus any LLM API usage you choose</td>
+            </tr>
+            <tr>
+              <td>Already included in what users have</td>
+              <td>Usually not -- over 20 million Copilot seats against roughly 450 million M365 commercial seats</td>
+              <td>Yes, on paid seats</td>
+              <td>Yes, on Business Standard and Business Plus</td>
+              <td>Not applicable -- you run it yourself</td>
+            </tr>
+            <tr>
+              <td>Works outside its own platform</td>
+              <td>No -- Teams meetings only</td>
+              <td>Yes; joins Google Meet and Microsoft Teams meetings as a visible participant showing Zoom branding and a "Transcribing" status</td>
+              <td>Yes; covers in-person and on-the-go meetings, and per Google's April 2026 announcement, meetings "hosted on another provider like Zoom or Teams"</td>
+              <td>Yes; browser capture of mic plus tab/system audio works with any app, including ones with no AI features at all</td>
+            </tr>
+            <tr>
+              <td>Anything joins the meeting</td>
+              <td>No, it is native to Teams</td>
+              <td>Yes, for third-party meetings</td>
+              <td>Not stated by Google</td>
+              <td>No</td>
+            </tr>
+            <tr>
+              <td>Live transcript during the call</td>
+              <td>Yes</td>
+              <td>Yes</td>
+              <td>Yes</td>
+              <td>Yes -- interim gateway text plus a diarized transcript of record</td>
+            </tr>
+            <tr>
+              <td>Post-call recap</td>
+              <td>Yes, on licensed tiers</td>
+              <td>Yes</td>
+              <td>Yes, a Google Doc generated shortly after the meeting ends</td>
+              <td>Yes -- three-agent briefing pass, plus TXT, XLSX, and HTML exports</td>
+            </tr>
+            <tr>
+              <td>Ask questions mid-meeting</td>
+              <td>Yes, from a Copilot side pane you prompt</td>
+              <td>Yes, from preset or custom questions, once the host starts it</td>
+              <td>Yes, Ask Gemini starts automatically after two participants join</td>
+              <td>Yes, plus cross-session chat over your saved transcripts and briefings</td>
+            </tr>
+            <tr>
+              <td>Unprompted tactical suggestions during the call</td>
+              <td>No sales-style assistance. Facilitator can post explanations for unanswered questions, but needs a Copilot license, works only in scheduled meetings, and is off by default</td>
+              <td>No, in the bundled product -- it answers questions you ask</td>
+              <td>No, it answers questions you ask</td>
+              <td>Yes, this is the core product: objection responses, opportunity flags, questions worth asking, and live signal cards pushed to you</td>
+            </tr>
+            <tr>
+              <td>Speaker attribution</td>
+              <td>Exact -- from the participant list</td>
+              <td>Exact, in Zoom meetings</td>
+              <td>Exact, in Meet; reviewers report labels are vague and not controllable</td>
+              <td>Inferred acoustically with local Silero VAD and WeSpeaker embeddings; sometimes wrong</td>
+            </tr>
+            <tr>
+              <td>Where audio and transcripts are processed</td>
+              <td>Microsoft tenant cloud</td>
+              <td>Zoom cloud; regional processing options available</td>
+              <td>Google cloud; admins can pin covered data to the US or EU</td>
+              <td>Your hardware. Diarization is always local; transcription can run fully offline with local ONNX models</td>
+            </tr>
+            <tr>
+              <td>Admin can withhold or disable it</td>
+              <td>Yes -- license, tenant policy, per-feature admin config, and a July 2026 in-meeting toggle</td>
+              <td>Yes -- account, group, or user level, and lockable</td>
+              <td>Yes -- and it ships OFF by default on Enterprise Standard, Enterprise Plus, and Frontline Plus</td>
+              <td>Not applicable -- it is your instance</td>
+            </tr>
+            <tr>
+              <td>Documented language support</td>
+              <td>Roughly 25 languages for recap; live translated captions in 40</td>
+              <td>Broad</td>
+              <td>Eight languages, one at a time per meeting</td>
+              <td>None documented; English-first in practice</td>
+            </tr>
+            <tr>
+              <td>Mobile and in-person capture</td>
+              <td>Mobile yes; in-person no</td>
+              <td>Mobile yes</td>
+              <td>Yes, both</td>
+              <td>No mobile app</td>
+            </tr>
+            <tr>
+              <td>SSO, DLP, eDiscovery, retention</td>
+              <td>Yes, extensive</td>
+              <td>Yes</td>
+              <td>Yes</td>
+              <td>No -- there is no user-authentication boundary</td>
+            </tr>
+            <tr>
+              <td>Agent prompts and models user-editable</td>
+              <td>No</td>
+              <td>No</td>
+              <td>No</td>
+              <td>Yes, per agent and per session</td>
+            </tr>
+            <tr>
+              <td>License and hosting</td>
+              <td>Closed source, vendor cloud</td>
+              <td>Closed source, vendor cloud</td>
+              <td>Closed source, vendor cloud</td>
+              <td>MIT open source, self-hosted or desktop</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>The differences that actually matter</h2>
+      <div class="prose">
+        <h3>Who actually holds a license</h3>
+        <p>
+          This is the whole argument, and it is arithmetic rather than opinion.
+          Microsoft reported more than 20 million paid Microsoft 365 Copilot
+          seats in April 2026, against roughly 450 million Microsoft 365
+          commercial seats reported that January. Under 5 percent. Add the
+          people whose tenant bought Teams Premium but never configured the
+          features, and the people whose admin locked meeting AI off, and the
+          realistic picture is that the large majority of daily Teams users
+          have no AI meeting assistance at all. Those people are not choosing
+          between two products. They are choosing between something and
+          nothing.
+        </p>
+        <h3>One assistant, not one per platform</h3>
+        <p>
+          We will not overclaim here, because the ground moved this year.
+          Google's "take notes for me" now covers in-person and on-the-go
+          meetings and, per Google's Cloud Next announcement in April 2026,
+          meetings "hosted on another provider like Zoom or Teams". Zoom's
+          assistant can join Google Meet and Microsoft Teams meetings, though
+          it does so as a visible participant whose tile carries Zoom branding
+          and a "Transcribing" status. So cross-platform capture is not
+          uniquely ours. What is ours is the conjunction: no bot in anyone's
+          meeting, no vendor cloud, live tactical assistance, and no per-seat
+          license -- all four at once. Microsoft, meanwhile, offers no
+          cross-platform story at all.
+        </p>
+        <h3>Assistance during the call, not a document after it</h3>
+        <p>
+          Every bundled assistant in this category is reactive. Copilot answers
+          what you type into a side pane. Zoom answers preset or custom
+          questions once the host starts the feature. Ask Gemini answers what
+          you ask it. None of them volunteers that the prospect just raised a
+          pricing objection and here is a response, or that something they said
+          maps to a service you sell. Backchannel's objection handler runs
+          every 10 seconds over the last 90 seconds of speech and pushes a
+          suggested response with the concern behind it; the strategic signals
+          agent posts Signal, Risk, Next Question, Opportunity, and Action Cue
+          cards every 45 seconds. If your meetings are discovery or sales
+          calls, a prompt you can act on beats a summary you read later.
+        </p>
+        <h3>Where the audio lives</h3>
+        <p>
+          All three bundled assistants process meeting audio in their vendor's
+          cloud. Each offers regional controls -- Google lets admins pin
+          covered Workspace data to the US or EU, Zoom offers regional
+          processing options for non-US customers -- and each carries
+          certifications Backchannel does not have. Backchannel's story is
+          simpler rather than stronger on paper: audio is captured in your
+          browser, diarized on your machine, and stored on your disk. With a
+          local ONNX transcription model even transcription happens offline,
+          and only the text-analysis agents call out to a model provider you
+          choose. Details are in the
+          <a href="/docs/audio-pipeline/">audio pipeline docs</a>.
+        </p>
+        <h3>What we are worse at</h3>
+        <p>
+          Microsoft knows precisely who is speaking because it owns the
+          participant list. Backchannel infers speakers from voice embeddings
+          and will sometimes merge two people or split one. Microsoft's recap
+          spans roughly 25 languages and its live translated captions span 40;
+          Backchannel documents no language support and is English-first in
+          practice. Teams can recap a meeting you never joined, which
+          device-audio capture structurally cannot do. And Backchannel has no
+          SSO, no DLP, no eDiscovery, no retention policy, and no
+          user-authentication boundary -- it will not pass an enterprise
+          security review, and we are not going to pretend otherwise.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Who should use which</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Stay with Microsoft, Zoom, or Google if you...</h3>
+          <p>Already hold the license and mainly want post-call recap; run meetings in languages other than English; need to recap meetings you did not attend; capture in-person meetings from a phone; or buy through a procurement process that requires SSO, DLP, eDiscovery, and retention controls. In all of those cases the bundled assistant is the better tool and costs you nothing extra.</p>
+        </div>
+        <div class="card">
+          <h3>Add Backchannel if you...</h3>
+          <p>Use Teams every day but your tenant never bought Premium or Copilot; join customer calls across Zoom, Meet, Webex, and Teams and want one assistant for all of them; want objection responses, opportunity flags, and questions worth asking pushed to you mid-call rather than a recap afterwards; or work under a policy where no vendor-cloud notetaker is permitted at all.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>What getting started looks like</h2>
+      <div class="prose">
+        <p>
+          There is no tenant to configure and no admin to ask. Download a
+          desktop build for Windows, macOS, or Linux, or clone the repo and run
+          <code>docker compose up --build</code>. Add a Gemini or OpenAI API
+          key, or pick a local ONNX Whisper or Parakeet model and transcribe
+          fully offline. The <a href="/docs/quickstart/">quickstart</a> is
+          honest about the friction: the first start builds images and
+          downloads models, so give it a few minutes.
+        </p>
+        <p>
+          Past meetings: Backchannel imports transcripts (.txt, .md, .docx) and
+          audio files (.mp3, .m4a, .wav, .ogg, .flac), and can run the same
+          analysis over an imported transcript. There is no export bridge from
+          Teams, Zoom, or Google Drive -- you export from them and import the
+          files you care about.
+        </p>
+        <p>
+          One thing worth setting up early: if you sell or consult, load your
+          offerings catalog. The opportunity specialist matches insights from
+          live calls against it, which is the piece none of the bundled
+          assistants can do because none of them knows what you sell.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Common questions</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Do I need Teams Premium or Microsoft 365 Copilot to get AI meeting recap in Teams?</h3>
+          <p>Yes. As of July 2026, Microsoft's licensing documentation puts Intelligent Meeting Recap, AI-generated notes and tasks, recap for meetings you missed, speaker timeline markers, and multilingual meeting support in Teams Premium, not in base Teams. Those recap experiences are also available with a Microsoft 365 Copilot license. Base Teams gets transcripts and recordings, not AI recap.</p>
+        </div>
+        <div class="card">
+          <h3>If my company already pays for Teams Premium or Copilot, is there any reason to add Backchannel?</h3>
+          <p>Often no, and we would rather say so. If you have the license and you want post-call recap of Teams meetings, Microsoft already does that with better speaker accuracy, no setup, and your compliance team's approval. Backchannel is worth adding only for three specific needs: one assistant across every meeting app instead of one, tactical prompts pushed to you during the call rather than a summary after it, or audio and transcripts that never leave hardware you control.</p>
+        </div>
+        <div class="card">
+          <h3>Does Backchannel work with Zoom, Google Meet, and Teams?</h3>
+          <p>Yes, with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration. It works the same way on a platform that has no AI features at all, on a recorded call playing in a browser tab, and on a phone call on speaker.</p>
+        </div>
+        <div class="card">
+          <h3>What about Zoom AI Companion and Google Meet's take notes for me?</h3>
+          <p>Both are genuinely bundled and both now reach past their own platform, so we will not pretend cross-platform is ours alone. Zoom's assistant can join Google Meet and Microsoft Teams meetings as a visible participant that shows Zoom branding and a Transcribing status. Google's take notes for me covers in-person and on-the-go meetings and, per Google's Cloud Next announcement in April 2026, meetings hosted on another provider like Zoom or Teams. What neither does is push tactical suggestions at you during the call, and neither keeps the audio on your own hardware.</p>
+        </div>
+        <div class="card">
+          <h3>What do Teams Premium and Microsoft 365 Copilot do better than Backchannel?</h3>
+          <p>Several things, and they matter. Microsoft knows exactly who is speaking because it owns the participant list, while Backchannel infers speakers acoustically and will sometimes be wrong. Microsoft's recap covers roughly 25 languages; Backchannel documents none and is English-first in practice. Microsoft can recap a meeting you never attended, which device-audio capture cannot do. And Microsoft brings SSO, DLP, eDiscovery, retention, and sensitivity labels; Backchannel has no user-authentication boundary at all.</p>
+        </div>
+        <div class="card">
+          <h3>What does running Backchannel actually involve?</h3>
+          <p>Either download a desktop build for Windows, macOS, or Linux, or run docker compose up --build and open the browser app. You add a Gemini or OpenAI API key, or pick a local ONNX Whisper or Parakeet model to transcribe fully offline. Speaker diarization always runs locally. There are no seats to buy, no minutes to meter, and no tenant to configure, because the whole thing runs on your own machine.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final">
+    <div class="wrap">
+      <h2>No license required</h2>
+      <p class="sub">Self-hosted, open source, MIT licensed. If your tenant never bought you meeting AI, you can just run your own.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Other comparisons</h2>
+            <div class="doc-list">
+        <a class="doc" href="/gong-and-backchannel/">
+          <strong>Gong and Backchannel</strong>
+          <span>Where a live seller-side layer fits under revenue intelligence</span>
+        </a>
+        <a class="doc" href="/otter-alternative/">
+          <strong>Open-source Otter.ai alternative</strong>
+          <span>Self-hosted transcripts and insights without minute caps</span>
+        </a>
+        <a class="doc" href="/fireflies-alternative/">
+          <strong>Fireflies.ai alternative without the bot</strong>
+          <span>Live assistance on your own hardware, no bot in the room</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site">
+    <div class="wrap footer-compare">
+    <span>Compare:</span>
+    <a href="/open-source-meeting-assistants/">Open-source meeting assistants</a>
+    <a href="/otter-alternative/">Open-source Otter.ai alternative</a>
+    <a href="/fireflies-alternative/">Fireflies.ai alternative without the bot</a>
+    <a href="/granola-alternative/">Open-source Granola alternative</a>
+    <a href="/fathom-alternative/">Fathom alternative</a>
+    <a href="/gong-and-backchannel/">Gong and Backchannel</a>
+    <a href="/teams-premium-alternative/">Teams Premium alternative</a>
+  </div>
+  <div class="wrap">
+    <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
+    <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Backchannel vs Anarlog (formerly Hyprnote): Local-First Meeting Tools Compared</title>
+  <meta name="description" content="Backchannel vs Anarlog, formerly Hyprnote: both MIT and local-first. Anarlog is macOS only and routes automatic speaker ID to Pro; Backchannel ships diarization and live agents free." />
+  <link rel="canonical" href="https://backchannel.page/vs-anarlog/" />
+  <meta property="og:title" content="Backchannel vs Anarlog (formerly Hyprnote): Local-First Meeting Tools Compared" />
+  <meta property="og:description" content="Backchannel vs Anarlog, formerly Hyprnote: both MIT and local-first. Anarlog is macOS only and routes automatic speaker ID to Pro; Backchannel ships diarization and live agents free." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Backchannel" />
+  <meta property="og:url" content="https://backchannel.page/vs-anarlog/" />
+  <meta property="og:image" content="https://backchannel.page/assets/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Backchannel: live meeting transcription and real-time insight agents, self-hosted." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <link rel="stylesheet" href="../style.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebPage",
+        "url": "https://backchannel.page/vs-anarlog/",
+        "name": "Backchannel vs Anarlog (formerly Hyprnote): Local-First Meeting Tools Compared",
+        "description": "Backchannel vs Anarlog, formerly Hyprnote: both MIT and local-first. Anarlog is macOS only and routes automatic speaker ID to Pro; Backchannel ships diarization and live agents free.",
+        "dateModified": "2026-07-24",
+        "isPartOf": {
+          "@id": "https://backchannel.page/#website"
+        },
+        "about": {
+          "@id": "https://backchannel.page/#software"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Backchannel",
+            "item": "https://backchannel.page/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Backchannel vs Anarlog"
+          }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is the difference between Backchannel and Anarlog (formerly Hyprnote)?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Both are MIT-licensed, bot-free, local-first meeting tools. Anarlog is a macOS app that transcribes on-device, merges your typed notes with the transcript, and produces a summary after the meeting. Backchannel is a self-hosted server app for Windows, macOS, and Linux that ships free local speaker diarization and runs five live insight agents during the call, followed by a three-agent briefing pass when it ends."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Anarlog have speaker diarization?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Partly, and the free path is manual. Anarlog's documentation describes assigning speaker labels by hand: select a speaker label to assign a participant, then apply it to the rest. Automatic speaker indexes come from whichever transcription provider you configure, and hosted speaker identification is an Anarlog Pro feature. A pull request adding local pyannote diarization to the repo was closed without merging on 2026-05-01. Backchannel ships automatic local diarization free under MIT."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Anarlog run on Windows or Linux?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. Anarlog ships macOS builds only, and its May 2026 rename post states that Linux and Windows support are not planned. If you need an open-source, local-first meeting tool on Windows or Linux, that rules Anarlog out. Backchannel runs on Windows, macOS, and Linux, either as a desktop bundle or as a Docker Compose stack."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What does Anarlog do better than Backchannel?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Install and macOS polish, by a wide margin. Anarlog is one ungated download plus a model file; Backchannel is roughly five to seven steps, and its desktop bundles require an approved Backchannel account. Anarlog also summarizes fully offline through LM Studio or Ollama, has a far larger community at about 8.9k GitHub stars, ships releases nearly every day, and offers calendar integration and a notepad-merge workflow Backchannel does not have."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <img src="/assets/favicon.svg" alt="" />
+      backchannel
+    </a>
+    <nav class="site-nav">
+      <a href="/#features">Features</a>
+      <a href="/#quickstart">Quickstart</a>
+      <a href="/docs/">Docs</a>
+      <a class="btn primary nav-cta" href="https://github.com/talberthoule/backchannel">Star on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="wrap">
+      <h1>Backchannel <span class="accent">vs Anarlog</span> (formerly Hyprnote)</h1>
+      <p class="lede">
+        Both MIT. Both bot-free. Both keep your audio on your own machine --
+        in this category that is table stakes, not a feature. The real
+        question is what happens next. Anarlog is an excellent macOS
+        notetaker: transcribe on-device, merge your notes, get a summary
+        afterwards. Backchannel runs on Windows, macOS, and Linux, gives
+        automatic speaker attribution away free, and pushes questions,
+        objections, and opportunities to you while the meeting is still
+        happening.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+      <p class="quickstart-note">Anarlog was Hyprnote, then Char, then Anarlog &middot; both MIT &middot; Anarlog is macOS only &middot; Backchannel has no paid tier</p>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">At a glance</span>
+      <h2>Backchannel vs Anarlog, side by side</h2>
+      <p class="sub">Details verified 2026-07-24 against the Anarlog repository, site, and documentation, and they may change -- check Anarlog's own sources for current status. If you are looking for Hyprnote, this is the same project: it was renamed to Char and then to Anarlog during 2026, and relicensed from GPL to MIT.</p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Dimension</th><th>Anarlog (formerly Hyprnote)</th><th>Backchannel</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>License</td>
+              <td>MIT (relicensed from GPL in 2026); paid Pro tier for hosted features</td>
+              <td>MIT for everything; no paid tier</td>
+            </tr>
+            <tr>
+              <td>Platforms</td>
+              <td>macOS only; Windows and Linux support stated as not planned</td>
+              <td>Windows, macOS, and Linux desktop bundles, or Docker Compose anywhere</td>
+            </tr>
+            <tr>
+              <td>Architecture</td>
+              <td>Desktop app (Tauri/Rust), single-user per machine, local SQLite</td>
+              <td>Server app (FastAPI + PostgreSQL), multi-user, browser clients</td>
+            </tr>
+            <tr>
+              <td>Capture</td>
+              <td>Mic and system audio on-device; no bot</td>
+              <td>Mic + tab/system audio in the browser; no bot</td>
+            </tr>
+            <tr>
+              <td>Speaker diarization</td>
+              <td>Free path is manual label assignment; automatic speaker indexes come from your transcription provider, and hosted speaker identification is a Pro feature</td>
+              <td>Shipped, free, automatic: local Silero VAD + WeSpeaker embeddings, live during the call</td>
+            </tr>
+            <tr>
+              <td>Real-time in-call insights</td>
+              <td>No; live transcript and a live notepad, with summaries and chat afterwards</td>
+              <td>Yes: five live agents -- analyst, objection handler, synthesizer, opportunity specialist, strategic signals</td>
+            </tr>
+            <tr>
+              <td>Agent surface</td>
+              <td>Read-only MCP server and CLI so external agents can query stored meetings after the fact</td>
+              <td>Nine seeded agents in-app, each with its own model, prompt, and trigger, plus a REST API</td>
+            </tr>
+            <tr>
+              <td>Transcription</td>
+              <td>On-device models on Apple Silicon, your own provider key, or hosted models on Pro</td>
+              <td>Gemini Flash, or fully offline local ONNX Whisper/Parakeet</td>
+            </tr>
+            <tr>
+              <td>Fully-offline analysis</td>
+              <td>Yes -- on-device transcription plus LM Studio or Ollama for summaries and chat</td>
+              <td>Partial: transcription and diarization offline; insight agents need Gemini or OpenAI keys</td>
+            </tr>
+            <tr>
+              <td>Install experience</td>
+              <td>One ungated macOS download plus a model file</td>
+              <td>Docker Compose, or desktop bundles for Windows, macOS, and Linux -- the desktop downloads require an approved Backchannel account</td>
+            </tr>
+            <tr>
+              <td>Community</td>
+              <td>About 8.9k GitHub stars; releases nearly every day (desktop_v1.3.9 on 2026-07-24)</td>
+              <td>Young project, much smaller community</td>
+            </tr>
+            <tr>
+              <td>Pricing</td>
+              <td>Free app; a paid Pro tier adds hosted transcription, hosted models, sync, calendar, and speaker identification</td>
+              <td>$0; hardware plus optional LLM API usage</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">In depth</span>
+      <h2>Where the two projects actually differ</h2>
+      <div class="prose">
+        <h3>Privacy is the price of entry here, not the differentiator</h3>
+        <p>
+          Anarlog transcribes on-device and keeps recordings on your machine.
+          So does Backchannel. So do Meetily, Buzz, and Vibe. Anyone
+          comparing local-first meeting tools should assume every serious
+          option in the category already clears that bar, and then ask a
+          harder question: once the audio is captured locally, what does the
+          tool actually do with it? Anarlog turns it into a good record.
+          Backchannel turns it into help while the meeting is still running.
+        </p>
+        <h3>Who said what, and who charges for it</h3>
+        <p>
+          Anarlog's documented free workflow for speaker labels is manual:
+          you pick a speaker label in the transcript, assign a participant,
+          and apply it to their other turns. Automatic speaker indexes arrive
+          from whichever transcription provider you configure, and hosted
+          speaker identification sits in Anarlog Pro. A pull request adding
+          local pyannote diarization to the repo was closed without merging
+          on 2026-05-01. Meetily made the same call from the other direction:
+          its diarization shipped, but only in the paid Pro edition. Two of
+          the best-known open-source meeting projects have now routed
+          automatic speaker attribution to a paid or hosted tier.
+        </p>
+        <p>
+          Backchannel gives it away.
+          <a href="/docs/audio-pipeline/">Silero VAD segments speech and
+          WeSpeaker embeddings assign each segment to a voice</a>, live,
+          in the MIT codebase, with dual-track capture giving you and remote
+          participants separate identities and an optional enrolled voice
+          profile for your own. To be clear about what is and is not
+          special here: the underlying stack is not exotic -- the open-source
+          Vibe project uses a comparable pyannote-plus-WeSpeaker approach for
+          files. What is unusual is running it live, during the call, on
+          split tracks, for free, and feeding the result straight into
+          analysis.
+        </p>
+        <h3>Notes after vs insights during</h3>
+        <p>
+          Anarlog's center of gravity is the record. You type rough notes in
+          a memo pane while it listens, and afterwards it merges those notes
+          with the transcript into a structured summary you can chat with.
+          It is a genuinely good workflow and people who live in markdown
+          like it a lot.
+        </p>
+        <p>
+          Backchannel keeps the record too, but its center of gravity is the
+          call itself. Nine seeded
+          <a href="/docs/agents/">agents</a> ship in the box: an audio
+          gateway for interim transcription, five live insight agents, and a
+          three-agent briefing pass that runs when the call ends. The live
+          five are the consolidated analyst (every 40 seconds), the objection
+          handler (every 10 seconds, over only the last 90 seconds of
+          transcript), the synthesizer, the opportunity specialist, and
+          strategic signals (every 45 seconds). Each has its own model,
+          prompt, and trigger, editable per deployment and per session.
+          No actively maintained open-source meeting tool ships this today.
+          Amurex (AGPL-3.0) did, and it has had no commits since May 2025.
+        </p>
+        <h3>What Anarlog means by "agents"</h3>
+        <p>
+          Worth stating precisely, because the word collides. Anarlog ships a
+          local MCP server and a CLI so that external agents -- a coding
+          assistant, a script, your own tooling -- can list recent meetings,
+          search by title, and read transcript pages in bounded chunks. The
+          documentation is explicit that all current Anarlog data operations
+          are read-only. It is a well-designed integration surface for
+          querying stored meetings after the fact, and if that is what you
+          need, it is arguably cleaner than anything Backchannel offers.
+          It is not in-call assistance, and Anarlog does not claim it is.
+        </p>
+        <h3>macOS only, and openly so</h3>
+        <p>
+          Anarlog's shipping artifacts are macOS disk images, for both Apple
+          Silicon and Intel. Its May 2026 rename post states plainly that
+          Linux and Windows support are not planned. That is a legitimate
+          product decision -- focus is why the Mac app is as good as it is --
+          but it is also the clearest fork in the road between these two
+          projects. Backchannel ships Windows, macOS, and Linux desktop
+          bundles and a Docker Compose stack that runs anywhere. If your team
+          is not all on Macs, this decides it before any feature does.
+        </p>
+        <h3>Desktop app vs server</h3>
+        <p>
+          Anarlog is an appliance: one machine, one user, local SQLite,
+          nothing to operate. Backchannel is infrastructure: a FastAPI
+          backend and PostgreSQL behind a browser UI, so one deployment can
+          serve a team, keep a shared archive, expose a REST API, and answer
+          questions across up to twenty past sessions at once. Neither is
+          better in the abstract. Pick by how many people need it and whether
+          you want something to run.
+        </p>
+        <h3>The offline story</h3>
+        <p>
+          Anarlog wins here, honestly. With an on-device transcription model
+          plus LM Studio or Ollama, it records, transcribes, summarizes, and
+          chats with no internet connection at all. Backchannel's diarization
+          is always local and transcription can run fully offline with local
+          ONNX models, but the insight agents -- the feature you probably
+          came for -- currently require a Gemini or OpenAI key. There is no
+          Ollama or LM Studio route in the codebase today. If air-gapped
+          analysis is a hard requirement, Anarlog fits better right now.
+        </p>
+        <h3>Maturity and community</h3>
+        <p>
+          Anarlog wins, clearly. About 8.9k GitHub stars, a very low open
+          issue count, and releases shipping nearly every day. It has also
+          been through two renames in 2026 -- Hyprnote to Char to Anarlog --
+          which is worth knowing when you go looking for documentation or
+          old forum threads, and it relicensed from GPL to MIT along the way.
+          Backchannel is far younger and far smaller. What it offers is
+          capability that is not in Anarlog at all; weigh that against
+          community support according to your own risk tolerance.
+        </p>
+      </div>
+      <div class="cta-row" style="justify-content: flex-start; margin-top: 24px;">
+        <a class="btn primary" href="/#quickstart">Self-host in minutes</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">Fit</span>
+      <h2>Who should use which</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Choose Anarlog if you...</h3>
+          <p>Are on a Mac, want a beautiful ungated one-download install, need summaries that run fully offline through Ollama or LM Studio, like writing your own notes during a meeting and having them merged with the transcript, and want a large, fast-moving open-source project behind you.</p>
+        </div>
+        <div class="card">
+          <h3>Choose Backchannel if you...</h3>
+          <p>Need Windows or Linux, want automatic speaker-attributed transcripts without a hosted or paid tier, want questions, objection responses, and opportunity flags surfaced during the call rather than after it, or want one server deployment your whole team can reach from a browser.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>What getting started looks like</h2>
+      <div class="prose">
+        <p>
+          Anarlog: download the macOS disk image, open it, download an
+          on-device model. Two steps, no terminal, no account, no key.
+          Backchannel: git clone,
+          <code>docker compose up --build</code>, add a Gemini API key (or a
+          local ONNX transcription model), open localhost in a browser -- or
+          use a desktop bundle for Windows, macOS, or Linux, which needs an
+          approved Backchannel account where Anarlog's download is ungated.
+          Call it five to seven steps against two, and the
+          <a href="/docs/quickstart/">quickstart</a> is honest that the first
+          start builds images and downloads models. Anarlog's install
+          experience is better and it is not close. Backchannel's payoff is a
+          shared, multi-user, cross-platform server once it is up.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Common questions</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>What is the difference between Backchannel and Anarlog (formerly Hyprnote)?</h3>
+          <p>Both are MIT-licensed, bot-free, local-first meeting tools. Anarlog is a macOS app that transcribes on-device, merges your typed notes with the transcript, and produces a summary after the meeting. Backchannel is a self-hosted server app for Windows, macOS, and Linux that ships free local speaker diarization and runs five live insight agents during the call, followed by a three-agent briefing pass when it ends.</p>
+        </div>
+        <div class="card">
+          <h3>Does Anarlog have speaker diarization?</h3>
+          <p>Partly, and the free path is manual. Anarlog's documentation describes assigning speaker labels by hand: select a speaker label to assign a participant, then apply it to the rest. Automatic speaker indexes come from whichever transcription provider you configure, and hosted speaker identification is an Anarlog Pro feature. A pull request adding local pyannote diarization to the repo was closed without merging on 2026-05-01. Backchannel ships automatic local diarization free under MIT.</p>
+        </div>
+        <div class="card">
+          <h3>Does Anarlog run on Windows or Linux?</h3>
+          <p>No. Anarlog ships macOS builds only, and its May 2026 rename post states that Linux and Windows support are not planned. If you need an open-source, local-first meeting tool on Windows or Linux, that rules Anarlog out. Backchannel runs on Windows, macOS, and Linux, either as a desktop bundle or as a Docker Compose stack.</p>
+        </div>
+        <div class="card">
+          <h3>What does Anarlog do better than Backchannel?</h3>
+          <p>Install and macOS polish, by a wide margin. Anarlog is one ungated download plus a model file; Backchannel is roughly five to seven steps, and its desktop bundles require an approved Backchannel account. Anarlog also summarizes fully offline through LM Studio or Ollama, has a far larger community at about 8.9k GitHub stars, ships releases nearly every day, and offers calendar integration and a notepad-merge workflow Backchannel does not have.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final">
+    <div class="wrap">
+      <h2>Every tool here keeps your audio local. Only one does something with it before the meeting ends.</h2>
+      <p class="sub">Self-hosted, MIT licensed, automatic diarization and live agents included with no Pro tier -- on Windows, macOS, and Linux. If it is useful, a GitHub star helps others find it.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Other comparisons</h2>
+            <div class="doc-list">
+        <a class="doc" href="/vs-meetily/">
+          <strong>Backchannel vs Meetily</strong>
+          <span>Two open-source meeting assistants, compared honestly</span>
+        </a>
+        <a class="doc" href="/open-source-meeting-assistants/">
+          <strong>Open-source meeting assistants</strong>
+          <span>The self-hosted landscape, compared honestly</span>
+        </a>
+        <a class="doc" href="/granola-alternative/">
+          <strong>Open-source Granola alternative</strong>
+          <span>Bot-free capture, but self-hosted and real-time</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site">
+    <div class="wrap footer-compare">
+    <span>Compare:</span>
+    <a href="/open-source-meeting-assistants/">Open-source meeting assistants</a>
+    <a href="/otter-alternative/">Open-source Otter.ai alternative</a>
+    <a href="/fireflies-alternative/">Fireflies.ai alternative without the bot</a>
+    <a href="/granola-alternative/">Open-source Granola alternative</a>
+    <a href="/fathom-alternative/">Fathom alternative</a>
+    <a href="/gong-and-backchannel/">Gong and Backchannel</a>
+    <a href="/teams-premium-alternative/">Teams Premium alternative</a>
+  </div>
+  <div class="wrap">
+    <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
+    <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

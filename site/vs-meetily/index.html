@@ -4,10 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Backchannel vs Meetily: Open-Source Meeting Assistants Compared</title>
-  <meta name="description" content="Backchannel vs Meetily: both MIT-licensed, bot-free, and local. Only one ships speaker diarization and real-time insight agents today. Honest comparison." />
+  <meta name="description" content="Backchannel vs Meetily: both MIT and bot-free. Meetily gates diarization behind Pro; Backchannel ships it and live agents free. An honest comparison." />
   <link rel="canonical" href="https://backchannel.page/vs-meetily/" />
   <meta property="og:title" content="Backchannel vs Meetily: Open-Source Meeting Assistants Compared" />
-  <meta property="og:description" content="Backchannel vs Meetily: both MIT-licensed, bot-free, and local. Only one ships speaker diarization and real-time insight agents today. Honest comparison." />
+  <meta property="og:description" content="Backchannel vs Meetily: both MIT and bot-free. Meetily gates diarization behind Pro; Backchannel ships it and live agents free. An honest comparison." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Backchannel" />
   <meta property="og:url" content="https://backchannel.page/vs-meetily/" />
@@ -27,8 +27,8 @@
         "@type": "WebPage",
         "url": "https://backchannel.page/vs-meetily/",
         "name": "Backchannel vs Meetily: Open-Source Meeting Assistants Compared",
-        "description": "Backchannel vs Meetily: both MIT-licensed, bot-free, and local. Only one ships speaker diarization and real-time insight agents today. Honest comparison.",
-        "dateModified": "2026-07-13",
+        "description": "Backchannel vs Meetily: both MIT and bot-free. Meetily gates diarization behind Pro; Backchannel ships it and live agents free. An honest comparison.",
+        "dateModified": "2026-07-24",
         "isPartOf": {
           "@id": "https://backchannel.page/#website"
         },
@@ -60,7 +60,7 @@
             "name": "What is the difference between Backchannel and Meetily?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Both are open-source, bot-free, privacy-first meeting assistants. Meetily is a desktop app focused on local transcription and post-meeting summaries; speaker diarization is not in its free edition as of mid-2026. Backchannel is a self-hosted server app that ships live speaker diarization free and runs real-time insight agents during the call."
+              "text": "Both are open-source, bot-free, privacy-first meeting assistants. Meetily is a desktop app focused on local transcription and post-meeting summaries; its speaker diarization shipped in Pro 1.8.2 but is not in the MIT Community Edition. Backchannel is a self-hosted server app that ships live speaker diarization free and runs real-time insight agents during the call."
             }
           },
           {
@@ -68,7 +68,7 @@
             "name": "Does Meetily have speaker diarization?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Not in the free Community Edition as of mid-2026: Meetily lists diarization as planned and slated for its Pro version. Backchannel ships local speaker diarization (Silero VAD plus WeSpeaker embeddings) free under MIT, attributing every transcript line to a speaker live."
+              "text": "Yes, in Pro: diarization shipped in Meetily Pro 1.8.2, live as you record and on imported audio, but it is not in the MIT Community Edition. Pro is $10/user/month billed annually ($120/year). Backchannel ships local speaker diarization (Silero VAD plus WeSpeaker embeddings) free under MIT, attributing every transcript line to a speaker live."
             }
           },
           {
@@ -76,7 +76,7 @@
             "name": "What does Meetily do better than Backchannel?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Community size (21.6k+ GitHub stars and 308,600+ claimed downloads), polished native installers for macOS and Windows, and the stronger fully-offline story: Ollama-first summarization means nothing has to call a cloud LLM. Backchannel's insight agents currently need a Gemini or OpenAI API key."
+              "text": "Community size (26.4k GitHub stars and 369.8K claimed downloads as of 2026-07-24), polished native installers for macOS and Windows, ungated downloads, and the stronger fully-offline story: Ollama-first summarization means nothing has to call a cloud LLM. Backchannel's insight agents currently need a Gemini or OpenAI API key."
             }
           },
           {
@@ -120,8 +120,9 @@
         servers. The short version: Meetily is a polished desktop note-taker
         with a big community and the best fully-offline story; Backchannel is
         a self-hosted server app that tells you who said what -- and what to
-        say next -- while the meeting is still happening. Speaker diarization
-        and real-time insight agents ship in Backchannel today, free.
+        say next -- while the meeting is still happening. Meetily's diarization
+        now ships, but only in its $120/year Pro tier; in Backchannel it is
+        free, alongside real-time insight agents Meetily does not offer.
       </p>
       <div class="cta-row">
         <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
@@ -136,7 +137,7 @@
     <div class="wrap">
       <span class="kicker">At a glance</span>
       <h2>Backchannel vs Meetily, side by side</h2>
-      <p class="sub">Details are as of mid-2026 (Meetily v0.4.0 era) and may change; check Meetily's site and repo for current status.</p>
+      <p class="sub">Details verified 2026-07-24 and may change; check Meetily's site and repo for current status. Note that Meetily's MIT Community Edition (v0.4.0) and its commercial Pro line (1.8.2) version separately, so CE release numbers are not the product's.</p>
       <div class="table-scroll">
         <table>
           <thead>
@@ -160,13 +161,13 @@
             </tr>
             <tr>
               <td>Speaker diarization</td>
-              <td>Not shipped; planned, slated for Pro</td>
+              <td>Shipped in Pro 1.8.2 ($120/year); not in the MIT Community Edition</td>
               <td>Shipped, free: local Silero VAD + WeSpeaker embeddings</td>
             </tr>
             <tr>
               <td>Real-time in-call insights</td>
               <td>No; post-meeting notes and summaries</td>
-              <td>Yes: analyst, objection handler, synthesizer, opportunity specialist</td>
+              <td>Yes: five live agents -- analyst, objection handler, synthesizer, opportunity specialist, strategic signals</td>
             </tr>
             <tr>
               <td>Transcription</td>
@@ -180,12 +181,12 @@
             </tr>
             <tr>
               <td>Install experience</td>
-              <td>Native installers (macOS Apple Silicon, Windows; Linux from source)</td>
-              <td>Docker Compose; NVIDIA GPU optional, AMD-on-Windows script</td>
+              <td>Native installers (macOS Apple Silicon, Windows; Linux from source), ungated</td>
+              <td>Docker Compose, or desktop bundles for Windows, macOS, and Linux -- the desktop downloads require an approved Backchannel account</td>
             </tr>
             <tr>
               <td>Community</td>
-              <td>21.6k+ GitHub stars, 308,600+ claimed downloads</td>
+              <td>26.4k GitHub stars, 369.8K claimed downloads (2026-07-24)</td>
               <td>Young project, much smaller community</td>
             </tr>
             <tr>
@@ -206,10 +207,12 @@
       <div class="prose">
         <h3>Who said what</h3>
         <p>
-          This is the clearest line between them today. Meetily's transcripts
-          are unattributed: speaker diarization is listed as planned and
-          slated for its Pro version as of mid-2026. Backchannel ships
-          diarization free, in the MIT codebase --
+          This used to be a capability gap; it is now a pricing one. Meetily
+          shipped diarization in Pro 1.8.2, live as you record and on imported
+          audio -- but it stays out of the MIT Community Edition, so the free
+          version still produces unattributed transcripts and speaker labels
+          cost $120 a year. Backchannel ships diarization free, in the MIT
+          codebase --
           <a href="/docs/audio-pipeline/">Silero VAD segments speech and
           WeSpeaker embeddings assign each segment to a voice</a>, live,
           with dual-track capture giving you and remote participants separate
@@ -220,12 +223,15 @@
         <p>
           Meetily's output is the record: transcripts and LLM summaries after
           the meeting. Backchannel also keeps the record, but its center of
-          gravity is the call itself: four
-          <a href="/docs/agents/">insight agents</a> run on their own
-          triggers during the meeting and push questions worth asking,
-          objection responses, opportunities, and action items while you can
-          still use them. No open-source tool other than Backchannel ships
-          this today.
+          gravity is the call itself: five live
+          <a href="/docs/agents/">insight agents</a> -- consolidated analyst,
+          objection handler, synthesizer, opportunity specialist, and strategic
+          signals -- run on their own triggers during the meeting and push
+          questions worth asking, objection responses, opportunities, and
+          action items while you can still use them, followed by a three-agent
+          briefing pass when the call ends. No actively maintained open-source
+          meeting tool ships this today. Amurex (AGPL-3.0) did, and it has had
+          no commits since May 2025.
         </p>
         <h3>Desktop app vs server</h3>
         <p>
@@ -248,16 +254,20 @@
         </p>
         <h3>Free vs open-core</h3>
         <p>
-          Both cores are MIT. Meetily's roadmap routes its best upcoming
-          features (diarization, enhanced accuracy, templates, team
-          deployment) toward a $10/user/mo Pro tier. Backchannel has no Pro
-          tier to route anything to: diarization, agents, exports, and
-          multi-user deployment are all in the public repo.
+          Both cores are MIT. Meetily has routed its best features --
+          diarization, chat with meetings, self-hosted deployment, enhanced
+          accuracy, templates, advanced exports -- into a $10/user/mo Pro tier.
+          Backchannel has no Pro tier to route anything to: diarization,
+          agents, exports, and multi-user deployment are all in the public
+          repo.
         </p>
         <h3>Maturity and community</h3>
         <p>
-          Meetily wins, clearly. 21.6k+ stars, hundreds of thousands of
+          Meetily wins, clearly. 26.4k stars, hundreds of thousands of
           downloads, polished releases, and an active content presence.
+          One neutral observation for anyone betting on the open core:
+          development of the MIT Community Edition has been quiet since v0.4.0
+          on 2026-06-05, while the commercial Pro line has continued shipping.
           Backchannel is younger and smaller; what it offers is capability
           that is not in Meetily's free edition at all. Weigh community
           support against shipped features according to your own risk
@@ -277,7 +287,7 @@
       <div class="grid">
         <div class="card">
           <h3>Choose Meetily if you...</h3>
-          <p>Want a native desktop app with a one-click installer, need fully-offline summarization via Ollama, value a large community and polished releases, and mostly need good notes after the meeting -- not live assistance or speaker labels.</p>
+          <p>Want a native desktop app with a one-click ungated installer, need fully-offline summarization via Ollama, value a large community and polished releases, and mostly need good notes after the meeting -- and either do not need speaker labels or are happy to pay $120/year for them.</p>
         </div>
         <div class="card">
           <h3>Choose Backchannel if you...</h3>
@@ -295,11 +305,13 @@
           Meetily: download an installer, pick a Whisper model, optionally
           point it at Ollama. Backchannel: git clone,
           <code>docker compose up --build</code>, add a Gemini API key (or a
-          local ONNX transcription model), open localhost in a browser. The
-          <a href="/docs/quickstart/">quickstart</a> is honest that the first
-          start builds images and downloads models -- Meetily's installer
-          experience is smoother; Backchannel's payoff is a shared,
-          multi-user server once it is up.
+          local ONNX transcription model), open localhost in a browser -- or
+          use a desktop bundle for Windows, macOS, or Linux, which needs an
+          approved Backchannel account where Meetily's installers are
+          ungated. The <a href="/docs/quickstart/">quickstart</a> is honest
+          that the first start builds images and downloads models -- Meetily's
+          install experience is smoother on both counts; Backchannel's payoff
+          is a shared, multi-user server once it is up.
         </p>
       </div>
     </div>
@@ -311,15 +323,15 @@
       <div class="grid">
         <div class="card">
           <h3>What is the difference between Backchannel and Meetily?</h3>
-          <p>Both are open-source, bot-free, privacy-first meeting assistants. Meetily is a desktop app focused on local transcription and post-meeting summaries; speaker diarization is not in its free edition as of mid-2026. Backchannel is a self-hosted server app that ships live speaker diarization free and runs real-time insight agents during the call.</p>
+          <p>Both are open-source, bot-free, privacy-first meeting assistants. Meetily is a desktop app focused on local transcription and post-meeting summaries; its speaker diarization shipped in Pro 1.8.2 but is not in the MIT Community Edition. Backchannel is a self-hosted server app that ships live speaker diarization free and runs real-time insight agents during the call.</p>
         </div>
         <div class="card">
           <h3>Does Meetily have speaker diarization?</h3>
-          <p>Not in the free Community Edition as of mid-2026: Meetily lists diarization as planned and slated for its Pro version. Backchannel ships local speaker diarization (Silero VAD plus WeSpeaker embeddings) free under MIT, attributing every transcript line to a speaker live.</p>
+          <p>Yes, in Pro: diarization shipped in Meetily Pro 1.8.2, live as you record and on imported audio, but it is not in the MIT Community Edition. Pro is $10/user/month billed annually ($120/year). Backchannel ships local speaker diarization (Silero VAD plus WeSpeaker embeddings) free under MIT, attributing every transcript line to a speaker live.</p>
         </div>
         <div class="card">
           <h3>What does Meetily do better than Backchannel?</h3>
-          <p>Community size (21.6k+ GitHub stars and 308,600+ claimed downloads), polished native installers for macOS and Windows, and the stronger fully-offline story: Ollama-first summarization means nothing has to call a cloud LLM. Backchannel's insight agents currently need a Gemini or OpenAI API key.</p>
+          <p>Community size (26.4k GitHub stars and 369.8K claimed downloads as of 2026-07-24), polished native installers for macOS and Windows, ungated downloads, and the stronger fully-offline story: Ollama-first summarization means nothing has to call a cloud LLM. Backchannel's insight agents currently need a Gemini or OpenAI API key.</p>
         </div>
         <div class="card">
           <h3>Are Backchannel and Meetily both free?</h3>
@@ -331,8 +343,8 @@
 
   <section class="cta-final">
     <div class="wrap">
-      <h2>Both open source. Only one tells you who said what -- and what to say next.</h2>
-      <p class="sub">Self-hosted, MIT licensed, diarization and live agents included. If it is useful, a GitHub star helps others find it.</p>
+      <h2>Both open source. Only one tells you who said what -- and what to say next -- for free.</h2>
+      <p class="sub">Self-hosted, MIT licensed, diarization and live agents included with no Pro tier. If it is useful, a GitHub star helps others find it.</p>
       <div class="cta-row">
         <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
         <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
@@ -344,18 +356,18 @@
   <section class="alt">
     <div class="wrap">
       <h2>Other comparisons</h2>
-      <div class="doc-list">
-        <a class="doc" href="/otter-alternative/">
-          <strong>Open-source Otter.ai alternative</strong>
-          <span>Self-hosted transcripts and insights without minute caps</span>
+            <div class="doc-list">
+        <a class="doc" href="/vs-anarlog/">
+          <strong>Backchannel vs Anarlog (formerly Hyprnote)</strong>
+          <span>A local-first Mac notetaker vs a live agent server</span>
+        </a>
+        <a class="doc" href="/open-source-meeting-assistants/">
+          <strong>Open-source meeting assistants</strong>
+          <span>The self-hosted landscape, compared honestly</span>
         </a>
         <a class="doc" href="/granola-alternative/">
           <strong>Open-source Granola alternative</strong>
           <span>Bot-free capture, but self-hosted and real-time</span>
-        </a>
-        <a class="doc" href="/fireflies-alternative/">
-          <strong>Fireflies.ai alternative without the bot</strong>
-          <span>Live assistance on your own hardware, no bot in the room</span>
         </a>
       </div>
     </div>
@@ -364,12 +376,15 @@
 </main>
 
 <footer class="site">
-  <div class="wrap footer-compare">
+    <div class="wrap footer-compare">
     <span>Compare:</span>
+    <a href="/open-source-meeting-assistants/">Open-source meeting assistants</a>
     <a href="/otter-alternative/">Open-source Otter.ai alternative</a>
-    <a href="/granola-alternative/">Granola alternative</a>
-    <a href="/fireflies-alternative/">Fireflies.ai alternative</a>
-    <a href="/vs-meetily/">Backchannel vs Meetily</a>
+    <a href="/fireflies-alternative/">Fireflies.ai alternative without the bot</a>
+    <a href="/granola-alternative/">Open-source Granola alternative</a>
+    <a href="/fathom-alternative/">Fathom alternative</a>
+    <a href="/gong-and-backchannel/">Gong and Backchannel</a>
+    <a href="/teams-premium-alternative/">Teams Premium alternative</a>
   </div>
   <div class="wrap">
     <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>

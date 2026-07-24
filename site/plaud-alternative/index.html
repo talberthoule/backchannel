@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open-Source Plaud Alternative (Self-Hosted, Real-Time) | Backchannel</title>
+  <meta name="description" content="An open-source Plaud alternative: bot-free capture, always-local diarization, optional offline transcription, and live in-call insights. Self-hosted and MIT licensed." />
+  <link rel="canonical" href="https://backchannel.page/plaud-alternative/" />
+  <meta property="og:title" content="Open-Source Plaud Alternative (Self-Hosted, Real-Time) | Backchannel" />
+  <meta property="og:description" content="An open-source Plaud alternative: bot-free capture, always-local diarization, optional offline transcription, and live in-call insights. Self-hosted and MIT licensed." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Backchannel" />
+  <meta property="og:url" content="https://backchannel.page/plaud-alternative/" />
+  <meta property="og:image" content="https://backchannel.page/assets/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Backchannel: live meeting transcription and real-time insight agents, self-hosted." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <link rel="stylesheet" href="../style.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebPage",
+        "url": "https://backchannel.page/plaud-alternative/",
+        "name": "Open-Source Plaud Alternative (Self-Hosted, Real-Time) | Backchannel",
+        "description": "An open-source Plaud alternative: bot-free capture, always-local diarization, optional offline transcription, and live in-call insights. Self-hosted and MIT licensed.",
+        "dateModified": "2026-07-24",
+        "isPartOf": {
+          "@id": "https://backchannel.page/#website"
+        },
+        "about": {
+          "@id": "https://backchannel.page/#software"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Backchannel",
+            "item": "https://backchannel.page/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Plaud alternative"
+          }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Is there an open-source alternative to Plaud?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes, for the software half. Backchannel is an MIT-licensed, self-hosted AI meeting assistant that captures your microphone plus tab or system audio with no bot joining the call, diarizes locally, and can transcribe fully offline. There is no open-source equivalent of Plaud's recorder hardware from us: Backchannel is software you run, not a device you wear."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Where does Plaud actually process my recordings?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "In the cloud. Plaud's own transparency policy says data is stored locally on your device by default, but the AI work happens on Plaud's servers, and PCWorld's independent review states directly that you cannot run the AI locally. Plaud's mitigation is real but narrow: with Private Cloud Sync off, processed data is not kept on Plaud's servers. Your audio still leaves your building to be transcribed."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What happened to the Limitless Pendant?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Meta acquired Limitless and the Pendant stopped being sold on December 5, 2025. Existing owners were moved to a free Unlimited plan, but service was discontinued outright in the EU, UK, Brazil, China, Israel, South Korea, and Turkey, with users given until December 19, 2025 to export their data before permanent deletion. Pendant support is pledged through 2026."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What does Plaud do better than Backchannel?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "In-person capture, decisively. Plaud sells a pocketable recorder with a claimed 20 to 30 hours of continuous recording, phone call recording, iOS and Android apps, and a large template library. Backchannel has no mobile app and no wearable, so it cannot capture a hallway conversation, a phone call, or a coffee meeting. Plaud also installs in seconds, while Backchannel needs a desktop bundle or Docker."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I use a Plaud recorder together with Backchannel?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes, and for many people that is the right setup. Plaud's support documentation describes exporting your original audio as MP3 or WAV, and Backchannel imports .m4a, .mp3, .wav, .ogg, and .flac through the same diarization and transcription pipeline as a live call. Wear the device for in-person meetings, then run the recording through Backchannel's agents on your own hardware."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Do any AI recorders give advice during the meeting?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "We found no evidence that any of them do. Plaud Desktop's in-meeting controls are inputs you provide, such as tapping to highlight a moment, and its summaries arrive after the call. Bee and Limitless are retrospective by design. Backchannel runs five live insight agents during the call, including an objection handler that scans the last 90 seconds roughly every 10 seconds and returns a suggested response."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <img src="/assets/favicon.svg" alt="" />
+      backchannel
+    </a>
+    <nav class="site-nav">
+      <a href="/#features">Features</a>
+      <a href="/#quickstart">Quickstart</a>
+      <a href="/docs/">Docs</a>
+      <a class="btn primary nav-cta" href="https://github.com/talberthoule/backchannel">Star on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="wrap">
+      <h1>An open-source <span class="accent">Plaud alternative</span> that nobody can switch off</h1>
+      <p class="lede">
+        AI recorders sell privacy and a device you own. Then Meta bought
+        Limitless and stopped selling the Pendant on December 5, 2025 --
+        terminating service outright in the EU, UK, and five other regions on
+        14 days' notice to export your data. Amazon bought Bee. Plaud is
+        still independent, but its AI cannot run locally at all. Backchannel
+        is the software half of this category, MIT licensed, running on your
+        hardware, with insights that arrive mid-call.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+      <p class="quickstart-note">No bot in the room &middot; no audio in anyone's cloud &middot; no minute caps &middot; MIT licensed</p>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">Why switch</span>
+      <h2>What actually happened to this category</h2>
+      <p class="sub">This is not speculation about vendor risk. It already happened, twice, in the last twelve months.</p>
+      <div class="grid">
+        <div class="card">
+          <h3>Meta acquired Limitless and ended the Pendant</h3>
+          <p>Limitless stopped selling the Pendant on December 5, 2025. Existing owners got a free Unlimited plan, but service ended completely in the EU, UK, Brazil, China, Israel, South Korea, and Turkey, with a December 19, 2025 deadline to export data before permanent deletion.</p>
+        </div>
+        <div class="card">
+          <h3>Amazon acquired Bee</h3>
+          <p>The $49.99 always-listening wristband is now an Amazon product, being aligned with the Alexa and Echo strategy. Whatever you thought you were agreeing to when you bought it, the counterparty changed.</p>
+        </div>
+        <div class="card">
+          <h3>"No bot" is not the same as private</h3>
+          <p>Plaud, Bee, and Limitless all avoid putting a bot in your meeting. All three still send your conversation to a vendor cloud to be transcribed and summarized. The bot was never the part that saw your audio.</p>
+        </div>
+        <div class="card">
+          <h3>The value arrives after the meeting</h3>
+          <p>Every recorder in this category makes the record of a conversation better. None of them help while the conversation is still happening and you can still change its outcome.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">The alternative</span>
+      <h2>Same bot-free capture, different mechanism</h2>
+      <div class="prose">
+        <p>
+          Backchannel captures your microphone plus tab or system audio
+          directly in the browser, or through the desktop bundle for Windows,
+          macOS, and Linux. No bot joins the call, and it works with Zoom,
+          Google Meet, Teams, or anything else that makes noise on your
+          machine. So far that is the same promise Plaud Desktop makes.
+        </p>
+        <p>
+          The difference starts the moment audio is captured. It streams to
+          your own server, where voice activity detection and
+          <a href="/docs/audio-pipeline/">speaker diarization always run locally</a>
+          using Silero VAD and WeSpeaker ResNet152 embeddings, and every
+          transcript line gets a speaker label. Point the transcriber at a
+          local ONNX Whisper or Parakeet model and the entire pipeline runs
+          offline, with no API key and nothing leaving the machine. Plaud has
+          no equivalent: PCWorld's review of the Note Pro states plainly that
+          you cannot run its AI locally.
+        </p>
+        <p>
+          Then it goes somewhere recorders do not go. While the call is live,
+          Backchannel runs nine seeded
+          <a href="/docs/agents/">agents</a>: an audio gateway for interim
+          transcription, five live insight agents, and a three-agent
+          post-call briefing pass. The objection handler scans the last 90
+          seconds roughly every 10 seconds and returns an immediate suggested
+          response plus the underlying concern. Strategic signals runs about
+          every 45 seconds; the consolidated analyst about every 40. Plaud
+          helps you remember the meeting. Backchannel tries to help you win
+          it.
+        </p>
+        <p>
+          The honest trade, stated up front: Plaud sells a recorder you can
+          put in your pocket, and Backchannel does not. If your meetings
+          happen in hallways, cars, coffee shops, or on the phone, buy the
+          device. We cannot capture those and are not going to pretend
+          otherwise.
+        </p>
+      </div>
+      <div class="cta-row" style="justify-content: flex-start; margin-top: 24px;">
+        <a class="btn primary" href="/#quickstart">Self-host in minutes</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">Side by side</span>
+      <h2>Plaud vs Backchannel</h2>
+      <p class="sub">Plaud hardware and plan details are taken from Plaud's own pages as of July 2026 and may change; check Plaud's pricing page for current numbers.</p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Dimension</th><th>Plaud</th><th>Backchannel</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Hardware cost</td>
+              <td>Note Pro $189, NotePin S $179, Note $159, NotePin $159 (July 2026)</td>
+              <td>None; runs on the computer you already own</td>
+            </tr>
+            <tr>
+              <td>Subscription</td>
+              <td>Starter free (300 min/mo); Pro $17.99/mo or $8.33/mo annual (1,200 min/mo); Unlimited $29.99/mo or $19.99/mo annual</td>
+              <td>$0; bring your own API key, or run offline with no key</td>
+            </tr>
+            <tr>
+              <td>Transcription minute caps</td>
+              <td>Yes -- minutes are the headline difference between tiers</td>
+              <td>None</td>
+            </tr>
+            <tr>
+              <td>Capture</td>
+              <td>Handheld or wearable recorder; plus Plaud Desktop for Windows and macOS, no bot</td>
+              <td>Mic + tab/system audio in the browser or desktop app; no bot</td>
+            </tr>
+            <tr>
+              <td>In-person and phone calls</td>
+              <td>Yes -- pocketable device, MagSafe phone call recording</td>
+              <td>No wearable and no mobile app; a laptop mic in the room only</td>
+            </tr>
+            <tr>
+              <td>Where transcription runs</td>
+              <td>Plaud's cloud; no local AI mode</td>
+              <td>Your machine -- fully offline with local ONNX Whisper or Parakeet</td>
+            </tr>
+            <tr>
+              <td>Where diarization runs</td>
+              <td>Plaud's cloud</td>
+              <td>Always local: Silero VAD + WeSpeaker ResNet152</td>
+            </tr>
+            <tr>
+              <td>Real-time in-call insights</td>
+              <td>None found; in-meeting controls are your own inputs, summaries land after the call</td>
+              <td>Five live agents: objections with responses, questions, opportunities, action items, strategic signals</td>
+            </tr>
+            <tr>
+              <td>Audio retained for replay</td>
+              <td>Yes, if Private Cloud Sync is enabled</td>
+              <td>Yes -- per-segment WAV on your disk, re-transcribable with any model</td>
+            </tr>
+            <tr>
+              <td>Platforms</td>
+              <td>iOS, Android, web, Windows and macOS desktop</td>
+              <td>Any modern browser; desktop bundles for Windows, macOS, Linux</td>
+            </tr>
+            <tr>
+              <td>License and hosting</td>
+              <td>Closed source; cloud processing</td>
+              <td>MIT open source, self-hosted with Docker Compose</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>The differences that actually matter</h2>
+      <div class="prose">
+        <h3>Give Plaud Desktop its due first</h3>
+        <p>
+          In January 2026 Plaud shipped Plaud Desktop for Windows and macOS.
+          It needs no hardware, detects Zoom, Google Meet, and Teams calls,
+          records natively with no bot and no host permission, and is
+          included free on every plan -- including the free Starter tier with
+          its 300 minutes a month. That is a genuinely good product competing
+          directly with Backchannel's core use case, and it installs in about
+          a minute against our Docker or desktop-bundle setup. If you want
+          bot-free virtual meeting notes with zero effort and you are relaxed
+          about cloud processing, Plaud Desktop is a reasonable answer and we
+          would rather say so than hide it.
+        </p>
+        <h3>Then look at the mechanism</h3>
+        <p>
+          The argument for Backchannel is not that Plaud is careless. Plaud's
+          transparency policy commits that it does not use your audio,
+          transcripts, or summaries to train models without explicit consent,
+          and with Private Cloud Sync off your data does not persist on its
+          servers. That is a better posture than most. It is still a promise
+          about what a company does with data it holds, rather than an
+          architecture in which the company never holds it. Backchannel's
+          diarization is always local, transcription can run entirely offline,
+          and the only network calls are the text-analysis ones you configure
+          with your own key. Different category of guarantee.
+        </p>
+        <h3>During the call vs after it</h3>
+        <p>
+          We checked every device in this category for live assistance and
+          found none. Plaud Desktop's Press to Highlight and Live Notes are
+          inputs you provide to improve the eventual summary. Bee and
+          Limitless are retrospective by construction. Backchannel is a second
+          set of ears: it surfaces the objection response while the person is
+          still talking. For lecture capture or a personal memory archive,
+          that matters less. For sales, discovery, and client calls, timing is
+          the product.
+        </p>
+        <h3>Nobody can end-of-life your deployment</h3>
+        <p>
+          Limitless owners in the EU and UK did nothing wrong. They bought a
+          device, paid a subscription, and lost the service to a transaction
+          they were not party to. Backchannel is MIT-licensed source running
+          in your own PostgreSQL and Docker. There is no vendor who can turn
+          it off, no region you can be excluded from, and no export deadline.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">The rest of the category</span>
+      <h2>Limitless, Bee, and Omi</h2>
+      <div class="prose">
+        <h3>Limitless Pendant: no longer sold</h3>
+        <p>
+          Limitless was acquired by Meta and stopped selling the Pendant on
+          December 5, 2025. Existing customers no longer pay a subscription
+          and were moved to the Unlimited plan free of charge, with Pendant
+          support pledged through 2026 and continued access to previously
+          recorded meetings. But service was discontinued entirely in Brazil,
+          China, the EU, Israel, South Korea, Turkey, and the UK, with a
+          December 19, 2025 cutoff to export data before permanent deletion.
+          Desktop and web recording were disabled and the Rewind app was
+          sunset. If you are here because your Pendant stopped working, the
+          honest recommendation is software you host yourself.
+        </p>
+        <h3>Bee: what the marketing says, and what the policy says</h3>
+        <p>
+          Bee is a $49.99 always-listening wearable, now owned by Amazon, and
+          as of July 2026 its product page states that no subscription is
+          currently required, with a Premium tier planned but unpriced. That
+          page also says conversations are "processed in real-time,
+          immediately deleted after processing, never saved or stored," with
+          "no sharing with third parties" and no model training on your data.
+        </p>
+        <p>
+          Bee's own privacy notice reads differently. It states that "Your
+          input, output, and personal information will be shared with and
+          processed by these AI Service Providers," naming Google Cloud AI,
+          and that Bee "may share your personal information with third-party
+          advertising partners" for interest-based, personalized, or targeted
+          advertising. Both documents are published by Bee. We are not
+          accusing anyone of lying -- we are pointing out that the marketing
+          page and the legal document describe different data flows, and that
+          the legal document is the one that governs. This is the clearest
+          illustration on this page of why "no bot in your meeting" tells you
+          nothing about where your conversation ends up.
+        </p>
+        <p>
+          On capability: TechCrunch's hands-on found Bee transcripts required
+          manual speaker identification and sometimes omitted sections of
+          conversation, and that Bee discards the audio after transcription,
+          which makes it impractical for work where you need to replay a
+          conversation to check accuracy. Backchannel keeps per-segment WAV
+          files on your own disk and lets you re-transcribe a whole session
+          with a different model later.
+        </p>
+        <h3>Omi: open source, but cloud by default</h3>
+        <p>
+          Omi deserves credit as the only ambient device in this category that
+          is MIT licensed end to end, self-hostable, and offering a free tier
+          with unlimited on-device transcription plus 1,200 cloud minutes a
+          month. It is the closest thing to a philosophical ally here, and we
+          would rather people use Omi than a closed cloud recorder.
+        </p>
+        <p>
+          It is also a useful lesson about our own claims. Omi's architecture
+          puts transcription, VAD, diarization, Deepgram speech-to-text, and
+          the LLM calls in its cloud backend, and the quick start connects to
+          that cloud backend with no local backend at all. Running the whole
+          stack yourself is documented and possible, but it is the harder
+          path, not the shipped default. Open source is necessary for data
+          sovereignty and not sufficient for it -- what matters is which path
+          the software takes when you do nothing. Backchannel's default is
+          your machine, because there is no Backchannel cloud to fall back to.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Who should use which</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Buy a Plaud if you...</h3>
+          <p>Take most of your meetings in person, on the phone, or on the move; want something in your pocket with all-day battery; need iOS and Android apps; and want it working within a minute of unboxing without running any infrastructure.</p>
+        </div>
+        <div class="card">
+          <h3>Run Backchannel if you...</h3>
+          <p>Take most of your meetings on Zoom, Meet, or Teams; want audio that never leaves your infrastructure and a transcript diarized locally; want live objection responses and questions during the call rather than a summary after it; and refuse to have minute caps or a vendor who can switch you off.</p>
+        </div>
+        <div class="card">
+          <h3>Use both if you...</h3>
+          <p>Split your week between client site visits and video calls. The device covers the room; Backchannel covers the calls and can process the device's recordings afterward on your own hardware.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Using a recorder and Backchannel together</h2>
+      <div class="prose">
+        <p>
+          This is not a rhetorical olive branch -- the workflow works today.
+          Plaud's support documentation describes exporting your original
+          audio as MP3 or WAV, and most recorders in this category export
+          audio files of some kind. Backchannel's audio import accepts
+          <code>.m4a</code>, <code>.mp3</code>, <code>.wav</code>,
+          <code>.ogg</code>, and <code>.flac</code> and runs them through the
+          same diarization and transcription pipeline as a live call, after
+          which the analysis agents run over the result.
+        </p>
+        <p>
+          So the practical setup for someone who already owns a recorder:
+          wear the device for in-person meetings, export the recording, and
+          import it into Backchannel to get local speaker attribution and
+          agent analysis on hardware you control. Use Backchannel directly for
+          every virtual call. You keep the thing hardware is genuinely better
+          at, and stop sending your video calls to a vendor cloud.
+        </p>
+        <p>
+          Setup is a git clone and <code>docker compose up --build</code>, or
+          the desktop bundle for Windows, macOS, and Linux. The
+          <a href="/docs/quickstart/">quickstart</a> covers it honestly: the
+          first start builds images and downloads models, so it takes a few
+          minutes, not seconds. Transcript files in <code>.txt</code>,
+          <code>.md</code>, and <code>.docx</code> can be imported too. There
+          is no automated migration tool for Plaud libraries.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Common questions</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Is there an open-source alternative to Plaud?</h3>
+          <p>Yes, for the software half. Backchannel is an MIT-licensed, self-hosted AI meeting assistant that captures your microphone plus tab or system audio with no bot joining the call, diarizes locally, and can transcribe fully offline. There is no open-source equivalent of Plaud's recorder hardware from us: Backchannel is software you run, not a device you wear.</p>
+        </div>
+        <div class="card">
+          <h3>Where does Plaud actually process my recordings?</h3>
+          <p>In the cloud. Plaud's own transparency policy says data is stored locally on your device by default, but the AI work happens on Plaud's servers, and PCWorld's independent review states directly that you cannot run the AI locally. Plaud's mitigation is real but narrow: with Private Cloud Sync off, processed data is not kept on Plaud's servers. Your audio still leaves your building to be transcribed.</p>
+        </div>
+        <div class="card">
+          <h3>What happened to the Limitless Pendant?</h3>
+          <p>Meta acquired Limitless and the Pendant stopped being sold on December 5, 2025. Existing owners were moved to a free Unlimited plan, but service was discontinued outright in the EU, UK, Brazil, China, Israel, South Korea, and Turkey, with users given until December 19, 2025 to export their data before permanent deletion. Pendant support is pledged through 2026.</p>
+        </div>
+        <div class="card">
+          <h3>What does Plaud do better than Backchannel?</h3>
+          <p>In-person capture, decisively. Plaud sells a pocketable recorder with a claimed 20 to 30 hours of continuous recording, phone call recording, iOS and Android apps, and a large template library. Backchannel has no mobile app and no wearable, so it cannot capture a hallway conversation, a phone call, or a coffee meeting. Plaud also installs in seconds, while Backchannel needs a desktop bundle or Docker.</p>
+        </div>
+        <div class="card">
+          <h3>Can I use a Plaud recorder together with Backchannel?</h3>
+          <p>Yes, and for many people that is the right setup. Plaud's support documentation describes exporting your original audio as MP3 or WAV, and Backchannel imports .m4a, .mp3, .wav, .ogg, and .flac through the same diarization and transcription pipeline as a live call. Wear the device for in-person meetings, then run the recording through Backchannel's agents on your own hardware.</p>
+        </div>
+        <div class="card">
+          <h3>Do any AI recorders give advice during the meeting?</h3>
+          <p>We found no evidence that any of them do. Plaud Desktop's in-meeting controls are inputs you provide, such as tapping to highlight a moment, and its summaries arrive after the call. Bee and Limitless are retrospective by design. Backchannel runs five live insight agents during the call, including an objection handler that scans the last 90 seconds roughly every 10 seconds and returns a suggested response.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final">
+    <div class="wrap">
+      <h2>Keep the recorder. Own the software.</h2>
+      <p class="sub">Self-hosted, open source, MIT licensed. Your meetings, your hardware, your history.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Other comparisons</h2>
+            <div class="doc-list">
+        <a class="doc" href="/granola-alternative/">
+          <strong>Open-source Granola alternative</strong>
+          <span>Bot-free capture, but self-hosted and real-time</span>
+        </a>
+        <a class="doc" href="/otter-alternative/">
+          <strong>Open-source Otter.ai alternative</strong>
+          <span>Self-hosted transcripts and insights without minute caps</span>
+        </a>
+        <a class="doc" href="/open-source-meeting-assistants/">
+          <strong>Open-source meeting assistants</strong>
+          <span>The self-hosted landscape, compared honestly</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site">
+    <div class="wrap footer-compare">
+    <span>Compare:</span>
+    <a href="/open-source-meeting-assistants/">Open-source meeting assistants</a>
+    <a href="/otter-alternative/">Open-source Otter.ai alternative</a>
+    <a href="/fireflies-alternative/">Fireflies.ai alternative without the bot</a>
+    <a href="/granola-alternative/">Open-source Granola alternative</a>
+    <a href="/fathom-alternative/">Fathom alternative</a>
+    <a href="/gong-and-backchannel/">Gong and Backchannel</a>
+    <a href="/teams-premium-alternative/">Teams Premium alternative</a>
+  </div>
+  <div class="wrap">
+    <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
+    <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

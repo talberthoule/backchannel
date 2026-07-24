@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open-Source Read AI Alternative (No Uninvited Bot) | Backchannel</title>
+  <meta name="description" content="An open-source, self-hosted Read AI alternative: nothing auto-joins your calendar, nothing joins the call, and no meeting audio leaves your server. MIT licensed." />
+  <link rel="canonical" href="https://backchannel.page/read-ai-alternative/" />
+  <meta property="og:title" content="Open-Source Read AI Alternative (No Uninvited Bot) | Backchannel" />
+  <meta property="og:description" content="An open-source, self-hosted Read AI alternative: nothing auto-joins your calendar, nothing joins the call, and no meeting audio leaves your server. MIT licensed." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Backchannel" />
+  <meta property="og:url" content="https://backchannel.page/read-ai-alternative/" />
+  <meta property="og:image" content="https://backchannel.page/assets/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Backchannel: live meeting transcription and real-time insight agents, self-hosted." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <link rel="stylesheet" href="../style.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebPage",
+        "url": "https://backchannel.page/read-ai-alternative/",
+        "name": "Open-Source Read AI Alternative (No Uninvited Bot) | Backchannel",
+        "description": "An open-source, self-hosted Read AI alternative: nothing auto-joins your calendar, nothing joins the call, and no meeting audio leaves your server. MIT licensed.",
+        "dateModified": "2026-07-24",
+        "isPartOf": {
+          "@id": "https://backchannel.page/#website"
+        },
+        "about": {
+          "@id": "https://backchannel.page/#software"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Backchannel",
+            "item": "https://backchannel.page/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Read AI alternative"
+          }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Why do IT departments block Read AI?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Because of how it spreads and how it joins. Chapman University's IT department published a security notice on 13 August 2025 stating that the use of Read AI is prohibited due to security, privacy, and institutional data risks, and that it was blocking the Read AI app in both Zoom and Microsoft Teams. The University of Wisconsin-Madison IT knowledge base separately documents that if you create a Read.ai account it will automatically join your meetings by default, and that clicking an email link to view someone else's Read.ai report can create an account for you without your knowledge, after which it starts joining your meetings."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is there an open-source Read AI alternative that cannot auto-join meetings?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Backchannel has no bot and no calendar integration, so there is nothing that can join a meeting on your behalf or on anyone else's. It captures your microphone and, optionally, tab or system audio directly in the browser, on your side of the call. It cannot appear in a colleague's meeting, cannot be granted access to your calendar, and cannot create an account for someone who clicks a link. It is MIT-licensed and self-hosted."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How does Read AI's free plan compare?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "As of July 2026, Read AI's free plan includes 5 meeting transcripts per month, 5 meeting reports per month, and a 1-hour maximum meeting length. Audio and video playback is not included on Free or Pro; it begins at the Enterprise tier. Pro is $15 per user per month billed annually, or $19.75 monthly. Backchannel has no tiers, no transcript quota, no meeting length cap, and recorded audio is always available for playback and re-transcription because it sits on your own disk."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What does Read AI do better than Backchannel?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Read AI covers far more surface area. It has native apps on Windows, macOS, Android, and iOS plus a browser extension, it summarizes email and messaging as well as meetings, it supports 20 or more languages, and it offers premium integrations with Notion, Salesforce, HubSpot, Jira, Confluence, Zapier, and webhooks. Its Enterprise+ tier adds HIPAA compliance, SAML and SCIM, domain capture, and custom data retention. Backchannel is a self-hosted web app with none of those things."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <img src="/assets/favicon.svg" alt="" />
+      backchannel
+    </a>
+    <nav class="site-nav">
+      <a href="/#features">Features</a>
+      <a href="/#quickstart">Quickstart</a>
+      <a href="/docs/">Docs</a>
+      <a class="btn primary nav-cta" href="https://github.com/talberthoule/backchannel">Star on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="wrap">
+      <h1>An open-source <span class="accent">Read AI alternative</span> that cannot invite itself</h1>
+      <p class="lede">
+        Most meeting assistants get replaced because someone did not like the
+        summaries. Read AI gets replaced because IT found it. It joins from
+        your calendar by default, it can end up in meetings nobody added it
+        to, and at least one university has prohibited it outright.
+        Backchannel is the structural answer: no bot, no calendar access,
+        nothing that can appear in someone else's call, and audio that never
+        leaves your own server.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+      <p class="quickstart-note">No bot &middot; no calendar integration &middot; desktop portal requires an approved Backchannel account, not GitHub membership &middot; MIT licensed</p>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">Why switch</span>
+      <h2>Why people look for a Read AI alternative</h2>
+      <p class="sub">This is the only tool in the category where the loudest objections come from IT departments rather than from users.</p>
+      <div class="grid">
+        <div class="card">
+          <h3>It joins by default</h3>
+          <p>The University of Wisconsin-Madison IT knowledge base states that if you intentionally create a Read.ai account, "it will automatically join your meetings by default." The bot's presence is a consequence of signing up, not a per-meeting decision.</p>
+        </div>
+        <div class="card">
+          <h3>It can spread without you noticing</h3>
+          <p>The same knowledge base warns that if you click an email link to view someone else's Read.ai report, "read.ai can create an account for you without knowing. Then it starts joining your meetings." That is how one user becomes a department.</p>
+        </div>
+        <div class="card">
+          <h3>It has been prohibited outright</h3>
+          <p>Chapman University's IT department published a security notice on 13 August 2025 stating that "the use of Read AI is prohibited due to security, privacy, and institutional data risks," and that it was blocking the app in both Zoom and Microsoft Teams.</p>
+        </div>
+        <div class="card">
+          <h3>Everyone in the room gets measured</h3>
+          <p>Read describes measuring "the verbal and non-verbal cues" of a meeting and translating that into real-time and post-meeting sentiment and engagement metrics. Whatever you think of that for yourself, the other participants did not choose it.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">In fairness</span>
+      <h2>Read AI's side of it</h2>
+      <div class="prose">
+        <p>
+          We should represent this accurately, because the loudest version of
+          this story online is not quite the company's. Read AI's position is
+          that its assistant requests permission to join, appears openly as a
+          participant, and posts a message in the meeting chat explaining what
+          it is doing, and that everyone in a meeting deserves a say in
+          whether it is recorded. The company has also stated that it does not
+          join random meetings and must be added by a user who was invited to
+          that meeting.
+        </p>
+        <p>
+          Both things can be true. Read AI can behave exactly as documented
+          and it can still be the case that a calendar-connected,
+          default-joining assistant which can be provisioned by clicking a
+          link produces enough surprise appearances that a university
+          prohibits it. The disagreement is not really about whether the bot
+          announces itself. It is about whether an assistant should be able to
+          reach meetings through anyone's calendar at all.
+        </p>
+        <p>
+          Backchannel takes the position that it should not, and enforces
+          that by not having the capability. There is no bot to admit, no
+          calendar to connect, and no account that can be created on your
+          behalf.
+        </p>
+      </div>
+      <div class="cta-row" style="justify-content: flex-start; margin-top: 24px;">
+        <a class="btn primary" href="/#quickstart">Self-host in minutes</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">Side by side</span>
+      <h2>Read AI vs Backchannel</h2>
+      <p class="sub">Pricing and plan details are as of July 2026 and may change; check Read AI's pricing page for current numbers.</p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Dimension</th><th>Read AI</th><th>Backchannel</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Capture</td>
+              <td>Bot participant, joining from your connected calendar</td>
+              <td>Browser capture of mic + tab/system audio; nothing joins the call</td>
+            </tr>
+            <tr>
+              <td>Can it reach a meeting you did not set it up for?</td>
+              <td>Yes, via calendar auto-join; accounts can be created from a shared report link</td>
+              <td>No; there is no bot and no calendar integration</td>
+            </tr>
+            <tr>
+              <td>Where audio is processed</td>
+              <td>Read AI's cloud</td>
+              <td>Your server; diarization always local, transcription can run fully offline</td>
+            </tr>
+            <tr>
+              <td>Free tier</td>
+              <td>5 meeting transcripts/mo, 5 reports/mo, 1 hour max meeting</td>
+              <td>No tiers; unlimited sessions in your own database</td>
+            </tr>
+            <tr>
+              <td>Recording playback</td>
+              <td>Audio and video playback begins at the Enterprise tier</td>
+              <td>Always; recorded audio sits on your disk and can be replayed or re-transcribed</td>
+            </tr>
+            <tr>
+              <td>Pricing</td>
+              <td>Free; Pro $15/user/mo annual ($19.75 monthly); Enterprise $22.50 annual ($29.75 monthly); Enterprise+ $29.75 annual ($39.75 monthly, 5+ licenses)</td>
+              <td>$0; hardware plus optional LLM API usage</td>
+            </tr>
+            <tr>
+              <td>Real-time in-call output</td>
+              <td>Live dashboard: sentiment and engagement metrics, talk time, words per minute, coaching tips</td>
+              <td>Five live agents: questions, objection responses, opportunities, action items, strategic signal cards</td>
+            </tr>
+            <tr>
+              <td>What the live layer is about</td>
+              <td>How the conversation is going -- behavioral metrics about the participants</td>
+              <td>What to say next -- tactical content drawn from what was actually said</td>
+            </tr>
+            <tr>
+              <td>Speaker diarization</td>
+              <td>Yes</td>
+              <td>Yes -- local Silero VAD + WeSpeaker embeddings, with optional NVIDIA Sortformer on GPU</td>
+            </tr>
+            <tr>
+              <td>Surfaces covered</td>
+              <td>Meetings, email, and messaging; 20+ languages</td>
+              <td>Meetings only; no marketed language matrix</td>
+            </tr>
+            <tr>
+              <td>Platforms</td>
+              <td>Windows, macOS, Android, iOS, browser extension</td>
+              <td>Any modern browser; desktop builds for Windows, macOS, and Linux</td>
+            </tr>
+            <tr>
+              <td>License and hosting</td>
+              <td>Closed source, cloud only</td>
+              <td>MIT open source, self-hosted with Docker Compose</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>The differences that actually matter</h2>
+      <div class="prose">
+        <h3>An assistant that cannot embarrass you</h3>
+        <p>
+          The practical problem with a calendar-joining bot is not that it is
+          impolite. It is that its blast radius is other people's meetings.
+          Once it is connected to a calendar, its presence is a default rather
+          than a decision, and the person who has to explain it to a customer
+          is you. Backchannel captures from a browser tab on your side of the
+          call. There is nothing in the participant list, nothing for a host
+          to admit or eject, and nothing that can turn up in a meeting you did
+          not start.
+        </p>
+        <h3>The argument you can give your security reviewer</h3>
+        <p>
+          Read AI's compliance story improves as you pay: HIPAA, SAML and
+          SCIM, domain capture, and custom data retention arrive at
+          Enterprise+. That is a real answer for organizations that can buy
+          it. Backchannel's answer is different in kind: there is no vendor
+          holding your recordings, because audio is captured in your browser,
+          diarized on your server, and stored on your disk, and the entire
+          pipeline is MIT-licensed so a reviewer can read it instead of
+          trusting it. We have no certifications at all. Which argument works
+          depends entirely on who is asking.
+        </p>
+        <h3>Behavioral metrics versus tactical content</h3>
+        <p>
+          Both products do something during the call, and it is worth being
+          precise about the difference. Read's live dashboard tells you how
+          the conversation is landing -- sentiment, engagement, talk time,
+          speaking pace. Backchannel's
+          <a href="/docs/agents/">agents</a> tell you what to do about it: a
+          consolidated analyst proposing questions every 40 seconds, an
+          objection handler running every 10 seconds over the last 90 seconds
+          and pairing an immediate suggested response with the underlying
+          concern, an opportunity specialist matching what you heard against
+          your own offerings catalog, a synthesizer noticing when a question
+          has been answered, and a strategic signals agent producing risk and
+          next-question cards every 45 seconds. After the call, a three-agent
+          briefing pass drafts the record from two independent perspectives
+          and reconciles them.
+        </p>
+        <h3>What Read AI does better</h3>
+        <p>
+          Honestly, a lot. Read covers meetings, email, and messaging as one
+          searchable surface, which Backchannel does not attempt. It has
+          native apps on four platforms plus a browser extension, so it works
+          from a phone. It supports 20 or more languages against our none. Its
+          premium integrations span Notion, Salesforce, HubSpot, Jira,
+          Confluence, Zapier, and webhooks; ours are exports and a REST API.
+          And it installs in a couple of minutes, where Backchannel is a
+          Docker Compose stack and our prebuilt desktop downloads require an
+          approved Backchannel account rather than a direct download.
+        </p>
+        <h3>Something we cannot do either</h3>
+        <p>
+          Backchannel's analysis agents need a Google or OpenAI API key.
+          Capture, voice activity detection, speaker diarization, and
+          transcription can all run locally, but there is no local LLM route
+          in the codebase today, so the agents will not run offline. Our
+          Privacy First mode turns them off rather than pretending otherwise.
+          If your requirement is meeting summaries with genuinely zero cloud
+          calls, some of
+          <a href="/open-source-meeting-assistants/">the other open-source options</a>
+          handle that better than we do.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Who should use which</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Stay with Read AI if you...</h3>
+          <p>Want one assistant across meetings, email, and messaging; need mobile apps and 20-plus languages; rely on Notion, Salesforce, HubSpot, Jira, or Confluence integrations; find engagement and sentiment analytics genuinely useful; and can buy the Enterprise+ tier where HIPAA, SAML, SCIM, and custom retention live.</p>
+        </div>
+        <div class="card">
+          <h3>Switch to Backchannel if you...</h3>
+          <p>Have been asked by IT to remove a calendar-joining bot, take external calls where an uninvited participant is a liability, want a tool that structurally cannot appear in a colleague's meeting, want recordings you can replay without an Enterprise upgrade, and can run docker compose with your own API key.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>What moving over looks like</h2>
+      <div class="prose">
+        <p>
+          Setup is a git clone and <code>docker compose up --build</code>,
+          plus a Gemini or OpenAI API key (or a local ONNX Whisper/Parakeet
+          model for fully offline transcription). The
+          <a href="/docs/quickstart/">quickstart</a> is upfront about the
+          friction: the first start builds images and downloads models, so
+          plan for a few minutes.
+        </p>
+        <p>
+          If you are leaving Read AI because IT asked you to, the cleanest
+          order is to revoke its calendar access first, then delete the
+          account, then set up capture on your side of the call. Past
+          meetings can be imported as transcripts (.txt, .md, .docx) or audio
+          (.mp3, .m4a, .wav, .ogg, .flac) and analyzed afterward. There is no
+          automated Read AI migration tool.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Common questions</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Why do IT departments block Read AI?</h3>
+          <p>Because of how it spreads and how it joins. Chapman University's IT department published a security notice on 13 August 2025 stating that the use of Read AI is prohibited due to security, privacy, and institutional data risks, and that it was blocking the Read AI app in both Zoom and Microsoft Teams. The University of Wisconsin-Madison IT knowledge base separately documents that if you create a Read.ai account it will automatically join your meetings by default, and that clicking an email link to view someone else's Read.ai report can create an account for you without your knowledge, after which it starts joining your meetings.</p>
+        </div>
+        <div class="card">
+          <h3>Is there an open-source Read AI alternative that cannot auto-join meetings?</h3>
+          <p>Yes. Backchannel has no bot and no calendar integration, so there is nothing that can join a meeting on your behalf or on anyone else's. It captures your microphone and, optionally, tab or system audio directly in the browser, on your side of the call. It cannot appear in a colleague's meeting, cannot be granted access to your calendar, and cannot create an account for someone who clicks a link. It is MIT-licensed and self-hosted.</p>
+        </div>
+        <div class="card">
+          <h3>How does Read AI's free plan compare?</h3>
+          <p>As of July 2026, Read AI's free plan includes 5 meeting transcripts per month, 5 meeting reports per month, and a 1-hour maximum meeting length. Audio and video playback is not included on Free or Pro; it begins at the Enterprise tier. Pro is $15 per user per month billed annually, or $19.75 monthly. Backchannel has no tiers, no transcript quota, no meeting length cap, and recorded audio is always available for playback and re-transcription because it sits on your own disk.</p>
+        </div>
+        <div class="card">
+          <h3>What does Read AI do better than Backchannel?</h3>
+          <p>Read AI covers far more surface area. It has native apps on Windows, macOS, Android, and iOS plus a browser extension, it summarizes email and messaging as well as meetings, it supports 20 or more languages, and it offers premium integrations with Notion, Salesforce, HubSpot, Jira, Confluence, Zapier, and webhooks. Its Enterprise+ tier adds HIPAA compliance, SAML and SCIM, domain capture, and custom data retention. Backchannel is a self-hosted web app with none of those things.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final">
+    <div class="wrap">
+      <h2>Nothing joins. Nothing leaves.</h2>
+      <p class="sub">Self-hosted, open source, MIT licensed. An assistant that only shows up where you put it.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Other comparisons</h2>
+            <div class="doc-list">
+        <a class="doc" href="/fathom-alternative/">
+          <strong>Fathom alternative</strong>
+          <span>When a generous free tier is not the whole story</span>
+        </a>
+        <a class="doc" href="/otter-alternative/">
+          <strong>Open-source Otter.ai alternative</strong>
+          <span>Self-hosted transcripts and insights without minute caps</span>
+        </a>
+        <a class="doc" href="/fireflies-alternative/">
+          <strong>Fireflies.ai alternative without the bot</strong>
+          <span>Live assistance on your own hardware, no bot in the room</span>
+        </a>
+        <a class="doc" href="/open-source-meeting-assistants/">
+          <strong>Open-source meeting assistants</strong>
+          <span>The self-hosted landscape, compared honestly</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site">
+    <div class="wrap footer-compare">
+    <span>Compare:</span>
+    <a href="/open-source-meeting-assistants/">Open-source meeting assistants</a>
+    <a href="/otter-alternative/">Open-source Otter.ai alternative</a>
+    <a href="/fireflies-alternative/">Fireflies.ai alternative without the bot</a>
+    <a href="/granola-alternative/">Open-source Granola alternative</a>
+    <a href="/fathom-alternative/">Fathom alternative</a>
+    <a href="/gong-and-backchannel/">Gong and Backchannel</a>
+    <a href="/teams-premium-alternative/">Teams Premium alternative</a>
+  </div>
+  <div class="wrap">
+    <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
+    <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

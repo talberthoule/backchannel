@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open-Source, Self-Hosted Fathom Alternative | Backchannel</title>
+  <meta name="description" content="An open-source, self-hosted Fathom alternative: your meetings never reach a vendor cloud, and live agents work the call instead of summarizing it. MIT licensed." />
+  <link rel="canonical" href="https://backchannel.page/fathom-alternative/" />
+  <meta property="og:title" content="Open-Source, Self-Hosted Fathom Alternative | Backchannel" />
+  <meta property="og:description" content="An open-source, self-hosted Fathom alternative: your meetings never reach a vendor cloud, and live agents work the call instead of summarizing it. MIT licensed." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Backchannel" />
+  <meta property="og:url" content="https://backchannel.page/fathom-alternative/" />
+  <meta property="og:image" content="https://backchannel.page/assets/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Backchannel: live meeting transcription and real-time insight agents, self-hosted." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <link rel="stylesheet" href="../style.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebPage",
+        "url": "https://backchannel.page/fathom-alternative/",
+        "name": "Open-Source, Self-Hosted Fathom Alternative | Backchannel",
+        "description": "An open-source, self-hosted Fathom alternative: your meetings never reach a vendor cloud, and live agents work the call instead of summarizing it. MIT licensed.",
+        "dateModified": "2026-07-24",
+        "isPartOf": {
+          "@id": "https://backchannel.page/#website"
+        },
+        "about": {
+          "@id": "https://backchannel.page/#software"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Backchannel",
+            "item": "https://backchannel.page/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Fathom alternative"
+          }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Is Fathom's free plan really unlimited?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "For recording and transcription, yes, and we will not pretend otherwise. As of July 2026 Fathom's help center states that both Free and Premium include unlimited recordings and storage plus unlimited transcriptions in 38 languages. The one real cap on Free is AI summarization: advanced summaries are limited to your first 5 calls each month, after which only general templates are available. AI action items, follow-up emails, custom summaries, and Ask Fathom are Premium features."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Why switch from Fathom if it is free?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Only two reasons are good enough. The first is where your meetings live: Fathom's privacy policy states that, depending on your account settings, it may use de-identified data from your meeting content to train and improve its in-house AI models, with opt-out available in account settings, and its services are hosted in the United States. Backchannel processes and stores everything on hardware you control. The second is what you get during the call: Fathom's live layer describes what is happening, while Backchannel's agents suggest what to do next."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Fathom still put a bot in your meeting?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Not always any more. Fathom now offers a choice of bot-free or bot capture, which is a genuine improvement and removes what had been its most common complaint. As of July 2026, however, bot-free capture is available on Mac only, with Windows listed as coming soon. Backchannel's browser capture has never used a bot, on any platform, since nothing ever joins the call."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What does Fathom do better than Backchannel?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "A great deal. Fathom offers zero-setup onboarding, unlimited transcription in 38 languages, a polished native desktop app, CRM sync with HubSpot, Salesforce, and Close, clips, playlists, search across every call, ChatGPT and Claude integrations, and SOC 2 Type II, GDPR, and HIPAA compliance with SSO and SCIM. Backchannel has no language matrix, no CRM sync, no compliance certifications, and asks you to run Docker and supply your own API key."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <img src="/assets/favicon.svg" alt="" />
+      backchannel
+    </a>
+    <nav class="site-nav">
+      <a href="/#features">Features</a>
+      <a href="/#quickstart">Quickstart</a>
+      <a href="/docs/">Docs</a>
+      <a class="btn primary nav-cta" href="https://github.com/talberthoule/backchannel">Star on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="wrap">
+      <h1>An open-source, self-hosted <span class="accent">Fathom alternative</span></h1>
+      <p class="lede">
+        Let us start by conceding the obvious: Fathom's free plan is genuinely
+        excellent. Unlimited recordings, unlimited storage, and unlimited
+        transcription in 38 languages, forever, with zero setup. Nothing on
+        this page will tell you Backchannel is cheaper or easier to start
+        than that, because it is not. What Backchannel offers instead is
+        different ownership and a different kind of help: your meetings never
+        reach a vendor, and agents work the call while it is still running.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+      <p class="quickstart-note">MIT licensed &middot; audio stays on your server &middot; desktop portal requires an approved Backchannel account, not GitHub membership &middot; pricing as of July 2026</p>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">The honest starting point</span>
+      <h2>Where the free plan actually ends</h2>
+      <p class="sub">Fathom's free tier is the strongest in the category. It has exactly one meaningful cap, and it is worth knowing precisely where it sits. Plan details as of July 2026.</p>
+      <div class="grid">
+        <div class="card">
+          <h3>What really is unlimited</h3>
+          <p>Fathom's help center states that Free and Premium both include unlimited recordings and storage, and unlimited transcriptions in 38 languages. This is not a trial or a teaser. For a solo user who wants a searchable record of every call, Fathom free is a genuinely good answer.</p>
+        </div>
+        <div class="card">
+          <h3>The one real cap</h3>
+          <p>Advanced summaries on Free are limited to "your first 5 calls each month"; after that only general templates are available. AI action items, AI follow-up emails, custom summaries, and Ask Fathom are Premium-only, at $20 per user per month, or $16 annually.</p>
+        </div>
+        <div class="card">
+          <h3>Where cost does start to matter</h3>
+          <p>The free plan is an individual story. Team is $19 per user monthly or $15 annually, and Business is $34 monthly or $25 annually. At twenty seats on Business, that is roughly $6,000 a year for a capability Backchannel includes at $0 beyond your own hardware and API usage.</p>
+        </div>
+        <div class="card">
+          <h3>What the free plan costs in another currency</h3>
+          <p>Fathom's privacy policy says that, "Based on how you configure your account settings, we may use and create de-identified data generated from Meeting Content Information to improve our Services by training, improving, and customizing our in-house artificial intelligence models." You can opt out in account settings -- but it is an opt-out, not an opt-in.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">The alternative</span>
+      <h2>The trade is ownership, not price</h2>
+      <div class="prose">
+        <p>
+          Backchannel is an MIT-licensed AI meeting assistant you run yourself
+          with Docker Compose, with desktop builds for Windows, macOS, and
+          Linux. It captures your microphone and, optionally, tab or system
+          audio directly in the browser -- no bot joins the meeting, on any
+          platform, so it works with Zoom, Google Meet, Teams, or anything
+          else. Voice activity detection and
+          <a href="/docs/audio-pipeline/">speaker diarization run locally</a>
+          on every call, and transcription can run fully offline with local
+          ONNX Whisper or Parakeet models.
+        </p>
+        <p>
+          Fathom is a cloud service, and its privacy policy is candid about
+          what that means. Its services are hosted in the United States, and
+          de-identified meeting content may be used to train Fathom's in-house
+          models depending on your account settings. To Fathom's credit, the
+          same policy states plainly that it does not authorize third parties
+          such as OpenAI, Anthropic, or Google to train their models on your
+          meeting content. But the structural fact remains: your conversations
+          are on someone else's infrastructure, under terms they set and can
+          revise.
+        </p>
+        <p>
+          With Backchannel there is no vendor in that position. Audio is
+          captured in your browser, diarized on your server, and stored on
+          your disk. With a local transcription model, even the speech-to-text
+          runs offline. The only outbound calls are the ones you configure to
+          the model provider whose key you supply.
+        </p>
+      </div>
+      <div class="cta-row" style="justify-content: flex-start; margin-top: 24px;">
+        <a class="btn primary" href="/#quickstart">Self-host in minutes</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">Side by side</span>
+      <h2>Fathom vs Backchannel</h2>
+      <p class="sub">Pricing and plan details are as of July 2026 and may change; check Fathom's pricing page for current numbers.</p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Dimension</th><th>Fathom</th><th>Backchannel</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Capture</td>
+              <td>Choice of bot or bot-free; bot-free is Mac only, Windows listed as coming soon</td>
+              <td>Browser capture of mic + tab/system audio on every platform; nothing joins the call</td>
+            </tr>
+            <tr>
+              <td>Where audio is processed</td>
+              <td>Fathom's cloud; services hosted in the United States</td>
+              <td>Your server; diarization always local, transcription can run fully offline</td>
+            </tr>
+            <tr>
+              <td>Training on your meetings</td>
+              <td>De-identified meeting content may train Fathom's in-house models, subject to account settings, with opt-out available</td>
+              <td>No vendor in the path; nothing to opt out of</td>
+            </tr>
+            <tr>
+              <td>Recording and transcription limits</td>
+              <td>Unlimited on Free and Premium, in 38 languages</td>
+              <td>None; limited only by your own disk and API budget</td>
+            </tr>
+            <tr>
+              <td>AI summaries on the free tier</td>
+              <td>Advanced summaries for the first 5 calls each month, then general templates</td>
+              <td>No tiers; all agents available, cost is your own API usage</td>
+            </tr>
+            <tr>
+              <td>Real-time in-call output</td>
+              <td>Live summaries and an in-meeting scratchpad on the Mac desktop app; real-time coaching listed as coming soon</td>
+              <td>Five live agents: questions, objection responses, opportunities, action items, strategic signal cards</td>
+            </tr>
+            <tr>
+              <td>Agent configuration</td>
+              <td>Not user-configurable</td>
+              <td>Each agent's model, prompt, and trigger editable in Admin</td>
+            </tr>
+            <tr>
+              <td>Speaker diarization</td>
+              <td>Yes</td>
+              <td>Yes -- local Silero VAD + WeSpeaker embeddings, with optional NVIDIA Sortformer on GPU</td>
+            </tr>
+            <tr>
+              <td>Pricing</td>
+              <td>Free tier; Premium $20/mo ($16 annual); Team $19 ($15 annual); Business $34 ($25 annual); Enterprise custom</td>
+              <td>$0; hardware plus optional LLM API usage</td>
+            </tr>
+            <tr>
+              <td>Integrations</td>
+              <td>CRM sync (HubSpot, Salesforce, Close), ChatGPT and Claude, Slack, Zapier</td>
+              <td>Thin: exports (TXT/XLSX/HTML), cross-session chat, REST API; no CRM sync</td>
+            </tr>
+            <tr>
+              <td>Compliance</td>
+              <td>SOC 2 Type II, GDPR, HIPAA, SSO and SCIM</td>
+              <td>No certifications; the argument is architectural and the source is auditable</td>
+            </tr>
+            <tr>
+              <td>License and hosting</td>
+              <td>Closed source, cloud only</td>
+              <td>MIT open source, self-hosted with Docker Compose</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>The differences that actually matter</h2>
+      <div class="prose">
+        <h3>Live summaries versus live advice</h3>
+        <p>
+          Fathom's 2026 desktop update added live summaries that update as the
+          call unfolds, plus a scratchpad for your own notes. That is real and
+          it is useful. But it is a better record of what already happened.
+          Backchannel's <a href="/docs/agents/">agents</a> are pointed the
+          other way: a consolidated analyst on a 40-second cycle proposing
+          questions and observations, an objection handler running every 10
+          seconds over just the last 90 seconds of conversation and pairing an
+          immediate suggested response with the underlying concern, an
+          opportunity specialist matching what you heard against your own
+          offerings catalog, a synthesizer reconciling insights and noticing
+          when a question has been answered, and a strategic signals agent
+          producing risk and next-question cards every 45 seconds. Fathom's
+          own roadmap lists real-time coaching as coming soon, which suggests
+          they agree this is where the category is going.
+        </p>
+        <h3>Bot-free is no longer the differentiator</h3>
+        <p>
+          We should be straight about this, because a lot of comparison pages
+          are not. Fathom added bot-free capture and it works well. The
+          remaining gap is narrow and platform-shaped: as of July 2026 it is
+          Mac only, with Windows still listed as coming soon, whereas
+          Backchannel's browser capture has never involved a bot on any
+          operating system. If you are on a Mac and the bot was your only
+          complaint, Fathom already solved your problem.
+        </p>
+        <h3>What you give up</h3>
+        <p>
+          Honestly: quite a lot. Fathom is used at 300,000-plus companies and
+          has SOC 2 Type II, GDPR, and HIPAA compliance with SSO and SCIM --
+          badges a procurement team understands and Backchannel simply does
+          not have. Fathom does 38 languages; we market no language matrix at
+          all. Fathom syncs to HubSpot, Salesforce, and Close, has clips,
+          playlists, and search across every call, and integrates with ChatGPT
+          and Claude. Backchannel offers exports, a cross-session chat, and a
+          REST API. Fathom installs in a minute; Backchannel is a Docker
+          Compose stack, and our prebuilt desktop downloads need an approved
+          Backchannel account rather than being a direct download.
+        </p>
+        <h3>One more thing we cannot do</h3>
+        <p>
+          Backchannel's analysis agents require a Google or OpenAI API key.
+          Capture, diarization, and transcription all run locally, but there
+          is no local LLM route in the codebase today, so the agents cannot
+          run with the network off. Our Privacy First mode is explicit about
+          this: switching it on disables every feature that would make an
+          outside call, including the agents. If you need summarization with
+          zero cloud calls, look at
+          <a href="/open-source-meeting-assistants/">the other open-source options</a>
+          -- some of them do that better than we do.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Who should use which</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Stay with Fathom if you...</h3>
+          <p>Are a solo user or small team who wants a great free record of every call with no setup; need 38-language coverage, CRM sync, or compliance certifications; work on a Mac where bot-free capture already ships; and are comfortable with cloud processing under a US-hosted service.</p>
+        </div>
+        <div class="card">
+          <h3>Switch to Backchannel if you...</h3>
+          <p>Cannot have meeting audio on a vendor's infrastructure at any price, do not want an opt-out training arrangement, want tactical suggestions during the call rather than a live summary of it, want to edit the agents' prompts and models yourself, and can run docker compose with your own API key.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>What moving over looks like</h2>
+      <div class="prose">
+        <p>
+          Setup is a git clone and <code>docker compose up --build</code>,
+          plus a Gemini or OpenAI API key (or a local ONNX Whisper/Parakeet
+          model for fully offline transcription). The
+          <a href="/docs/quickstart/">quickstart</a> is honest about the
+          friction: first start builds images and downloads models, so give
+          it a few minutes, not seconds. Compared with installing Fathom,
+          this is the harder path and we are not going to dress that up.
+        </p>
+        <p>
+          Past meetings: Backchannel imports transcripts (.txt, .md, .docx)
+          and audio files (.mp3, .m4a, .wav, .ogg, .flac), and can run its
+          analysis over imported content. Because raw audio is retained, a
+          session can also be re-transcribed later through a different model.
+          There is no one-click Fathom migration tool -- you export from
+          Fathom and import what you care about.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Common questions</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Is Fathom's free plan really unlimited?</h3>
+          <p>For recording and transcription, yes, and we will not pretend otherwise. As of July 2026 Fathom's help center states that both Free and Premium include unlimited recordings and storage plus unlimited transcriptions in 38 languages. The one real cap on Free is AI summarization: advanced summaries are limited to your first 5 calls each month, after which only general templates are available. AI action items, follow-up emails, custom summaries, and Ask Fathom are Premium features.</p>
+        </div>
+        <div class="card">
+          <h3>Why switch from Fathom if it is free?</h3>
+          <p>Only two reasons are good enough. The first is where your meetings live: Fathom's privacy policy states that, depending on your account settings, it may use de-identified data from your meeting content to train and improve its in-house AI models, with opt-out available in account settings, and its services are hosted in the United States. Backchannel processes and stores everything on hardware you control. The second is what you get during the call: Fathom's live layer describes what is happening, while Backchannel's agents suggest what to do next.</p>
+        </div>
+        <div class="card">
+          <h3>Does Fathom still put a bot in your meeting?</h3>
+          <p>Not always any more. Fathom now offers a choice of bot-free or bot capture, which is a genuine improvement and removes what had been its most common complaint. As of July 2026, however, bot-free capture is available on Mac only, with Windows listed as coming soon. Backchannel's browser capture has never used a bot, on any platform, since nothing ever joins the call.</p>
+        </div>
+        <div class="card">
+          <h3>What does Fathom do better than Backchannel?</h3>
+          <p>A great deal. Fathom offers zero-setup onboarding, unlimited transcription in 38 languages, a polished native desktop app, CRM sync with HubSpot, Salesforce, and Close, clips, playlists, search across every call, ChatGPT and Claude integrations, and SOC 2 Type II, GDPR, and HIPAA compliance with SSO and SCIM. Backchannel has no language matrix, no CRM sync, no compliance certifications, and asks you to run Docker and supply your own API key.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final">
+    <div class="wrap">
+      <h2>Own your meeting stack</h2>
+      <p class="sub">Self-hosted, open source, MIT licensed. Not cheaper than free -- just yours.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Other comparisons</h2>
+            <div class="doc-list">
+        <a class="doc" href="/otter-alternative/">
+          <strong>Open-source Otter.ai alternative</strong>
+          <span>Self-hosted transcripts and insights without minute caps</span>
+        </a>
+        <a class="doc" href="/read-ai-alternative/">
+          <strong>Read AI alternative</strong>
+          <span>Meeting intelligence without the governance headache</span>
+        </a>
+        <a class="doc" href="/granola-alternative/">
+          <strong>Open-source Granola alternative</strong>
+          <span>Bot-free capture, but self-hosted and real-time</span>
+        </a>
+        <a class="doc" href="/open-source-meeting-assistants/">
+          <strong>Open-source meeting assistants</strong>
+          <span>The self-hosted landscape, compared honestly</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site">
+    <div class="wrap footer-compare">
+    <span>Compare:</span>
+    <a href="/open-source-meeting-assistants/">Open-source meeting assistants</a>
+    <a href="/otter-alternative/">Open-source Otter.ai alternative</a>
+    <a href="/fireflies-alternative/">Fireflies.ai alternative without the bot</a>
+    <a href="/granola-alternative/">Open-source Granola alternative</a>
+    <a href="/fathom-alternative/">Fathom alternative</a>
+    <a href="/gong-and-backchannel/">Gong and Backchannel</a>
+    <a href="/teams-premium-alternative/">Teams Premium alternative</a>
+  </div>
+  <div class="wrap">
+    <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
+    <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

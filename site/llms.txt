@@ -25,8 +25,11 @@ Key facts:
 - Stack: React 18 + TypeScript frontend, FastAPI backend, PostgreSQL 16
 - Diarization: Silero VAD + WeSpeaker ResNet152 speaker embeddings (local, ONNX)
 - Transcription: Gemini Flash, or fully offline ONNX Whisper/Parakeet
-- Agents: consolidated analyst, objection handler, synthesizer, opportunity
-  specialist -- each with a configurable model, prompt, and trigger
+- Agents: nine seeded agents -- an audio gateway, five live insight agents
+  (consolidated analyst every 40s, objection handler every 10s over the last
+  90s, synthesizer, opportunity specialist, strategic signals every 45s), and
+  a three-agent post-call briefing pass (meeting lens, discovery lens,
+  arbiter) -- each with a configurable model, prompt, and trigger
 - Works with any meeting app: captures mic plus tab/system audio in the
   browser, so Zoom, Meet, and Teams need no bot or integration
 
@@ -51,6 +54,14 @@ Key facts:
 - [Open-source Granola alternative](https://backchannel.page/granola-alternative/): bot-free capture, self-hosted and real-time
 - [Fireflies.ai alternative without the bot](https://backchannel.page/fireflies-alternative/): live assistance on your own hardware
 - [Backchannel vs Meetily](https://backchannel.page/vs-meetily/): two open-source meeting assistants compared
+- [Open-source meeting assistants](https://backchannel.page/open-source-meeting-assistants/): the self-hosted landscape (Meetily, Anarlog, Amurex, Vibe, Buzz, Backchannel) compared honestly, including when to pick something else
+- [Backchannel vs Anarlog, formerly Hyprnote](https://backchannel.page/vs-anarlog/): a local-first Mac notetaker vs a live agent server; both keep audio local, only one acts during the call
+- [Fathom alternative](https://backchannel.page/fathom-alternative/): what a generous free tier does and does not cover
+- [Read AI alternative](https://backchannel.page/read-ai-alternative/): meeting intelligence without the auto-join governance problem
+- [Gong and Backchannel](https://backchannel.page/gong-and-backchannel/): not a Gong replacement -- where a live seller-side layer fits under revenue intelligence
+- [Backchannel vs Clari Copilot](https://backchannel.page/vs-clari-copilot/): responses generated against the objection actually raised vs pre-written battlecards
+- [Teams Premium alternative](https://backchannel.page/teams-premium-alternative/): one assistant across every meeting platform instead of one per platform
+- [Plaud alternative](https://backchannel.page/plaud-alternative/): bot-free capture without buying hardware or sending audio to a vendor cloud
 
 ## Source
 

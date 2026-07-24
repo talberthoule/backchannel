@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Best Open-Source, Self-Hosted AI Meeting Assistants (2026) | Backchannel</title>
+  <meta name="description" content="An honest guide to open-source, self-hosted AI meeting assistants in 2026: Meetily, Anarlog, Backchannel, Amurex, Vibe, and Buzz -- what each one is actually for." />
+  <link rel="canonical" href="https://backchannel.page/open-source-meeting-assistants/" />
+  <meta property="og:title" content="Best Open-Source, Self-Hosted AI Meeting Assistants (2026) | Backchannel" />
+  <meta property="og:description" content="An honest guide to open-source, self-hosted AI meeting assistants in 2026: Meetily, Anarlog, Backchannel, Amurex, Vibe, and Buzz -- what each one is actually for." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Backchannel" />
+  <meta property="og:url" content="https://backchannel.page/open-source-meeting-assistants/" />
+  <meta property="og:image" content="https://backchannel.page/assets/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Backchannel: live meeting transcription and real-time insight agents, self-hosted." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <link rel="stylesheet" href="../style.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebPage",
+        "url": "https://backchannel.page/open-source-meeting-assistants/",
+        "name": "Best Open-Source, Self-Hosted AI Meeting Assistants (2026) | Backchannel",
+        "description": "An honest guide to open-source, self-hosted AI meeting assistants in 2026: Meetily, Anarlog, Backchannel, Amurex, Vibe, and Buzz -- what each one is actually for.",
+        "dateModified": "2026-07-24",
+        "isPartOf": {
+          "@id": "https://backchannel.page/#website"
+        },
+        "about": {
+          "@id": "https://backchannel.page/#software"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Backchannel",
+            "item": "https://backchannel.page/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Open-source AI meeting assistants"
+          }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is the best open-source AI meeting assistant in 2026?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "There is no single winner, because these tools solve different problems. Meetily is the best choice if you want notes and summaries with no cloud calls at all, since it pairs local Whisper or Parakeet transcription with local Ollama summarization. Anarlog is the best choice if you want a polished, Granola-style notepad on a Mac and do not want to run a server. Backchannel is the best choice if you want AI agents that surface questions, objections, and opportunities while the call is still happening, and you can run Docker and supply an API key."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can an open-source meeting assistant run completely offline?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Some can, end to end. Meetily transcribes locally with Whisper or Parakeet and summarizes locally through Ollama, so no part of the pipeline needs the internet. Backchannel is partially offline: capture, voice activity detection, speaker diarization, and transcription can all run locally with ONNX models, but its analysis agents require a Google or OpenAI API key. Backchannel ships a Privacy First mode that enforces this by disabling every feature that would make an outside call."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Do any open-source meeting assistants give advice during the call?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Almost none. The open-source category is overwhelmingly built around recording a meeting and summarizing it afterward. Amurex, which is AGPL-3.0 licensed, did ship real-time in-meeting suggestions, but its GitHub repository has had no new commits since May 2025. Among actively maintained open-source meeting tools, Backchannel is the only one we are aware of that runs live insight agents during the call rather than producing notes after it."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Do open-source meeting assistants put a bot in your meeting?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. This is one of the most consistent advantages of the open-source tier. Meetily, Anarlog, and Backchannel all capture microphone and system or tab audio directly on your own machine, so nothing joins the participant list and no per-platform integration is needed. They work with Zoom, Google Meet, Teams, Slack huddles, or anything else that makes sound."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <img src="/assets/favicon.svg" alt="" />
+      backchannel
+    </a>
+    <nav class="site-nav">
+      <a href="/#features">Features</a>
+      <a href="/#quickstart">Quickstart</a>
+      <a href="/docs/">Docs</a>
+      <a class="btn primary nav-cta" href="https://github.com/talberthoule/backchannel">Star on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="wrap">
+      <h1>The best <span class="accent">open-source, self-hosted AI meeting assistants</span> in 2026</h1>
+      <p class="lede">
+        We build one of the tools on this page, so read it with that in mind.
+        We have also tried to make it the guide we wanted when we started:
+        these projects are not interchangeable, most comparison lists blur
+        them together, and for a lot of readers the right answer here is not
+        Backchannel. Repository details were checked on 2026-07-24.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+      <p class="quickstart-note">Every tool below is open source &middot; none of them puts a bot in your meeting &middot; pricing and repository data as of July 2026</p>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">How to choose</span>
+      <h2>Four questions decide this, not a feature count</h2>
+      <p class="sub">Answer these and the shortlist collapses to one or two tools.</p>
+      <div class="grid">
+        <div class="card">
+          <h3>1. Does audio have to stay on your machine?</h3>
+          <p>If the answer is "completely, including the summary," you need local transcription <em>and</em> a local LLM. That narrows the field sharply -- most tools do local speech-to-text and then call a cloud model to write the notes.</p>
+        </div>
+        <div class="card">
+          <h3>2. Do you need help during the call, or a record after it?</h3>
+          <p>Nearly every open-source tool in this category is a recorder plus a summarizer. If you want something reading the conversation and prompting you mid-call, the list is very short.</p>
+        </div>
+        <div class="card">
+          <h3>3. Do you need to know who said what?</h3>
+          <p>Speaker diarization is harder than transcription and is frequently missing, unfinished, or reserved for a paid tier. If you run multi-party sales or research calls, check this before anything else.</p>
+        </div>
+        <div class="card">
+          <h3>4. Can you run a server?</h3>
+          <p>Some of these are a signed desktop download. One of them is a Docker Compose stack with PostgreSQL. That difference matters more than any feature on the list.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">Side by side</span>
+      <h2>The open-source meeting assistants worth knowing</h2>
+      <p class="sub">Repository data verified against the GitHub API on 2026-07-24. Pricing as of July 2026 and subject to change.</p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Tool</th>
+              <th>License</th>
+              <th>Shape</th>
+              <th>Fully offline?</th>
+              <th>Diarization</th>
+              <th>Live in-call help</th>
+              <th>Maintenance</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Meetily</strong></td>
+              <td>MIT</td>
+              <td>Desktop app, macOS / Windows / Linux</td>
+              <td>Yes -- local Whisper or Parakeet plus Ollama summaries</td>
+              <td>Listed as a Pro-tier feature in its README</td>
+              <td>No</td>
+              <td>Very active, roughly 26,000 GitHub stars</td>
+            </tr>
+            <tr>
+              <td><strong>Anarlog</strong> (formerly Hyprnote)</td>
+              <td>MIT</td>
+              <td>Desktop app, Apple Silicon first</td>
+              <td>Partly -- on-device transcription; choose on-device models, your own key, or hosted AI</td>
+              <td>Not documented</td>
+              <td>No</td>
+              <td>Very active, roughly 8,900 GitHub stars</td>
+            </tr>
+            <tr>
+              <td><strong>Backchannel</strong></td>
+              <td>MIT</td>
+              <td>Self-hosted web app (Docker Compose) plus desktop builds</td>
+              <td>No -- transcription and diarization run locally, but the agents need a cloud API key</td>
+              <td>Yes, always local and always included</td>
+              <td>Yes -- five live insight agents</td>
+              <td>Active, but by far the youngest and smallest project here</td>
+            </tr>
+            <tr>
+              <td><strong>Amurex</strong></td>
+              <td>AGPL-3.0</td>
+              <td>Browser extension plus backend</td>
+              <td>No</td>
+              <td>Not documented</td>
+              <td>Yes, historically</td>
+              <td>Stalled -- no commits since May 2025</td>
+            </tr>
+            <tr>
+              <td><strong>Vibe</strong></td>
+              <td>MIT</td>
+              <td>Desktop file transcriber, macOS / Windows / Linux</td>
+              <td>Yes</td>
+              <td>Yes</td>
+              <td>No -- not a meeting tool</td>
+              <td>Active, roughly 6,900 GitHub stars</td>
+            </tr>
+            <tr>
+              <td><strong>Buzz</strong></td>
+              <td>MIT</td>
+              <td>Desktop file transcriber and translator</td>
+              <td>Yes</td>
+              <td>No</td>
+              <td>No -- not a meeting tool</td>
+              <td>Very active, roughly 20,000 GitHub stars</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>What each one is actually for</h2>
+      <div class="prose">
+        <h3>Meetily -- pick this if you want zero cloud calls</h3>
+        <p>
+          Meetily is the most popular self-hosted meeting assistant in the
+          category and the one we recommend most often to people whose real
+          constraint is "nothing leaves this machine." It captures microphone
+          and system audio, transcribes locally with Whisper or Parakeet, and
+          then summarizes through Ollama, which means the entire pipeline
+          including the AI writing can run with the network off. It ships for
+          macOS, Windows, and Linux with GPU acceleration on Apple Silicon,
+          CUDA, and Vulkan. It is MIT licensed.
+        </p>
+        <p>
+          The catch to check before you commit: its README lists speaker
+          diarization as a Pro-tier feature rather than something included in
+          the community edition. If you need every transcript line attributed
+          to a person for free, verify the current state of that in the repo.
+          Meetily also does not attempt live in-call assistance.
+        </p>
+        <h3>Anarlog -- pick this if you want a beautiful Mac notepad</h3>
+        <p>
+          Anarlog, which was previously called Hyprnote, is the closest
+          open-source thing to Granola: a local-first notepad where you jot
+          during the meeting and the AI cleans it up afterward. It captures
+          meeting audio without adding a bot to the call, runs transcription
+          on-device, and lets you choose on-device models, your own API key,
+          or hosted AI. It is MIT licensed and it is being worked on
+          constantly -- it was pushed to on the day we checked.
+        </p>
+        <p>
+          Two honest caveats. The downloads lead with Apple Silicon, so it is
+          Mac-first in practice. And it is open core rather than entirely
+          free: the $0 tier gives you on-device transcription, while cloud
+          transcription and cloud LLM features sit on a Pro tier at $15 per
+          month or $150 per year as of July 2026.
+        </p>
+        <h3>Vibe and Buzz -- pick these if you just have a file</h3>
+        <p>
+          These are not meeting assistants and it is a mistake to compare them
+          as if they were. Both are excellent offline transcription tools for
+          audio and video files you already have. Buzz is the larger project
+          at roughly 20,000 stars and also does translation. Vibe is smaller
+          but notably includes speaker diarization, which makes it a good
+          choice for turning a recorded multi-party interview into an
+          attributed transcript. Neither one sits in your meeting or produces
+          notes and action items.
+        </p>
+        <p>
+          If you are assembling something custom, the underlying building
+          blocks -- Whisper, whisper.cpp, faster-whisper, and WhisperX -- are
+          all permissively licensed and are what most of these products are
+          built on anyway.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>A note on dictation tools</h2>
+      <div class="prose">
+        <p>
+          Roundups in this category routinely mix in dictation and
+          speech-to-text utilities such as MacWhisper and Superwhisper. They
+          are good at what they do, but they are a different category: they
+          turn your voice into text in whatever app you are typing in. They do
+          not capture the other side of a call, do not attribute speakers
+          across a multi-party conversation, and do not produce meeting notes
+          or action items. They are also not open source, so they do not
+          belong on a list of open-source meeting assistants at all.
+        </p>
+        <p>
+          If what you actually want is faster typing rather than a record of a
+          meeting, buy one of those instead and ignore this entire page. It is
+          a cheaper and better answer to that problem.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <span class="kicker">The gap</span>
+      <h2>Nobody maintained is doing live in-call agents</h2>
+      <div class="prose">
+        <p>
+          This is the most striking thing about the open-source tier in 2026.
+          The commercial market has moved: Otter shipped a real-time coaching
+          agent in July 2026, Fathom's Mac desktop app now shows live
+          summaries during a call, and Avoma sells a real-time answer
+          assistant as a paid add-on. The open-source side has almost entirely
+          stayed with the record-then-summarize model.
+        </p>
+        <p>
+          There is one important exception, and it is a cautionary tale.
+          Amurex, licensed AGPL-3.0, genuinely shipped real-time in-meeting
+          suggestions and got real attention for it. Its GitHub repository has
+          had no new commits since May 2025. It is not archived, so it may
+          come back, but as of July 2026 it is not a project we would ask
+          anyone to depend on.
+        </p>
+        <p>
+          As far as we can tell, that leaves Backchannel as the only actively
+          maintained open-source meeting tool that runs analysis agents during
+          the call rather than after it. We would genuinely rather this were a
+          crowded field, and if you know of another one we have missed, tell
+          us on GitHub and we will add it here.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <span class="kicker">Where we fit</span>
+      <h2>Backchannel, and the reasons not to choose it</h2>
+      <div class="prose">
+        <p>
+          Backchannel is an MIT-licensed, self-hosted meeting assistant you run
+          with Docker Compose, plus desktop builds for Windows, macOS, and
+          Linux. It captures microphone and tab or system audio in the browser
+          with no bot joining the call. Voice activity detection and speaker
+          diarization run locally on every call using Silero VAD and WeSpeaker
+          embeddings, with an optional NVIDIA Sortformer diarizer on GPU
+          machines. Transcription routes either to a cloud model or to local
+          ONNX Whisper and Parakeet models that run offline.
+        </p>
+        <p>
+          The part that is different from everything else on this page: while
+          the call is still running, nine seeded agents work the transcript --
+          an audio gateway for interim captions, five live insight agents
+          (a consolidated analyst on a 40-second cycle, an objection handler
+          every 10 seconds over the last 90 seconds of conversation, a
+          synthesizer, an opportunity specialist, and a strategic signals
+          agent on a 45-second cycle), and then a three-agent briefing pass
+          after the call that drafts the record from two independent
+          perspectives and reconciles them. Every agent's model, prompt, and
+          trigger is editable in the admin panel.
+        </p>
+        <p>
+          Now the honest reasons to pick something else. <strong>Our agents
+          require a cloud API key.</strong> There is no local LLM route in the
+          codebase today, so unlike Meetily we cannot summarize or analyze
+          with the network off -- Backchannel's Privacy First mode is explicit
+          about this and switches the analysis agents off entirely rather than
+          pretending. <strong>We are the heaviest thing here to install</strong>,
+          a Docker Compose stack with PostgreSQL rather than a signed
+          download. <strong>Our prebuilt desktop downloads require an approved
+          Backchannel account</strong>, where most peers are a direct download.
+          And <strong>we are the youngest and smallest project on this page</strong>
+          by a wide margin -- Meetily has roughly 26,000 GitHub stars and we
+          have a rounding error. If maturity and community size are what you
+          are optimizing for, that is a real argument against us.
+        </p>
+      </div>
+      <div class="cta-row" style="justify-content: flex-start; margin-top: 24px;">
+        <a class="btn primary" href="/#quickstart">Self-host in minutes</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Our recommendation, plainly</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Choose Meetily if...</h3>
+          <p>Your requirement is that nothing at all touches a network, including the summary. Local Whisper or Parakeet plus local Ollama is the cleanest answer to that in open source today. Check the current state of diarization first.</p>
+        </div>
+        <div class="card">
+          <h3>Choose Anarlog if...</h3>
+          <p>You want the Granola experience -- write your own notes, let AI tidy them -- on a Mac, with a polished app and no server to run. Accept that the richer features sit on a paid tier.</p>
+        </div>
+        <div class="card">
+          <h3>Choose Vibe or Buzz if...</h3>
+          <p>You have a recording, not a meeting. These transcribe files offline and get out of the way. Vibe adds speaker diarization; Buzz adds translation.</p>
+        </div>
+        <div class="card">
+          <h3>Choose Backchannel if...</h3>
+          <p>You want questions, objection responses, and opportunities pushed to you while the call is still happening, you want every line speaker-attributed for free, and you can run Docker and bring a Gemini or OpenAI key.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Common questions</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>What is the best open-source AI meeting assistant in 2026?</h3>
+          <p>There is no single winner, because these tools solve different problems. Meetily is the best choice if you want notes and summaries with no cloud calls at all, since it pairs local Whisper or Parakeet transcription with local Ollama summarization. Anarlog is the best choice if you want a polished, Granola-style notepad on a Mac and do not want to run a server. Backchannel is the best choice if you want AI agents that surface questions, objections, and opportunities while the call is still happening, and you can run Docker and supply an API key.</p>
+        </div>
+        <div class="card">
+          <h3>Can an open-source meeting assistant run completely offline?</h3>
+          <p>Some can, end to end. Meetily transcribes locally with Whisper or Parakeet and summarizes locally through Ollama, so no part of the pipeline needs the internet. Backchannel is partially offline: capture, voice activity detection, speaker diarization, and transcription can all run locally with ONNX models, but its analysis agents require a Google or OpenAI API key. Backchannel ships a Privacy First mode that enforces this by disabling every feature that would make an outside call.</p>
+        </div>
+        <div class="card">
+          <h3>Do any open-source meeting assistants give advice during the call?</h3>
+          <p>Almost none. The open-source category is overwhelmingly built around recording a meeting and summarizing it afterward. Amurex, which is AGPL-3.0 licensed, did ship real-time in-meeting suggestions, but its GitHub repository has had no new commits since May 2025. Among actively maintained open-source meeting tools, Backchannel is the only one we are aware of that runs live insight agents during the call rather than producing notes after it.</p>
+        </div>
+        <div class="card">
+          <h3>Do open-source meeting assistants put a bot in your meeting?</h3>
+          <p>No. This is one of the most consistent advantages of the open-source tier. Meetily, Anarlog, and Backchannel all capture microphone and system or tab audio directly on your own machine, so nothing joins the participant list and no per-platform integration is needed. They work with Zoom, Google Meet, Teams, Slack huddles, or anything else that makes sound.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final">
+    <div class="wrap">
+      <h2>If you want the live-agent one</h2>
+      <p class="sub">Self-hosted, open source, MIT licensed. Insights during the call, not notes after it.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Other comparisons</h2>
+            <div class="doc-list">
+        <a class="doc" href="/vs-meetily/">
+          <strong>Backchannel vs Meetily</strong>
+          <span>Two open-source meeting assistants, compared honestly</span>
+        </a>
+        <a class="doc" href="/vs-anarlog/">
+          <strong>Backchannel vs Anarlog (formerly Hyprnote)</strong>
+          <span>A local-first Mac notetaker vs a live agent server</span>
+        </a>
+        <a class="doc" href="/otter-alternative/">
+          <strong>Open-source Otter.ai alternative</strong>
+          <span>Self-hosted transcripts and insights without minute caps</span>
+        </a>
+        <a class="doc" href="/fathom-alternative/">
+          <strong>Fathom alternative</strong>
+          <span>When a generous free tier is not the whole story</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site">
+    <div class="wrap footer-compare">
+    <span>Compare:</span>
+    <a href="/open-source-meeting-assistants/">Open-source meeting assistants</a>
+    <a href="/otter-alternative/">Open-source Otter.ai alternative</a>
+    <a href="/fireflies-alternative/">Fireflies.ai alternative without the bot</a>
+    <a href="/granola-alternative/">Open-source Granola alternative</a>
+    <a href="/fathom-alternative/">Fathom alternative</a>
+    <a href="/gong-and-backchannel/">Gong and Backchannel</a>
+    <a href="/teams-premium-alternative/">Teams Premium alternative</a>
+  </div>
+  <div class="wrap">
+    <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
+    <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
