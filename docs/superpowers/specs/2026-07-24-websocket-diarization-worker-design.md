@@ -2,91 +2,203 @@
 
 **Date:** 2026-07-24
 
-**Status:** Approved
+**Status:** Ready for final review
 
 ## Goal
 
-Keep live call audio connected and recorded when speaker diarization briefly falls behind. Continuity and eventual transcript completeness take priority over momentary live transcript latency.
+Keep live call audio connected and recorded when speaker diarization or the
+optional live gateway briefly falls behind. Continuity and eventual transcript
+completeness take priority over momentary live transcript latency.
 
-## Evidence
+## Evidence and failure mechanism
 
 The same desktop call lost its main audio WebSocket three times:
 
-- 13:02:56, with about 36.6 seconds of processing lag
-- 13:21:43, with about 50.0 seconds of processing lag
-- 13:38:12, with about 43.8 seconds of processing lag
+| Close | Wall time | Audio processed | Approximate lag |
+| --- | ---: | ---: | ---: |
+| 13:02:56 | 124.1s | 75.0s | 36.6s |
+| 13:21:43 | 761.1s | 700.0s | 50.0s |
+| 13:38:12 | 789.1s | 745.0s | 43.8s |
 
-The backend process, browser tab, database, and provider requests remained healthy. Before each close, the WebSocket receive path awaited local diarization while 100 ms mic and system frames accumulated. The closes clustered around Uvicorn's keepalive window.
+The backend process, browser tab, database, and provider requests remained
+healthy. Diarization already runs off the event loop with
+`asyncio.to_thread`, but the receive coroutine waits for each inference result
+before calling `websocket.receive()` again. This is a sequential receive-path
+throughput deficit, not event-loop starvation.
 
-The current handler also ignores the first `websocket.disconnect` message. Its next `receive()` call raises `Cannot call "receive" once a disconnect message has been received`, which hides the original close code.
+The pinned Uvicorn/websockets stack buffers 32 incoming data messages by
+default. Dual-track capture sends about 20 messages per second, so 32 slots
+fill in about 1.6 seconds while the receive coroutine is waiting. Once full,
+the protocol reader stops consuming all frames, including PONG control frames.
+The 20-second keepalive timeout then closes the connection. The final observed
+stall was 23.4 seconds, matching that mechanism.
 
-## Design
+The lag was transient rather than continuously divergent: during the longest
+call it repeatedly returned near zero, with about 11.2 seconds of net drift
+over 12 minutes. That supports a small in-process backlog rather than a broker.
 
-`audio_websocket` will create one per-call `asyncio.Queue` and one background diarization task.
+The handler also ignores the first `websocket.disconnect` message because
+Starlette's raw `receive()` returns it instead of raising
+`WebSocketDisconnect`. The next `receive()` raises
+`Cannot call "receive" once a disconnect message has been received`, hiding
+the original close code.
 
-The WebSocket receive loop will remain responsible for:
+## Receive and diarization design
 
-1. Receiving and decoding each audio frame.
-2. Updating split-track state.
-3. Persisting mixed, mic, and system audio immediately.
-4. Forwarding mixed audio to the existing live audio gateway.
-5. Enqueuing the local diarization item without awaiting inference.
+`audio_websocket` will create one per-call `asyncio.Queue` and one permanent
+background diarization task.
 
-Each queue item will snapshot the track, PCM bytes, and split-track state at arrival time. This preserves the current rule that mic frames received before system capture is established do not get retroactively treated as split-track frames.
+For each audio frame, the receive loop will:
 
-The single worker will consume items in arrival order and run the existing mic or system diarizer through `asyncio.to_thread`. Completed segments will enter the existing `OrderedTranscriptionQueue` exactly as they do today. One worker is intentional: it preserves ordering and avoids concurrent access to stateful diarizers.
+1. Receive and decode the frame.
+2. Update and snapshot split-track state.
+3. Mix and persist the audio immediately.
+4. Enqueue the local diarization item without awaiting inference.
+5. Forward mixed audio to the optional live gateway with a bounded wait.
 
-On deliberate stop or unexpected disconnect, the handler will stop accepting frames, drain the diarization queue, stop the worker, and only then flush the diarizers and drain transcription. Audio is already persisted before queueing, so a slow worker cannot lose the recording.
+Each item will contain the track, PCM bytes, captured split-track state, and
+enqueue time. Keeping the PCM in memory is intentional: the active WAV writers
+are buffered and open, so offset-based items would require per-frame
+flushes/seeks while saving only a few megabytes during the observed transient
+backlogs.
 
-## Gateway separation
+The single worker will consume items in arrival order. It alone will create and
+mutate the mic and system diarizers, call their existing `feed_audio` methods
+through `asyncio.to_thread`, and add completed segments to the existing
+`OrderedTranscriptionQueue`. A single worker preserves global transcript-job
+order; separate per-track diarizers do not by themselves preserve the order in
+which `OrderedTranscriptionQueue.add()` is called.
 
-Gemini Live gateway reconnection will no longer flush or reset the local diarizers. The gateway and local speaker pipeline do not share state, and coupling their recovery creates unnecessary local work in the receive path.
+Ingress audio counters will move to the receive side so they measure accepted
+audio rather than completed diarization. Worker logs will separately report
+queue depth, oldest-item age, and processed track seconds.
 
-Gateway failure will reconnect only the gateway. Diarization failures will be handled inside the worker, logged, and surfaced through the existing status channel without restarting the unrelated gateway.
+## Split-track persistence
+
+The mixed, mic, and system writers already exist when a call segment starts.
+All three aligned outputs from `TrackMixer` will be written from the beginning,
+including system silence before system capture begins. If the call never
+becomes split-track, finalization will keep the mixed recording and delete the
+unused mic/system files as it does today.
+
+This removes `_establish_split_audio_persistence` and its synchronous readback
+of the entire mixed WAV when system capture first appears.
+
+## Gateway isolation
+
+The live gateway is optional and must not control call continuity:
+
+- A gateway audio send gets a short timeout. A timeout or send failure marks
+  the gateway degraded and returns control to the receive loop. The timeout is
+  one second, which bounds a failed send well below the hardened protocol
+  buffer.
+- At most one reconnect attempt runs in the background. While degraded, gateway
+  audio may be skipped; recording and local diarization continue.
+- A failed reconnect reports/logs the degraded gateway but does not end the
+  call. A later reconnect may restore interim transcription.
+- Both current `_reconnect_audio_pipeline` call sites will become gateway-only.
+  The helper will no longer receive, flush, reset, or otherwise touch either
+  diarizer or the transcription queue.
+
+## Stop, disconnect, and finalization
+
+The raw receive loop will recognize `websocket.disconnect` immediately, log its
+code and reason, and exit without a second `receive()`.
+
+On deliberate stop or unexpected disconnect:
+
+1. Stop accepting frames.
+2. Put a sentinel in the diarization queue.
+3. Await the worker, which processes all items before the sentinel.
+4. Only then call `_finalize_call` to flush the diarizers and drain
+   transcription.
+
+The sentinel avoids `task_done()`/`join()` accounting and its deadlock failure
+mode. The worker shutdown belongs in the handler's `finally` block before
+`_finalize_call`, including error exits.
+
+`_start_call_segment` will return the exact `CallSegment` identity with its
+writers, and `_finalize_call` will close only that row. A stale disconnect
+handler must not select the latest open segment or mark the session completed
+when a resumed WebSocket already owns a newer open segment.
+
+While a deliberate End Call drains backlog, the existing post-processing
+status channel will report remaining frames and oldest-item age at intervals;
+unexpected disconnects will log the same progress. There is no hard drain
+deadline in this change. A running `asyncio.to_thread` inference cannot be
+stopped safely, and abandoning a finite 45-second backlog would violate the
+eventual-completeness goal. If telemetry later shows a truly stuck inference
+rather than finite catch-up, the upgrade is bounded cancellation followed by
+replay from the already saved WAV.
+
+An item-level diarization exception is logged and surfaced through the existing
+status channel, then the worker continues with later items. If the worker itself
+fails unexpectedly, finalization records that failure and preserves the raw
+recording rather than hanging.
 
 ## Transport hardening
 
-The desktop launcher and source backend startup wrapper will use a 90-second WebSocket ping timeout and a protocol queue large enough for short bursts of dual-track PCM. This is a safety margin, not the primary fix; the receive/worker split removes the observed starvation mechanism.
+All three Uvicorn entry points will use:
 
-The handler will recognize `websocket.disconnect` immediately, log its close code, and exit cleanly. It will not perform the second invalid `receive()` call.
+- `ws_ping_timeout=90`
+- `ws_max_queue=2048`
+- `ws_max_size=65536`
 
-## Backlog behavior
+At 20 dual-track frames per second, 2048 slots cover about 102 seconds and hold
+about 6.6 MB of actual audio frames. The 64 KiB message cap is ample for the
+3,201-byte framed audio messages and prevents the larger queue from multiplying
+Uvicorn's 16 MiB default message limit into an excessive memory ceiling.
 
-The per-call queue will be in memory and preserve every received frame. Temporary backlog is allowed, and live transcripts may lag while the worker catches up. Queue depth and oldest-item age will be logged when lag becomes material so future performance work has direct evidence.
+The settings must be applied to the desktop launcher, Docker/source startup
+wrapper, and native Windows GPU startup script. They are defense in depth: the
+receive/worker split removes the observed backlog, while coherently sized
+protocol limits prevent a brief regression from immediately blocking PONG
+processing.
 
-`asyncio.Queue` is sufficient because producer and consumer share one process and one call lifetime. Kafka and Celery are excluded: they would add serialization, broker deployment, retry semantics, and cross-process coordination without solving a requirement this flow has.
+## Backlog and broker decision
 
-## Error handling
+The per-call application queue is in memory and preserves every received frame.
+At about 64 KB/s for both PCM tracks, one minute of worker stall is about
+3.8 MB. Queue depth and oldest-item age will make sustained lag visible.
 
-- A worker item always calls `task_done`, including on failure, so final draining cannot hang from accounting errors.
-- A diarization exception affects that item, reports an actionable status, and leaves later queued audio processable.
-- Worker shutdown is awaited before final diarizer flush, preventing concurrent mutation.
-- If the browser disconnects, already received audio is drained and saved through the existing minimal finalization path.
-- Gateway failure remains independently recoverable.
+`asyncio.Queue` is sufficient because producer and consumer share one process
+and one call lifetime. Kafka, Celery, Redis, and another service are excluded:
+they add serialization, deployment, retry, and cross-process coordination
+without solving a requirement this flow has. If observed backlog becomes
+multi-minute or must survive a backend process crash, replay the already
+persisted segment WAV before considering a broker.
 
 ## Verification
 
-Focused backend tests will prove:
+Focused tests will prove:
 
-1. A deliberately slow diarizer does not prevent the receive loop from accepting subsequent audio frames.
-2. Queue processing preserves frame and transcript-job order.
+1. A deliberately slow diarizer does not stop the receive loop from accepting
+   later frames.
+2. Worker processing and transcription-job insertion preserve arrival order.
 3. Split-track state is snapshotted per queued frame.
-4. Stop and disconnect drain queued audio before final flush.
-5. Worker exceptions do not deadlock queue draining.
-6. A `websocket.disconnect` message logs its close code and does not produce the misleading second-receive error.
-7. Gateway reconnect no longer resets local diarizers.
+4. The sentinel drains queued frames before final diarizer and transcription
+   flushes.
+5. Item exceptions do not stop later processing or hang finalization.
+6. A raw `websocket.disconnect` logs code/reason and causes no second receive.
+7. Gateway send timeout, reconnect, and reconnect failure never reset local
+   diarizers or end the call.
+8. Split-track recordings remain aligned without mixed-WAV readback.
+9. A stale disconnect finalizer cannot close a newer resumed call segment or
+   mark its active session completed.
 
-Desktop and backend startup tests will verify the transport settings. The full backend and desktop `unittest` suites remain the release gate.
+Desktop launcher and backend startup tests will verify the protocol settings;
+the native GPU command will be covered by a focused source assertion. The full
+backend and desktop `unittest` suites remain the release gate.
 
-A manual dual-track call will verify that audio remains connected through induced slow diarization, recordings contain both tracks, transcripts catch up in order, and normal End Call still completes.
-
-## Deliberate ceiling
-
-The queue is per call and in memory. At approximately 64 KB/s for combined PCM tracks, one minute of total worker stall is about 3.8 MB. This is the smallest reliable design for transient stalls. If real telemetry later shows sustained multi-minute backlog, add disk-backed replay from the already persisted segment audio; do not add a message broker for a single-process stream.
+A manual dual-track call will induce slow diarization and a failed gateway
+reconnect. It must remain connected, keep both recordings aligned, catch
+transcripts up in order, show drain progress on End Call, and complete normally.
 
 ## Non-goals
 
-- Do not change VAD, speaker thresholds, embedding models, transcription models, or insight agents.
+- Do not change VAD, speaker thresholds, embedding models, transcription
+  models, or insight agents.
 - Do not add Kafka, Celery, Redis, or another service.
 - Do not add frontend controls or a new live-lag UI in this change.
-- Do not parallelize the two stateful diarizers until measurements show the single worker cannot catch up.
+- Do not add per-track workers unless backlog telemetry shows one worker cannot
+  recover and the design also assigns a stable global segment order.
