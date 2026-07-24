@@ -40,3 +40,26 @@ jobs:
           # The action's bundled default (wrangler 3.x) predates wrangler.jsonc
           # support and dies with "Missing entry-point". Match docs-site/package.json.
           wranglerVersion: "4.107.0"
+      # Ping the Bing/IndexNow index (feeds Copilot citations) with every URL
+      # from both sitemaps. The key file is served from the site root; failed
+      # pings never fail the deploy.
+      - name: IndexNow ping
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const urls = ["dist-site/sitemap.xml", "dist-site/docs/sitemap-0.xml"].flatMap(
+              (f) => [...readFileSync(f, "utf8").matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1])
+            );
+            const body = JSON.stringify({
+              host: "backchannel.page",
+              key: "680ca020efcbb5315ac482170309416d",
+              keyLocation: "https://backchannel.page/680ca020efcbb5315ac482170309416d.txt",
+              urlList: urls,
+            });
+            const res = await fetch("https://api.indexnow.org/indexnow", {
+              method: "POST",
+              headers: { "Content-Type": "application/json; charset=utf-8" },
+              body,
+            });
+            console.log("IndexNow:", res.status, "for", urls.length, "URLs");
+          ' || echo "IndexNow ping failed (non-fatal)"

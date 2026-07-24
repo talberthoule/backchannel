@@ -22,39 +22,72 @@
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "FAQPage",
-    "mainEntity": [
+    "@graph": [
       {
-        "@type": "Question",
-        "name": "Is there a Fireflies.ai alternative that does not use a bot?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Yes. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so no 'Notetaker' participant ever joins your Zoom, Google Meet, or Teams call. It is MIT-licensed and self-hosted, so audio is processed on your own hardware rather than in a vendor cloud."
+        "@type": "WebPage",
+        "url": "https://backchannel.page/fireflies-alternative/",
+        "name": "Fireflies.ai Alternative Without the Bot | Backchannel",
+        "description": "An open-source Fireflies.ai alternative: real-time meeting insights with no bot joining your calls and no audio in anyone's cloud. MIT licensed.",
+        "dateModified": "2026-07-13",
+        "isPartOf": {
+          "@id": "https://backchannel.page/#website"
+        },
+        "about": {
+          "@id": "https://backchannel.page/#software"
         }
       },
       {
-        "@type": "Question",
-        "name": "Does Backchannel have something like Fireflies Live Assist?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Yes -- that is Backchannel's core design. Four agents (an analyst, a fast objection handler, a synthesizer, and an opportunity specialist) read the live transcript and push questions, objection responses, opportunities, and action items in real time. Unlike Live Assist, it runs on your own server and is free."
-        }
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Backchannel",
+            "item": "https://backchannel.page/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Fireflies.ai alternative"
+          }
+        ]
       },
       {
-        "@type": "Question",
-        "name": "What does Fireflies.ai do better than Backchannel?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Fireflies supports 100+ languages, broad CRM and workflow integrations, team analytics such as talk-time and sentiment, compliance certifications, and a huge install base. Backchannel has thin integrations and no compliance badges -- you audit the source instead."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "How much does Backchannel cost compared to Fireflies?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Nothing: Backchannel is MIT-licensed software with no storage meters or AI credits. You pay for your own hardware and any Gemini or OpenAI API usage. Fireflies paid tiers run $10 to $39 per user per month as of mid-2026, with private storage only at the $39 Enterprise tier."
-        }
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Is there a Fireflies.ai alternative that does not use a bot?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so no 'Notetaker' participant ever joins your Zoom, Google Meet, or Teams call. It is MIT-licensed and self-hosted, so audio is processed on your own hardware rather than in a vendor cloud."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Backchannel have something like Fireflies Live Assist?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes -- that is Backchannel's core design. Four agents (an analyst, a fast objection handler, a synthesizer, and an opportunity specialist) read the live transcript and push questions, objection responses, opportunities, and action items in real time. Unlike Live Assist, it runs on your own server and is free."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What does Fireflies.ai do better than Backchannel?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Fireflies supports 100+ languages, broad CRM and workflow integrations, team analytics such as talk-time and sentiment, compliance certifications, and a huge install base. Backchannel has thin integrations and no compliance badges -- you audit the source instead."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How much does Backchannel cost compared to Fireflies?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Nothing: Backchannel is MIT-licensed software with no storage meters or AI credits. You pay for your own hardware and any Gemini or OpenAI API usage. Fireflies paid tiers run $10 to $39 per user per month as of mid-2026, with private storage only at the $39 Enterprise tier."
+            }
+          }
+        ]
       }
     ]
   }
@@ -375,6 +408,7 @@
   <div class="wrap">
     <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
     <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
   </div>
 </footer>
 

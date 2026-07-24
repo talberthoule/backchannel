@@ -40,7 +40,10 @@ for (const file of readdirSync(SRC).filter((f) => f.endsWith('.md'))) {
   );
 
   // Per-page meta description: first prose block (headings/tables/images/code
-  // skipped), markdown stripped, truncated to ~155 chars at a word boundary.
+  // skipped), markdown stripped, truncated to ~155 chars. Prefer whole
+  // sentences so SERP snippets and og:description never cut off mid-thought;
+  // fall back to a word boundary plus ellipsis only when the first sentence
+  // alone exceeds the budget.
   const block = text.split(/\n\s*\n/).map((b) => b.trim()).find((b) => b && !/^[#|<!`]/.test(b));
   const plain = (block ?? h1[1])
     .replace(/^\s*(?:[-*]|\d+\.)\s+/gm, '')
@@ -48,7 +51,16 @@ for (const file of readdirSync(SRC).filter((f) => f.endsWith('.md'))) {
     .replace(/[`*]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
-  const description = plain.length > 155 ? plain.slice(0, 155).replace(/\s+\S*$/, '') : plain;
+  let description = plain;
+  if (plain.length > 155) {
+    const sentences = plain.match(/[^.!?]+[.!?]+(?:\s|$)/g);
+    description = '';
+    for (const sentence of sentences ?? []) {
+      if (description.length + sentence.trim().length + 1 > 155) break;
+      description += (description ? ' ' : '') + sentence.trim();
+    }
+    if (!description) description = plain.slice(0, 152).replace(/\s+\S*$/, '') + '...';
+  }
 
   writeFileSync(
     join(OUT, `${slug}.md`),

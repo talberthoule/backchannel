@@ -15,6 +15,17 @@ export default defineConfig({
         'Real-time meeting transcription with AI agents that surface questions, objections, opportunities, and action items as the conversation happens.',
       logo: { src: './src/assets/mark.svg' },
       favicon: '/favicon.svg',
+      components: { Head: './src/components/Head.astro' },
+      head: [
+        {
+          tag: 'meta',
+          attrs: { property: 'og:image', content: 'https://backchannel.page/assets/og-image.png' },
+        },
+        {
+          tag: 'meta',
+          attrs: { name: 'twitter:image', content: 'https://backchannel.page/assets/og-image.png' },
+        },
+      ],
       social: [
         {
           icon: 'github',

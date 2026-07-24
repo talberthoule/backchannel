@@ -1470,6 +1470,16 @@ footer.site .wrap.footer-compare {
   border-bottom: 1px solid var(--rule-soft);
 }
 
+/* Comfortable touch targets for the footer link clusters on coarse pointers
+   (WCAG 2.5.8; Google mobile-friendliness checks 44-48px). */
+@media (pointer: coarse) {
+  footer.site a {
+    display: inline-block;
+    padding: 10px 4px;
+    margin: -4px 0;
+  }
+}
+
 /* Responsive */
 
 @media (max-width: 900px) {

@@ -7,10 +7,11 @@
 > fully local ONNX transcription) that surface questions, objections,
 > opportunities, and action items while the meeting is still happening.
 
-Backchannel is free to run: there is no hosted service, no pricing tiers,
-and no account. You can run it from the desktop executable on Windows,
-macOS, or Linux, or deploy it yourself with Docker Compose (React frontend,
-FastAPI backend, PostgreSQL). Bring your own Gemini or OpenAI API key, or transcribe
+Backchannel is free to run: there is no hosted service and no pricing
+tiers, and self-hosting with Docker Compose (React frontend, FastAPI
+backend, PostgreSQL) requires no account of any kind. The prebuilt desktop
+executables for Windows, macOS, and Linux are delivered through an
+authenticated portal and use a free approved Backchannel account. Bring your own Gemini or OpenAI API key, or transcribe
 fully offline with local ONNX Whisper/Parakeet models. Because it is
 self-hosted, meeting audio and transcripts never leave your infrastructure
 except for the model API calls you configure.
@@ -33,6 +34,8 @@ Key facts:
 
 - [Download portal](https://downloads.backchannel.page/): authenticated Windows, macOS, and Linux executable delivery for approved Backchannel accounts
 - [Desktop release v0.3.6](https://backchannel.page/releases/v0.3.6/): public asset inventory, release notes, install notes, and first-run guidance
+- [All releases](https://backchannel.page/releases/): version history with publish dates and per-release notes
+- [Full documentation as one file](https://backchannel.page/llms-full.txt): every docs page concatenated as plain markdown for agents
 - [Quickstart](https://backchannel.page/docs/quickstart/): Docker Compose setup, local development, migrations, tests
 - [Architecture](https://backchannel.page/docs/architecture/): the live call path end to end
 - [Agent System](https://backchannel.page/docs/agents/): each agent's trigger, purpose, and configuration

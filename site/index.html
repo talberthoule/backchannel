@@ -19,7 +19,9 @@
   <meta property="og:image:alt" content="Backchannel: live meeting transcription and real-time insight agents, self-hosted." />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
-  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <link rel="alternate icon" href="/favicon.ico" sizes="32x32" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="stylesheet" href="style.css" />
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <script type="application/ld+json">
@@ -28,15 +30,37 @@
     "@graph": [
       {
         "@type": "SoftwareApplication",
+        "@id": "https://backchannel.page/#software",
         "name": "Backchannel",
         "applicationCategory": "BusinessApplication",
-        "operatingSystem": "Windows x64, macOS Apple Silicon, Linux x64, Docker Compose; any modern browser",
+        "operatingSystem": "Windows, macOS, Linux",
+        "softwareVersion": "0.3.6",
         "description": "Backchannel is an open-source, self-hosted AI meeting assistant: live speaker-diarized transcripts and real-time insights, no bot joining your call.",
         "url": "https://backchannel.page/",
+        "image": "https://backchannel.page/assets/og-image.png",
         "license": "https://github.com/talberthoule/backchannel/blob/master/LICENSE",
+        "isAccessibleForFree": true,
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "downloadUrl": "https://downloads.backchannel.page/",
+        "releaseNotes": "https://backchannel.page/releases/v0.3.6/",
         "softwareHelp": { "@type": "CreativeWork", "url": "https://backchannel.page/docs/" },
+        "author": { "@id": "https://backchannel.page/#organization" },
         "sameAs": ["https://github.com/talberthoule/backchannel"]
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://backchannel.page/#organization",
+        "name": "Backchannel",
+        "url": "https://backchannel.page/",
+        "logo": { "@type": "ImageObject", "url": "https://backchannel.page/assets/favicon.svg" },
+        "sameAs": ["https://github.com/talberthoule/backchannel"]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://backchannel.page/#website",
+        "name": "Backchannel",
+        "url": "https://backchannel.page/",
+        "publisher": { "@id": "https://backchannel.page/#organization" }
       },
       {
         "@type": "FAQPage",
@@ -589,6 +613,7 @@ docker compose up --build
   <div class="wrap">
     <span>Backchannel is an open-source, self-hosted AI meeting assistant.</span>
     <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>. <a href="https://github.com/talberthoule/backchannel/issues">Report an issue</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
   </div>
 </footer>
 

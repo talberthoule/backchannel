@@ -1,0 +1,34 @@
+---
+// Renders Starlight's default head, then appends per-page JSON-LD
+// (TechArticle + BreadcrumbList) so docs pages carry the same entity
+// anchors (#website / #organization) as the landing page's schema graph.
+import Default from '@astrojs/starlight/components/Head.astro';
+
+const { entry, id } = Astro.locals.starlightRoute;
+const isIndex = !id || id === 'index';
+const pageUrl = `https://backchannel.page/docs/${isIndex ? '' : `${id.replace(/\/$/, '')}/`}`;
+const page = {
+  '@type': isIndex ? 'WebPage' : 'TechArticle',
+  headline: entry.data.title,
+  description: entry.data.description,
+  url: pageUrl,
+  inLanguage: 'en',
+  isPartOf: { '@id': 'https://backchannel.page/#website' },
+  publisher: { '@id': 'https://backchannel.page/#organization' },
+  author: { '@id': 'https://backchannel.page/#organization' },
+};
+const crumbs = [
+  { '@type': 'ListItem', position: 1, name: 'Backchannel', item: 'https://backchannel.page/' },
+  isIndex
+    ? { '@type': 'ListItem', position: 2, name: 'Docs' }
+    : { '@type': 'ListItem', position: 2, name: 'Docs', item: 'https://backchannel.page/docs/' },
+];
+if (!isIndex) crumbs.push({ '@type': 'ListItem', position: 3, name: entry.data.title });
+const graph = {
+  '@context': 'https://schema.org',
+  '@graph': [page, { '@type': 'BreadcrumbList', itemListElement: crumbs }],
+};
+---
+
+<Default><slot /></Default>
+<script type="application/ld+json" set:html={JSON.stringify(graph)} />

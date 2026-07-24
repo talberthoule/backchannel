@@ -14,6 +14,7 @@ import {
   resolveEntitlements,
   verifyPassword,
 } from './release-access.js';
+import { applyEdgePolicy, canonicalRedirect } from './edge-policy.js';
 
 const API_PATH = '/api/interest';
 const PUBLIC_HOST = 'backchannel.page';
@@ -1483,12 +1484,21 @@ export async function handleInterest(request, env, fetcher = fetch) {
   });
 }
 
+const EDGE_HOSTS = {
+  publicHost: PUBLIC_HOST,
+  wwwHost: WWW_HOST,
+  adminHost: ADMIN_HOST,
+  downloadHost: DOWNLOAD_HOST,
+};
+
 export async function route(request, env, verify = verifyAccessToken, dependencies = {}) {
   const url = new URL(request.url);
-  if (url.hostname === WWW_HOST) {
-    url.hostname = PUBLIC_HOST;
-    return Response.redirect(url.toString(), 301);
-  }
+  const redirect = canonicalRedirect(url, EDGE_HOSTS);
+  if (redirect) return redirect;
+  return applyEdgePolicy(url, await dispatch(url, request, env, verify, dependencies), EDGE_HOSTS);
+}
+
+async function dispatch(url, request, env, verify, dependencies) {
   if (![PUBLIC_HOST, ADMIN_HOST, DOWNLOAD_HOST].includes(url.hostname)) {
     return privateJson(404, { ok: false, message: 'Not found.' });
   }

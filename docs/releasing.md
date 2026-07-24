@@ -163,7 +163,17 @@ not AWS credentials or services.
 3. Update `.github/release-notes/vX.Y.Z.md`, the in-app version and release
    notes (`APP_VERSION` and a new `RELEASE_NOTES` entry in
    `backend/app/release_notes.py`), the public release page, and
-   current-version references.
+   current-version references. The public site carries SEO metadata that must
+   track the release:
+   - the new `site/releases/vX.Y.Z/index.html` page's JSON-LD block
+     (`softwareVersion`, `datePublished`, `downloadUrl`, `releaseNotes`,
+     GitHub tag `sameAs`) - copy the prior release's block and substitute;
+   - `softwareVersion` and `releaseNotes` in the homepage JSON-LD
+     (`site/index.html`);
+   - a new row plus updated "Latest" references in `site/releases/index.html`;
+   - a new `<url>` entry with `<lastmod>` in `site/sitemap.xml`, and refreshed
+     `<lastmod>` on every page the release touches;
+   - the "Desktop release" links and version references in `site/llms.txt`.
 4. Run the local test/build gate and `git diff --check`, including the focused
    release transport checks:
 

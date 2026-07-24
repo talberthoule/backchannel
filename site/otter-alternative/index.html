@@ -22,39 +22,72 @@
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "FAQPage",
-    "mainEntity": [
+    "@graph": [
       {
-        "@type": "Question",
-        "name": "Is Backchannel really a free Otter.ai alternative?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Yes. Backchannel is MIT-licensed open source with no hosted tier, no seat pricing, no minute caps, and no feature paywall. Your only costs are hardware and any Gemini or OpenAI API usage you configure; transcription can run fully offline with local ONNX models."
+        "@type": "WebPage",
+        "url": "https://backchannel.page/otter-alternative/",
+        "name": "Open-Source, Self-Hosted Otter.ai Alternative | Backchannel",
+        "description": "An open-source, self-hosted Otter.ai alternative: live diarized transcripts and real-time meeting insights on your own hardware. MIT licensed.",
+        "dateModified": "2026-07-13",
+        "isPartOf": {
+          "@id": "https://backchannel.page/#website"
+        },
+        "about": {
+          "@id": "https://backchannel.page/#software"
         }
       },
       {
-        "@type": "Question",
-        "name": "Does Backchannel work with Zoom, Google Meet, and Teams?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Yes, with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser -- no bot participant, no per-platform integration."
-        }
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Backchannel",
+            "item": "https://backchannel.page/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Otter.ai alternative"
+          }
+        ]
       },
       {
-        "@type": "Question",
-        "name": "What does Otter.ai do better than Backchannel?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Otter has mobile apps, multilingual live transcription, cross-meeting search at archive scale, deep integrations, and zero-setup onboarding. If you want a polished managed service and do not mind cloud processing, Otter is a fine choice."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "What does switching from Otter.ai to Backchannel involve?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Run docker compose up, add a Gemini API key (or pick a local ONNX transcription model), and start a session in the browser. Existing transcripts import as .txt, .md, or .docx and audio as .mp3, .m4a, .wav, .ogg, or .flac; there is no automated Otter export migration."
-        }
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Is Backchannel really a free Otter.ai alternative?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Backchannel is MIT-licensed open source with no hosted tier, no seat pricing, no minute caps, and no feature paywall. Your only costs are hardware and any Gemini or OpenAI API usage you configure; transcription can run fully offline with local ONNX models."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Backchannel work with Zoom, Google Meet, and Teams?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes, with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser -- no bot participant, no per-platform integration."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What does Otter.ai do better than Backchannel?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Otter has mobile apps, multilingual live transcription, cross-meeting search at archive scale, deep integrations, and zero-setup onboarding. If you want a polished managed service and do not mind cloud processing, Otter is a fine choice."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What does switching from Otter.ai to Backchannel involve?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Run docker compose up, add a Gemini API key (or pick a local ONNX transcription model), and start a session in the browser. Existing transcripts import as .txt, .md, or .docx and audio as .mp3, .m4a, .wav, .ogg, or .flac; there is no automated Otter export migration."
+            }
+          }
+        ]
       }
     ]
   }
@@ -379,6 +412,7 @@
   <div class="wrap">
     <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
     <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
   </div>
 </footer>
 

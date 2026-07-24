@@ -22,39 +22,72 @@
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "FAQPage",
-    "mainEntity": [
+    "@graph": [
       {
-        "@type": "Question",
-        "name": "Is there an open-source alternative to Granola?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Yes. Backchannel is an MIT-licensed, self-hosted AI meeting assistant with the same bot-free capture model as Granola: it records mic and tab or system audio directly, with no bot joining the call. Processing happens on your own server, and insights arrive during the meeting, not after it."
+        "@type": "WebPage",
+        "url": "https://backchannel.page/granola-alternative/",
+        "name": "Open-Source Granola Alternative (Bot-Free, Self-Hosted) | Backchannel",
+        "description": "An open-source Granola alternative: the same bot-free capture, plus self-hosted processing and real-time insights during the call. MIT licensed.",
+        "dateModified": "2026-07-13",
+        "isPartOf": {
+          "@id": "https://backchannel.page/#website"
+        },
+        "about": {
+          "@id": "https://backchannel.page/#software"
         }
       },
       {
-        "@type": "Question",
-        "name": "Does Granola keep my meeting audio private?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Granola captures audio locally but processes it in the cloud, including third-party LLMs; 'private by default' refers to sharing controls, not data sovereignty. Backchannel processes audio on your own server: diarization is always local, transcription can run fully offline, and recordings never upload anywhere."
-        }
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Backchannel",
+            "item": "https://backchannel.page/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Granola alternative"
+          }
+        ]
       },
       {
-        "@type": "Question",
-        "name": "What does Granola do better than Backchannel?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Granola wins on UX polish, native apps on macOS, Windows, iOS, and Android (including in-person meetings from a phone), and its hybrid note style where your own jottings get enhanced by AI. Backchannel is a self-hosted web app with no mobile apps."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Does Backchannel limit meeting history?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "No. Granola's free tier limits access to older meetings; Backchannel stores every session in your own PostgreSQL database with no tiers, no history paywall, and no seat pricing."
-        }
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Is there an open-source alternative to Granola?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Backchannel is an MIT-licensed, self-hosted AI meeting assistant with the same bot-free capture model as Granola: it records mic and tab or system audio directly, with no bot joining the call. Processing happens on your own server, and insights arrive during the meeting, not after it."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Granola keep my meeting audio private?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Granola captures audio locally but processes it in the cloud, including third-party LLMs; 'private by default' refers to sharing controls, not data sovereignty. Backchannel processes audio on your own server: diarization is always local, transcription can run fully offline, and recordings never upload anywhere."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What does Granola do better than Backchannel?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Granola wins on UX polish, native apps on macOS, Windows, iOS, and Android (including in-person meetings from a phone), and its hybrid note style where your own jottings get enhanced by AI. Backchannel is a self-hosted web app with no mobile apps."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Backchannel limit meeting history?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. Granola's free tier limits access to older meetings; Backchannel stores every session in your own PostgreSQL database with no tiers, no history paywall, and no seat pricing."
+            }
+          }
+        ]
       }
     ]
   }
@@ -371,6 +404,7 @@
   <div class="wrap">
     <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
     <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
   </div>
 </footer>
 
