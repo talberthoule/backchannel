@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with this repository.
 
+## Coordination Record
+
+The durable record for this repository is Linear: team `Alpha`, project `Backchannel`, issue IDs `ALP-NNN`. Findings, verdicts, decisions and their rationale, blockers, and declined alternatives go there; Herdr `agent send` carries only the issue ID and one line of what changed. Because the Linear MCP server writes with a single shared credential, every agent's issue and comment is authored by the human who owns the token, so record `Requested by` / `Performed by` / `Date` / `Scope` in the body. Branches are `agent/alp-NNN-slug`; design docs live in `docs/superpowers/specs/` and plans in `docs/superpowers/plans/`. See the Routing Substance and Pointers section of the `coordinating-herdr-agents` skill.
+
 ## Current Codebase Snapshot
 
 Backchannel (formerly Call Helper) is a real-time meeting analysis app. A React frontend captures microphone audio (and optionally tab/system audio) as PCM16 16 kHz mono and streams it over WebSocket with a 1-byte track prefix. The FastAPI backend writes speaker-attributed transcript entries, records per-segment call audio to disk, runs provider-routed analysis agents (Gemini or OpenAI) over recent transcript text, and stores insights in PostgreSQL.
