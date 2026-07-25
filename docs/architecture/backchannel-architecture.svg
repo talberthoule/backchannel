@@ -1,0 +1,259 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1200 968" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" role="img" aria-label="Backchannel live call agent reference architecture with animated data flow">
+  <title>Backchannel - Live Call Signal Flow</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0A101E"/>
+      <stop offset="1" stop-color="#0C1A2B"/>
+    </linearGradient>
+    <radialGradient id="vig" cx="42%" cy="38%" r="75%">
+      <stop offset="0" stop-color="#12233A" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#070C16" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <style>
+      text { fill:#E6EDF5; }
+      .band { font-size:11px; letter-spacing:2.5px; font-weight:700; fill:#5C7089; }
+      .lab  { font-size:14px; font-weight:700; fill:#EAF1F8; }
+      .sub  { font-size:11px; font-weight:500; fill:#8DA2B8; }
+      .barlab { font-size:13px; font-weight:700; letter-spacing:.5px; }
+      .node { stroke-width:1.6; }
+      .conn { fill:none; stroke-width:1.5; stroke-opacity:.32; stroke-dasharray:5 7;
+              animation: dash 1.1s linear infinite; }
+      .conn.slow { animation-duration:2s; stroke-dasharray:2 8; }
+      @keyframes dash { to { stroke-dashoffset:-24; } }
+      @keyframes brk  { 0%,100%{ stroke-opacity:.45; } 50%{ stroke-opacity:1; } }
+      .pulse { animation: brk 3.4s ease-in-out infinite; }
+      @keyframes cardin {
+        0%   { opacity:0; }
+        6%   { opacity:1; }
+        82%  { opacity:1; }
+        100% { opacity:0; }
+      }
+      .card { opacity:0; animation: cardin 9s ease-in-out infinite; }
+      @keyframes wave { 0%,100%{ opacity:.25;} 50%{ opacity:.9;} }
+      .interim { animation: wave 1.6s ease-in-out infinite; }
+      @keyframes breathe { 0%,100%{ opacity:.5;} 50%{ opacity:1;} }
+      @media (prefers-reduced-motion: reduce) {
+        .conn,.pulse,.card,.interim,.dot { animation:none !important; }
+        .card { opacity:1; }
+      }
+    </style>
+  </defs>
+
+  <rect width="1200" height="968" fill="url(#bg)"/>
+  <rect width="1200" height="968" fill="url(#vig)"/>
+
+  <!-- ===== Title ===== -->
+  <text x="60" y="54" font-size="27" font-weight="800" fill="#F4F8FC">Backchannel</text>
+  <text x="286" y="54" font-size="20" font-weight="400" fill="#63D8C9">Live Call Signal Flow</text>
+  <text x="61" y="82" class="sub" font-size="12.5">Audio becomes speaker-attributed transcript, then layered live agents, then a post-call briefing. Data flows top-down; the browser (right) receives every stream.</text>
+
+  <!-- ===== Band labels ===== -->
+  <text x="62" y="112" class="band">CAPTURE + TRANSPORT</text>
+  <text x="62" y="238" class="band">TRANSCRIPTION</text>
+  <text x="62" y="364" class="band">TRANSCRIPT BUFFER</text>
+  <text x="62" y="454" class="band">LIVE ANALYSIS  &#183;  interval loops</text>
+  <text x="62" y="580" class="band">EVENT BUS</text>
+  <text x="62" y="670" class="band">EVENT-DRIVEN SYNTHESIS</text>
+  <text x="62" y="796" class="band">PERSIST + DELIVER</text>
+
+  <!-- ===== Connectors (drawn under nodes) ===== -->
+  <g fill="none">
+    <path id="f1"  class="conn" stroke="#38BDF8" d="M230,162 L270,162"/>
+    <path id="f2"  class="conn" stroke="#38BDF8" d="M345,204 L345,225 L150,225 L150,246"/>
+    <path id="f3"  class="conn" stroke="#38BDF8" d="M345,204 L345,230 L356,230 L356,246"/>
+    <path id="f4"  class="conn slow" stroke="#38BDF8" d="M205,246 C330,205 620,205 869,196"/>
+    <path id="f5"  class="conn" stroke="#2DD4BF" d="M435,288 L470,288"/>
+    <path id="f6"  class="conn" stroke="#2DD4BF" d="M635,288 L670,288"/>
+    <path id="f7"  class="conn" stroke="#2DD4BF" d="M745,330 L745,372"/>
+    <path id="f8"  class="conn" stroke="#5EEAD4" d="M177,422 L177,462"/>
+    <path id="f9"  class="conn" stroke="#5EEAD4" d="M425,422 L425,462"/>
+    <path id="f10" class="conn" stroke="#5EEAD4" d="M665,422 L665,462"/>
+    <path id="f11" class="conn" stroke="#A78BFA" d="M177,546 L177,588"/>
+    <path id="f12" class="conn" stroke="#A78BFA" d="M425,546 L425,588"/>
+    <path id="f13" class="conn" stroke="#34D399" d="M785,504 C846,504 869,404 869,332"/>
+    <path id="f14" class="conn" stroke="#FBBF24" d="M210,638 L210,678"/>
+    <path id="f15" class="conn" stroke="#FBBF24" d="M532,638 L532,678"/>
+    <path id="f16" class="conn" stroke="#34D399" d="M200,762 L200,784 L170,784 L170,804"/>
+    <path id="f17" class="conn" stroke="#34D399" d="M300,762 L300,786 L440,786 L440,804"/>
+    <path id="f18" class="conn" stroke="#34D399" d="M520,762 L520,786 L500,786 L500,804"/>
+    <path id="f19" class="conn" stroke="#34D399" d="M640,824 C664,792 780,600 869,548"/>
+    <path id="f20" class="conn slow" stroke="#F87171" d="M175,888 L175,899 L742,899 L742,888"/>
+    <path id="f21" class="conn slow" stroke="#F87171" d="M820,840 C850,840 869,724 869,660"/>
+  </g>
+
+  <!-- ===== Nodes ===== -->
+  <!-- Capture + transport -->
+  <g>
+    <rect class="node pulse" x="60" y="120" width="170" height="84" rx="13" fill="#0F2233" stroke="#38BDF8" style="animation-delay:0s"/>
+    <text x="145" y="153" text-anchor="middle" class="lab">Browser Capture</text>
+    <text x="145" y="173" text-anchor="middle" class="sub">mic + system</text>
+    <text x="145" y="189" text-anchor="middle" class="sub">PCM16 &#183; 16 kHz</text>
+    <rect class="node pulse" x="270" y="120" width="150" height="84" rx="13" fill="#0F2233" stroke="#38BDF8" style="animation-delay:.15s"/>
+    <text x="345" y="157" text-anchor="middle" class="lab">WebSocket</text>
+    <text x="345" y="179" text-anchor="middle" class="sub">/ws/{session_id}</text>
+  </g>
+
+  <!-- Transcription -->
+  <g>
+    <rect class="node pulse" x="60" y="246" width="180" height="84" rx="13" fill="#0E2420" stroke="#2DD4BF" stroke-dasharray="6 5" style="animation-delay:.4s"/>
+    <text x="150" y="279" text-anchor="middle" class="lab">Audio Gateway</text>
+    <text x="150" y="299" text-anchor="middle" class="sub">Gemini Live / OpenAI</text>
+    <text x="150" y="315" text-anchor="middle" class="sub">interim &#183; silent listener</text>
+    <rect class="node pulse" x="275" y="246" width="160" height="84" rx="13" fill="#0E2420" stroke="#2DD4BF" style="animation-delay:.55s"/>
+    <text x="355" y="283" text-anchor="middle" class="lab">Diarize</text>
+    <text x="355" y="305" text-anchor="middle" class="sub">Silero VAD + WeSpeaker</text>
+    <rect class="node pulse" x="470" y="246" width="165" height="84" rx="13" fill="#0E2420" stroke="#2DD4BF" style="animation-delay:.7s"/>
+    <text x="552" y="283" text-anchor="middle" class="lab">Batch Transcribe</text>
+    <text x="552" y="305" text-anchor="middle" class="sub">Gemini Flash &#183; per segment</text>
+    <rect class="node pulse" x="670" y="246" width="150" height="84" rx="13" fill="#0E2420" stroke="#2DD4BF" style="animation-delay:.85s"/>
+    <text x="745" y="283" text-anchor="middle" class="lab">Transcript</text>
+    <text x="745" y="305" text-anchor="middle" class="sub">speaker-attributed</text>
+  </g>
+
+  <!-- Buffer bar -->
+  <rect class="node pulse" x="60" y="372" width="760" height="50" rx="10" fill="#1B2534" stroke="#94A3B8" style="animation-delay:1s"/>
+  <text x="440" y="402" text-anchor="middle" class="barlab" fill="#CBD5E1">SHARED TRANSCRIPT BUFFER   &#183;   rolling window, read by every text agent</text>
+
+  <!-- Live analysis -->
+  <g>
+    <rect class="node pulse" x="60" y="462" width="235" height="84" rx="13" fill="#181430" stroke="#A78BFA" style="animation-delay:1.2s"/>
+    <text x="177" y="495" text-anchor="middle" class="lab">Consolidated Analyst &#183; 15s</text>
+    <text x="177" y="516" text-anchor="middle" class="sub">questions &#183; observations</text>
+    <text x="177" y="532" text-anchor="middle" class="sub">opportunities &#183; action items</text>
+    <rect class="node pulse" x="315" y="462" width="220" height="84" rx="13" fill="#181430" stroke="#A78BFA" style="animation-delay:1.35s"/>
+    <text x="425" y="495" text-anchor="middle" class="lab">Objection Handler &#183; 5s</text>
+    <text x="425" y="516" text-anchor="middle" class="sub">last ~90s window</text>
+    <text x="425" y="532" text-anchor="middle" class="sub">objection + ready response</text>
+    <rect class="node pulse" x="555" y="462" width="230" height="84" rx="13" fill="#181430" stroke="#A78BFA" style="animation-delay:1.5s"/>
+    <text x="670" y="495" text-anchor="middle" class="lab">Strategic Signals &#183; 45s</text>
+    <text x="670" y="516" text-anchor="middle" class="sub">rolling strategic read</text>
+    <text x="670" y="532" text-anchor="middle" class="sub">-&gt; synthesis_updated</text>
+  </g>
+
+  <!-- Event bus bar -->
+  <rect class="node pulse" x="60" y="588" width="760" height="50" rx="10" fill="#0E1626" stroke="#FBBF24" style="animation-delay:1.65s"/>
+  <text x="440" y="618" text-anchor="middle" class="barlab" fill="#FBD986">EVENT BUS   &#183;   new_insight   &#183;   insight_updated   &#183;   new_opportunity</text>
+
+  <!-- Meta synthesis -->
+  <g>
+    <rect class="node pulse" x="60" y="678" width="300" height="84" rx="13" fill="#26190F" stroke="#FB923C" style="animation-delay:1.8s"/>
+    <text x="210" y="711" text-anchor="middle" class="lab">Synthesizer (meta)</text>
+    <text x="210" y="732" text-anchor="middle" class="sub">on new_insight / insight_updated</text>
+    <text x="210" y="748" text-anchor="middle" class="sub">reconcile &#183; enrich &#183; elevate &#183; answer</text>
+    <rect class="node pulse" x="390" y="678" width="285" height="84" rx="13" fill="#26190F" stroke="#FB923C" style="animation-delay:1.95s"/>
+    <text x="532" y="711" text-anchor="middle" class="lab">Opportunity Specialist</text>
+    <text x="532" y="732" text-anchor="middle" class="sub">on new_opportunity</text>
+    <text x="532" y="748" text-anchor="middle" class="sub">match offerings catalog</text>
+  </g>
+
+  <!-- Persist + deliver -->
+  <g>
+    <rect class="node pulse" x="60" y="804" width="220" height="84" rx="13" fill="#0E2A1F" stroke="#34D399" style="animation-delay:2.1s"/>
+    <text x="170" y="837" text-anchor="middle" class="lab">PostgreSQL</text>
+    <text x="170" y="858" text-anchor="middle" class="sub">transcript &#183; insights</text>
+    <text x="170" y="874" text-anchor="middle" class="sub">synthesis + clusters</text>
+    <rect class="node pulse" x="310" y="804" width="330" height="84" rx="13" fill="#0E2A1F" stroke="#34D399" style="animation-delay:2.25s"/>
+    <text x="475" y="837" text-anchor="middle" class="lab">WebSocket Delivery</text>
+    <text x="475" y="858" text-anchor="middle" class="sub">transcript &#183; question &#183; insight_updated</text>
+    <text x="475" y="874" text-anchor="middle" class="sub">insight_elevated &#183; synthesis_updated</text>
+    <rect class="node pulse" x="670" y="804" width="150" height="84" rx="13" fill="#2A1213" stroke="#F87171" style="animation-delay:2.4s"/>
+    <text x="745" y="837" text-anchor="middle" class="lab">Call Briefing</text>
+    <text x="745" y="858" text-anchor="middle" class="sub">on stop</text>
+    <text x="745" y="874" text-anchor="middle" class="sub">graceful drain</text>
+  </g>
+
+  <!-- ===== Live Meeting UI (right) ===== -->
+  <rect x="870" y="120" width="290" height="768" rx="16" fill="#0B1420" stroke="#38BDF8" stroke-opacity=".8" stroke-width="1.6"/>
+  <rect x="870" y="120" width="290" height="46" rx="16" fill="#132638"/>
+  <rect x="870" y="150" width="290" height="16" fill="#132638"/>
+  <circle cx="892" cy="143" r="5" fill="#F87171"/><circle cx="908" cy="143" r="5" fill="#FBBF24"/><circle cx="924" cy="143" r="5" fill="#34D399"/>
+  <text x="1015" y="147" text-anchor="middle" class="lab" font-size="13">Live Meeting UI &#183; browser</text>
+
+  <!-- interim strip -->
+  <rect x="888" y="182" width="254" height="34" rx="8" fill="#0F2233" stroke="#38BDF8" stroke-opacity=".5"/>
+  <text x="900" y="203" class="sub" font-size="10.5" fill="#7FD8F2">interim</text>
+  <g class="interim">
+    <rect x="948" y="196" width="60" height="7" rx="3.5" fill="#38BDF8" opacity=".8"/>
+    <rect x="1014" y="196" width="40" height="7" rx="3.5" fill="#38BDF8" opacity=".55"/>
+    <rect x="1060" y="196" width="72" height="7" rx="3.5" fill="#38BDF8" opacity=".35"/>
+  </g>
+
+  <text x="888" y="244" class="band" font-size="10" fill="#51637A">GENERATED INSIGHTS  &#183;  live</text>
+
+  <!-- insight cards popping in -->
+  <g class="card" style="animation-delay:.4s">
+    <rect x="888" y="256" width="254" height="60" rx="10" fill="#181430" stroke="#A78BFA"/>
+    <circle cx="906" cy="278" r="4" fill="#A78BFA"/>
+    <text x="920" y="282" class="lab" font-size="12">Question</text>
+    <text x="906" y="303" class="sub" font-size="10.5">Consolidated Analyst &#183; discovery</text>
+  </g>
+  <g class="card" style="animation-delay:1.8s">
+    <rect x="888" y="328" width="254" height="60" rx="10" fill="#181430" stroke="#A78BFA"/>
+    <circle cx="906" cy="350" r="4" fill="#C4B5FD"/>
+    <text x="920" y="354" class="lab" font-size="12">Objection + response</text>
+    <text x="906" y="375" class="sub" font-size="10.5">Objection Handler &#183; micro / macro</text>
+  </g>
+  <g class="card" style="animation-delay:3.2s">
+    <rect x="888" y="400" width="254" height="60" rx="10" fill="#26190F" stroke="#FB923C"/>
+    <circle cx="906" cy="422" r="4" fill="#FB923C"/>
+    <text x="920" y="426" class="lab" font-size="12">Opportunity match</text>
+    <text x="906" y="447" class="sub" font-size="10.5">Opportunity Specialist &#183; offerings</text>
+  </g>
+  <g class="card" style="animation-delay:4.6s">
+    <rect x="888" y="472" width="254" height="60" rx="10" fill="#0E2A1F" stroke="#34D399"/>
+    <circle cx="906" cy="494" r="4" fill="#34D399"/>
+    <text x="920" y="498" class="lab" font-size="12">Synthesis updated</text>
+    <text x="906" y="519" class="sub" font-size="10.5">Synthesizer + Strategic Signals</text>
+  </g>
+  <g class="card" style="animation-delay:6.2s">
+    <rect x="888" y="560" width="254" height="86" rx="10" fill="#2A1213" stroke="#F87171"/>
+    <circle cx="906" cy="584" r="4" fill="#F87171"/>
+    <text x="920" y="588" class="lab" font-size="12">Call Briefing ready</text>
+    <text x="906" y="609" class="sub" font-size="10.5">top outcomes &#183; risks &#183; action plan</text>
+    <text x="906" y="626" class="sub" font-size="10.5">delivered when the call ends</text>
+  </g>
+
+  <!-- ===== Flowing particles ===== -->
+  <g filter="url(#glow)">
+    <circle class="dot" r="4.2" fill="#7DD3FC"><animateMotion dur="1.5s" begin="0s"   repeatCount="indefinite"><mpath xlink:href="#f1"/></animateMotion></circle>
+    <circle class="dot" r="4.2" fill="#7DD3FC"><animateMotion dur="2.3s" begin=".2s"  repeatCount="indefinite"><mpath xlink:href="#f2"/></animateMotion></circle>
+    <circle class="dot" r="4.2" fill="#7DD3FC"><animateMotion dur="2.1s" begin=".5s"  repeatCount="indefinite"><mpath xlink:href="#f3"/></animateMotion></circle>
+    <circle class="dot" r="4"   fill="#7DD3FC"><animateMotion dur="3.4s" begin="0s"   repeatCount="indefinite"><mpath xlink:href="#f4"/></animateMotion></circle>
+    <circle class="dot" r="4"   fill="#7DD3FC"><animateMotion dur="3.4s" begin="1.7s" repeatCount="indefinite"><mpath xlink:href="#f4"/></animateMotion></circle>
+    <circle class="dot" r="4.2" fill="#5EEAD4"><animateMotion dur="1.7s" begin=".3s"  repeatCount="indefinite"><mpath xlink:href="#f5"/></animateMotion></circle>
+    <circle class="dot" r="4.2" fill="#5EEAD4"><animateMotion dur="1.7s" begin=".9s"  repeatCount="indefinite"><mpath xlink:href="#f6"/></animateMotion></circle>
+    <circle class="dot" r="4.4" fill="#5EEAD4"><animateMotion dur="1.5s" begin="1.1s" repeatCount="indefinite"><mpath xlink:href="#f7"/></animateMotion></circle>
+    <circle class="dot" r="4"   fill="#99F6E4"><animateMotion dur="1.9s" begin="1.4s" repeatCount="indefinite"><mpath xlink:href="#f8"/></animateMotion></circle>
+    <circle class="dot" r="4"   fill="#99F6E4"><animateMotion dur="2.2s" begin="1.6s" repeatCount="indefinite"><mpath xlink:href="#f9"/></animateMotion></circle>
+    <circle class="dot" r="4"   fill="#99F6E4"><animateMotion dur="2.5s" begin="1.9s" repeatCount="indefinite"><mpath xlink:href="#f10"/></animateMotion></circle>
+    <circle class="dot" r="4.4" fill="#C4B5FD"><animateMotion dur="1.6s" begin="2.1s" repeatCount="indefinite"><mpath xlink:href="#f11"/></animateMotion></circle>
+    <circle class="dot" r="4.4" fill="#C4B5FD"><animateMotion dur="1.4s" begin="2.3s" repeatCount="indefinite"><mpath xlink:href="#f12"/></animateMotion></circle>
+    <circle class="dot" r="4.4" fill="#6EE7B7"><animateMotion dur="2.6s" begin="2s"   repeatCount="indefinite"><mpath xlink:href="#f13"/></animateMotion></circle>
+    <circle class="dot" r="4.4" fill="#FCD34D"><animateMotion dur="1.4s" begin="2.6s" repeatCount="indefinite"><mpath xlink:href="#f14"/></animateMotion></circle>
+    <circle class="dot" r="4.4" fill="#FCD34D"><animateMotion dur="1.4s" begin="2.8s" repeatCount="indefinite"><mpath xlink:href="#f15"/></animateMotion></circle>
+    <circle class="dot" r="4.2" fill="#6EE7B7"><animateMotion dur="1.5s" begin="3.1s" repeatCount="indefinite"><mpath xlink:href="#f16"/></animateMotion></circle>
+    <circle class="dot" r="4.2" fill="#6EE7B7"><animateMotion dur="1.7s" begin="3.3s" repeatCount="indefinite"><mpath xlink:href="#f17"/></animateMotion></circle>
+    <circle class="dot" r="4.2" fill="#6EE7B7"><animateMotion dur="1.7s" begin="3.4s" repeatCount="indefinite"><mpath xlink:href="#f18"/></animateMotion></circle>
+    <circle class="dot" r="4.6" fill="#6EE7B7"><animateMotion dur="2.7s" begin="3.6s" repeatCount="indefinite"><mpath xlink:href="#f19"/></animateMotion></circle>
+    <circle class="dot" r="4.2" fill="#FCA5A5"><animateMotion dur="2.4s" begin="6s"   repeatCount="indefinite"><mpath xlink:href="#f20"/></animateMotion></circle>
+    <circle class="dot" r="4.2" fill="#FCA5A5"><animateMotion dur="2.2s" begin="6.8s" repeatCount="indefinite"><mpath xlink:href="#f21"/></animateMotion></circle>
+  </g>
+
+  <!-- ===== Legend ===== -->
+  <g transform="translate(60,918)" font-size="11" fill="#8DA2B8">
+    <circle cx="6"   cy="-4" r="5" fill="#38BDF8"/><text x="18" y="0">audio</text>
+    <circle cx="86"  cy="-4" r="5" fill="#2DD4BF"/><text x="98" y="0">transcript</text>
+    <circle cx="196" cy="-4" r="5" fill="#A78BFA"/><text x="208" y="0">insight</text>
+    <circle cx="286" cy="-4" r="5" fill="#FBBF24"/><text x="298" y="0">event (pub/sub)</text>
+    <circle cx="440" cy="-4" r="5" fill="#34D399"/><text x="452" y="0">persist / deliver</text>
+    <circle cx="592" cy="-4" r="5" fill="#F87171"/><text x="604" y="0">post-call briefing</text>
+    <text x="756" y="0" fill="#5C7089">dashed = interim, pre-transcript</text>
+  </g>
+</svg>
