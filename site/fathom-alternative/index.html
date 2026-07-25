@@ -321,18 +321,19 @@
           Compose stack, and our prebuilt desktop downloads need an approved
           Backchannel account rather than being a direct download.
         </p>
-        <h3>One rough edge worth naming</h3>
+        <h3>The fully local path</h3>
         <p>
-          Backchannel's analysis agents can now run against a self-hosted
+          Backchannel's analysis agents can run against a self-hosted
           OpenAI-compatible server (Ollama, LM Studio, vLLM), so with local
           ONNX transcription the whole pipeline works with the network off
-          and no key from anyone. The wrinkle is that our Privacy First
-          switch does not yet know that: it recognizes only the local
-          transcription models, so switching it on still disables every
-          outside call, including the agents. If you need summarization with
-          zero cloud calls, look at
-          <a href="/open-source-meeting-assistants/">the other open-source options</a>
-          -- some of them do that better than we do.
+          and no key from anyone. Our Privacy First switch now knows that too:
+          it judges the destination rather than the vendor, so agents pointed
+          at an endpoint on your own machine or LAN keep running with the
+          switch on while only cloud providers stay blocked. A fully local
+          Backchannel now runs end to end with Privacy First on -- the one
+          caveat left is that interim live captions still come from the cloud
+          audio gateway. To compare other zero-cloud setups, see
+          <a href="/open-source-meeting-assistants/">the other open-source options</a>.
         </p>
       </div>
     </div>

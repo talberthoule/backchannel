@@ -175,16 +175,19 @@
           remains the answer and nothing here changes that.
         </p>
         <p>
-          The second concession matters just as much. Backchannel ships a
-          Privacy First mode that keeps everything on your machine, but the
-          local transcription models cannot do text analysis -- so turning it on
-          gives you fully local transcription and speaker diarization and turns
-          <em>off</em> every live agent, including the objection handler. The
-          realistic middle setting is local transcription with the interim
-          audio gateway disabled: your audio never leaves the machine, while
-          transcript <em>text</em> goes to Gemini or OpenAI on your own API key.
-          That is meaningfully different from sending all your audio to a
-          vendor, and it is not the same thing as "nothing leaves."
+          Privacy is the other place to be precise. Backchannel ships a
+          Privacy First mode, and it now judges the destination rather than the
+          vendor: point the analysis agents at a self-hosted endpoint on your
+          own machine or LAN -- loopback, a private address, a .local host --
+          and they keep running with the switch on, while only cloud providers
+          stay blocked. So a fully local setup, local ONNX transcription plus a
+          self-hosted OpenAI-compatible model (Ollama, LM Studio, vLLM), now
+          runs end to end with Privacy First on; only the interim live captions
+          still come from the cloud audio gateway. If you would rather bring
+          your own cloud key, the middle setting is local transcription with
+          that gateway disabled: your audio never leaves the machine, while
+          transcript <em>text</em> goes to Gemini or OpenAI. That is meaningfully
+          different from sending all your audio to a vendor.
         </p>
         <p>
           And to be clear about Gong: their published security posture is

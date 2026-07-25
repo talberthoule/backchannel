@@ -337,13 +337,13 @@
           pipeline or forecast, no scorecards, no call library, no team
           analytics, and no user accounts, roles, or authentication of any kind
           -- the application has no user model, so there is no manager view and
-          no way to roll a team up. Our Privacy First mode is also not a free
-          lunch: the local transcription models cannot do text analysis, so
-          turning it on gives you fully local transcription and diarization and
-          switches <em>off</em> every live agent, objection handler included.
-          The practical middle setting is local transcription with the interim
-          audio gateway disabled, which keeps audio on your machine while
-          transcript text goes to Gemini or OpenAI on your own key.
+          no way to roll a team up. On privacy we are in better shape than we
+          were: Privacy First now judges the destination rather than the vendor,
+          so with local ONNX transcription and the analysis agents pointed at a
+          self-hosted OpenAI-compatible model (Ollama, LM Studio, vLLM) on your
+          own machine or LAN, the whole pipeline runs end to end with the switch
+          on. Only cloud providers stay blocked, and the one caveat left is that
+          interim live captions still come from the cloud audio gateway.
         </p>
       </div>
     </div>

@@ -316,10 +316,12 @@
           ONNX models, and the insight agents can point at any
           OpenAI-compatible server -- Ollama, LM Studio, vLLM -- so the live
           analysis runs on your hardware too, with no key from anyone.
-          One honest wrinkle on our side: the Privacy First switch still
-          turns the agents off, because it recognizes only the local
-          transcription models. A fully local Backchannel is configured
-          through the endpoint setting rather than by flipping that switch.
+          The Privacy First switch now understands that: it judges the
+          destination rather than the vendor, so agents pointed at an endpoint
+          on your own machine or LAN keep running with the switch on and only
+          cloud providers stay blocked. Flip it on and a fully local
+          Backchannel runs end to end -- the one caveat is that interim live
+          captions still come from the cloud audio gateway.
         </p>
         <h3>Maturity and community</h3>
         <p>

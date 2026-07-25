@@ -10,10 +10,31 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.3.7"
+APP_VERSION = "0.3.8"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.3.8",
+        "date": "2026-07-25",
+        "title": "Self-hosted models become first-class",
+        "body": """Self-hosted models now stand on their own: every model an
+endpoint serves shows by its own name in the pickers, you can add more than
+one endpoint, and Privacy First keeps on-prem agents running.
+
+- Add any number of OpenAI-compatible servers -- Ollama, LM Studio, vLLM,
+  LiteLLM -- from the new Self-Hosted Models card in Admin -> API Keys.
+  Connect to one and it lists the models it serves; each appears by name in
+  every agent picker instead of hiding behind a single placeholder.
+- Privacy First now judges the destination, not the vendor. With an endpoint
+  on your own machine or LAN, the analysis agents keep running while Privacy
+  First is on; only cloud providers stay blocked. A fully local setup --
+  local ONNX transcription plus a self-hosted model -- now runs with the
+  switch on. Only interim live captions remain cloud-only.
+- If you configured the earlier single OpenAI-compatible endpoint, it is
+  migrated automatically into a named endpoint on first launch. Nothing to
+  redo, and env-var-only installs keep working unchanged.""",
+    },
     {
         "version": "0.3.7",
         "date": "2026-07-25",
