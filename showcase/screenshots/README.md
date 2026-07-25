@@ -3,50 +3,48 @@
 Every asset here is captured from a **wholly fictional demo workspace**. No real
 employer, client, or person appears in any of them. Safe for public use.
 
-Twelve surfaces, each with a light and a `-dark` variant, all 1440x900 unless
-cropped. The source data is "Northwind Logistics -- segmentation review": an
-invented 46-minute discovery call between an account lead, a solutions
-architect, and two customer-side people, seeded by `showcase/seed_demo.py`.
+Twelve surfaces, each with a light and a `-dark` variant, all 1440x900 before
+encoding. The source data is "Alderwake Health Network - recovery readiness
+review": an invented 46-minute services-integration call between a distributed
+account team and two customer-side leaders, seeded by `showcase/seed_demo.py`.
 
 ## Regenerating the whole set
 
 ```bash
 docker compose up -d                        # app at localhost:3000
-python showcase/seed_demo.py --reset --analyze
+python showcase/seed_demo.py --reset
 node showcase/capture.mjs
 python showcase/encode.py                   # PNG -> site/assets/shots/*.webp
 python showcase/crops.py                    # focused crops from those captures
 ```
 
-`--analyze` runs the real analysis agents over the fictional transcript, so the
-insights are genuinely model-generated rather than hand-written. It needs a
-configured LLM key; without one, `seed_demo.py` falls back to a canned insight
-set and `capture.mjs` skips the briefing and chat shots with a notice.
-
-Repeat `POST /api/sessions/{id}/analyze` a few times to accumulate a fuller
-insight set -- one pass produces roughly ten, and the committed captures show 56
-after six passes. The live-call hero is captured separately with Chrome's fake
-media device, since the live view needs a microphone stream to start.
+The default fixture is intentionally deterministic: it inserts 24 canned,
+transcript-grounded insights and one completed briefing, seeds three recovery
+offerings and three delivery playbooks, and injects a canned chat exchange
+through the product's real session-storage contract. No LLM key is required.
+Use `--analyze` only for local exploratory runs; do not use it for committed
+assets. The capture script starts the real live view with Chrome's fake media
+device and restores the session to completed when it finishes.
 
 ## Asset guide
 
 | Asset | Shows | Placement |
 | --- | --- | --- |
-| `live-call(-dark)` | Live call: dual Listening indicators, filterable rail of 56 live insights, answered objection cards with drafted responses, live speaker-attributed transcript | **Hero** |
-| `live-answered(-dark)` | Crop: two Answered objection cards, each badged Objection Handler and attributed, with the drafted response beneath | "Questions answer themselves" |
-| `postcall-briefing(-dark)` | Conversation briefing: TOP 3 OUTCOMES beside OBJECTIVES, each with owner and status | Briefing / results section |
-| `postcall-insights(-dark)` | Insights tab: 56 total, 13 action items, 5 objections, 8 opportunities, 7 observations, 23 questions | Post-call results |
+| `live-call(-dark)` | Live recovery review: Listening status, 24 saved insights, answered objection cards, and a speaker-attributed transcript | **Hero** |
+| `live-answered(-dark)` | Crop: answered objection cards with Objection Handler badges, attribution, and ready-to-use responses | "Questions answer themselves" |
+| `postcall-briefing(-dark)` | Conversation briefing: TOP 3 OUTCOMES beside CLIENT OBJECTIVES, each grounded in the fixture | Briefing / results section |
+| `postcall-insights(-dark)` | Insights tab: 24 total, 5 action items, 4 objections, 4 opportunities, 5 observations, 6 questions | Post-call results |
 | `insights-attributed(-dark)` | Crop: insight cards carrying agent badge and speaker attribution | Agents feature; speaker re-attribution |
-| `session-header(-dark)` | Crop: two call segments totalling 46m 12s, dated, 56 insights | Wrap-up proof strip |
+| `session-header(-dark)` | Crop: two call segments totalling 46m 12s, dated, 24 insights | Wrap-up proof strip |
 | `postcall-transcript(-dark)` | Speaker-attributed transcript with timestamps | Transcription feature |
 | `postcall-speakers(-dark)` | Speakers tab: name mapping, team/external tagging, merge controls | Diarization feature |
-| `postcall-chat(-dark)` | Cross-session chat with a grounded answer and scope pickers | Cross-meeting Q&A |
+| `postcall-chat(-dark)` | Fixture-backed cross-session chat answer with scope pickers | Cross-meeting Q&A |
 | `admin-agents(-dark)` | Admin: Privacy First toggle, nine-agent lineup with per-agent models | Self-hosting / privacy |
 | `admin-transcription(-dark)` | Admin: transcription and audio settings | Docs |
 | `admin-api-keys(-dark)` | Admin: provider credentials | Docs |
 | `admin-about(-dark)` | Admin: version and release notes | Docs |
-| `offerings-catalog(-dark)` | Offerings catalog used by the opportunity specialist | Docs |
-| `knowledge-sources(-dark)` | Knowledge sources configuration | Docs |
+| `offerings-catalog(-dark)` | Three recovery services in the catalog used by the opportunity specialist | Docs |
+| `knowledge-sources(-dark)` | Selected recovery-delivery collection with three fictional playbooks | Docs |
 
 Admin and tool panels are cropped to drop the left sidebar (they are about the
 panel); post-call shots keep it, because session and group organization is part
