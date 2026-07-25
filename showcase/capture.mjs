@@ -49,6 +49,15 @@ async function api(path, options = {}) {
   return text ? JSON.parse(text) : null;
 }
 
+async function waitForAudioTeardown() {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const segments = await api(`/sessions/${demo.id}/segments`);
+    if (segments.every((segment) => segment.ended_at)) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error("live capture audio segment did not close");
+}
+
 const sessions = await api("/sessions");
 const demo = sessions.find((session) => session.name === SESSION);
 if (!demo) throw new Error(`seeded session not found: ${SESSION}`);
@@ -129,6 +138,7 @@ async function runCompleted(colorScheme, suffix) {
   await page.getByText("Offerings Catalog").first().click();
   const search = page.getByPlaceholder("Search offerings...");
   await search.waitFor({ timeout: 20000 });
+  await page.locator("select").first().selectOption({ label: "Service Integrator" });
   await search.fill("Recovery");
   await page.getByText("Recovery Readiness Assessment", { exact: true }).waitFor();
   await shot("offerings-catalog", "three recovery services rendered");
@@ -162,6 +172,7 @@ async function runLive(colorScheme, suffix) {
       method: "PATCH",
       body: JSON.stringify({ state: "completed" }),
     });
+    await waitForAudioTeardown();
   }
 }
 
