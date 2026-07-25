@@ -50,9 +50,9 @@ class OfferingsImportMappingTests(unittest.TestCase):
 
         self.assertEqual("Cloud Security", row["subcategory"])
 
-    def test_missing_vendor_defaults_to_in_house(self):
+    def test_missing_vendor_defaults_to_service_integrator(self):
         row = _normalize_offering_import_row({"product_name": "Advisory Retainer"})
-        self.assertEqual("In-House", row["vendor"])
+        self.assertEqual("Service Integrator", row["vendor"])
 
 
 if __name__ == "__main__":

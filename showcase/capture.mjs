@@ -3,13 +3,10 @@
 // Usage:  node showcase/capture.mjs            (app running at localhost:3000)
 //         node showcase/capture.mjs --out DIR  (default: showcase/screenshots)
 //
-// Requires the fictional demo workspace: python showcase/seed_demo.py
+// Requires: python showcase/seed_demo.py --reset
 // Playwright is reused from the product-showcase skill install.
 //
-// Every surface is captured in BOTH themes and each shot waits on real rendered
-// content, then logs what it actually observed -- a blank panel or a wrong tab
-// must not pass silently. Briefing and Chat need a configured LLM key; when none
-// is present they are skipped with a notice rather than failing the run.
+// Every surface is captured in both themes from deterministic fixture data.
 import { createRequire } from "module";
 import { homedir } from "os";
 import { mkdirSync } from "fs";
@@ -20,106 +17,176 @@ const { chromium } = require("playwright");
 
 const outArg = process.argv.indexOf("--out");
 const OUT = outArg > -1 ? process.argv[outArg + 1] : "showcase/screenshots";
-mkdirSync(OUT, { recursive: true });
+const BASE = "http://localhost:3000";
+const SESSION = "Alderwake Health Network - recovery readiness review";
+const CHAT = [
+  {
+    role: "user",
+    content: "What did we commit to, and what could still move the recovery pilot?",
+  },
+  {
+    role: "assistant",
+    content:
+      "**Committed:** fixed pilot scope, managed-operations option, operating boundary, " +
+      "and board-ready evidence outline by Thursday noon.\n\n" +
+      "**Could move the pilot:** the ten-day identity change approval, the unconfirmed " +
+      "clinical validation owner, and legal review of the managed-service boundary.",
+  },
+];
 
-const SESSION = "Northwind Logistics - segm";
+mkdirSync(OUT, { recursive: true });
 const log = [];
 
-// Briefing and Chat both call an LLM. Skip them when no provider is configured.
-const creds = await fetch("http://localhost:3000/api/credentials").then((r) => r.json()).catch(() => []);
-const hasKey = Array.isArray(creds) && creds.some((c) => c.key_available);
-if (!hasKey) log.push("NOTE: no LLM key configured -- skipping briefing and chat shots");
+async function api(path, options = {}) {
+  const response = await fetch(`${BASE}/api${path}`, {
+    headers: { "Content-Type": "application/json", ...options.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    throw new Error(`${options.method || "GET"} ${path} failed: ${response.status}`);
+  }
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+}
 
-const browser = await chromium.launch();
+async function waitForAudioTeardown() {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const segments = await api(`/sessions/${demo.id}/segments`);
+    if (segments.every((segment) => segment.ended_at)) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error("live capture audio segment did not close");
+}
 
-async function run(colorScheme, suffix) {
+const sessions = await api("/sessions");
+const demo = sessions.find((session) => session.name === SESSION);
+if (!demo) throw new Error(`seeded session not found: ${SESSION}`);
+
+const browser = await chromium.launch({
+  args: [
+    "--use-fake-ui-for-media-stream",
+    "--use-fake-device-for-media-stream",
+    "--auto-select-desktop-capture-source=Entire screen",
+  ],
+});
+
+async function openDemo(page) {
+  await page.goto(BASE, { waitUntil: "networkidle" });
+  await page.evaluate(
+    ({ key, messages }) => sessionStorage.setItem(key, JSON.stringify(messages)),
+    { key: `backchannel:meeting-chat:${demo.id}`, messages: CHAT },
+  );
+  const expand = page.locator('[aria-label="Expand sidebar"]');
+  if (await expand.isVisible().catch(() => false)) await expand.click();
+  await page.getByText(SESSION, { exact: true }).first().click();
+  await page.waitForTimeout(900);
+}
+
+async function runCompleted(colorScheme, suffix) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme });
   const shot = async (name, note) => {
     await page.screenshot({ path: `${OUT}/${name}${suffix}.png` });
     log.push(`  ${name}${suffix} -- ${note}`);
   };
-  const tab = async (re) => {
-    await page.getByRole("button", { name: re }).first().click();
+  const tab = async (name) => {
+    await page.getByRole("button", { name }).first().click();
     await page.waitForTimeout(700);
   };
 
-  await page.goto("http://localhost:3000", { waitUntil: "networkidle" });
-  const expand = page.locator('[aria-label="Expand sidebar"]');
-  if (await expand.isVisible().catch(() => false)) await expand.click();
+  await openDemo(page);
 
-  await page.getByText(SESSION).first().click();
-  await page.waitForTimeout(900);
+  await page.getByText("Top 3 Outcomes", { exact: true }).waitFor({ timeout: 20000 });
+  await shot("postcall-briefing", "fixture-backed briefing rendered");
 
-  if (hasKey) {
-    // The control is "Generate Briefing" when none exists yet and "Refresh
-    // Briefing" once one does; the empty state reads "No briefing was generated".
-    const empty = page.getByText(/No briefing was generated/i);
-    if (await empty.isVisible().catch(() => false)) {
-      await page.getByRole("button", { name: /(Generate|Refresh) Briefing/ }).first().click();
-      await empty.waitFor({ state: "hidden", timeout: 240000 });
-    }
-    await page.getByText(/TOP \d+ OUTCOMES|OBJECTIVES/i).first().waitFor({ timeout: 240000 });
-    await page.waitForTimeout(900);
-    const panels = await page.evaluate(() =>
-      (document.body.innerText.match(/TOP \d+ OUTCOMES|OBJECTIVES|RISKS?|NEXT STEPS/gi) || []).join(", "));
-    await shot("postcall-briefing", `briefing rendered: ${panels || "panels not detected"}`);
-  }
-
-  // Anchor on structure, not on insight copy: the insight set is regenerated by
-  // the analysis agents and its wording changes every run.
   await tab(/^Insights/);
   await page.getByText(/^ACTION ITEMS$/i).first().waitFor({ timeout: 20000 });
-  const shown = await page.evaluate(() =>
+  const total = await page.evaluate(() =>
     document.body.innerText.match(/TOTAL\s+(\d+)/)?.[1] ?? "?");
-  await shot("postcall-insights", `insight cards rendered, TOTAL ${shown}`);
+  await shot("postcall-insights", `insight cards rendered, TOTAL ${total}`);
 
   await tab(/^Transcript/);
-  await page.getByText("cyber insurance renews").first().waitFor({ timeout: 20000 });
-  await shot("postcall-transcript", "transcript rendered");
+  await page.getByText(/board risk committee meets September 18/i).first().waitFor({ timeout: 20000 });
+  await shot("postcall-transcript", "speaker-attributed transcript rendered");
 
-  // "Dana" also matches hidden <option> elements in the merge selects, so anchor
-  // on the panel heading rather than a speaker name.
   await tab(/^Speakers/);
   await page.getByText(/Speaker Name Mapping/i).first().waitFor({ timeout: 20000 });
-  await page.waitForTimeout(400);
-  await shot("postcall-speakers", "speaker mapping rendered");
+  await shot("postcall-speakers", "four-speaker mapping rendered");
+
+  await tab(/^Chat$/);
+  await page.getByText(/Committed:/).first().waitFor({ timeout: 20000 });
+  await shot("postcall-chat", "fixture-backed cross-meeting answer rendered");
 
   await page.getByText("Administration").first().click();
-  await page.getByText("consolidated_analyst").first().waitFor({ timeout: 20000 }).catch(() => {});
-  await page.waitForTimeout(700);
+  await page.getByText("consolidated_analyst").first().waitFor({ timeout: 20000 });
   const badge = await page.evaluate(() => {
-    const b = [...document.querySelectorAll("button")].find((x) => /^Agents/.test(x.textContent.trim()));
-    return b ? b.textContent.trim() : "NOT FOUND";
+    const button = [...document.querySelectorAll("button")]
+      .find((candidate) => /^Agents/.test(candidate.textContent.trim()));
+    return button ? button.textContent.trim() : "NOT FOUND";
   });
   await shot("admin-agents", `tab badge: ${badge}`);
 
-  for (const [re, name] of [
+  for (const [name, asset] of [
     [/Transcription & Audio/, "admin-transcription"],
     [/API Keys/, "admin-api-keys"],
     [/About/, "admin-about"],
   ]) {
-    await page.getByRole("button", { name: re }).first().click();
-    await page.waitForTimeout(800);
-    await shot(name, "admin tab");
+    await page.getByRole("button", { name }).first().click();
+    await page.waitForTimeout(700);
+    await shot(asset, "admin tab");
   }
 
-  for (const [label, name] of [
-    ["Offerings Catalog", "offerings-catalog"],
-    ["Knowledge Sources", "knowledge-sources"],
-  ]) {
-    await page.getByText(label).first().click();
-    await page.waitForTimeout(900);
-    await shot(name, "tool panel");
-  }
+  await page.getByText("Offerings Catalog").first().click();
+  const search = page.getByPlaceholder("Search offerings...");
+  await search.waitFor({ timeout: 20000 });
+  await page.locator("select").first().selectOption({ label: "Service Integrator" });
+  await search.fill("Recovery");
+  await page.getByText("Recovery Readiness Assessment", { exact: true }).waitFor();
+  await shot("offerings-catalog", "three recovery services rendered");
+
+  await page.getByText("Knowledge Sources").first().click();
+  const source = page.getByText("Recovery Delivery Playbooks", { exact: true }).first();
+  await source.waitFor({ timeout: 20000 });
+  await source.click();
+  await page.getByText("Recovery readiness pilot", { exact: true }).waitFor();
+  await shot("knowledge-sources", "selected playbook collection with three records");
 
   await page.close();
 }
 
-log.push("light:");
-await run("light", "");
-log.push("dark:");
-await run("dark", "-dark");
-await browser.close();
+async function runLive(colorScheme, suffix) {
+  await api(`/sessions/${demo.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ state: "active" }),
+  });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme });
+  try {
+    await openDemo(page);
+    await page.getByRole("button", { name: "Resume Audio" }).click();
+    await page.getByText("Listening", { exact: true }).first().waitFor({ timeout: 20000 });
+    await page.waitForTimeout(700);
+    await page.screenshot({ path: `${OUT}/live-call${suffix}.png` });
+    log.push(`  live-call${suffix} -- active call listening with saved insights and transcript`);
+  } finally {
+    await page.close();
+    await api(`/sessions/${demo.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ state: "completed" }),
+    });
+    await waitForAudioTeardown();
+  }
+}
+
+try {
+  log.push("light:");
+  await runCompleted("light", "");
+  log.push("dark:");
+  await runCompleted("dark", "-dark");
+  log.push("live:");
+  await runLive("light", "");
+  await runLive("dark", "-dark");
+} finally {
+  await browser.close();
+}
 
 console.log(log.join("\n"));
 console.log(`\ndone -> ${OUT}`);

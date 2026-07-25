@@ -8,9 +8,9 @@
 # added: these rows become public screenshots. See the Curation rules in
 # showcase/screenshots/README.md before changing anything here.
 #
-# Sessions, groups, speakers, and transcript lines go through the product's real
-# REST APIs so they acquire genuine derived state. Insights have no POST endpoint,
-# so they are written directly with SQL via the compose db service.
+# Sessions, groups, speakers, transcripts, offerings, and knowledge records go
+# through real APIs. Insights and the deterministic briefing use SQL because
+# neither has a fixture-oriented write endpoint.
 import argparse
 import json
 import subprocess
@@ -22,16 +22,20 @@ from pathlib import Path
 
 BASE = "http://localhost:3000/api"
 REPO = Path(__file__).resolve().parent.parent
-GROUP = "Northwind Logistics"
-MAIN = "Northwind Logistics - segmentation review"
+GROUP = "Alderwake Health Network"
+MAIN = "Alderwake Health Network - recovery readiness review"
 
 
 def call(method, path, payload=None):
     data = json.dumps(payload).encode() if payload is not None else None
-    req = urllib.request.Request(BASE + path, data=data, method=method,
-                                headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        body = r.read().decode()
+    req = urllib.request.Request(
+        BASE + path,
+        data=data,
+        method=method,
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as response:
+        body = response.read().decode()
         return json.loads(body) if body.strip() else None
 
 
@@ -43,213 +47,333 @@ def env(key):
 
 
 def psql(sql):
-    cmd = ["docker", "compose", "exec", "-T", "db", "psql",
-           "-U", env("POSTGRES_USER"), "-d", env("POSTGRES_DB")]
-    p = subprocess.run(cmd, input=sql, capture_output=True, text=True, cwd=REPO)
-    if p.returncode != 0:
-        raise SystemExit(f"psql failed:\n{p.stderr}")
-    return p.stdout
+    cmd = [
+        "docker",
+        "compose",
+        "exec",
+        "-T",
+        "db",
+        "psql",
+        "-U",
+        env("POSTGRES_USER"),
+        "-d",
+        env("POSTGRES_DB"),
+    ]
+    result = subprocess.run(cmd, input=sql, capture_output=True, text=True, cwd=REPO)
+    if result.returncode != 0:
+        raise SystemExit(f"psql failed:\n{result.stderr}")
+    return result.stdout
 
 
-def q(s):
-    return "'" + s.replace("'", "''") + "'"
+def q(value):
+    return "'" + value.replace("'", "''") + "'"
 
 
 SPEAKERS = [
     ("Me", "Account Lead", "#0d9488", True, "team"),
-    ("Marcus", "Solutions Architect", "#7c3aed", False, "team"),
-    ("Dana", "Director of Infrastructure", "#f59e0b", False, "external"),
-    ("Priya", "Security Lead", "#10b981", False, "external"),
+    ("Leah", "Solutions Architect", "#7c3aed", False, "team"),
+    ("Owen", "Director of Infrastructure", "#f59e0b", False, "external"),
+    ("Maya", "Security and Resilience Lead", "#10b981", False, "external"),
 ]
 
 LINES = [
-    ("Dana", "Morning. Before we start, is it alright if I record this? I want to get the detail right for our steering pack."),
-    ("Me", "Of course, go ahead. I will send my own notes across afterwards either way."),
-    ("Dana", "Appreciated. So, quick round of introductions -- Priya heads security for us, Marcus I think you two met on the technical pre-call last week."),
-    ("Marcus", "We did. Priya, you had sent through the topology export afterwards, which was genuinely useful."),
-    ("Priya", "Good. I would rather you see the real thing than a tidied-up version of it."),
-    ("Dana", "Thanks for making time. Before we get into architecture, I should set context on the deadline -- our cyber insurance renews on November 14 and the carrier has flagged flat networks as a finding."),
-    ("Me", "That is useful to know up front. Is segmentation a stated condition of renewal, or a recommendation they would like to see progress against?"),
-    ("Dana", "It is phrased as a recommendation, but our broker was fairly direct that the premium moves if we cannot show a plan."),
-    ("Priya", "And to be blunt, we have been told to expect a twenty percent increase if nothing changes. That is the number that got this project funded."),
-    ("Marcus", "Understood. Can you walk me through what the depot network looks like today? Is it one flat space end to end, or are the depots already separated from the core?"),
-    ("Dana", "Forty depots, all on one address space. Warehouse scanners, the WMS terminals, HVAC, badge readers, and the office side all share it. It grew that way over about fifteen years."),
-    ("Priya", "The part that worries me most is the building systems. The HVAC controllers run firmware we cannot patch and they sit on the same VLAN as the WMS."),
-    ("Me", "That is the pattern we see most often in distribution. What would need to be true for you to consider this successful by November?"),
-    ("Dana", "Honestly? A defensible plan and at least a couple of sites actually done. I do not think forty is realistic in that window."),
-    ("Marcus", "Agreed, and I would not propose it. A two-site pilot with a repeatable template is a stronger story for a carrier than forty half-finished sites."),
-    ("Priya", "How disruptive is the cutover? We cannot take a depot offline during peak. Our freeze runs from the last week of October through the new year."),
-    ("Marcus", "The cutover itself is a maintenance window per site, typically under four hours. The discovery phase ahead of it is passive and does not touch traffic."),
-    ("Dana", "That freeze is the real constraint. If we cannot start until January we lose the insurance argument entirely."),
-    ("Me", "Then let us work backwards from the freeze rather than the renewal. If discovery starts in early September, would two sites before the last week of October be achievable on your side?"),
-    ("Dana", "Probably, if we can get the depot managers to commit windows. That is a people problem more than a technical one."),
-    ("Priya", "There is also the question of who operates it afterwards. My team is four people covering everything. I cannot take on a platform that needs a full-time engineer."),
-    ("Me", "That is fair, and worth flagging now rather than at contract. Would a managed option be something you would evaluate, or is that out of scope for this budget?"),
-    ("Priya", "I would evaluate it. The budget line is for the project, but operating cost is a separate conversation I would need to start with our CFO."),
-    ("Dana", "One more thing -- we are also mid-way through replacing the WMS next year. I do not want to segment around a system we are about to retire."),
-    ("Marcus", "That actually argues for doing it now. If we build the template against the current WMS and document the policy intent, the replacement drops into the same structure without a redesign."),
-    ("Dana", "That is a good point. I had assumed we would have to wait."),
-    ("Me", "Let me summarize what I have: November 14 renewal, October freeze, two-site pilot, passive discovery starting September, and an open question on who operates it. Anything I have missed?"),
-    ("Priya", "The unpatched building systems. Whatever we do has to isolate those first, not last."),
-    ("Me", "Noted, and I would put that at the front of the design. I will send a two-site scope with the September start and a separate managed-service option so you can take that to your CFO independently."),
-    ("Dana", "That works. Send it by end of week and I will get it in front of our director before the next steering call."),
-    ("Marcus", "Can I come back to the depot topology for a moment? You said forty sites on one address space. Are they all the same shape, or do the larger distribution centres differ?"),
-    ("Dana", "Six of them are proper distribution centres with their own comms rooms. The other thirty-four are cross-dock sites -- a switch, a router, and a cabinet in the corner of a warehouse."),
-    ("Priya", "And nobody on site who could tell you what is plugged into what. That is the honest position."),
-    ("Marcus", "Then discovery matters more than the design does. If we cannot see the traffic we will be guessing at policy, and a wrong policy at a cross-dock stops trucks moving."),
-    ("Dana", "Stopping trucks is the thing that gets people fired here. I want to be very clear about that risk."),
-    ("Me", "Understood. What is the actual cost of an hour of downtime at a cross-dock, roughly? It helps size the risk against the pilot approach."),
-    ("Dana", "We model it at about eleven thousand an hour at a mid-size site during peak. Less in the summer, much more in December."),
-    ("Priya", "Which is why the freeze exists. Nobody will sign off a change window between late October and the new year."),
-    ("Marcus", "Then the passive discovery phase becomes the safety net. We tap, we watch for two weeks, and we build policy from observed flows rather than from a diagram someone drew in 2019."),
-    ("Dana", "How much kit does the tap require? I do not have budget for forty new appliances."),
-    ("Marcus", "For the pilot, two. And we can often use existing switch mirror ports rather than inline taps, which costs nothing but configuration."),
-    ("Priya", "Mirror ports are fine on the six big sites. The cross-docks have older switches, some of them unmanaged."),
-    ("Marcus", "That is useful to know. Unmanaged switches would change the approach at those sites -- we would need to look at the uplink instead."),
-    ("Me", "Let me note that as an open technical question rather than trying to solve it live. Priya, could you get us a model and firmware inventory for the cross-dock switches?"),
-    ("Priya", "I can, though it will be partial. We have an asset register that is maybe seventy percent accurate."),
-    ("Dana", "Seventy is generous."),
-    ("Priya", "It is. Call it sixty."),
-    ("Me", "Sixty percent is still a starting point, and discovery will correct it. Better than designing against a register everyone assumes is right."),
-    ("Dana", "Moving on -- what does this look like commercially? I need a number to put in front of the steering group, even a rough one."),
-    ("Me", "For a two-site pilot with passive discovery, design, and cutover, we would typically be in the region of forty to sixty thousand depending on how much of the operational work your team takes on."),
-    ("Dana", "That is within what I expected. The full forty-site rollout is the number that will frighten people."),
-    ("Me", "It should, if we quote it now. I would rather the pilot prove the per-site cost so the rollout number is evidence rather than a guess."),
-    ("Priya", "That is a more defensible way to present it internally, I agree."),
-    ("Dana", "There is a complication. Procurement has us on a preferred-supplier list and you are not on it."),
-    ("Me", "How does that normally get handled? Is there a route for a single-source justification, or does it need a full competitive process?"),
-    ("Dana", "Under seventy-five thousand we can single-source with a written justification. Above that it goes to tender."),
-    ("Marcus", "Which is another argument for scoping the pilot tightly rather than bundling the rollout into it."),
-    ("Dana", "Exactly my thinking. Keep the pilot under the threshold and we move in weeks rather than months."),
-    ("Me", "Then I will scope the pilot to sit clearly under seventy-five, and price the rollout separately as an indicative figure with no commitment."),
-    ("Priya", "Can I raise something about the managed option? If we go that way, where does the data actually sit?"),
-    ("Me", "That is the right question to ask. In the managed model the telemetry stays in your environment and we access it; nothing about the flow data leaves your infrastructure."),
-    ("Priya", "That matters a lot to our legal team. We had a bad experience with a vendor who was vague about it."),
-    ("Dana", "The identity platform evaluation, that was the one."),
-    ("Priya", "It was. We got three different answers from three people at the same company."),
-    ("Me", "I will put the data-residency position in writing as part of the managed-service document, so there is one answer and it is on paper."),
-    ("Marcus", "Coming back to the technical side -- what is the WMS actually running on today?"),
-    ("Dana", "It is a vendor package on Windows servers in our primary data centre, with thin clients at the depots."),
-    ("Marcus", "And the replacement next year, is that the same vendor or a different platform entirely?"),
-    ("Dana", "Different vendor, cloud-hosted. That is part of why I hesitated on segmenting now."),
-    ("Marcus", "Cloud-hosted actually simplifies it. The depot side stops talking to your data centre and starts talking to an internet endpoint, which is a cleaner policy boundary, not a messier one."),
-    ("Dana", "I had not thought of it that way. So the segmentation work survives the migration."),
-    ("Marcus", "It does more than survive it -- it makes the migration safer, because you will know exactly what each depot talks to before you move anything."),
-    ("Priya", "That is a good argument for the steering group. It reframes this as migration preparation rather than pure compliance spend."),
-    ("Me", "I will make sure that framing is in the document. It is a stronger business case than insurance alone."),
-    ("Dana", "What about the badge readers and the HVAC? Priya keeps raising those and I do not think we have addressed them."),
-    ("Priya", "Because they are the ones that scare me. The HVAC controllers are on firmware from 2016 with known vulnerabilities and the vendor will not patch them."),
-    ("Marcus", "Those go in their own segment on day one, with a deny-by-default policy and a narrow allowance to the building management server. That is a two-hour change per site."),
-    ("Priya", "And if the building management server itself is compromised?"),
-    ("Marcus", "Then the blast radius is the building systems rather than the WMS and the office network. That is the whole point of the exercise."),
-    ("Priya", "Fine. I want that written as an explicit design principle, not left implied."),
-    ("Me", "Noted -- OT isolation as a stated design principle in the scope document."),
-    ("Dana", "Timeline. Walk me through it week by week, because September is closer than it sounds."),
-    ("Me", "Week one and two, passive discovery at the two pilot sites. Week three, policy design and your review. Week four, first site cutover in a maintenance window. Week five, observe and tune. Week six, second site."),
-    ("Dana", "That takes us to mid-October with two weeks of margin before the freeze."),
-    ("Marcus", "Which we will need. Something always slips, usually the change approval rather than the technical work."),
-    ("Priya", "Change approval here takes ten working days minimum. Build that in or the plan is fiction."),
-    ("Me", "Then I will show change windows requested at the start of week two, not week three. Thank you, that would have bitten us."),
-    ("Dana", "This is why we do these calls properly."),
-    ("Me", "Who else needs to see the scope before it goes to the steering group?"),
-    ("Dana", "Me first, then our director, then it goes in the pack. Priya sees it in parallel for the security content."),
-    ("Priya", "And I will want to send the OT section to our insurer's technical contact. They have been surprisingly helpful."),
-    ("Me", "That is a good idea -- if the carrier endorses the approach it strengthens the whole case. Would you like me to write that section so it can be shared externally without edits?"),
-    ("Priya", "Yes. That would save me a round trip."),
-    ("Dana", "One last thing. If the pilot goes well, what does the rollout actually look like in terms of pace?"),
-    ("Marcus", "Realistically, four to six sites a month once the template is proven, assuming your change process can absorb it."),
-    ("Dana", "So call it eight months for the estate. That is a 2027 conversation."),
-    ("Me", "It is, and I would rather set that expectation now than promise a compressed timeline nobody can deliver."),
-    ("Dana", "Appreciated. Right, I think we have what we need. Send the scope, I will get it moving."),
-    ("Priya", "And the data-residency note and the OT section written for external sharing."),
-    ("Me", "Both included. I will have it with you by Thursday rather than Friday, so you have a day to react before your steering call."),
-    ("Dana", "That is better. Thanks both."),
+    ("Owen", "Thanks for joining from home today. Before we start, is everyone comfortable with me recording so the recovery commitments are captured accurately?"),
+    ("Me", "Yes. I will also send a written decision log after the call so nobody has to rely on the recording."),
+    ("Maya", "Good. The board risk committee meets September 18, and our cyber insurer wants evidence of a tested recovery plan by September 30."),
+    ("Me", "What did the latest exercise show, and which result is driving the urgency?"),
+    ("Owen", "The electronic health record interface tier took eight hours to recover. Our stated objective is two hours, so the gap is six."),
+    ("Leah", "Was the delay data restore, application sequencing, identity, or validation by the clinical owners?"),
+    ("Owen", "All four, but sequencing was the largest problem. The runbook assumed three people were in the data center, and two of them now work remotely."),
+    ("Maya", "Identity was second. The recovery vault worked, but nobody had confirmed who could authorize the emergency accounts."),
+    ("Me", "So success is not just a faster restore. It is a remote-ready operating model with named authority and evidence the board and insurer can use."),
+    ("Maya", "Exactly. I need something defensible, not a polished diagram."),
+    ("Leah", "Which services are tier zero for the pilot? We should keep the first proof narrow enough to finish before September."),
+    ("Owen", "Identity, the interface engine, and the medication reconciliation feed. If those are down, the hospitals fall back to manual work."),
+    ("Maya", "I need to be explicit: there can be no production failover during the pilot. Clinical operations will not approve that risk in August."),
+    ("Leah", "We do not need a production failover. We can restore into an isolated recovery network, replay synthetic transactions, and have clinical owners validate the sequence there."),
+    ("Owen", "That removes my biggest objection. A test that touches production would stop this immediately."),
+    ("Me", "Would an isolated pilot covering identity plus the interface tier give the board enough evidence if the clinical validation is documented?"),
+    ("Maya", "Yes, provided the evidence includes timings, owners, exceptions, and the next remediation decision."),
+    ("Owen", "The other issue is capacity. My infrastructure team has seven people, five are remote, and they are already carrying the data center exit."),
+    ("Me", "Should we price managed recovery operations separately so the project decision is not blocked by a long-term staffing decision?"),
+    ("Owen", "Yes. I can fund a pilot from resilience, but ongoing operations would come from a different cost center."),
+    ("Maya", "I would evaluate a managed option if our team keeps approval authority and the evidence stays in our tenant."),
+    ("Leah", "That is workable. The service can maintain runbooks, schedule validation, and coordinate tests while Alderwake owns the recovery declaration."),
+    ("Owen", "Procurement may be awkward. You are not yet an approved services supplier, although we can buy the recovery software through our existing reseller agreement."),
+    ("Me", "Is there a professional-services threshold that allows a time-boxed pilot while the full supplier review runs?"),
+    ("Owen", "Under ninety thousand dollars, with a written single-source justification. Above that requires a competitive event."),
+    ("Me", "Then we will keep the pilot below ninety, show software and services separately, and treat managed operations as an optional follow-on."),
+    ("Maya", "Please do not make the proposal look cheaper by moving required work into the optional line. The insurer will notice gaps."),
+    ("Me", "Agreed. The pilot will be complete on its own; the optional line is only the recurring operating model."),
+    ("Leah", "What recovery tooling is already licensed? Reusing it is safer than adding a platform during a deadline."),
+    ("Owen", "Veeam Data Platform for the core workloads and Microsoft Entra for identity. Both are current, but the orchestration is mostly manual."),
+    ("Leah", "Good. This is an integration and runbook problem, not a product replacement. We can use the licenses you already own."),
+    ("Maya", "Where will the synthetic transaction data come from? Legal will reject a test dataset copied from production."),
+    ("Leah", "We will generate a minimal fictional dataset and keep it inside the isolated recovery network. No patient or employee records are needed."),
+    ("Maya", "Put that in the scope as a hard guardrail."),
+    ("Me", "Noted: synthetic data only, isolated network, no production failover, and Alderwake retains approval authority."),
+    ("Owen", "What does the timeline look like if the scope is approved next Thursday?"),
+    ("Leah", "Week one for discovery and access validation, week two for runbook design, week three for the isolated restore, and week four for clinical validation and the evidence pack."),
+    ("Maya", "Our change advisory board needs ten working days even for isolated tests because identity is involved."),
+    ("Me", "Then the change request opens on day one, in parallel with discovery, and we reserve a second validation window as contingency."),
+    ("Owen", "That puts the evidence pack in the first week of September, which leaves time before the board meeting."),
+    ("Maya", "Who owns the exception list if the two-hour objective is still missed?"),
+    ("Leah", "We will draft it with severity, decision owner, and due date. Owen owns infrastructure exceptions; you own risk acceptance; we own remediation recommendations."),
+    ("Owen", "That split works, but the clinical application owners must sign the validation result."),
+    ("Me", "Who can confirm those owners and secure their test window?"),
+    ("Owen", "I can send the names tomorrow. Dr. Vale owns the interface workflow, but use the role in the public plan, not the person's name."),
+    ("Maya", "Thank you. Keep named individuals out of the insurer pack unless they have approved it."),
+    ("Me", "We will use accountable roles in every external artifact and keep personal details in Alderwake's internal RACI only."),
+    ("Owen", "Commercially, what range should I reserve?"),
+    ("Me", "The fixed pilot should land between seventy-two and eighty-four thousand dollars, including the evidence pack and one contingency validation window."),
+    ("Owen", "That is within the resilience allocation and below the procurement threshold."),
+    ("Maya", "I still need data residency and support-access language before I endorse the managed option."),
+    ("Me", "We will include a one-page operating boundary: evidence remains in your tenant, access is time-bound, and Alderwake approves every recovery declaration."),
+    ("Leah", "I also want a ninety-minute technical working session with the identity and interface owners before we lock the runbook."),
+    ("Owen", "Tuesday at two Central works for the infrastructure side. I will confirm the clinical owner."),
+    ("Me", "I will send the fixed pilot scope, separate managed-operations option, and operating boundary by Thursday noon."),
+    ("Maya", "Add the board-ready evidence outline. If I can see the final shape now, I can clear it with the insurer before the test."),
+    ("Me", "Included. Owen sends the owner list tomorrow, we hold Tuesday at two, and I deliver the full package Thursday noon."),
+    ("Owen", "That is clear. If the scope holds those guardrails, I can sponsor it."),
 ]
 
 # item_type, agent_source, question, rationale, context, speaker, starred,
 # answered, answer_summary, needs_followup, followup, offering_match, enhanced
 INSIGHTS = [
-    ("action_item", "action_tracker", "Send a two-site pilot scope with a September discovery start", "Dana asked for it by end of week so it can go to their director before the next steering call.", "Send it by end of week and I will get it in front of our director", "Me", True, False, "", False, "", "", True),
-    ("action_item", "action_tracker", "Package the managed-service option as a separate document", "Priya needs to take operating cost to the CFO on a different budget line than the project.", "The budget line is for the project, but operating cost is a separate conversation", "Priya", True, False, "", False, "", "", True),
-    ("action_item", "action_tracker", "Confirm depot maintenance windows with site managers", "Dana called this a people problem and the pilot timeline depends on it.", "if we can get the depot managers to commit windows", "Dana", False, False, "", True, "Which two depots are the best pilot candidates on staffing alone?", "", False),
-    ("objection", "objection_handler", "We cannot take a depot offline during the October to January freeze", "The freeze removes the entire window between discovery and the insurance renewal, which is the compelling event.", "We cannot take a depot offline during peak", "Priya", True, True, "Reframed to work backwards from the freeze rather than the renewal: passive discovery in early September, two sites cut over before the last week of October.", False, "", "", True),
-    ("objection", "objection_handler", "My team is four people and cannot operate a new platform", "Operational capacity, not price, is the blocker here. Answer with a managed option before it hardens into a no.", "I cannot take on a platform that needs a full-time engineer", "Priya", False, True, "Priya will evaluate a managed option and start a separate CFO conversation about operating cost.", False, "", "Managed detection and response", False),
-    ("objection", "objection_handler", "We are replacing the WMS next year, so why segment around it now", "Sequencing objection. The counter is that a documented policy template survives the WMS replacement.", "I do not want to segment around a system we are about to retire", "Dana", False, True, "Marcus reframed it: building the template now means the replacement drops into the same structure without redesign. Dana accepted the point.", False, "", "", True),
-    ("opportunity", "opportunity_scout", "Managed operations for the segmentation platform", "Security team is capacity-constrained and Priya explicitly said she would evaluate a managed option.", "I would evaluate it", "Priya", True, False, "", False, "", "Managed detection and response", True),
-    ("opportunity", "opportunity_specialist", "OT and building-systems isolation as a distinct workstream", "Unpatchable HVAC controllers on the same VLAN as the WMS is a named, urgent risk with its own budget rationale.", "they run firmware we cannot patch", "Priya", True, False, "", False, "", "OT network assessment", True),
-    ("opportunity", "opportunity_scout", "WMS replacement creates a follow-on network design engagement", "A platform migration next year is adjacent scope that the segmentation template directly feeds.", "we are also mid-way through replacing the WMS next year", "Dana", False, False, "", True, "Who owns the WMS replacement programme, and is network design in their scope or yours?", "", False),
-    ("question", "question_hunter", "Is segmentation a stated condition of the insurance renewal, or a recommendation?", "The distinction changes how hard the November date really is and how much leverage the deadline carries.", "our cyber insurance renews on November 14", "Dana", False, True, "A recommendation, but the broker was direct that the premium moves without a visible plan -- a twenty percent increase is expected.", False, "", "", True),
-    ("question", "question_hunter", "What would need to be true for this to be successful by November?", "Surfaces the customer's own success criteria before proposing scope.", "What would need to be true for you to consider this successful", "Me", False, True, "A defensible plan plus two sites actually completed. Dana does not consider forty realistic in the window.", False, "", "", True),
-    ("question", "question_hunter", "Who operates the platform after the pilot, and on whose budget?", "Ownership is unresolved and sits on a different budget line, which affects both the commercial shape and the close.", "who operates it afterwards", "Priya", True, False, "", True, "Would the CFO conversation happen before or after the pilot decision?", "", False),
-    ("observation", "observer", "The compelling event is the October freeze, not the November renewal", "Every workable plan has to complete before the last week of October, which compresses the real timeline by three weeks.", "That freeze is the real constraint", "Dana", True, False, "", False, "", "", True),
-    ("observation", "observer", "Budget was approved on the basis of an expected twenty percent premium increase", "The project is funded by risk avoidance, so proposals should be framed against that number rather than technical merit.", "we have been told to expect a twenty percent increase", "Priya", False, False, "", False, "", "", True),
-    ("observation", "synthesizer", "Priya raises operational capacity three separate times", "Consistent signal across the call: staffing, not price, is the dominant concern and should lead the proposal.", "My team is four people covering everything", "Priya", False, False, "", False, "", "", False),
-    ("observation", "observer", "Dana defers to a director for approval", "There is at least one decision-maker not on this call, and the scope document is what reaches them.", "I will get it in front of our director", "Dana", False, False, "", False, "", "", False),
+    ("action_item", "action_tracker", "Send the fixed recovery pilot scope by Thursday noon", "Owen can sponsor the pilot once the stated guardrails and commercial boundary are in writing.", "I will send the fixed pilot scope, separate managed-operations option, and operating boundary by Thursday noon", "Me", False, False, "", False, "", "Recovery Implementation Pilot", True),
+    ("action_item", "action_tracker", "Open the identity change request on day one", "The ten-working-day approval clock must run in parallel with discovery to protect the September evidence date.", "the change request opens on day one, in parallel with discovery", "Me", False, False, "", False, "", "", True),
+    ("action_item", "action_tracker", "Confirm accountable clinical owners and their validation window", "Clinical sign-off is required for the evidence pack, but the role list is not complete yet.", "I can send the names tomorrow", "Owen", False, False, "", True, "Which accountable role will sign the medication reconciliation validation?", "", False),
+    ("action_item", "action_tracker", "Hold the technical working session Tuesday at 2:00 Central", "Identity and interface owners need to validate access and sequence before the runbook is locked.", "Tuesday at two Central works", "Owen", False, False, "", False, "", "", False),
+    ("action_item", "action_tracker", "Include a board-ready evidence outline in the proposal", "Maya wants the insurer to clear the evidence shape before the recovery test.", "Add the board-ready evidence outline", "Maya", False, False, "", False, "", "Recovery Readiness Assessment", True),
+    ("objection", "objection_handler", "Clinical operations will not allow a production failover during the pilot", "A production-impacting test would stop the project before procurement.", "there can be no production failover during the pilot", "Maya", True, True, "Leah proposed an isolated recovery network with synthetic transactions and clinical validation, which Owen accepted.", False, "", "Recovery Implementation Pilot", True),
+    ("objection", "objection_handler", "The infrastructure team cannot absorb another operating platform", "Seven people, five remote, are already committed to the data center exit.", "My infrastructure team has seven people, five are remote", "Owen", False, True, "The pilot stays self-contained and managed recovery operations will be priced separately as an optional operating model.", False, "", "Managed Recovery Operations", True),
+    ("objection", "objection_handler", "The services integrator is not yet an approved supplier", "Supplier onboarding could miss the board deadline even though software can use an existing reseller agreement.", "You are not yet an approved services supplier", "Owen", True, True, "Keep the fixed pilot below the ninety-thousand-dollar single-source threshold while the broader supplier review continues.", False, "", "Recovery Implementation Pilot", True),
+    ("objection", "objection_handler", "Legal will not allow production data in a recovery test", "Using copied clinical data would invalidate the safe pilot design.", "Legal will reject a test dataset copied from production", "Maya", False, True, "Use a minimal fictional dataset inside the isolated recovery network; no patient or employee records are required.", False, "", "", True),
+    ("opportunity", "opportunity_scout", "Recovery Readiness Assessment", "Alderwake needs an evidence-backed gap analysis before committing to broader remediation.", "I need something defensible, not a polished diagram", "Maya", False, False, "", False, "", "Recovery Readiness Assessment", True),
+    ("opportunity", "opportunity_specialist", "Recovery Implementation Pilot", "The customer has budget, a deadline, a narrow technical scope, and accepted non-disruptive validation guardrails.", "If the scope holds those guardrails, I can sponsor it", "Owen", False, False, "", False, "", "Recovery Implementation Pilot", True),
+    ("opportunity", "opportunity_scout", "Managed Recovery Operations", "Remote staffing and a separate operating budget create a credible managed-services follow-on.", "I would evaluate a managed option", "Maya", False, False, "", True, "Who owns the recurring cost center and when can that owner review the service boundary?", "Managed Recovery Operations", True),
+    ("opportunity", "opportunity_specialist", "Quarterly recovery validation program", "The board and insurer need repeatable evidence, not a one-time restore result.", "schedule validation, and coordinate tests", "Leah", False, False, "", True, "What evidence cadence will the insurer accept after September?", "Managed Recovery Operations", False),
+    ("observation", "observer", "The real failure was remote operating readiness, not backup integrity", "The vault restored data, but sequencing and authority assumptions broke when responders were not onsite.", "The recovery vault worked, but nobody had confirmed who could authorize", "Maya", False, False, "", False, "", "", True),
+    ("observation", "observer", "The board deadline is earlier than the insurer deadline", "September 18 is the effective compelling event because the risk committee must review evidence first.", "The board risk committee meets September 18", "Maya", False, False, "", False, "", "", True),
+    ("observation", "synthesizer", "Existing licenses make this an integration engagement", "Alderwake already owns current recovery and identity platforms, reducing change risk under the deadline.", "This is an integration and runbook problem, not a product replacement", "Leah", False, False, "", False, "", "", True),
+    ("observation", "observer", "Pilot funding and ongoing operations have different owners", "Separating the fixed pilot from recurring service avoids turning one approval into two.", "ongoing operations would come from a different cost center", "Owen", False, False, "", False, "", "", False),
+    ("observation", "observer", "External evidence must use accountable roles, not personal names", "The customer explicitly limited personally identifying details in board and insurer artifacts.", "use accountable roles in every external artifact", "Me", False, False, "", False, "", "", True),
+    ("question", "question_hunter", "Which failure created most of the six-hour recovery gap?", "The answer determines whether the pilot should prioritize tooling, sequencing, identity, or clinical validation.", "What did the latest exercise show", "Me", False, True, "Application sequencing was the largest delay; emergency-account authority was second.", False, "", "", True),
+    ("question", "question_hunter", "Which services are tier zero for the pilot?", "A narrow critical-service boundary is required to finish before September.", "Which services are tier zero for the pilot", "Leah", False, True, "Identity, the interface engine, and the medication reconciliation feed.", False, "", "", True),
+    ("question", "question_hunter", "Will isolated validation satisfy the board and insurer?", "The pilot only works if evidence from a non-production environment is accepted.", "give the board enough evidence", "Me", False, True, "Yes, if the evidence records timings, owners, exceptions, and the next remediation decision.", False, "", "", True),
+    ("question", "question_hunter", "Who approves emergency identity access during a recovery?", "The last exercise exposed an authority gap even though the recovery vault worked.", "nobody had confirmed who could authorize the emergency accounts", "Maya", False, False, "", True, "Which role is primary and who is the after-hours delegate?", "", False),
+    ("question", "question_hunter", "Who owns exceptions when the two-hour objective is missed?", "Unowned remediation would weaken both the board decision and insurer evidence.", "Who owns the exception list", "Maya", False, True, "Infrastructure owns technical exceptions, security owns risk acceptance, and the integrator owns remediation recommendations.", False, "", "", True),
+    ("question", "question_hunter", "What evidence cadence will be required after September?", "A recurring requirement changes the managed-service scope and operating cost.", "The board and insurer need evidence of a tested recovery plan", "Maya", False, False, "", True, "Will quarterly validation satisfy both governance groups?", "Managed Recovery Operations", False),
 ]
 
 OTHERS = [
-    (MAIN.replace("segmentation review", "SD-WAN follow-up"), "discovery", "Follow-up on depot connectivity and circuit costs.", True),
-    ("Vendor eval - identity platform", "general", "Internal comparison of three identity vendors ahead of a Q4 decision.", False),
-    ("Weekly pipeline review", "general", "Standing internal review of open opportunities.", False),
+    ("Alderwake Health Network - identity recovery workshop", "client_sales", "Technical follow-up on emergency identity authority and isolated validation.", True),
+    ("Alderwake Health Network - managed operations due diligence", "client_sales", "Operating-boundary review for a recurring recovery service.", True),
+    ("Quarterly services pipeline review", "internal_checkin", "Distributed account team review of open services opportunities.", False),
+]
+
+BRIEFING = {
+    "top_outcomes": [
+        {"title": "Sponsor aligned on a non-disruptive pilot", "summary": "Owen can sponsor a fixed pilot that restores into an isolated network and stays below the procurement threshold.", "owner": "Owen", "status": "Aligned"},
+        {"title": "Remote operating gaps are now explicit", "summary": "Runbook sequencing and emergency-access authority caused more delay than the data restore.", "owner": "Alderwake", "status": "Confirmed"},
+        {"title": "September evidence path is achievable", "summary": "A four-week pilot leaves contingency before the September 18 board risk meeting.", "owner": "Joint team", "status": "On track"},
+    ],
+    "client_objectives": [
+        {"title": "Close the six-hour recovery gap", "summary": "Move the interface tier from an observed eight-hour recovery toward the stated two-hour objective."},
+        {"title": "Produce defensible board and insurer evidence", "summary": "Record timings, owners, exceptions, and remediation decisions without exposing personal details."},
+        {"title": "Keep clinical operations insulated", "summary": "Use synthetic data and an isolated recovery network with no production failover."},
+    ],
+    "top_opportunities": [
+        {"title": "Recovery Implementation Pilot", "summary": "Fixed-scope integration, runbook, isolated restore, clinical validation, and evidence pack.", "status": "$72K-$84K"},
+        {"title": "Managed Recovery Operations", "summary": "Optional recurring runbook maintenance, validation coordination, and evidence production."},
+        {"title": "Quarterly recovery validation", "summary": "Extend the pilot into repeatable governance evidence across critical services."},
+    ],
+    "risks_blockers": [
+        {"title": "Ten-day identity change approval", "summary": "Open the request on day one and reserve a contingency validation window.", "owner": "Owen"},
+        {"title": "Clinical owner not yet confirmed", "summary": "The accountable role must approve the validation result.", "owner": "Owen"},
+        {"title": "Managed-service boundary needs legal review", "summary": "Data residency, time-bound access, and declaration authority must be explicit.", "owner": "Maya"},
+    ],
+    "action_plan": [
+        {"title": "Send scope and operating boundary", "owner": "Account Lead", "status": "Thursday noon"},
+        {"title": "Confirm clinical validation owner", "owner": "Owen", "status": "Tomorrow"},
+        {"title": "Hold technical working session", "owner": "Leah", "status": "Tuesday 2:00 Central"},
+        {"title": "Pre-clear evidence outline with insurer", "owner": "Maya", "status": "Before pilot start"},
+    ],
+    "unresolved_discovery_questions": [
+        {"title": "Who is the after-hours emergency-access delegate?", "summary": "Primary and backup identity authority must be named in the internal RACI."},
+        {"title": "Which accountable role signs clinical validation?", "summary": "The public evidence pack will use a role, not a person's name."},
+        {"title": "What recurring evidence cadence will the insurer accept?", "summary": "The answer shapes managed-operations scope and price."},
+    ],
+    "strategic_signals": [
+        {"title": "Compelling event", "summary": "September 18 board risk committee"},
+        {"title": "Commercial boundary", "summary": "Fixed pilot below $90K"},
+    ],
+}
+
+KNOWLEDGE_RECORDS = [
+    {
+        "title": "Recovery readiness pilot",
+        "body": "A four-week engagement covering discovery, access validation, recovery sequencing, an isolated restore with synthetic data, accountable-owner validation, and a board-ready evidence pack.",
+        "meta": json.dumps({"service": "Recovery Implementation Pilot", "phase": "pilot"}),
+    },
+    {
+        "title": "Clinical change-window guardrails",
+        "body": "Use an isolated recovery network, synthetic records only, no production failover, an approved identity change, a reserved contingency window, and sign-off by the accountable clinical role.",
+        "meta": json.dumps({"service": "Recovery Implementation Pilot", "control": "change"}),
+    },
+    {
+        "title": "Managed recovery operations",
+        "body": "Maintain remote-ready runbooks, coordinate scheduled validation, produce governance evidence, and document exceptions while the customer retains approval authority and recovery declaration ownership.",
+        "meta": json.dumps({"service": "Managed Recovery Operations", "phase": "operate"}),
+    },
 ]
 
 
 def reset():
-    psql("DELETE FROM questions; DELETE FROM transcript_entries; DELETE FROM call_segments; "
-         "DELETE FROM speakers; DELETE FROM sessions; DELETE FROM session_groups;")
+    psql(
+        "DELETE FROM insight_clusters; DELETE FROM session_syntheses; "
+        "DELETE FROM questions; DELETE FROM transcript_entries; DELETE FROM call_segments; "
+        "DELETE FROM speakers; DELETE FROM sessions; DELETE FROM session_groups;"
+    )
     print("reset: demo tables cleared")
 
 
+def seed_catalog_and_knowledge():
+    call("POST", "/offerings/seed?replace=true")
+    for source in call("GET", "/knowledge"):
+        if source["name"] == "Recovery Delivery Playbooks":
+            call("DELETE", f"/knowledge/{source['id']}")
+    source = call(
+        "POST",
+        "/knowledge",
+        {
+            "name": "Recovery Delivery Playbooks",
+            "source_type": "collection",
+            "description": "Fictional delivery patterns used by the public recovery-readiness demo.",
+            "config": "{}",
+            "active": True,
+        },
+    )
+    for record in KNOWLEDGE_RECORDS:
+        call("POST", f"/knowledge/{source['id']}/records", {**record, "active": True})
+
+
+def briefing_sql(session_id, created_at):
+    fields = (
+        "top_outcomes",
+        "client_objectives",
+        "top_opportunities",
+        "risks_blockers",
+        "action_plan",
+        "unresolved_discovery_questions",
+        "strategic_signals",
+    )
+    values = [q(json.dumps(BRIEFING[field])) + "::json" for field in fields]
+    return (
+        "INSERT INTO session_syntheses ("
+        "id, session_id, mode, status, "
+        + ", ".join(fields)
+        + ", evidence_refs, lens_meeting, lens_discovery, arbiter_notes, model_ids, "
+        "error_message, created_at, updated_at, speaker_mapping_revision_id) VALUES ("
+        + ", ".join(
+            [
+                q(str(uuid.uuid4())),
+                q(session_id),
+                q("post_call"),
+                q("completed"),
+                *values,
+                q("[]") + "::json",
+                q(json.dumps({"notes": "Deterministic fixture-backed meeting lens."})) + "::json",
+                q(json.dumps({"notes": "Deterministic fixture-backed discovery lens."})) + "::json",
+                q("The decision, risks, and next steps are supported by the fictional transcript."),
+                q(json.dumps({"fixture": "showcase.seed_demo"})) + "::json",
+                q(""),
+                q(created_at.isoformat()),
+                q(created_at.isoformat()),
+                "NULL",
+            ]
+        )
+        + ");\n"
+    )
+
+
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--reset", action="store_true", help="clear existing sessions first")
-    ap.add_argument("--analyze", action="store_true",
-                    help="run the real analysis agents over the transcript instead of "
-                         "inserting the canned insight set (requires a configured LLM key)")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--reset", action="store_true", help="clear existing sessions first")
+    parser.add_argument(
+        "--analyze",
+        action="store_true",
+        help="run the real analysis agents over the transcript instead of inserting canned insights",
+    )
+    args = parser.parse_args()
     if args.reset:
         reset()
 
     try:
         group = call("POST", "/groups", {"name": GROUP})
-    except urllib.error.URLError as e:
-        raise SystemExit(f"cannot reach {BASE} -- is the app running? ({e})")
+    except urllib.error.URLError as error:
+        raise SystemExit(f"cannot reach {BASE} -- is the app running? ({error})")
 
-    main_s = call("POST", "/sessions", {
-        "name": MAIN, "meeting_type": "discovery",
-        "meeting_context": (
-            "Second call with Northwind's infrastructure team. They run 40 regional "
-            "depots on a flat network and want segmentation before their cyber "
-            "insurance renewal in November. Goal: agree scope and land a pilot."),
-    })
-    call("PATCH", "/sessions/" + main_s["id"], {"group_id": group["id"], "state": "completed"})
+    main_session = call(
+        "POST",
+        "/sessions",
+        {
+            "name": MAIN,
+            "meeting_type": "client_sales",
+            "meeting_context": (
+                "Recovery-readiness review with a distributed health-network infrastructure "
+                "team. A failed exercise exposed an eight-hour recovery against a two-hour "
+                "objective. Goal: agree a non-disruptive pilot before September governance dates."
+            ),
+        },
+    )
+    call(
+        "PATCH",
+        f"/sessions/{main_session['id']}",
+        {"group_id": group["id"], "state": "completed"},
+    )
 
-    for name, mtype, ctx, grouped in OTHERS:
-        s = call("POST", "/sessions", {"name": name, "meeting_type": mtype, "meeting_context": ctx})
-        body = {"state": "completed"}
+    for name, meeting_type, context, grouped in OTHERS:
+        session = call(
+            "POST",
+            "/sessions",
+            {"name": name, "meeting_type": meeting_type, "meeting_context": context},
+        )
+        update = {"state": "completed"}
         if grouped:
-            body["group_id"] = group["id"]
-        call("PATCH", "/sessions/" + s["id"], body)
+            update["group_id"] = group["id"]
+        call("PATCH", f"/sessions/{session['id']}", update)
 
-    sp = {}
-    for name, role, color, is_user, stype in SPEAKERS:
-        s = call("POST", f"/sessions/{main_s['id']}/speakers", {
-            "name": name, "role": role, "color": color,
-            "is_user": is_user, "speaker_type": stype})
-        sp[name] = s["id"]
+    speakers = {}
+    for name, role, color, is_user, speaker_type in SPEAKERS:
+        speaker = call(
+            "POST",
+            f"/sessions/{main_session['id']}/speakers",
+            {
+                "name": name,
+                "role": role,
+                "color": color,
+                "is_user": is_user,
+                "speaker_type": speaker_type,
+            },
+        )
+        speakers[name] = speaker["id"]
 
     start = datetime.now(timezone.utc) - timedelta(days=3, hours=2)
-    for i, (who, text) in enumerate(LINES):
-        call("POST", f"/sessions/{main_s['id']}/transcripts", {
-            "text": text, "speaker_id": sp[who],
-            "timestamp": (start + timedelta(seconds=42 * i)).isoformat(), "sequence": i})
+    for sequence, (who, text) in enumerate(LINES):
+        call(
+            "POST",
+            f"/sessions/{main_session['id']}/transcripts",
+            {
+                "text": text,
+                "speaker_id": speakers[who],
+                "timestamp": (start + timedelta(seconds=48 * sequence)).isoformat(),
+                "sequence": sequence,
+            },
+        )
 
-    cols = ("id, session_id, item_type, lens_label, question, rationale, source_context, "
-            "speaker_id, directive_id, starred, dismissed, answered, answer_summary, "
-            "needs_followup, followup_question, created_at, updated_at, enrichment_notes, "
-            "revision_count, agent_source, offering_match, vote, enhanced, "
-            "speaker_mapping_revision_id")
-    # Timings first, so the post-call header shows a real duration either way.
+    seed_catalog_and_knowledge()
+
     timings = (
         "UPDATE sessions SET started_at = created_at - interval '3 days 2 hours',"
         " ended_at = created_at - interval '3 days 2 hours' + interval '47 minutes'"
@@ -257,35 +381,94 @@ def main():
         "INSERT INTO call_segments (id, session_id, segment_number, started_at, ended_at)"
         " SELECT gen_random_uuid(), id, 1, started_at,"
         " started_at + interval '44 minutes 12 seconds' FROM sessions WHERE state = 'completed';\n"
-        f"INSERT INTO call_segments (id, session_id, segment_number, started_at, ended_at)"
-        f" SELECT gen_random_uuid(), id, 2, started_at + interval '45 minutes',"
+        "INSERT INTO call_segments (id, session_id, segment_number, started_at, ended_at)"
+        " SELECT gen_random_uuid(), id, 2, started_at + interval '45 minutes',"
         f" started_at + interval '47 minutes' FROM sessions WHERE name = {q(MAIN)};\n"
     )
 
     if args.analyze:
-        psql(timings)
-        print("running the real analysis agents over the transcript (this takes a minute)...")
-        call("POST", f"/sessions/{main_s['id']}/analyze")
-        n = psql(f"SELECT count(*) FROM questions WHERE session_id = {q(main_s['id'])};")
-        print(f"seeded: 1 group, {1 + len(OTHERS)} sessions, {len(sp)} speakers, "
-              f"{len(LINES)} transcript lines, {n.split()[2]} generated insights")
+        psql(timings + briefing_sql(main_session["id"], start + timedelta(minutes=47)))
+        print("running the real analysis agents over the transcript...")
+        call("POST", f"/sessions/{main_session['id']}/analyze")
+        count = psql(
+            f"SELECT count(*) FROM questions WHERE session_id = {q(main_session['id'])};"
+        )
+        print(
+            f"seeded: 1 group, {1 + len(OTHERS)} sessions, {len(speakers)} speakers, "
+            f"{len(LINES)} transcript lines, {count.split()[2]} generated insights"
+        )
         return
 
-    base_t = start + timedelta(minutes=6)
-    rows = []
-    for n, r in enumerate(INSIGHTS):
-        (itype, src, qq, rat, ctx, who, star, ans, ansum, nf, fq, om, enh) = r
-        rows.append("(" + ", ".join([
-            q(str(uuid.uuid4())), q(main_s["id"]), q(itype), q(""), q(qq), q(rat), q(ctx),
-            q(sp[who]), "NULL", str(star).lower(), "false", str(ans).lower(), q(ansum),
-            str(nf).lower(), q(fq), q((base_t + timedelta(minutes=n * 2)).isoformat()),
-            "NULL", q(""), "0", q(src), q(om), "0", str(enh).lower(), "NULL",
-        ]) + ")")
+    columns = (
+        "id, session_id, item_type, lens_label, question, rationale, source_context, "
+        "speaker_id, directive_id, starred, dismissed, answered, answer_summary, "
+        "needs_followup, followup_question, created_at, updated_at, enrichment_notes, "
+        "revision_count, agent_source, offering_match, vote, enhanced, "
+        "speaker_mapping_revision_id"
+    )
+    insight_rows = []
+    insight_start = start + timedelta(minutes=6)
+    for index, insight in enumerate(INSIGHTS):
+        (
+            item_type,
+            source,
+            question,
+            rationale,
+            context,
+            who,
+            starred,
+            answered,
+            answer_summary,
+            needs_followup,
+            followup,
+            offering_match,
+            enhanced,
+        ) = insight
+        insight_rows.append(
+            "("
+            + ", ".join(
+                [
+                    q(str(uuid.uuid4())),
+                    q(main_session["id"]),
+                    q(item_type),
+                    q(""),
+                    q(question),
+                    q(rationale),
+                    q(context),
+                    q(speakers[who]),
+                    "NULL",
+                    str(starred).lower(),
+                    "false",
+                    str(answered).lower(),
+                    q(answer_summary),
+                    str(needs_followup).lower(),
+                    q(followup),
+                    q((insight_start + timedelta(minutes=index)).isoformat()),
+                    "NULL",
+                    q(""),
+                    "0",
+                    q(source),
+                    q(offering_match),
+                    "0",
+                    str(enhanced).lower(),
+                    "NULL",
+                ]
+            )
+            + ")"
+        )
 
-    psql(f"INSERT INTO questions ({cols}) VALUES\n" + ",\n".join(rows) + ";\n" + timings)
-
-    print(f"seeded: 1 group, {1 + len(OTHERS)} sessions, {len(sp)} speakers, "
-          f"{len(LINES)} transcript lines, {len(INSIGHTS)} canned insights")
+    psql(
+        f"INSERT INTO questions ({columns}) VALUES\n"
+        + ",\n".join(insight_rows)
+        + ";\n"
+        + timings
+        + briefing_sql(main_session["id"], start + timedelta(minutes=47))
+    )
+    print(
+        f"seeded: 1 group, {1 + len(OTHERS)} sessions, {len(speakers)} speakers, "
+        f"{len(LINES)} transcript lines, {len(INSIGHTS)} canned insights, "
+        f"{len(KNOWLEDGE_RECORDS)} knowledge records"
+    )
 
 
 if __name__ == "__main__":
