@@ -1,4 +1,4 @@
-import type { AgentConfig, AppMeta, CallSegment, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, MeetingType, ModelInfo, ModelPricingResponse, Offering, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptEntry } from "../types";
+import type { AgentConfig, AppMeta, CallSegment, CustomEndpoint, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EndpointProbeResult, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, MeetingType, ModelInfo, ModelPricingResponse, Offering, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptEntry } from "../types";
 
 const BASE = "/api";
 
@@ -226,28 +226,41 @@ export const deleteCredential = (provider: string) =>
 export const testCredential = (provider: string) =>
   request<{ ok: boolean; message: string }>(`/credentials/${provider}/test`, { method: "POST" });
 
-// OpenAI-compatible text endpoint (Ollama, LM Studio, vLLM, LiteLLM). base_url
-// and model_id are what is persisted; the effective_* fields fold in the
-// environment variable and built-in defaults the backend falls back to.
+// Self-hosted OpenAI-compatible endpoints (LM Studio, Ollama, vLLM, LiteLLM).
+// Each endpoint's models become named entries in the model list, so they are
+// managed here rather than as a single provider credential.
 export const OPENAI_COMPATIBLE_PROVIDER = "openai-compatible";
 
-export interface TextEndpointConfig {
-  provider: string;
-  model_registry_id: string;
-  base_url: string;
-  model_id: string;
-  effective_base_url: string;
-  effective_model_id: string;
-  fallback_base_url: string;
+export interface EndpointPayload {
+  name?: string;
+  base_url?: string;
+  /** Omit to keep the stored key; empty string clears it. */
+  api_key?: string;
+  models?: { id: string; label?: string }[];
+  enabled?: boolean;
 }
 
-export const getTextEndpoint = () =>
-  request<TextEndpointConfig>(`/credentials/${OPENAI_COMPATIBLE_PROVIDER}/endpoint`);
+export const listEndpoints = () => request<CustomEndpoint[]>("/endpoints");
 
-export const saveTextEndpoint = (data: { base_url?: string; model_id?: string }) =>
-  request<TextEndpointConfig>(`/credentials/${OPENAI_COMPATIBLE_PROVIDER}/endpoint`, {
-    method: "PUT",
-    body: JSON.stringify(data),
+export const createEndpoint = (data: EndpointPayload) =>
+  request<CustomEndpoint>("/endpoints", { method: "POST", body: JSON.stringify(data) });
+
+export const updateEndpoint = (id: string, data: EndpointPayload) =>
+  request<CustomEndpoint>(`/endpoints/${id}`, { method: "PUT", body: JSON.stringify(data) });
+
+export const deleteEndpoint = (id: string) =>
+  request<void>(`/endpoints/${id}`, { method: "DELETE" });
+
+export const testEndpoint = (id: string) =>
+  request<EndpointProbeResult & { endpoint: CustomEndpoint }>(`/endpoints/${id}/test`, {
+    method: "POST",
+  });
+
+/** Check a base URL before saving it, and list the models it serves. */
+export const probeEndpoint = (baseUrl: string, apiKey = "") =>
+  request<EndpointProbeResult>("/endpoints/probe", {
+    method: "POST",
+    body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
   });
 
 // Diagnostics

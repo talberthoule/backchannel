@@ -5,13 +5,14 @@ model's provider in MODEL_REGISTRY: Google via google-genai, OpenAI and any
 OpenAI-compatible server via the HTTP API. Unknown model ids default to
 Google so legacy ids stored in the DB keep working.
 
-The OpenAI-shaped base URL and wire model name are resolved per call by
-services/llm_endpoint.py rather than hardcoded, which is what lets an agent
-target a local Ollama, LM Studio, vLLM, or LiteLLM server.
+The OpenAI-shaped base URL, wire model name, and per-endpoint key are resolved
+per call by services/llm_endpoint.py rather than hardcoded, which is what lets
+an agent target a local Ollama, LM Studio, vLLM, or LiteLLM server.
 """
 
 import json
 import logging
+from dataclasses import dataclass
 
 import httpx
 from google import genai
@@ -19,14 +20,16 @@ from google.genai import types
 from pydantic import BaseModel
 
 from app.config import MODEL_REGISTRY
+from app.services.custom_endpoints import is_endpoint_model
 from app.services.llm_endpoint import (
+    OPENAI_COMPATIBLE_PROVIDER,
     OpenAIEndpoint,
     auth_headers,
     is_openai_shaped,
     requires_api_key,
     resolve_endpoint,
 )
-from app.services.privacy import LocalOnlyModeError, is_local_only
+from app.services.privacy import LocalOnlyModeError, allows_local_only, is_local_only
 from app.services.secrets import resolve_provider_key
 from app.services.token_usage import record_token_usage
 
@@ -44,6 +47,10 @@ def registry_entry(model_id: str) -> dict | None:
 
 
 def provider_for(model_id: str) -> str:
+    # Custom endpoint models are not in the static registry: their ids encode
+    # which saved endpoint serves them, and they all speak the OpenAI dialect.
+    if is_endpoint_model(model_id):
+        return OPENAI_COMPATIBLE_PROVIDER
     entry = registry_entry(model_id)
     if entry:
         return entry["provider"].lower()
@@ -56,6 +63,29 @@ def provider_for(model_id: str) -> str:
 
 async def _resolve_key(provider: str) -> str:
     return await resolve_provider_key(provider)
+
+
+@dataclass(frozen=True)
+class _CallTarget:
+    provider: str
+    key: str
+    endpoint: OpenAIEndpoint | None  # None for Google
+
+
+async def _prepare_call(model_id: str, feature: str) -> _CallTarget:
+    """Privacy gate, endpoint resolution, and key selection for one call.
+
+    An endpoint model carries its own key (often empty, because local servers
+    are unauthenticated), so it never consults the provider-wide credential.
+    """
+    provider = provider_for(model_id)
+    if provider != "local" and await is_local_only() and not await allows_local_only(model_id):
+        raise LocalOnlyModeError(f"{feature} with {model_id}")
+    endpoint = await resolve_endpoint(provider, model_id) if is_openai_shaped(provider) else None
+    key = endpoint.api_key if endpoint and endpoint.api_key is not None else await _resolve_key(provider)
+    if not key and requires_api_key(provider):
+        raise LLMKeyMissing(provider)
+    return _CallTarget(provider=provider, key=key, endpoint=endpoint)
 
 
 async def _call_google(model_id: str, prompt: str, system: str | None, temperature: float | None, key: str) -> tuple[str, object]:
@@ -101,17 +131,11 @@ async def generate_text(
     session_id: object | None = None,
     source: str = "",
 ) -> str:
-    provider = provider_for(model_id)
-    if provider != "local" and await is_local_only():
-        raise LocalOnlyModeError(f"text generation with {model_id}")
-    key = await _resolve_key(provider)
-    if not key and requires_api_key(provider):
-        raise LLMKeyMissing(provider)
-    if is_openai_shaped(provider):
-        endpoint = await resolve_endpoint(provider, model_id)
-        text, usage = await _call_openai(endpoint, prompt, system, temperature, key)
+    target = await _prepare_call(model_id, "text generation")
+    if target.endpoint is not None:
+        text, usage = await _call_openai(target.endpoint, prompt, system, temperature, target.key)
     else:
-        text, usage = await _call_google(model_id, prompt, system, temperature, key)
+        text, usage = await _call_google(model_id, prompt, system, temperature, target.key)
     await record_token_usage(session_id, source, model_id, usage)
     return text
 
@@ -285,18 +309,12 @@ async def generate_json(
     validation. schema_hint overrides the auto-derived contract text. Token
     usage is recorded per provider call so the Tokens tab stays accurate.
     """
-    provider = provider_for(model_id)
-    if provider != "local" and await is_local_only():
-        raise LocalOnlyModeError(f"structured generation with {model_id}")
-    key = await _resolve_key(provider)
-    if not key and requires_api_key(provider):
-        raise LLMKeyMissing(provider)
+    target = await _prepare_call(model_id, "structured generation")
     hint = schema_hint or _default_schema_hint(response_schema)
-    if is_openai_shaped(provider):
-        endpoint = await resolve_endpoint(provider, model_id)
+    if target.endpoint is not None:
         return await _openai_json(
-            model_id, endpoint, prompt, response_schema, hint, key, session_id, source
+            model_id, target.endpoint, prompt, response_schema, hint, target.key, session_id, source
         )
     return await _google_json(
-        model_id, prompt, response_schema, hint, key, session_id, source
+        model_id, prompt, response_schema, hint, target.key, session_id, source
     )

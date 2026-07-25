@@ -38,12 +38,12 @@ action items you would otherwise reconstruct from memory afterwards.
   the broader discovery view, and an arbiter settles them into a meeting
   briefing after End Call or on demand
 - **Provider-routed models** -- mix Google Gemini and OpenAI models per
-  agent, or point the agents at a self-hosted OpenAI-compatible server
-  (Ollama, LM Studio, vLLM). With local ONNX Whisper/Parakeet handling
-  transcription, that runs the whole pipeline on your own hardware with no
-  API key from anyone. The Privacy First switch is separate and still
-  disables the agents, since it recognizes only the local transcription
-  models
+  agent, or register any number of self-hosted OpenAI-compatible servers
+  (LM Studio, Ollama, vLLM, LiteLLM) and pick their models by name. With
+  local ONNX Whisper/Parakeet handling transcription, that runs the whole
+  pipeline on your own hardware with no API key from anyone -- and because
+  Privacy First recognizes endpoints on your machine or network, you can
+  leave the switch on and keep the agents working
 - **Dual-track audio** -- mic and tab/system audio are captured separately,
   so remote participants get their own speaker identities, and a short voice
   calibration clip keeps your own lines attributed to you
@@ -134,8 +134,8 @@ couple of extra setup steps.
 Requires Docker with the Compose plugin. The default pipeline uses a free
 [Gemini API key](https://ai.google.dev/) for transcription and agents.
 For a setup that needs no key at all, pair local ONNX Whisper/Parakeet
-transcription with a self-hosted OpenAI-compatible endpoint for the agents
-(see [Configuration](docs/configuration.md#openai-compatible-endpoint)).
+transcription with a self-hosted endpoint for the agents
+(see [Configuration](docs/configuration.md#self-hosted-endpoints)).
 
 ```bash
 git clone https://github.com/talberthoule/backchannel.git

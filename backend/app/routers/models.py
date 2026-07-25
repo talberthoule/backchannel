@@ -4,6 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import MODEL_REGISTRY
 from app.database import get_db
+from app.services.custom_endpoints import endpoint_models
+from app.services.llm_endpoint import OPENAI_COMPATIBLE_MODEL, legacy_endpoint_configured
 from app.services.model_pricing import MODEL_PRICING, PRICING_AS_OF
 from app.services.provider_health import provider_key_availability
 
@@ -30,6 +32,12 @@ class ModelOut(BaseModel):
     supports_text: bool = False
     supports_batch_audio: bool = False
     supports_live_audio: bool = False
+    # True when the model runs on this machine or its network, so it stays
+    # usable in Privacy First mode. Covers both the bundled ONNX models and
+    # models served by an on-prem endpoint.
+    runs_locally: bool = False
+    # Set for models served by a saved custom endpoint.
+    endpoint_id: str | None = None
 
 
 class ModelPricingOut(BaseModel):
@@ -39,21 +47,27 @@ class ModelPricingOut(BaseModel):
 
 @router.get("", response_model=list[ModelOut])
 async def list_models(db: AsyncSession = Depends(get_db)):
-    """Return all models in the registry, with per-provider key availability.
+    """Registry models plus every model served by a saved custom endpoint.
 
     A provider is available when a key exists (stored or env) and that key
-    has not failed its connection test.
+    has not failed its connection test. The legacy single-endpoint placeholder
+    is only listed while it is actually configured, so workspaces using named
+    endpoints never see it competing with their real model names.
     """
     key_available = await provider_key_availability(db)
-    return [
+    show_legacy = await legacy_endpoint_configured(db)
+    registry = [
         {
             **model,
             "key_available": key_available.get(model["requires_key"], True)
             if model["requires_key"]
             else True,
+            "runs_locally": model["provider"].lower() == "local",
         }
         for model in MODEL_REGISTRY
+        if model["id"] != OPENAI_COMPATIBLE_MODEL or show_legacy
     ]
+    return registry + await endpoint_models(db)
 
 
 @router.get("/pricing", response_model=ModelPricingOut)

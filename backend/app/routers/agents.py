@@ -13,6 +13,7 @@ from app.database import get_db
 from app.models import AgentConfig, KnowledgeSource
 from app.schemas import AgentConfigOut, AgentConfigUpdate
 from app.services.agents.consolidated_analyst import TYPE_SLUG_RE
+from app.services.custom_endpoints import endpoint_model_entry
 from app.services.seed_agents import DEFAULT_LENSES_BY_SLUG, DEFAULT_PROMPTS
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -80,7 +81,9 @@ async def update_agent(slug: str, body: AgentConfigUpdate, db: AsyncSession = De
     for field, value in body.model_dump(exclude_unset=True).items():
         if field == "model_id" and value:
             valid_ids = {m["id"] for m in MODEL_REGISTRY}
-            if value not in valid_ids:
+            # Self-hosted endpoint models are not in the static registry, so
+            # they are validated against the endpoint that serves them.
+            if value not in valid_ids and not await endpoint_model_entry(db, value):
                 raise HTTPException(400, f"Unknown model_id: {value}")
         if field == "lenses" and value:
             _validate_lenses(value)

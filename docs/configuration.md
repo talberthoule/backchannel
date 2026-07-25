@@ -51,45 +51,72 @@ audio or transcript text leaves the machine:
 - Batch transcription is coerced to a local ONNX model
   (`local-whisper-base` by default) for live segments, audio imports, and
   re-transcription; selecting a cloud transcriber is rejected.
-- The audio gateway (interim captions) and every analysis agent
-  (consolidated analyst, objection handler, synthesizer, opportunity
-  specialist, strategic signals, and the three briefing lenses) are skipped.
-  The gate is `provider != "local"` in `backend/app/services/llm.py`, and only
-  `local-whisper-base` and `local-parakeet-tdt-0.6b` carry that provider --
-  both `supports_text: False`. The `openai-compatible` provider is **not**
-  exempt even when its base URL points at your own machine, because the
-  setting accepts any URL and the gate cannot tell loopback from a remote
-  host. So Privacy First and the live agents remain mutually exclusive.
-
-  If you want local analysis, configure the OpenAI-compatible endpoint below
-  and leave Privacy First off. That path runs end to end on your hardware; it
-  simply is not enforced by the switch.
-
-## OpenAI-compatible endpoint
-
-The `openai-compatible` model in `MODEL_REGISTRY` targets any OpenAI-shaped
-chat server -- Ollama (`http://localhost:11434/v1`), LM Studio
-(`http://localhost:1234/v1`), vLLM, or LiteLLM. Set its base URL and model id
-in Admin -> API Keys, then select it per agent like any other model.
-
-Resolution is layered, highest precedence first:
-
-1. The `llm.openai_compatible.base_url` app setting (Admin)
-2. The `OPENAI_BASE_URL` environment variable
-3. `https://api.openai.com/v1`
-
-The model id resolves the same way through `llm.openai_compatible.model_id`
-and `OPENAI_COMPATIBLE_MODEL_ID`. The app setting applies only to this
-provider, so a saved Ollama URL never redirects a genuine OpenAI model.
-
-No API key is required: `requires_key` is `None` for this provider and no
-`Authorization` header is sent at all, since an empty bearer token breaks
-some servers rather than being ignored. Set `OPENAI_COMPATIBLE_API_KEY` if
-your endpoint does expect one.
-- `generate_text` raises `LocalOnlyModeError` for any non-local model, so
-  post-import analysis, meeting chat, insight enhancement, and document
-  summarization return HTTP 409/400 with an explanatory message.
+- The audio gateway (interim captions) is skipped: it has no local option.
+- Analysis agents are skipped **unless** they are pointed at a model served by
+  a self-hosted endpoint on your own machine or network (see below). The gate
+  is `allows_local_only()` in `backend/app/services/privacy.py`: it admits the
+  bundled ONNX models and any endpoint model whose base URL resolves to
+  loopback, a private network, a single-label LAN hostname, a `.local` /
+  `.internal` / `.lan` / `.home.arpa` name, or `host.docker.internal`. An
+  endpoint reachable only over the public internet is treated as cloud even
+  though it speaks the same protocol, because it may be a hosted inference
+  provider.
+- `generate_text` raises `LocalOnlyModeError` for any model that fails that
+  test, so post-import analysis, meeting chat, insight enhancement, and
+  document summarization return HTTP 409/400 with an explanatory message.
 - Startup provider key verification is skipped.
+
+With an on-prem text endpoint configured, Privacy First and the analysis
+agents are no longer mutually exclusive: everything but interim captions keeps
+working, and no call data leaves your perimeter.
+
+## Self-hosted endpoints
+
+Any number of OpenAI-shaped chat servers can be registered in
+Admin -> API Keys -> Self-Hosted Models: LM Studio
+(`http://localhost:1234/v1`), Ollama (`http://localhost:11434/v1`), vLLM,
+LiteLLM, or a shared GPU box on the LAN. Each endpoint is a row in the
+`custom_endpoints` table holding a name, base URL, optional Fernet-encrypted
+API key, and the list of models it serves.
+
+Every listed model becomes a first-class registry entry with the id
+`endpoint:<endpoint slug>:<served model name>` (for example
+`endpoint:lm-studio:antares-1b`), so it appears **by name** in the agent,
+transcription, and meeting-chat pickers, grouped under the endpoint's name.
+`llm.provider_for()` recognizes the `endpoint:` prefix and routes the call to
+the OpenAI dialect without a database read; `resolve_endpoint()` then loads
+that endpoint's base URL, wire model name, and key.
+
+REST surface (`backend/app/routers/endpoints.py`):
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/endpoints` | List endpoints, their models, and last test result |
+| `POST /api/endpoints` | Add an endpoint |
+| `PUT /api/endpoints/{id}` | Patch it; an empty `api_key` clears the stored key |
+| `DELETE /api/endpoints/{id}` | Remove it |
+| `POST /api/endpoints/{id}/test` | Probe `{base_url}/models` and record the outcome |
+| `POST /api/endpoints/probe` | Probe an unsaved URL and list what it serves |
+
+No API key is required: `requires_key` is `None` for these models and no
+`Authorization` header is sent at all when the endpoint has no key, since an
+empty bearer token breaks some servers rather than being ignored.
+
+Running Backchannel in Docker? Inside the container `localhost` is the
+container, not your machine. Use `http://host.docker.internal:1234/v1` to
+reach a server running on the host.
+
+### Legacy single-endpoint settings
+
+Before named endpoints, one OpenAI-compatible server was configured through
+the `llm.openai_compatible.base_url` and `llm.openai_compatible.model_id` app
+settings, with `OPENAI_BASE_URL` and `OPENAI_COMPATIBLE_MODEL_ID` as
+environment fallbacks, and surfaced as a single `openai-compatible` registry
+entry. That configuration is migrated to a named endpoint on first startup
+(`migrate_legacy_endpoint()`), agents using the placeholder are repointed at
+the migrated model, and the placeholder is then hidden. Installs configured
+purely through the environment variables keep the placeholder and keep
+working.
 
 Speaker diarization, session recording, file imports, and exports already run
 locally and are unaffected. Turning the switch off restores the previously

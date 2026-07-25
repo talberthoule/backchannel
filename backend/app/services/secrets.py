@@ -50,23 +50,34 @@ def _get_fernet() -> Fernet:
     return _fernet
 
 
-async def get_secret(db, key: str) -> str:
-    token = await get_app_setting(db, key)
+def encrypt_value(value: str) -> str:
+    """Fernet token for a secret, or "" for an empty value.
+
+    Used directly by callers that store their own ciphertext column (custom
+    endpoint keys) rather than an app_settings row.
+    """
+    return _get_fernet().encrypt(value.encode()).decode() if value else ""
+
+
+def decrypt_value(token: str, label: str = "value") -> str:
     if not token:
         return ""
     try:
         return _get_fernet().decrypt(token.encode()).decode()
     except InvalidToken:
         logger.warning(
-            f"Could not decrypt {key}; master key changed? "
+            f"Could not decrypt {label}; master key changed? "
             f"(env CREDENTIALS_MASTER_KEY or {data_dir() / 'master.key'})"
         )
         return ""
 
 
+async def get_secret(db, key: str) -> str:
+    return decrypt_value(await get_app_setting(db, key), key)
+
+
 async def set_secret(db, key: str, value: str) -> None:
-    token = _get_fernet().encrypt(value.encode()).decode() if value else ""
-    await set_app_setting(db, key, token)
+    await set_app_setting(db, key, encrypt_value(value))
 
 
 def env_provider_key(provider: str) -> str:

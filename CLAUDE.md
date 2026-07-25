@@ -232,6 +232,7 @@ Primary route modules:
 - Analyze: post-import transcript analysis through Gemini
 - Artifacts: transcript TXT, insights XLSX, and summary HTML exports
 - Credentials: `GET/PUT/DELETE /api/credentials[/{provider}]` and `POST /api/credentials/{provider}/test` for encrypted workspace API keys (providers: `google`, `openai`)
+- Endpoints: `GET/POST /api/endpoints`, `PUT/DELETE /api/endpoints/{id}`, `POST /api/endpoints/{id}/test`, and `POST /api/endpoints/probe` for self-hosted OpenAI-compatible servers (LM Studio, Ollama, vLLM, LiteLLM). Each model listed on an endpoint becomes a registry entry with the id `endpoint:<slug>:<served model name>`, so it appears by name in every model picker; `runs_locally` on those entries drives Privacy First, which admits endpoints on loopback, a private network, or a LAN hostname
 - Re-transcription: `POST /api/sessions/{id}/retranscribe` replays stored segment audio through any batch-capable model (destructive to existing transcript entries); `GET /api/sessions/{id}/segments/{n}/audio` serves the recorded WAV
 - Token usage: `GET /api/sessions/{id}/token-usage` returns session totals with per-source and per-model input/output breakdowns; the post-call Tokens tab renders this persisted data and shows zero cleanly for sessions without captured usage
 - Chat: `POST /api/chat` answers questions over selected sessions' transcripts via the provider-routed text LLM
@@ -244,7 +245,7 @@ Main state lives in `frontend/src/App.tsx`.
 - `PreCallView`: session setup, speaker setup, directives, document upload, transcript/audio import, per-session agent selection
 - `ActiveCallView`: live call controls, transcript/interim transcript display, insight list, audio indicator, mid-call directive bar
 - `PostCallView`: review tabs for insights, transcript, speakers, documents, directives, and token usage; supports resume, export, delete, and speaker rename
-- Admin surfaces: `AdminPanel` (tabs: Agents, Transcription & Audio, API Keys, About with version + release notes) and `OfferingsManager` for catalog management
+- Admin surfaces: `AdminPanel` (tabs: Agents, Transcription & Audio, API Keys, About with version + release notes) and `OfferingsManager` for catalog management. The API Keys tab holds `ApiKeysCard` (cloud provider keys) and `EndpointsCard` (self-hosted servers: presets, connect-and-list-models, per-endpoint test/enable/remove). Every model `<select>` renders through `frontend/src/lib/modelOptions.ts`, which groups options by provider and owns the Privacy First lock rule
 - `WelcomeView`: shown when no session is selected; with zero sessions it becomes a first-run checklist (connect a provider or Privacy First, create a session, start/import a call) driven by live credential and privacy state
 - What's-new banner: `useWhatsNew` keeps `backchannel.last_seen_version` in localStorage; when the served version differs, App shows a dismissible toast linking to Admin -> About, where releases since that version are badged "New" (first launch baselines silently)
 
@@ -269,6 +270,8 @@ Key files:
 | Session helpers | `backend/app/services/session_manager.py` |
 | Diarization | `backend/app/services/speaker_diarizer.py` |
 | Batch transcription | `backend/app/services/batch_transcriber.py` |
+| Self-hosted endpoint storage and model projection | `backend/app/services/custom_endpoints.py` |
+| OpenAI-shaped base URL / wire model / key resolution | `backend/app/services/llm_endpoint.py` |
 | Gemini Live gateway | `backend/app/services/gemini_live.py` |
 | Gemini Files upload/summarization | `backend/app/services/gemini_files.py` |
 | Agent orchestrator | `backend/app/services/agents/orchestrator.py` |

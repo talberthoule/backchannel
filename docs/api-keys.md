@@ -11,19 +11,20 @@ You only need one key to start:
 | Google (Gemini) | Batch transcription, live interim transcription, and the default analysis agents -- start here | Free tier, no credit card |
 | OpenAI | Optional; only for agents you point at OpenAI models (for example the audio gateway on OpenAI Realtime) | Prepaid credit, minimum $5 |
 
-Prefer not to use a cloud provider at all? You do not have to. Point the
-agents at a self-hosted OpenAI-compatible server -- Ollama, LM Studio, vLLM,
-or LiteLLM -- under Admin -> API Keys, and pair it with a local ONNX
-transcription model. That combination runs end to end on your own hardware
-and needs no key from anyone. See
-[the OpenAI-compatible endpoint](configuration.md#openai-compatible-endpoint).
+Prefer not to use a cloud provider at all? You do not have to. Under
+Admin -> API Keys -> **Self-Hosted Models**, add any OpenAI-compatible server
+you run -- LM Studio, Ollama, vLLM, or LiteLLM, on your workstation, home lab,
+or a GPU box on the corporate network. Click **Connect & list models** and
+Backchannel reads the model list straight off the server; each model you keep
+then appears by name in every model picker. Paired with a local ONNX
+transcription model, that combination runs end to end on your own hardware and
+needs no key from anyone. See
+[Self-hosted endpoints](configuration.md#self-hosted-endpoints).
 
-One caveat worth knowing: the
-[Privacy First switch](configuration.md#privacy-first-local-only-mode) is a
-separate mechanism and still turns every analysis agent off, because it
-recognizes only the local ONNX transcription models. A fully local
-deployment is configured through the endpoint setting rather than through
-that switch.
+Endpoints on your own machine or network also satisfy the
+[Privacy First switch](configuration.md#privacy-first-local-only-mode), so you
+can leave it on and keep the analysis agents running. Only live interim
+captions stay off, because no local model can do that job yet.
 
 ## Google Gemini key (about 2 minutes, free)
 

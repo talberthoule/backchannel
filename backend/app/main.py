@@ -9,7 +9,7 @@ from app.config import settings
 from app.database import engine
 from app.models import Base
 from app.release_notes import APP_VERSION
-from app.routers import agents, analyze, artifacts, chat, credentials, retranscribe, diagnostics, directives, documents, groups, imports, knowledge, meta, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts
+from app.routers import agents, analyze, artifacts, chat, credentials, retranscribe, diagnostics, directives, documents, endpoints, groups, imports, knowledge, meta, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts
 from app.services.privacy import LocalOnlyModeError
 from app.services.audio_store import cleanup_orphan_track_audio
 from app.ws import audio_handler
@@ -178,6 +178,18 @@ async def _add_missing_columns(conn):
                     text("ALTER TABLE session_syntheses ADD COLUMN speaker_mapping_revision_id UUID")
                 )
 
+        # Model ids for self-hosted endpoints ("endpoint:<slug>:<model name>")
+        # are longer than the registry ids these columns were sized for.
+        for table in ("agent_configs", "token_usage"):
+            if table in tables:
+                width = next(
+                    (c for c in inspector.get_columns(table) if c["name"] == "model_id"), {}
+                ).get("type")
+                if getattr(width, "length", 0) and width.length < 160:
+                    connection.execute(
+                        text(f"ALTER TABLE {table} ALTER COLUMN model_id TYPE VARCHAR(160)")
+                    )
+
         if "call_segments" in tables:
             columns = {c["name"] for c in inspector.get_columns("call_segments")}
             if "audio_path" not in columns:
@@ -220,11 +232,15 @@ async def lifespan(app: FastAPI):
 
     # Seed agent configs and knowledge sources
     from app.database import async_session
+    from app.services.llm_endpoint import migrate_legacy_endpoint
     from app.services.seed_agents import seed_agent_configs
     from app.services.seed_knowledge import seed_knowledge_sources
     async with async_session() as db:
         await seed_agent_configs(db)
         await seed_knowledge_sources(db)
+        # One-time: promote a pre-existing single OpenAI-compatible endpoint
+        # into a named endpoint so its model shows up in the model pickers.
+        await migrate_legacy_endpoint(db)
 
     # Verify untested provider API keys in the background so model
     # availability reflects real connection status, not just key presence.
@@ -265,6 +281,7 @@ app.include_router(analyze.router)
 app.include_router(models.router)
 app.include_router(meta.router)
 app.include_router(credentials.router)
+app.include_router(endpoints.router)
 app.include_router(retranscribe.router)
 app.include_router(chat.router)
 app.include_router(diagnostics.router)

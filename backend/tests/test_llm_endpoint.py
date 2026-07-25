@@ -165,6 +165,114 @@ class KeylessPathTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("gpt-5.4-mini", endpoint.model)
 
 
+class EndpointModelRoutingTests(unittest.IsolatedAsyncioTestCase):
+    """An "endpoint:..." model must reach its own server with its own key."""
+
+    def _target(self, **overrides):
+        from app.services.custom_endpoints import EndpointTarget
+
+        fields = {
+            "endpoint_id": "lm-studio",
+            "name": "LM Studio",
+            "base_url": "http://localhost:1234/v1",
+            "model": "antares-1b",
+            "api_key": "",
+            "on_prem": True,
+            "enabled": True,
+        }
+        fields.update(overrides)
+        return EndpointTarget(**fields)
+
+    async def test_endpoint_model_uses_its_own_base_url_and_wire_name(self):
+        with mock.patch.object(
+            llm_endpoint, "resolve_target", mock.AsyncMock(return_value=self._target())
+        ):
+            endpoint = await llm_endpoint.resolve_endpoint_with(
+                _FakeDB(), OPENAI_COMPATIBLE_PROVIDER, "endpoint:lm-studio:antares-1b"
+            )
+        self.assertEqual("http://localhost:1234/v1", endpoint.base_url)
+        self.assertEqual("antares-1b", endpoint.model)
+        # "" not None: an endpoint answers for its own key, keyless included,
+        # so the provider-wide OpenAI-compatible key is never consulted.
+        self.assertEqual("", endpoint.api_key)
+
+    async def test_endpoint_key_overrides_the_provider_key(self):
+        with mock.patch.object(
+            llm_endpoint, "resolve_target", mock.AsyncMock(return_value=self._target(api_key="sk-endpoint"))
+        ):
+            endpoint = await llm_endpoint.resolve_endpoint_with(
+                _FakeDB(), OPENAI_COMPATIBLE_PROVIDER, "endpoint:lm-studio:antares-1b"
+            )
+        self.assertEqual("sk-endpoint", endpoint.api_key)
+
+    async def test_a_removed_endpoint_reports_an_actionable_error(self):
+        with mock.patch.object(llm_endpoint, "resolve_target", mock.AsyncMock(return_value=None)):
+            with self.assertRaises(llm_endpoint.EndpointUnavailable) as ctx:
+                await llm_endpoint.resolve_endpoint_with(
+                    _FakeDB(), OPENAI_COMPATIBLE_PROVIDER, "endpoint:gone:some-model"
+                )
+        self.assertIn("no longer exists", str(ctx.exception))
+        # ValueError, so routers translate it into a 400 rather than a 500.
+        self.assertIsInstance(ctx.exception, ValueError)
+
+    async def test_a_disabled_endpoint_is_not_silently_used(self):
+        with mock.patch.object(
+            llm_endpoint, "resolve_target", mock.AsyncMock(return_value=self._target(enabled=False))
+        ):
+            with self.assertRaises(llm_endpoint.EndpointUnavailable) as ctx:
+                await llm_endpoint.resolve_endpoint_with(
+                    _FakeDB(), OPENAI_COMPATIBLE_PROVIDER, "endpoint:lm-studio:antares-1b"
+                )
+        self.assertIn("turned off", str(ctx.exception))
+
+    def test_endpoint_models_route_to_the_openai_compatible_dialect(self):
+        self.assertEqual(
+            OPENAI_COMPATIBLE_PROVIDER, llm.provider_for("endpoint:lm-studio:antares-1b")
+        )
+        # Even when the served name looks like another provider's model.
+        self.assertEqual(
+            OPENAI_COMPATIBLE_PROVIDER, llm.provider_for("endpoint:proxy:gpt-4o-mini")
+        )
+
+    async def test_a_keyless_endpoint_model_needs_no_provider_key(self):
+        endpoint = OpenAIEndpoint(
+            base_url="http://localhost:1234/v1", model="antares-1b", api_key=""
+        )
+        with mock.patch.object(llm, "is_local_only", mock.AsyncMock(return_value=False)), \
+             mock.patch.object(llm, "resolve_endpoint", mock.AsyncMock(return_value=endpoint)), \
+             mock.patch.object(llm, "_resolve_key", mock.AsyncMock(side_effect=AssertionError)), \
+             mock.patch.object(llm, "record_token_usage", mock.AsyncMock()), \
+             mock.patch.object(llm, "_call_openai", mock.AsyncMock(return_value=("hi", None))) as call:
+            reply = await llm.generate_text("endpoint:lm-studio:antares-1b", "hello")
+        self.assertEqual("hi", reply)
+        self.assertEqual(endpoint, call.await_args.args[0])
+        self.assertEqual("", call.await_args.args[4])
+
+
+class LegacyEndpointRetirementTests(unittest.IsolatedAsyncioTestCase):
+    """The placeholder model only exists while the old settings are in use."""
+
+    def setUp(self):
+        patcher = mock.patch.object(
+            llm_endpoint, "get_app_setting", mock.AsyncMock(side_effect=_fake_get_app_setting)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_unconfigured_legacy_endpoint_is_not_advertised(self):
+        with mock.patch.object(llm_endpoint, "settings", _FakeSettings()):
+            self.assertFalse(await llm_endpoint.legacy_endpoint_configured(_FakeDB()))
+
+    async def test_a_persisted_base_url_keeps_it_advertised(self):
+        db = _FakeDB({llm_endpoint.SETTING_BASE_URL: "http://localhost:1234/v1"})
+        with mock.patch.object(llm_endpoint, "settings", _FakeSettings()):
+            self.assertTrue(await llm_endpoint.legacy_endpoint_configured(db))
+
+    async def test_an_env_configured_install_keeps_it_advertised(self):
+        with mock.patch.object(llm_endpoint, "settings", _FakeSettings(model_id="llama3.1:8b")):
+            self.assertTrue(await llm_endpoint.legacy_endpoint_configured(_FakeDB()))
+
+
 class RegistryEntryTests(unittest.TestCase):
     def test_compatible_entry_is_a_keyless_text_model(self):
         entry = next(m for m in MODEL_REGISTRY if m["id"] == OPENAI_COMPATIBLE_MODEL)
