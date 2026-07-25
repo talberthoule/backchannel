@@ -228,8 +228,11 @@ greps for every original token and fails loudly if any survive. (4) Ingest throu
 product's real APIs so the data acquires genuine derived state. (5) Where contamination
 already exists, attach a standing rule to the source.
 **Session instance:** The user declared a transcript "safe"; the agent found a real employer,
-client, and five people, wrote a scrub script (Presidio->Northwind, Hillsborough->Fairview,
-plus STT fixes) ending in an assert-grep, then seeded via the app's REST APIs.
+client, and five people, wrote a scrub script mapping each real token to a fictional stand-in
+(plus STT fixes) ending in an assert-grep, then seeded via the app's REST APIs. The mapping
+itself is deliberately not reproduced here -- publishing "real -> pseudonym" pairs in a public
+repo re-identifies every screenshot the pseudonyms were meant to protect, which is the same
+failure one layer up.
 **Failure modes:** The assert only proves absence of the names you *enumerated* — useless
 against sensitive content you didn't spot (figures, codenames, addresses). Scrubbing after
 ingestion is theater; the raw data already lives in logs and backups.

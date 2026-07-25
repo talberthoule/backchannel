@@ -32,12 +32,14 @@ employer/client/person names are visible. Safe for public use.
 
 ## Curation rules (IMPORTANT for any future captures)
 
-The live-call session "Fairview discussion #2" replayed *unscrubbed* real audio. Its
-transcript, insights, briefing, and exports contain real names ("Presidio", "Brittany
-Bolton", "Brian Cagle", "Hillsboro"...). Several `user-*` assets above are deliberate
-CROPS that cut those cards out of frame - do not "uncrop", re-screenshot, or export from
-that session without the same review. The scripted `postcall-*` set uses the separately
-scrubbed transcript and is safe end to end.
+The live-call session behind the `user-*` assets replayed *unscrubbed* real audio. Its
+transcript, insights, briefing, and exports still contain a real employer, a real client,
+and several real personal names. They are deliberately not enumerated here: this file is
+public, and listing them would defeat the point. Several `user-*` assets above are
+deliberate CROPS that cut those cards out of frame - do not "uncrop", re-screenshot, or
+export from that session without a full frame-by-frame review. Treat any new capture from
+it as unsafe until reviewed. The scripted `postcall-*` set uses the separately scrubbed
+transcript and is safe end to end.
 
 Notes for site use: display inside a CSS browser-frame mockup; `user-*` shots are dark
 mode, `postcall-*` provide light variants. Known nit: chat renders raw markdown

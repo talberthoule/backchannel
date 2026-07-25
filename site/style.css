@@ -563,7 +563,13 @@ figure.shot + p.sub {
 }
 
 /* Click-to-enlarge: zoom affordance + native <dialog> lightbox.
-   Affordance class is added by JS so it only shows when the lightbox works. */
+   Affordance class is added by JS so it only shows when the lightbox works.
+
+   The lightbox has two states, driven by data-zoom on the dialog. "fit" scales
+   the whole shot into the viewport; "actual" renders it at its natural width
+   inside a scrolling stage, which is the only way a 1600px dashboard shot is
+   legible on a 375px phone. Panning and pinch are the browser's own overflow
+   scrolling -- no hand-rolled drag maths to fight. */
 
 .zoomable {
   cursor: zoom-in;
@@ -572,6 +578,17 @@ figure.shot + p.sub {
 }
 
 .lightbox {
+  /* The backdrop is deliberately dark on both themes, so the lightbox chrome
+     carries its own light-on-dark tokens rather than the page palette, whose
+     --ink/--accent would disappear here on the light theme. */
+  --lb-ink: #eef4f2;
+  --lb-chrome: rgba(12, 20, 19, 0.82);
+  --lb-chrome-strong: rgba(12, 20, 19, 0.95);
+  --lb-line: rgba(238, 244, 242, 0.28);
+  --lb-accent: #2dd4bf;
+  --lb-accent-strong: #5eead4;
+  --lb-on-accent: #04211d;
+  --lb-pad: 12px;
   width: 100%;
   height: 100%;
   max-width: 100vw;
@@ -584,9 +601,7 @@ figure.shot + p.sub {
 }
 
 .lightbox[open] {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
 }
 
 .lightbox::backdrop {
@@ -594,37 +609,134 @@ figure.shot + p.sub {
   backdrop-filter: blur(3px);
 }
 
+/* The stage is the scroll port. Padding keeps the shot clear of the notch on
+   both edges without stealing the height the fit state needs. */
+.lightbox-stage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y pinch-zoom;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(238, 244, 242, 0.35) transparent;
+  padding:
+    calc(var(--lb-pad) + env(safe-area-inset-top, 0px))
+    calc(var(--lb-pad) + env(safe-area-inset-right, 0px))
+    calc(var(--lb-pad) + env(safe-area-inset-bottom, 0px))
+    calc(var(--lb-pad) + env(safe-area-inset-left, 0px));
+  transition: transform 200ms ease-out, opacity 200ms ease-out;
+}
+
+/* While a finger is on the stage the transform tracks it directly. */
+.lightbox.lb-dragging .lightbox-stage {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lightbox-stage {
+    transition: none;
+  }
+}
+
+/* margin:auto centres the shot while it fits and collapses to zero once it
+   overflows, so the top and left edges stay reachable. Centring with
+   align-items/justify-content would strand them outside the scroll range. */
 .lightbox img {
+  flex: 0 0 auto;
+  margin: auto;
+  display: block;
   width: auto;
   height: auto;
-  max-width: 94vw;
-  max-height: 92vh;
+  max-width: 100%;
+  max-height: 100%;
   border-radius: 12px;
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+  cursor: zoom-in;
+}
+
+.lightbox[data-zoom="actual"] img {
+  max-width: none;
+  max-height: none;
   cursor: zoom-out;
 }
 
-.lightbox-close {
-  position: fixed;
-  top: 16px;
-  right: 20px;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 30px;
-  line-height: 1;
-  color: #e4ecea;
-  background: rgba(16, 28, 26, 0.7);
-  border: 1px solid rgba(228, 236, 234, 0.25);
-  border-radius: 10px;
-  cursor: pointer;
+/* Nothing left to reveal: the shot already fits at natural size, so the
+   toggle is withdrawn and the image keeps its tap-to-dismiss behaviour. */
+.lightbox[data-zoomable="false"] img {
+  cursor: zoom-out;
 }
 
-.lightbox-close:hover {
-  background: rgba(16, 28, 26, 0.92);
+.lightbox[data-zoomable="false"] .lightbox-zoom {
+  display: none;
+}
+
+.lightbox-controls {
+  position: fixed;
+  z-index: 2;
+  top: calc(var(--lb-pad) + env(safe-area-inset-top, 0px));
+  right: calc(var(--lb-pad) + env(safe-area-inset-right, 0px));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lightbox-controls button {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  color: var(--lb-ink);
+  background: var(--lb-chrome);
+  border: 1px solid var(--lb-line);
+  border-radius: 10px;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.lightbox-zoom {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.lightbox-close {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.lightbox-controls button:hover {
+  background: var(--lb-chrome-strong);
   color: #ffffff;
+}
+
+/* Pressed state must outrank the hover rule above it. */
+.lightbox-zoom[aria-pressed="true"],
+.lightbox-zoom[aria-pressed="true"]:hover {
+  color: var(--lb-on-accent);
+  background: var(--lb-accent);
+  border-color: var(--lb-accent);
+}
+
+.lightbox-zoom[aria-pressed="true"]:hover {
+  background: var(--lb-accent-strong);
+}
+
+/* The page focus ring is --accent, a dark teal on the light theme that would
+   vanish against this backdrop. */
+.lightbox button:focus-visible,
+.lightbox-stage:focus-visible {
+  outline: 2px solid var(--lb-accent);
+  outline-offset: 2px;
+}
+
+.lightbox-stage:focus-visible {
+  outline-offset: -4px;
 }
 
 @media (prefers-reduced-motion: no-preference) {
