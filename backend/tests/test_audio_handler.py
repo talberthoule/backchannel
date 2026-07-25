@@ -16,7 +16,6 @@ from app.services.agents.orchestrator import AgentOrchestrator
 from app.ws import audio_handler
 from app.ws.audio_handler import (
     _decode_audio_frame,
-    _reconnect_audio_pipeline,
 )
 from app.services.voice_enrollment import LOCAL_VOICE_PROFILE_ID
 
@@ -338,41 +337,18 @@ class AudioFlowAccountingTests(unittest.TestCase):
         )
 
 
-class AudioReconnectTests(unittest.IsolatedAsyncioTestCase):
-    async def test_flushes_both_tracks_and_reports_success(self):
-        self.assertTrue(hasattr(audio_handler, "_reconnect_audio_pipeline"))
-        reconnect_audio_pipeline = audio_handler._reconnect_audio_pipeline
-        mic_segment = SimpleNamespace(speaker_id="auto_1", pcm_bytes=b"mic")
-        system_segment = SimpleNamespace(speaker_id="auto_2", pcm_bytes=b"system")
-        websocket = MagicMock()
-        websocket.send_json = AsyncMock()
-        diarizer = MagicMock()
-        system_diarizer = MagicMock()
-        transcription_queue = MagicMock()
+class AudioGatewayIsolationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reconnect_helper_only_reconnects_gateway(self):
+        websocket = MagicMock(send_json=AsyncMock())
         orchestrator = MagicMock()
         orchestrator._reconnect_gateway = AsyncMock(return_value=True)
 
-        with patch(
-            "app.ws.audio_handler.flush_diarizer_segments",
-            side_effect=[[mic_segment], [system_segment]],
-        ) as flush_segments:
-            reconnected = await reconnect_audio_pipeline(
-                websocket,
-                diarizer,
-                system_diarizer,
-                transcription_queue,
-                orchestrator,
-                True,
-            )
+        reconnected = await audio_handler._reconnect_audio_gateway(
+            websocket,
+            orchestrator,
+        )
 
         self.assertTrue(reconnected)
-        flush_segments.assert_has_calls([call(diarizer), call(system_diarizer)])
-        self.assertEqual(
-            [call("mic_auto_1", b"mic"), call("sys_auto_2", b"system")],
-            transcription_queue.add.call_args_list,
-        )
-        diarizer.reset.assert_called_once_with()
-        system_diarizer.reset.assert_called_once_with()
         orchestrator._reconnect_gateway.assert_awaited_once_with()
         websocket.send_json.assert_awaited_once_with(
             {
@@ -384,37 +360,62 @@ class AudioReconnectTests(unittest.IsolatedAsyncioTestCase):
             }
         )
 
-    async def test_returns_false_when_gateway_reconnect_raises(self):
-        self.assertTrue(hasattr(audio_handler, "_reconnect_audio_pipeline"))
-        reconnect_audio_pipeline = audio_handler._reconnect_audio_pipeline
-        websocket = MagicMock()
-        websocket.send_json = AsyncMock()
-        diarizer = MagicMock()
-        transcription_queue = MagicMock()
+    async def test_gateway_send_timeout_is_nonfatal(self):
+        never = asyncio.Event()
         orchestrator = MagicMock()
-        orchestrator._reconnect_gateway = AsyncMock(
-            side_effect=RuntimeError("closed")
-        )
+        orchestrator.send_audio = AsyncMock(side_effect=never.wait)
 
-        with (
-            patch(
-                "app.ws.audio_handler.flush_diarizer_segments",
-                return_value=[],
-            ),
-            self.assertLogs("app.ws.audio_handler", level="ERROR"),
+        with patch.object(
+            audio_handler,
+            "_GATEWAY_SEND_TIMEOUT_SECONDS",
+            0.01,
         ):
-            reconnected = await reconnect_audio_pipeline(
-                websocket,
-                diarizer,
-                None,
-                transcription_queue,
+            sent = await audio_handler._send_gateway_audio(
                 orchestrator,
+                b"audio",
             )
 
+        self.assertFalse(sent)
+
+    async def test_failed_reconnect_returns_false(self):
+        websocket = MagicMock(send_json=AsyncMock())
+        orchestrator = MagicMock()
+        orchestrator._reconnect_gateway = AsyncMock(return_value=False)
+
+        reconnected = await audio_handler._reconnect_audio_gateway(
+            websocket,
+            orchestrator,
+        )
+
         self.assertFalse(reconnected)
-        diarizer.reset.assert_called_once_with()
-        orchestrator._reconnect_gateway.assert_awaited_once_with()
         websocket.send_json.assert_not_awaited()
+
+
+class WebSocketDisconnectTests(unittest.IsolatedAsyncioTestCase):
+    async def test_raw_disconnect_logs_details_and_reads_once(self):
+        websocket = MagicMock()
+        websocket.receive = AsyncMock(
+            side_effect=[
+                {
+                    "type": "websocket.disconnect",
+                    "code": 1011,
+                    "reason": "keepalive ping timeout",
+                },
+                RuntimeError("second receive must not happen"),
+            ]
+        )
+        session_id = uuid.uuid4()
+
+        with self.assertLogs("app.ws.audio_handler", level="INFO") as logs:
+            message = await audio_handler._receive_websocket_message(
+                websocket,
+                session_id,
+            )
+
+        self.assertIsNone(message)
+        self.assertEqual(1, websocket.receive.await_count)
+        self.assertIn("code=1011", "\n".join(logs.output))
+        self.assertIn("keepalive ping timeout", "\n".join(logs.output))
 
 
 class StopDrainModeTests(unittest.TestCase):

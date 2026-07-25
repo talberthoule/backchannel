@@ -375,12 +375,16 @@ class AgentOrchestrator:
 
     async def check_health(self) -> bool:
         if self._gateway_task and self._gateway_task.done():
-            exc = self._gateway_task.exception() if not self._gateway_task.cancelled() else None
+            exc = (
+                self._gateway_task.exception()
+                if not self._gateway_task.cancelled()
+                else None
+            )
             if exc:
-                logger.warning(f"Audio Gateway died: {exc}, reconnecting...")
+                logger.warning("Audio Gateway died: %s", exc)
             else:
-                logger.warning("Audio Gateway ended, reconnecting...")
-            return await self._reconnect_gateway()
+                logger.warning("Audio Gateway ended")
+            return False
         return True
 
     def _unregister_live(self):

@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -29,6 +30,23 @@ def make_orchestrator(meeting_type="general", meeting_context="initial context")
 
 
 class UpdateMeetingContextTests(unittest.IsolatedAsyncioTestCase):
+    async def test_gateway_health_check_does_not_reconnect_inline(self):
+        orchestrator = object.__new__(AgentOrchestrator)
+
+        async def fail_gateway():
+            raise RuntimeError("gateway ended")
+
+        task = asyncio.create_task(fail_gateway())
+        with self.assertRaises(RuntimeError):
+            await task
+        orchestrator._gateway_task = task
+        orchestrator._reconnect_gateway = AsyncMock()
+
+        healthy = await orchestrator.check_health()
+
+        self.assertFalse(healthy)
+        orchestrator._reconnect_gateway.assert_not_awaited()
+
     async def test_update_pushes_new_context_to_running_agents(self):
         orchestrator = make_orchestrator()
         orchestrator.objection_agent._last_window = "Speaker 1: old text"

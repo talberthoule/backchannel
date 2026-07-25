@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from time import monotonic
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket
 from sqlalchemy import func, select
 
 from app.database import async_session
@@ -45,6 +45,8 @@ router = APIRouter()
 _SPEAKER_COLORS = ["#0d9488", "#f59e0b", "#e74c3c", "#2ecc71", "#9b59b6", "#f39c12"]
 _PCM_BYTES_PER_SECOND = 32_000
 _AUDIO_FLOW_LOG_INTERVAL_BYTES = 10 * _PCM_BYTES_PER_SECOND
+_GATEWAY_SEND_TIMEOUT_SECONDS = 1.0
+_GATEWAY_RETRY_SECONDS = 5.0
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,51 @@ async def _send_status(websocket: WebSocket, state: str, message: str, **extra: 
         await websocket.send_json({"type": "status", "data": {"state": state, "message": message, **extra}})
     except Exception:
         pass
+
+
+async def _receive_websocket_message(
+    websocket: WebSocket,
+    session_id: uuid.UUID,
+) -> dict | None:
+    message = await websocket.receive()
+    if message.get("type") != "websocket.disconnect":
+        return message
+    logger.info(
+        "Browser disconnected for session %s: code=%s reason=%s",
+        session_id,
+        message.get("code"),
+        message.get("reason", ""),
+    )
+    return None
+
+
+async def _send_gateway_audio(
+    orchestrator: AgentOrchestrator,
+    pcm_data: bytes,
+) -> bool:
+    try:
+        await asyncio.wait_for(
+            orchestrator.send_audio(pcm_data),
+            timeout=_GATEWAY_SEND_TIMEOUT_SECONDS,
+        )
+        return True
+    except Exception as exc:
+        logger.warning("Audio gateway send failed: %s", exc)
+        return False
+
+
+async def _reconnect_audio_gateway(
+    websocket: WebSocket,
+    orchestrator: AgentOrchestrator,
+) -> bool:
+    try:
+        success = await orchestrator._reconnect_gateway()
+        if success:
+            await _send_status(websocket, "active", "Reconnected to AI")
+        return success
+    except Exception as exc:
+        logger.error("Audio Gateway reconnect failed: %s", exc)
+        return False
 
 
 async def _send_post_processing_status(
@@ -266,39 +313,6 @@ async def _flush_remaining_audio(
             transcription_queue.add(f"{speaker_prefix}{seg.speaker_id}", seg.pcm_bytes)
         except Exception:
             pass
-
-
-async def _reconnect_audio_pipeline(
-    websocket: WebSocket,
-    diarizer: Any,
-    sys_diarizer: Any | None,
-    transcription_queue: OrderedTranscriptionQueue,
-    orchestrator: AgentOrchestrator,
-    split_track_established: bool = False,
-) -> bool:
-    for seg in await asyncio.to_thread(flush_diarizer_segments, diarizer):
-        transcription_queue.add(_queued_speaker_auto_id(seg.speaker_id, 0, split_track_established), seg.pcm_bytes)
-    diarizer.reset()
-    if sys_diarizer is not None:
-        for seg in await asyncio.to_thread(flush_diarizer_segments, sys_diarizer):
-            transcription_queue.add(f"sys_{seg.speaker_id}", seg.pcm_bytes)
-        sys_diarizer.reset()
-    try:
-        success = await orchestrator._reconnect_gateway()
-        if success:
-            await websocket.send_json(
-                {
-                    "type": "status",
-                    "data": {
-                        "state": "active",
-                        "message": "Reconnected to AI",
-                    },
-                }
-            )
-        return success
-    except Exception as exc:
-        logger.error(f"Reconnect failed: {exc}")
-        return False
 
 
 async def _refuse_unready_transcription(
@@ -897,10 +911,8 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
             call_segment_id, audio_writers = segment_start
 
         while not stopped:
-            try:
-                message = await websocket.receive()
-            except WebSocketDisconnect:
-                logger.info(f"Browser disconnected for session {session_id}")
+            message = await _receive_websocket_message(websocket, session_id)
+            if message is None:
                 break
 
             if "bytes" in message:
@@ -939,7 +951,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                                 split_track_established,
                             )
                         # Forward to orchestrator for the audio gateway and text-agent context
-                        await orchestrator.send_audio(mixed)
+                        await _send_gateway_audio(orchestrator, mixed)
 
                     # Feed into the per-track diarizer for speaker-attributed transcription
                     if track == 1:
@@ -982,10 +994,15 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                         queued_speaker = _queued_speaker_auto_id(seg.speaker_id, track, split_track_established)
                         transcription_queue.add(queued_speaker, seg.pcm_bytes)
 
-                except Exception as e:
-                    logger.warning(f"Audio send failed, reconnecting: {e}")
-                    if not await _reconnect_audio_pipeline(websocket, diarizer, sys_diarizer, transcription_queue, orchestrator, split_track_established):
-                        break
+                except Exception as exc:
+                    logger.exception("Audio frame handling failed")
+                    await _send_status(
+                        websocket,
+                        "audio_error",
+                        f"One audio frame could not be processed: {exc}",
+                        details={"track": track},
+                    )
+                    continue
 
             elif "text" in message:
                 data = json.loads(message["text"])
@@ -1008,8 +1025,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
 
             # Check audio gateway health
             if not await orchestrator.check_health():
-                if not await _reconnect_audio_pipeline(websocket, diarizer, sys_diarizer, transcription_queue, orchestrator, split_track_established):
-                    break
+                await _reconnect_audio_gateway(websocket, orchestrator)
 
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
