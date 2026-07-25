@@ -131,6 +131,26 @@ class OnPremDetectionTests(unittest.TestCase):
         for url in ("https://api.together.xyz/v1", "https://api.groq.com/openai/v1", "http://8.8.8.8/v1"):
             self.assertFalse(ce.is_on_prem(url), url)
 
+    def test_alternate_ip_encodings_do_not_bypass_privacy_first(self):
+        # Bare-integer, hex, and IPv4-mapped-IPv6 forms of a PUBLIC address must
+        # stay cloud: the C resolver still routes them off the network, so a
+        # "." not in host shortcut that read them as a LAN hostname would leak.
+        for url in (
+            "http://134744072/v1",  # decimal 8.8.8.8
+            "http://0x08080808/v1",  # hex 8.8.8.8
+            "http://[::ffff:8.8.8.8]/v1",  # IPv4-mapped IPv6 8.8.8.8
+        ):
+            self.assertFalse(ce.is_on_prem(url), url)
+        # The same encodings of a loopback/private address stay on-prem, and a
+        # genuine single-label LAN hostname is unaffected.
+        for url in (
+            "http://2130706433/v1",  # decimal 127.0.0.1
+            "http://0x7f000001/v1",  # hex 127.0.0.1
+            "http://[::ffff:127.0.0.1]/v1",
+            "http://gpu-box/v1",
+        ):
+            self.assertTrue(ce.is_on_prem(url), url)
+
 
 class ValidationTests(unittest.TestCase):
     def test_base_url_must_be_an_http_url_with_a_host(self):

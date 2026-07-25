@@ -98,6 +98,30 @@ def validate_base_url(raw: str) -> str:
     return url
 
 
+def _numeric_ipv4(host: str) -> ipaddress.IPv4Address | None:
+    """Interpret a dot-less host as a single-integer inet_aton IPv4.
+
+    glibc/musl ``getaddrinfo`` (which httpx uses) still routes a bare-integer,
+    ``0x`` hex, or leading-zero octal host to a real address, so both
+    "134744072" and "0x08080808" reach 8.8.8.8. Those must be judged by their
+    value, not mistaken for a single-label LAN hostname. Returns the address, or
+    None when the host is not such a numeric form (e.g. a genuine hostname).
+    """
+    h = host.lower()
+    try:
+        if h.startswith("0x"):
+            value = int(h, 16)
+        elif h.startswith("0") and len(h) > 1:
+            value = int(h, 8)
+        else:
+            value = int(h, 10)
+    except ValueError:
+        return None
+    if not 0 <= value <= 0xFFFFFFFF:
+        return None
+    return ipaddress.IPv4Address(value)
+
+
 def is_on_prem(base_url: str) -> bool:
     """True when the URL can only be reached from this machine or its network.
 
@@ -114,8 +138,19 @@ def is_on_prem(base_url: str) -> bool:
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
-        # A single-label name (no dot) is a LAN hostname; anything else is public.
-        return "." not in host
+        if "." in host:
+            # A dotted name that is not a canonical IP is a public hostname.
+            return False
+        # No dot: either an alternate IP encoding (judge by its real value) or a
+        # genuine single-label LAN hostname.
+        numeric = _numeric_ipv4(host)
+        if numeric is None:
+            return True
+        address = numeric
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        # ::ffff:8.8.8.8 must be judged by its embedded IPv4 on every
+        # interpreter version, not by the IPv6 wrapper.
+        address = address.ipv4_mapped
     return address.is_loopback or address.is_private or address.is_link_local
 
 
