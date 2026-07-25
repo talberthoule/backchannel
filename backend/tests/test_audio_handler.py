@@ -35,11 +35,8 @@ class FakeSessionContext:
         # the count query fail so tests can prove finalize survives it.
         self.insight_total = insight_total
         self.call_segment = call_segment
-        self._execute_results = list(
-            execute_results
-            if execute_results is not None
-            else [last_segment_number]
-        )
+        self._execute_results = list(execute_results or [])
+        self.executed = []
         self.added = []
         self.commits = 0
 
@@ -57,7 +54,16 @@ class FakeSessionContext:
         return self.session
 
     async def execute(self, statement):
-        value = self._execute_results.pop(0) if self._execute_results else None
+        self.executed.append(statement)
+        value = (
+            self._execute_results.pop(0)
+            if self._execute_results
+            else self.session
+            if statement._for_update_arg is not None
+            else self.last_segment_number
+        )
+        if callable(value):
+            value = value(statement)
         return SimpleNamespace(scalar_one_or_none=lambda: value)
 
     async def scalar(self, statement):
@@ -444,6 +450,7 @@ class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
         newer_id = uuid.uuid4()
         owned = SimpleNamespace(
             id=owned_id,
+            segment_number=1,
             ended_at=None,
             audio_path=None,
             mic_audio_path=None,
@@ -453,7 +460,7 @@ class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
         db = FakeSessionContext(
             session,
             call_segment=owned,
-            execute_results=[newer_id],
+            execute_results=[session, newer_id],
         )
         orchestrator = self._make_orchestrator(briefing=False)
         websocket = MagicMock(send_json=AsyncMock())
@@ -479,6 +486,95 @@ class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(owned.ended_at)
         self.assertEqual("active", session.state)
         self.assertIsNone(session.ended_at)
+
+    async def test_older_orphaned_segment_does_not_block_completion(self):
+        session_id = uuid.uuid4()
+        owned_id = uuid.uuid4()
+        older_id = uuid.uuid4()
+        owned = SimpleNamespace(
+            id=owned_id,
+            segment_number=2,
+            ended_at=None,
+            audio_path=None,
+            mic_audio_path=None,
+            system_audio_path=None,
+        )
+        session = SimpleNamespace(state="active", ended_at=None)
+        db = FakeSessionContext(
+            session,
+            call_segment=owned,
+            execute_results=[
+                session,
+                lambda statement: (
+                    None
+                    if "call_segments.segment_number >" in str(statement)
+                    else older_id
+                ),
+            ],
+        )
+        orchestrator = self._make_orchestrator(briefing=False)
+        websocket = MagicMock(send_json=AsyncMock())
+        transcription_queue = MagicMock(
+            drain=AsyncMock(),
+            stats={"jobs": 0, "emitted": 0, "failed": 0},
+        )
+
+        with (
+            patch("app.ws.audio_handler.async_session", return_value=db),
+            patch("app.ws.audio_handler.flush_diarizer_segments", return_value=[]),
+        ):
+            await audio_handler._finalize_call(
+                session_id,
+                websocket,
+                MagicMock(),
+                orchestrator,
+                transcription_queue,
+                call_segment_id=owned_id,
+                drain_mode="minimal",
+            )
+
+        self.assertEqual("completed", session.state)
+        self.assertIsNotNone(session.ended_at)
+
+    async def test_finalize_locks_session_before_segment_check(self):
+        session_id = uuid.uuid4()
+        owned_id = uuid.uuid4()
+        owned = SimpleNamespace(
+            id=owned_id,
+            segment_number=1,
+            ended_at=None,
+            audio_path=None,
+            mic_audio_path=None,
+            system_audio_path=None,
+        )
+        session = SimpleNamespace(state="active", ended_at=None)
+        db = FakeSessionContext(
+            session,
+            call_segment=owned,
+            execute_results=[session, None],
+        )
+        orchestrator = self._make_orchestrator(briefing=False)
+        websocket = MagicMock(send_json=AsyncMock())
+        transcription_queue = MagicMock(
+            drain=AsyncMock(),
+            stats={"jobs": 0, "emitted": 0, "failed": 0},
+        )
+
+        with (
+            patch("app.ws.audio_handler.async_session", return_value=db),
+            patch("app.ws.audio_handler.flush_diarizer_segments", return_value=[]),
+        ):
+            await audio_handler._finalize_call(
+                session_id,
+                websocket,
+                MagicMock(),
+                orchestrator,
+                transcription_queue,
+                call_segment_id=owned_id,
+                drain_mode="minimal",
+            )
+
+        self.assertIsNotNone(db.executed[0]._for_update_arg)
 
 
 class MinimalFinalizeAnalysisShutdownTests(unittest.IsolatedAsyncioTestCase):
@@ -596,6 +692,25 @@ class MinimalFinalizeAnalysisShutdownTests(unittest.IsolatedAsyncioTestCase):
 
 
 class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
+    async def test_locks_active_session_and_clears_stale_end_time(self):
+        session_id = uuid.uuid4()
+        session = SimpleNamespace(
+            state="active",
+            started_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            ended_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        )
+        db = FakeSessionContext(session, last_segment_number=None)
+
+        with (
+            patch("app.ws.audio_handler.async_session", return_value=db),
+            patch("app.ws.audio_handler.SegmentAudioWriter", return_value=MagicMock()),
+        ):
+            await audio_handler._start_call_segment(session_id)
+
+        self.assertIsNotNone(db.executed[0]._for_update_arg)
+        self.assertEqual("active", session.state)
+        self.assertIsNone(session.ended_at)
+
     async def test_initial_segment_does_not_add_resume_marker_from_active_state(self):
         session_id = uuid.uuid4()
         session = SimpleNamespace(

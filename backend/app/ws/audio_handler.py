@@ -334,7 +334,10 @@ async def _start_call_segment(
     session_id: uuid.UUID,
 ) -> tuple[uuid.UUID, dict[str, SegmentAudioWriter | None]] | None:
     async with async_session() as db:
-        session = await db.get(Session, session_id)
+        result = await db.execute(
+            select(Session).where(Session.id == session_id).with_for_update()
+        )
+        session = result.scalar_one_or_none()
         if session is None:
             return None
 
@@ -369,11 +372,10 @@ async def _start_call_segment(
             )
             db.add(marker)
 
-        if session.state in ("pre_call", "completed"):
-            session.state = "active"
-            if not session.started_at:
-                session.started_at = datetime.now(timezone.utc)
-            session.ended_at = None
+        session.state = "active"
+        if not session.started_at:
+            session.started_at = datetime.now(timezone.utc)
+        session.ended_at = None
 
         await db.commit()
         return segment_id, audio_writers
@@ -530,6 +532,10 @@ async def _finalize_call(
     )
 
     async with async_session() as db:
+        result = await db.execute(
+            select(Session).where(Session.id == session_id).with_for_update()
+        )
+        session = result.scalar_one_or_none()
         owned_segment = (
             await db.get(CallSegment, call_segment_id)
             if call_segment_id is not None
@@ -548,19 +554,18 @@ async def _finalize_call(
                     logger.warning(f"Failed to finalize segment audio: {e}")
 
         newer_open_segment_id = None
-        if call_segment_id is not None:
+        if owned_segment is not None:
             result = await db.execute(
                 select(CallSegment.id)
                 .where(
                     CallSegment.session_id == session_id,
                     CallSegment.ended_at.is_(None),
-                    CallSegment.id != call_segment_id,
+                    CallSegment.segment_number > owned_segment.segment_number,
                 )
                 .limit(1)
             )
             newer_open_segment_id = result.scalar_one_or_none()
 
-        session = await db.get(Session, session_id)
         if session and session.state == "active" and newer_open_segment_id is None:
             session.state = "completed"
             session.ended_at = datetime.now(timezone.utc)
