@@ -25,8 +25,16 @@ logger = logging.getLogger(__name__)
 # failures as other httpx.HTTPError subclasses.
 PROVIDER_ERROR_TYPES = (genai_errors.APIError, httpx.HTTPError)
 
-_LABELS = {"google": "Gemini", "openai": "OpenAI"}
-_KEY_NAMES = {"google": "Google", "openai": "OpenAI"}
+_LABELS = {
+    "google": "Gemini",
+    "openai": "OpenAI",
+    "openai-compatible": "OpenAI-compatible endpoint",
+}
+_KEY_NAMES = {
+    "google": "Google",
+    "openai": "OpenAI",
+    "openai-compatible": "OpenAI-compatible endpoint",
+}
 
 _QUOTA_REMEDIES = {
     "google": (

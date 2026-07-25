@@ -1,9 +1,13 @@
 """Provider-routed text generation.
 
 Entry points generate_text() and generate_json() pick the client by the
-model's provider in MODEL_REGISTRY: Google via google-genai, OpenAI via the
-HTTP API. Unknown model ids default to Google so legacy ids stored in the DB
-keep working.
+model's provider in MODEL_REGISTRY: Google via google-genai, OpenAI and any
+OpenAI-compatible server via the HTTP API. Unknown model ids default to
+Google so legacy ids stored in the DB keep working.
+
+The OpenAI-shaped base URL and wire model name are resolved per call by
+services/llm_endpoint.py rather than hardcoded, which is what lets an agent
+target a local Ollama, LM Studio, vLLM, or LiteLLM server.
 """
 
 import json
@@ -15,13 +19,18 @@ from google.genai import types
 from pydantic import BaseModel
 
 from app.config import MODEL_REGISTRY
+from app.services.llm_endpoint import (
+    OpenAIEndpoint,
+    auth_headers,
+    is_openai_shaped,
+    requires_api_key,
+    resolve_endpoint,
+)
 from app.services.privacy import LocalOnlyModeError, is_local_only
 from app.services.secrets import resolve_provider_key
 from app.services.token_usage import record_token_usage
 
 logger = logging.getLogger(__name__)
-
-OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 
 class LLMKeyMissing(ValueError):
@@ -64,18 +73,18 @@ async def _call_google(model_id: str, prompt: str, system: str | None, temperatu
     return response.text or "", getattr(response, "usage_metadata", None)
 
 
-async def _call_openai(model_id: str, prompt: str, system: str | None, temperature: float | None, key: str) -> tuple[str, object]:
+async def _call_openai(endpoint: OpenAIEndpoint, prompt: str, system: str | None, temperature: float | None, key: str) -> tuple[str, object]:
     messages = []
     if system is not None:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
-    payload: dict = {"model": model_id, "messages": messages}
+    payload: dict = {"model": endpoint.model, "messages": messages}
     if temperature is not None:
         payload["temperature"] = temperature
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.post(
-            f"{OPENAI_BASE_URL}/chat/completions",
-            headers={"Authorization": f"Bearer {key}"},
+            f"{endpoint.base_url}/chat/completions",
+            headers=auth_headers(key),
             json=payload,
         )
         resp.raise_for_status()
@@ -96,10 +105,11 @@ async def generate_text(
     if provider != "local" and await is_local_only():
         raise LocalOnlyModeError(f"text generation with {model_id}")
     key = await _resolve_key(provider)
-    if not key:
+    if not key and requires_api_key(provider):
         raise LLMKeyMissing(provider)
-    if provider == "openai":
-        text, usage = await _call_openai(model_id, prompt, system, temperature, key)
+    if is_openai_shaped(provider):
+        endpoint = await resolve_endpoint(provider, model_id)
+        text, usage = await _call_openai(endpoint, prompt, system, temperature, key)
     else:
         text, usage = await _call_google(model_id, prompt, system, temperature, key)
     await record_token_usage(session_id, source, model_id, usage)
@@ -210,6 +220,7 @@ async def _google_json(
 
 async def _openai_json(
     model_id: str,
+    endpoint: OpenAIEndpoint,
     prompt: str,
     response_schema: type[BaseModel],
     schema_hint: str,
@@ -221,14 +232,14 @@ async def _openai_json(
 
     async def call(messages: list[dict]) -> str:
         payload = {
-            "model": model_id,
+            "model": endpoint.model,
             "messages": messages,
             "response_format": {"type": "json_object"},
         }
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
-                f"{OPENAI_BASE_URL}/chat/completions",
-                headers={"Authorization": f"Bearer {key}"},
+                f"{endpoint.base_url}/chat/completions",
+                headers=auth_headers(key),
                 json=payload,
             )
             resp.raise_for_status()
@@ -268,8 +279,8 @@ async def generate_json(
 
     Routes by the model's registry provider exactly like generate_text().
     Google models use Gemini's native response_schema JSON mode, retrying once
-    with a JSON-contract prompt if the schema call fails. OpenAI models use
-    response_format json_object with the contract appended to the prompt,
+    with a JSON-contract prompt if the schema call fails. OpenAI-shaped models
+    use response_format json_object with the contract appended to the prompt,
     re-prompting strictly at most once when the reply fails parsing or schema
     validation. schema_hint overrides the auto-derived contract text. Token
     usage is recorded per provider call so the Tokens tab stays accurate.
@@ -278,12 +289,13 @@ async def generate_json(
     if provider != "local" and await is_local_only():
         raise LocalOnlyModeError(f"structured generation with {model_id}")
     key = await _resolve_key(provider)
-    if not key:
+    if not key and requires_api_key(provider):
         raise LLMKeyMissing(provider)
     hint = schema_hint or _default_schema_hint(response_schema)
-    if provider == "openai":
+    if is_openai_shaped(provider):
+        endpoint = await resolve_endpoint(provider, model_id)
         return await _openai_json(
-            model_id, prompt, response_schema, hint, key, session_id, source
+            model_id, endpoint, prompt, response_schema, hint, key, session_id, source
         )
     return await _google_json(
         model_id, prompt, response_schema, hint, key, session_id, source

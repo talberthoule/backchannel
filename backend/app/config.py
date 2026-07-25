@@ -4,6 +4,17 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+    # Base URL for every OpenAI-shaped chat call. The default is the hosted
+    # OpenAI API, so an unset env var reproduces the previous hardcoded value
+    # exactly. The persisted llm.openai_compatible.base_url app setting
+    # overrides this for the openai-compatible provider only.
+    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
+    # Optional key for the openai-compatible provider; local servers such as
+    # Ollama and LM Studio need none, so an empty value is valid.
+    OPENAI_COMPATIBLE_API_KEY: str = ""
+    # Wire model name for the openai-compatible provider (e.g. "llama3.1:8b").
+    # The llm.openai_compatible.model_id app setting takes precedence.
+    OPENAI_COMPATIBLE_MODEL_ID: str = ""
     DATABASE_URL: str = "postgresql+asyncpg://callhelper:changeme@db:5432/callhelper"
     FRONTEND_DIST: str = ""  # path to built frontend; empty = nginx serves it (Docker)
     GEMINI_MODEL: str = "gemini-3.1-flash-live-preview"
@@ -262,6 +273,23 @@ MODEL_REGISTRY: list[dict] = [
         "requires_key": None,
         "supports_text": False,
         "supports_batch_audio": True,
+        "supports_live_audio": False,
+    },
+    # Any OpenAI-compatible chat server (Ollama, LM Studio, vLLM, LiteLLM).
+    # One stable registry id stands in for whatever model the server exposes:
+    # the base URL and the wire model name are configured in Admin -> API Keys
+    # (see services/llm_endpoint.py). requires_key is None because local
+    # servers accept unauthenticated calls, so this entry never gets locked
+    # out of the agent model pickers.
+    {
+        "id": "openai-compatible",
+        "name": "OpenAI-Compatible Endpoint",
+        "provider": "OpenAI-Compatible",
+        "description": "Self-hosted OpenAI-compatible chat server (Ollama, LM Studio, vLLM, LiteLLM); set its base URL and model id in Admin -> API Keys",
+        "tier": "stable",
+        "requires_key": None,
+        "supports_text": True,
+        "supports_batch_audio": False,
         "supports_live_audio": False,
     },
     {

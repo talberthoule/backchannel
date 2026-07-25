@@ -16,7 +16,10 @@ from app.services.app_settings import get_app_setting, set_app_setting
 
 logger = logging.getLogger(__name__)
 
-PROVIDERS = ["google", "openai"]
+# "openai-compatible" is a self-hosted OpenAI-shaped server; its key is
+# optional (see llm_endpoint.requires_api_key) but it still gets a credential
+# row so proxies that do want a token can store one encrypted.
+PROVIDERS = ["google", "openai", "openai-compatible"]
 
 _fernet: Fernet | None = None
 
@@ -71,6 +74,8 @@ def env_provider_key(provider: str) -> str:
         return settings.GEMINI_API_KEY
     if provider == "openai":
         return settings.OPENAI_API_KEY
+    if provider == "openai-compatible":
+        return settings.OPENAI_COMPATIBLE_API_KEY
     return ""
 
 

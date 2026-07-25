@@ -73,6 +73,10 @@ MODEL_PRICING: dict[str, dict | None] = {
     # audio-token rate, so only its text rates are recorded.
     "gpt-audio-1.5": _price(2.50, 10.00, audio_input_per_million=32.00),
     "gpt-audio-mini": _price(0.60, 2.40),
+    # Self-hosted OpenAI-compatible endpoint: the rate depends entirely on
+    # what the operator points it at (free local server, or a paid proxy), so
+    # there is no publishable per-token price.
+    "openai-compatible": None,
     # --- Local ONNX models: no API cost ---
     "local-whisper-base": _price(0.0, 0.0),
     "local-parakeet-tdt-0.6b": _price(0.0, 0.0),

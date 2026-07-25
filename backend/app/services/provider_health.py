@@ -12,6 +12,12 @@ import logging
 import httpx
 
 from app.services.app_settings import get_app_setting, set_app_setting
+from app.services.llm_endpoint import (
+    auth_headers,
+    fallback_base_url,
+    normalize_base_url,
+    resolve_base_url,
+)
 from app.services.secrets import (
     PROVIDERS,
     env_provider_key,
@@ -30,7 +36,9 @@ def _status_key(provider: str) -> str:
     return f"credentials.{provider}.verified_fingerprint"
 
 
-async def run_connection_test(provider: str, key: str) -> tuple[bool, str]:
+async def run_connection_test(provider: str, key: str, base_url: str = "") -> tuple[bool, str]:
+    """Probe a provider. base_url defaults to the hosted OpenAI API, so the
+    Google and OpenAI paths behave exactly as they did before it existed."""
     try:
         if provider == "google":
             from google import genai
@@ -38,11 +46,9 @@ async def run_connection_test(provider: str, key: str) -> tuple[bool, str]:
             client = genai.Client(api_key=key)
             await client.aio.models.list(config={"page_size": 1})
         else:
+            url = normalize_base_url(base_url) or fallback_base_url()
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(
-                    "https://api.openai.com/v1/models",
-                    headers={"Authorization": f"Bearer {key}"},
-                )
+                resp = await client.get(f"{url}/models", headers=auth_headers(key))
                 resp.raise_for_status()
         return True, "Connection successful"
     except Exception as e:
@@ -99,13 +105,16 @@ async def verify_untested_provider_keys() -> None:
                 return
             for provider in PROVIDERS:
                 key = await get_provider_key(db, provider)
+                # Keyless providers (a local OpenAI-compatible server) are not
+                # probed at startup; the Test button in Admin covers them.
                 if not key:
                     continue
                 record = await get_app_setting(db, _status_key(provider))
                 fingerprint = key_fingerprint(key)
                 if record in (fingerprint, f"{_FAILED_PREFIX}{fingerprint}"):
                     continue
-                ok, message = await run_connection_test(provider, key)
+                base_url = await resolve_base_url(db, provider)
+                ok, message = await run_connection_test(provider, key, base_url)
                 await record_test_outcome(db, provider, key, ok)
                 if ok:
                     logger.info(f"Verified {provider} API key connection at startup")

@@ -226,6 +226,30 @@ export const deleteCredential = (provider: string) =>
 export const testCredential = (provider: string) =>
   request<{ ok: boolean; message: string }>(`/credentials/${provider}/test`, { method: "POST" });
 
+// OpenAI-compatible text endpoint (Ollama, LM Studio, vLLM, LiteLLM). base_url
+// and model_id are what is persisted; the effective_* fields fold in the
+// environment variable and built-in defaults the backend falls back to.
+export const OPENAI_COMPATIBLE_PROVIDER = "openai-compatible";
+
+export interface TextEndpointConfig {
+  provider: string;
+  model_registry_id: string;
+  base_url: string;
+  model_id: string;
+  effective_base_url: string;
+  effective_model_id: string;
+  fallback_base_url: string;
+}
+
+export const getTextEndpoint = () =>
+  request<TextEndpointConfig>(`/credentials/${OPENAI_COMPATIBLE_PROVIDER}/endpoint`);
+
+export const saveTextEndpoint = (data: { base_url?: string; model_id?: string }) =>
+  request<TextEndpointConfig>(`/credentials/${OPENAI_COMPATIBLE_PROVIDER}/endpoint`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+
 // Diagnostics
 export const getDiarizationDiagnostics = () =>
   request<DiarizationDiagnostics>("/diagnostics/diarization");
