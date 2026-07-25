@@ -156,6 +156,9 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
           transcript. Live preview is separate: the Audio Bridge agent (Gemini Live or OpenAI Realtime,
           depending on the model) only shows interim captions while a call is active. Changing the live
           preview model here updates that agent&apos;s model, the same setting shown on the Agents tab.
+          Self-hosted (OpenAI-compatible chat) models are text-only and are not listed here; for fully
+          offline transcription choose a local ONNX model (local-whisper-base or local-parakeet), and use
+          a self-hosted chat model for the analysis agents.
         </p>
       </div>
 

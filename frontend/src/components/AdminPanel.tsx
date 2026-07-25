@@ -381,6 +381,14 @@ function AgentCard({
             )}
           </div>
           <p className="mt-1 font-body text-xs leading-relaxed text-brand-gray">{agent.description}</p>
+          {agent.agent_type === "audio" && (
+            <p className="mt-2 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/60 px-2.5 py-1.5 font-body text-[11px] leading-relaxed text-brand-gray">
+              This is the live audio bridge, so only live-audio models are listed. Self-hosted
+              (OpenAI-compatible chat) models are text-only and do not appear here &mdash; they power the
+              text analysis agents. For fully offline transcription, pick a local ONNX model in
+              Transcription &amp; Audio.
+            </p>
+          )}
           {agent.slug === "opportunity_specialist" && (
             <p className="mt-2 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/60 px-2.5 py-1.5 font-body text-[11px] leading-relaxed text-brand-gray">
               Runs downstream of the Consolidated Analyst: it does not find opportunities itself. When a lens surfaces a finding as an Opportunity, this agent matches it against the knowledge sources below and adds the match to the existing card. Only active for Client Sales and Customer Delivery meeting types.
