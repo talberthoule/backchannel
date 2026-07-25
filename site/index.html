@@ -78,7 +78,7 @@
             "name": "Does my meeting audio leave my machine?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API. You can route agents to OpenAI instead, or transcribe fully offline with local ONNX Whisper or Parakeet models. Recordings and transcripts stay on your server."
+              "text": "Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API. You can route agents to OpenAI instead, or transcribe fully offline with local ONNX Whisper or Parakeet models. The insight agents are the one exception: there is no local text model yet, so they always call Gemini or OpenAI. Recordings and transcripts stay on your server."
             }
           },
           {
@@ -86,7 +86,7 @@
             "name": "Does it work with Zoom, Google Meet, and Teams?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Yes, with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration to install."
+              "text": "Yes, with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration to install. Cross-platform coverage is no longer unique: Google's take-notes-for-me now reaches meetings hosted on other providers, and Zoom's assistant can join Meet and Teams. Both do it as a visible bot in a vendor cloud."
             }
           },
           {
@@ -94,7 +94,7 @@
             "name": "How is it different from Otter.ai and other cloud note-takers?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Cloud note-takers such as Otter.ai, Fireflies.ai, and Granola send your meetings to their cloud and deliver most of their value after the call. Backchannel is self-hosted and works during the meeting: agents push questions, objection responses, opportunities, and action items while you can still act on them."
+              "text": "Real-time help is no longer rare: Otter shipped Live Assist in July 2026 and Zoom's Sales Assist reached general availability a day later. Both are Enterprise-priced and tied to their own platform, and like Fireflies.ai and Granola they run in a vendor cloud. Backchannel is self-hosted, MIT licensed, and joins no call as a bot, and its objection handler generates a response to the objection actually raised, every 10 seconds over the freshest 90 seconds of speech."
             }
           },
           {
@@ -176,7 +176,7 @@
         <div class="browser-frame">
           <div class="bar" aria-hidden="true"></div>
           <img src="assets/shots/user-live-early.webp" data-full="assets/shots/user-live-early-full.webp" width="1600" height="765" fetchpriority="high"
-               alt="Backchannel live mid-call at 03:52: dual Listening indicators, five strategic-signal cards attributed to the Question Hunter, Objection Handler, and Opportunity Scout agents, beside a live speaker-attributed transcript." />
+               alt="Backchannel live mid-call at 03:52: dual Listening indicators and five strategic-signal cards beside a live speaker-attributed transcript, with insight cards badged Question Hunter, Objection Handler, and Opp. Scout." />
         </div>
         <figcaption class="fig-caption"><span class="fig-no">FIG. 1</span><span>Live call, 03:52 &mdash; five strategic signals beside the running transcript, every line attributed to a speaker. <strong>158 insights</strong> from this one real 32-minute call, distilled into a single briefing.</span></figcaption>
       </figure>
@@ -206,7 +206,7 @@
       <div class="feature-row reverse">
         <div class="feature-copy">
           <h3>Agents that work the call, not just the recap</h3>
-          <p>An analyst, a fast objection handler, a synthesizer, and an opportunity specialist each run on their own trigger and push questions, objections, opportunities, and action items mid-call. A briefing arbiter reconciles them into a dual-lens summary.</p>
+          <p>Five live agents -- an analyst, a fast objection handler, a synthesizer, an opportunity specialist, and a strategic-signals scanner -- each run on their own trigger and push questions, objections, opportunities, and action items mid-call. At call end, two independent briefing lenses draft in parallel and an arbiter reconciles them into one summary.</p>
         </div>
         <div class="feature-visual">
           <div class="browser-frame">
@@ -220,7 +220,7 @@
       <div class="feature-row">
         <div class="feature-copy">
           <h3>Provider-routed models, on your keys</h3>
-          <p>Mix Google Gemini and OpenAI per agent, flip on Privacy First to keep every byte on the machine, or transcribe fully offline with local ONNX Whisper and Parakeet &mdash; no API key needed for transcription.</p>
+          <p>Mix Google Gemini and OpenAI per agent, or transcribe fully offline with local ONNX Whisper and Parakeet -- no API key needed for transcription. Privacy First keeps every byte on the machine, with one honest tradeoff: there is no local text model, so the insight agents switch off.</p>
         </div>
         <div class="feature-visual">
           <picture>
@@ -516,15 +516,15 @@ docker compose up --build
         </div>
         <div class="faq-item">
           <h3>Does my meeting audio leave my machine?</h3>
-          <p>Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API. You can route agents to OpenAI instead, or transcribe fully offline with local ONNX Whisper or Parakeet models. Recordings and transcripts stay on your server.</p>
+          <p>Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API. You can route agents to OpenAI instead, or transcribe fully offline with local ONNX Whisper or Parakeet models. The insight agents are the one exception: there is no local text model yet, so they always call Gemini or OpenAI. Recordings and transcripts stay on your server.</p>
         </div>
         <div class="faq-item">
           <h3>Does it work with Zoom, Google Meet, and Teams?</h3>
-          <p>Yes, with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration to install.</p>
+          <p>Yes, with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration to install. Cross-platform coverage is no longer unique: Google's take-notes-for-me now reaches meetings hosted on other providers, and Zoom's assistant can join Meet and Teams. Both do it as a visible bot in a vendor cloud.</p>
         </div>
         <div class="faq-item">
           <h3>How is it different from Otter.ai and other cloud note-takers?</h3>
-          <p>Cloud note-takers such as Otter.ai, Fireflies.ai, and Granola send your meetings to their cloud and deliver most of their value after the call. Backchannel is self-hosted and works during the meeting: agents push questions, objection responses, opportunities, and action items while you can still act on them.</p>
+          <p>Real-time help is no longer rare: Otter shipped Live Assist in July 2026 and Zoom's Sales Assist reached general availability a day later. Both are Enterprise-priced and tied to their own platform, and like Fireflies.ai and Granola they run in a vendor cloud. Backchannel is self-hosted, MIT licensed, and joins no call as a bot, and its objection handler generates a response to the objection actually raised, every 10 seconds over the freshest 90 seconds of speech.</p>
         </div>
         <div class="faq-item">
           <h3>Do I need a GPU?</h3>

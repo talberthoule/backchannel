@@ -13,7 +13,11 @@ You only need one key to start:
 
 Prefer not to use a cloud provider at all? Turn on
 [Privacy First mode](configuration.md#privacy-first-local-only-mode) under
-Administration to transcribe with local models instead.
+Administration to transcribe and diarize entirely on your own machine. Be
+aware of the trade: the local ONNX models are transcription-only, so that
+mode also switches off every analysis agent. Privacy First and the live
+agents are mutually exclusive -- the agents always require a Google or
+OpenAI key.
 
 ## Google Gemini key (about 2 minutes, free)
 

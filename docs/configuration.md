@@ -43,7 +43,11 @@ audio or transcript text leaves the machine:
   re-transcription; selecting a cloud transcriber is rejected.
 - The audio gateway (interim captions) and every analysis agent
   (consolidated analyst, objection handler, synthesizer, opportunity
-  specialist, briefing) are skipped because none has a local model.
+  specialist, strategic signals, and the three briefing lenses) are skipped
+  because no local model can run them: `local-whisper-base` and
+  `local-parakeet-tdt-0.6b` declare `supports_text: False` in
+  `MODEL_REGISTRY`, and text calls resolve only to Google or OpenAI
+  endpoints. Privacy First and the live agents are mutually exclusive.
 - `generate_text` raises `LocalOnlyModeError` for any non-local model, so
   post-import analysis, meeting chat, insight enhancement, and document
   summarization return HTTP 409/400 with an explanatory message.
@@ -70,12 +74,12 @@ features that stop working before the mode is applied
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `TEXT_AGENT_INTERVAL_SECONDS` | 15 | Consolidated analyst cycle |
-| `OBJECTION_HANDLER_INTERVAL_SECONDS` | 5 | Objection handler fast scan cycle |
+| `TEXT_AGENT_INTERVAL_SECONDS` | 40 | Consolidated analyst cycle |
+| `OBJECTION_HANDLER_INTERVAL_SECONDS` | 10 | Objection handler fast scan cycle |
 | `OBJECTION_WINDOW_SECONDS` | 90 | Transcript window for objection scans |
-| `SYNTHESIZER_COOLDOWN_SECONDS` | 30 | Minimum time between synthesizer runs |
+| `SYNTHESIZER_COOLDOWN_SECONDS` | 75 | Minimum time between synthesizer runs |
 | `SYNTHESIZER_MAX_INTERVAL_SECONDS` | 120 | Fallback max gap for the synthesizer |
-| `OPPORTUNITY_SPECIALIST_COOLDOWN_SECONDS` | 5 | Batch window for the opportunity specialist |
+| `OPPORTUNITY_SPECIALIST_COOLDOWN_SECONDS` | 55 | Batch window for the opportunity specialist |
 | `KNOWLEDGE_CONTEXT_CHAR_BUDGET` | 60000 | Max characters of knowledge context per prompt |
 
 Per-agent interval values stored in `agent_configs` rows override these
@@ -130,5 +134,7 @@ Current entries include Google Gemini text/audio models
 (`gpt-realtime-whisper` as a realtime-only gateway; `gpt-4o-transcribe` and
 `gpt-4o-mini-transcribe` usable both as realtime gateways and as batch
 transcription models), and key-free local ASR models
-(`local-whisper-base`, `local-parakeet-tdt-0.6b`). Add new models by
-appending to the registry.
+(`local-whisper-base`, `local-parakeet-tdt-0.6b`, both
+`supports_batch_audio` only -- no local entry sets `supports_text`, so no
+agent can run without a provider key). Add new models by appending to the
+registry.

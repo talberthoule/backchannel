@@ -142,7 +142,7 @@ Agents are coordinated by `AgentOrchestrator` and configured by `agent_configs` 
 
 | Agent slug | Type | Trigger | Code | Purpose |
 | --- | --- | --- | --- | --- |
-| `audio_gateway` | audio | Continuous audio stream | `backend/app/services/gemini_live.py` | Silent Gemini Live listener for interim transcription |
+| `audio_gateway` | audio | Continuous audio stream | `backend/app/services/gemini_live.py` / `backend/app/services/openai_realtime.py` | Silent live listener (Gemini Live or OpenAI Realtime, chosen by the agent's model) for interim transcription |
 | `consolidated_analyst` | text | Interval, default 40s, plus final pass | `backend/app/services/agents/consolidated_analyst.py` | Single Gemini call that can produce questions, observations, opportunities, and action items |
 | `objection_handler` | text | Interval, default 10s over the last 90s | `backend/app/services/agents/objection_handler.py` | Flags objections with an immediate response and strategic context |
 | `synthesizer` | meta | `new_insight` / `insight_updated` events, 75s cooldown, 120s fallback | `backend/app/services/agents/synthesizer.py` | Reconciles and enriches saved insights, detects answered questions, may elevate item type |
@@ -251,7 +251,11 @@ Key files:
 
 Required:
 
-- `GEMINI_API_KEY`
+- `GEMINI_API_KEY` (or an OpenAI key for OpenAI-routed agents)
+
+Local ONNX transcription needs no key, but no local registry entry sets
+`supports_text`, so the analysis agents always require a Google or OpenAI
+key. Local audio and local analysis are not the same thing.
 
 Database variables are optional in Docker because defaults are provided:
 

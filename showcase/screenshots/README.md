@@ -14,7 +14,7 @@ employer/client/person names are visible. Safe for public use.
 
 | Asset | Shows | Suggested placement |
 | --- | --- | --- |
-| `user-live-early.png` | **Live call, 03:52 in** (dark): dual Listening indicators, 5 strategic-signal cards, agent-attributed insights (Question Hunter / Objection Handler / Opp. Scout badges), live transcription panel with per-speaker chips | **Hero.** Complete live layout under real load |
+| `user-live-early.png` | **Live call, 03:52 in** (dark): dual Listening indicators, 5 strategic-signal cards, source-labelled insight cards (Question Hunter / Objection Handler / Opp. Scout badges -- see "Badge labels" below), live transcription panel with per-speaker chips | **Hero.** Complete live layout under real load |
 | `user-live-answered.png` | Live call, 05:10: question card flipping to Answered + Refined with green answer summary, "Needs Follow-up" child question | "Questions answer themselves" feature section |
 | `user-live-synthesis.png` | Live call, 09:11: Synthesizer observation ("four-pillar SoW structure"), 50 items, richest signal row | Alternate hero / agents feature section |
 | `user-postprocessing.png` (3808x360 strip) | Call ending: 27:06 timer, "Ending...", post-processing 88% with 5 stage chips incl. Save session | Banner for "when the call ends" step |
@@ -42,3 +42,54 @@ scrubbed transcript and is safe end to end.
 Notes for site use: display inside a CSS browser-frame mockup; `user-*` shots are dark
 mode, `postcall-*` provide light variants. Known nit: chat renders raw markdown
 asterisks (visible in user-chat-tech.png).
+
+## Badge labels: lenses vs agents (added 2026-07-24)
+
+The insight-card badges visible in `user-live-early.png` and the other live shots --
+"Question Hunter", "Opp. Scout", "Objection Handler" -- are **current, user-visible
+labels**, not stale artifacts. They still render today
+(`frontend/src/components/ActiveCall/QuestionCard.tsx`, `AGENT_LABELS`). Do not
+"correct" them in copy that describes these images; the badge strings are accurate to
+what is on screen.
+
+What they are NOT is the names of three peer agents. Do not write marketing copy that
+implies that:
+
+- `question_hunter` and `opportunity_scout` (plus `observer` and `action_tracker`) are
+  per-item-type **source labels** stamped on insights produced by the single
+  `consolidated_analyst` agent. See `AGENT_SOURCE_BY_TYPE` in
+  `backend/app/services/agents/consolidated_analyst.py` -- one LLM call emits questions,
+  observations, opportunities, and action items, and each item gets the label matching
+  its type. They are lenses of one agent, not separate agents.
+- `objection_handler` is the only one of the three badges that is an agent in its own
+  right (a real slug in `backend/app/services/seed_agents.py`).
+
+The authoritative roster is `backend/app/services/seed_agents.py`: nine agents --
+`audio_gateway`; five live (`consolidated_analyst`, `objection_handler`, `synthesizer`,
+`opportunity_specialist`, `strategic_signals`); and three briefing lenses
+(`brief_meeting_lens`, `brief_discovery_lens`, `brief_arbiter`). Cite that file when
+counting agents; do not count badges.
+
+## Staleness for marketing use (checked 2026-07-24)
+
+Flagged on verified UI drift only. The badge labels above are NOT a staleness reason.
+
+**Needs recapture -- known drift:**
+
+- `admin-agents.png` / `admin-agents-dark.png`. Two verified mismatches against the
+  shipped app: the Agents tab badge reads **8/8** while `seed_agents.py` now seeds
+  **nine** agents, and the capture shows **three** admin tabs (Agents, Transcription &
+  Audio, API Keys) while `AdminPanel.tsx` ships **four** (`"agents" | "transcription" |
+  "keys" | "about"`). Any "agent lineup" or "self-hosting/privacy" placement using these
+  is showing an out-of-date roster and nav. Cheap to fix: this is a scripted asset --
+  rerun `node showcase/capture.mjs`.
+
+**Regenerate freely if drift is suspected:** all `postcall-*` / `admin-*` pairs. They are
+scripted against the scrubbed demo session, so recapture costs one command.
+
+**Cannot be recaptured -- treat as frozen:** every `user-*` asset. They come from the
+real 32-minute "Fairview discussion #2" replay and are deliberate privacy crops (see
+Curation rules above). If the live UI drifts far enough that these misrepresent the
+product, the correct response is to retire the asset from marketing use, **not** to
+re-shoot from that session. No verified drift is flagged against them as of 2026-07-24;
+the 158-insight / 53-speaker load they show is what makes them worth keeping.

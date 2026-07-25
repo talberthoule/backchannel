@@ -38,8 +38,9 @@ action items you would otherwise reconstruct from memory afterwards.
   the broader discovery view, and an arbiter settles them into a meeting
   briefing after End Call or on demand
 - **Provider-routed models** -- mix Google Gemini and OpenAI models per
-  agent, or transcribe fully offline with local ONNX Whisper/Parakeet
-  (no API key required)
+  agent. Transcription and diarization can run entirely on your machine
+  with local ONNX Whisper/Parakeet and no API key, but the local models are
+  transcription-only, so the analysis agents always call Google or OpenAI
 - **Dual-track audio** -- mic and tab/system audio are captured separately,
   so remote participants get their own speaker identities, and a short voice
   calibration clip keeps your own lines attributed to you
@@ -54,6 +55,26 @@ action items you would otherwise reconstruct from memory afterwards.
   saved insights, and speaker-attributed transcript
 - **Encrypted credentials** -- provider API keys are stored encrypted at
   rest and managed from the Admin panel
+
+## How Backchannel compares
+
+Live in-call assistance is no longer rare -- Otter, Zoom, and the revenue
+intelligence vendors all ship some form of it. What differs is the mechanism
+and the deployment: Backchannel runs a configurable crew of agents you can
+re-prompt and re-model yourself, on hardware you own, with no bot in the
+meeting and no per-seat license.
+
+Sourced, dated comparisons against the tools people evaluate alongside it
+live at
+[backchannel.page/open-source-meeting-assistants](https://backchannel.page/open-source-meeting-assistants/),
+which indexes the full set. The most common starting points:
+
+- [Backchannel vs Meetily](https://backchannel.page/vs-meetily/) -- the
+  closest open-source, local-first alternative
+- [Otter alternative](https://backchannel.page/otter-alternative/) -- including
+  how Otter's Live Assist compares
+- [Granola alternative](https://backchannel.page/granola-alternative/) --
+  bot-free capture without the hosted backend
 
 ## Architecture
 
@@ -108,8 +129,9 @@ and doesn't touch your environment - at the cost of installing Docker and a
 couple of extra setup steps.
 
 Requires Docker with the Compose plugin. The default pipeline uses a free
-[Gemini API key](https://ai.google.dev/) for transcription and agents;
-local ONNX Whisper/Parakeet models can transcribe with no key at all.
+[Gemini API key](https://ai.google.dev/) for transcription and agents.
+Local ONNX Whisper/Parakeet models transcribe with no key at all, but they
+cannot drive the agents -- analysis always calls Google or OpenAI.
 
 ```bash
 git clone https://github.com/talberthoule/backchannel.git

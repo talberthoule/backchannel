@@ -3,6 +3,12 @@
 Date: 2026-07-09. Scope: `site/` (landing `index.html` + shared `style.css` + four
 comparison pages). This is the audit + punch-list; Phase 2 executes it.
 
+> **Dated record -- scope below is as of 2026-07-09.** The site now has **twelve**
+> comparison pages, not four. Punch-list items scoped to "all 4 comparison pages" have
+> grown accordingly. See the update appended at the bottom (2026-07-24) and
+> `design-review/comparison-pages-inventory-2026-07-24.md`. The audit body is left as
+> written.
+
 Method: `/audit` ui-craft skill (usable; a11y / performance / responsive / visual-craft
 lens applied). Visual assessment is code-based, folding in the prior live Chrome MCP
 captures of the same surfaces in `design-review/web-review.md`. I did not re-capture
@@ -204,3 +210,54 @@ Execute top-to-bottom; no re-audit needed.
 10. **Validate.** `npx --yes ui-craft-detect site`; grep `site/` for any `user-*.png` or
     `showcase/` (must be empty); confirm every `<img>` has `width`/`height`; spot-check
     hero LCP and dark-mode rendering in DevTools.
+
+---
+
+# Update -- 2026-07-24 (appended; 2026-07-09 audit not rewritten)
+
+The audit above is dated and its scope line ("four comparison pages") is now wrong. Not
+edited into the body: the P0/P1/P2 findings were assessed against the site as it stood
+on 2026-07-09, and rewriting the scope would misrepresent what was actually audited.
+
+## Scope change
+
+Eight comparison pages shipped on 2026-07-24 (commits 476422b, 10da057): the hub
+`/open-source-meeting-assistants/` plus `/vs-anarlog/`, `/fathom-alternative/`,
+`/read-ai-alternative/`, `/gong-and-backchannel/`, `/vs-clari-copilot/`,
+`/teams-premium-alternative/`, `/plaud-alternative/`. Total is now twelve. Internal
+linking is hub-and-spoke; `footer-compare` carries seven links across 28 HTML files.
+Inventory and add-a-page checklist:
+`design-review/comparison-pages-inventory-2026-07-24.md`.
+
+## Punch-list status (verified 2026-07-24)
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| Section 3 asset optimization + step 1 | **Done** | 24 `.webp` in `site/assets/shots/` (incl. `-full` variants not in the original spec). |
+| Step 10 guardrail: no raw `user-*.png` / `showcase/` refs in `site/` | **Holding** | grep over `site/` `.html`/`.css` returns empty. |
+| P2-2 CTA label drift | **Resolved** | "Try the quickstart" is gone from all 12 comparison pages; "Self-host in minutes" is the single label. |
+| P2-5 comparison-page heroes still text-only | **Open, and now 3x bigger** | 0 hero `<img>` on all 12 pages. Was a 4-page item, now a 12-page item. |
+| Step 9 "comparison pages, lower priority" | **Partly done** | The CTA half (P2-2) landed; the hero-shot half (P2-5) did not, and now spans 12 files. |
+
+P0-1, P0-2, P1-1 through P1-3, and P2-1/P2-3/P2-4 were not re-verified in this update.
+
+## New finding: a stale screenshot is live on the landing page
+
+`site/index.html:227-228` serves `assets/shots/admin-agents.webp` /
+`admin-agents-dark.webp` in a `<picture>`. The source capture is out of date against the
+shipped app in two verified ways: its Agents tab badge reads **8/8** while
+`backend/app/services/seed_agents.py` seeds **nine** agents, and it shows **three** admin
+tabs while `frontend/src/components/AdminPanel.tsx` ships **four**
+(`"agents" | "transcription" | "keys" | "about"`).
+
+This is cheap to fix -- `admin-agents` is a scripted asset, so `node showcase/capture.mjs`
+regenerates it, then re-encode to `.webp` per section 3. Details and the full staleness
+triage are in `showcase/screenshots/README.md`. Note this lands squarely in the "agent
+roster undersell" theme that the 2026-07-24 copy corrections addressed on the comparison
+pages: the prose now says nine agents while the landing-page screenshot still shows
+eight.
+
+## Cost note for future punch-lists
+
+Anything scoped "per comparison page" is now a 12-file edit, and anything touching the
+footer is a 28-file edit. Weigh P2-5 accordingly before picking it up.

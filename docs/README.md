@@ -11,7 +11,10 @@ a set of provider-routed AI agents surface questions, observations,
 opportunities, objections, and action items as the conversation happens.
 
 This folder is the deeper technical reference behind the top-level
-[README](../README.md).
+[README](../README.md). For how Backchannel differs from the other meeting
+assistants people evaluate, the public site's
+[comparison hub](https://backchannel.page/open-source-meeting-assistants/)
+indexes every open-source and commercial comparison.
 
 For desktop operations, [Releasing](releasing.md) and the private R2 manifests
 are authoritative. GitHub releases retain public source tags and notes without

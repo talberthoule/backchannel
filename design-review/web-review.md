@@ -2,6 +2,12 @@
 
 Design-engineering review of Backchannel's public online presence (landing page, SEO comparison pages, and docs) using the `ui-craft` skill system — anti-slop scan, audit lens, and Nielsen heuristic scoring. Review/critique only; no source was edited.
 
+> **Historical record -- do not read the scope below as current.** This file captures one
+> review pass and its scores are frozen at that pass. The site had **four** comparison
+> pages when it was written; it now has **twelve**. See the dated update appended at the
+> bottom (2026-07-24) and `design-review/comparison-pages-inventory-2026-07-24.md` for
+> the current surface. Body text below is left as written.
+
 ## Scope + what was captured
 
 **Surfaces reviewed**
@@ -140,3 +146,51 @@ Readability is genuinely good and needs no fix: prose is chunked into numbered s
 ---
 
 *Scores: Landing 73/C (judged), Docs 82/B (judged). Critical a11y blockers: 0. Detector: 12 warnings / 0 errors, exit 0. The presence has a high taste floor (clean teal system, real icons, honest specific copy) and one repeated structural gap — a proof-less, template-composed hero — that caps conversion.*
+
+---
+
+# Update -- 2026-07-24 (appended; review above not rewritten)
+
+The comparison surface reviewed above no longer matches the site. Recorded here rather
+than edited into the body, because the scores, captures, and detector tally above are a
+record of one pass and are only meaningful against the site as it stood then.
+
+This file is undated in its header; it predates the 2026-07-09 Phase 1 audit, which
+cites it as "the prior review".
+
+## What changed
+
+Eight comparison pages shipped on 2026-07-24 (commits 476422b, 10da057), taking the
+total from four to twelve. The "Comparison pages" section above reviewed
+`/fireflies-alternative`, `/granola-alternative`, `/otter-alternative`, `/vs-meetily`.
+Also live now: `/open-source-meeting-assistants/` (hub), `/vs-anarlog/`,
+`/fathom-alternative/`, `/read-ai-alternative/`, `/gong-and-backchannel/`,
+`/vs-clari-copilot/`, `/teams-premium-alternative/`, `/plaud-alternative/`.
+
+Internal linking moved to hub-and-spoke. The shared `footer-compare` block now carries
+seven links (hub first) instead of four, identical across 28 HTML files, and each page's
+"Other comparisons" doc-list points at same-cluster siblings plus the hub. Full
+inventory, cluster map, and the add-a-page checklist:
+`design-review/comparison-pages-inventory-2026-07-24.md`.
+
+## What that means for the findings above
+
+- **The comparison-page section is now a four-of-twelve sample.** Its conclusions were
+  not re-tested against the eight new pages. Treat the craft findings there
+  (eyebrow flood, uniform card grid, proof-less hero) as unverified for the new pages.
+- **"Positioning copy is a genuine strength" still holds, with a caveat.** The
+  2026-07-24 work also corrected five factual claims on the previously published pages
+  (a false "no open-source tool other than Backchannel" claim, a false "Meetily has no
+  diarization" claim, a missing mention of Otter Live Assist, an Otter user count of
+  40M corrected to 35M, and an agent-roster undersell of four vs the actual nine). The
+  honest, specific tone praised above is the asset; it depends on the claims being
+  right, and some were not.
+- **The detector tally in the summary line (12 warnings / 0 errors) is stale.** Same
+  detector version, much larger scope. Re-run recorded in `design-review/site-fixes.md`
+  under its own 2026-07-24 update.
+- **Landing and docs findings are unaffected** by the comparison-page expansion. Whether
+  the shipped fixes moved the 73/C landing score was not re-scored here; no new
+  heuristic pass was run on 2026-07-24.
+
+No re-scoring, no re-capture, and no live browser pass was performed for this update.
+It is a scope correction only.

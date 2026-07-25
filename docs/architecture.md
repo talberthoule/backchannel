@@ -5,6 +5,13 @@ PostgreSQL -- plus external AI providers (Google Gemini, OpenAI) and local
 ONNX models for voice activity detection, speaker embeddings, and optional
 local transcription.
 
+Diarization always runs on your hardware and transcription can too, but the
+analysis agents cannot: the local ONNX entries in `MODEL_REGISTRY` are
+transcription-only, and `backend/app/services/llm.py` routes every text call
+to Google or OpenAI. A deployment is local for audio, not end to end -- see
+[Privacy First mode](configuration.md#privacy-first-local-only-mode) for what
+turning the agents off actually buys.
+
 ![Architecture diagram](../architecture.svg)
 
 ## The live call path

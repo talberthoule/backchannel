@@ -107,7 +107,9 @@ Diarized segments are transcribed in original audio order through
 - `local-*` model IDs (for example `local-whisper-base`,
   `local-parakeet-tdt-0.6b`) run ONNX Whisper/Parakeet locally via
   `onnx-asr`. Weights download to `DATA_DIR/asr-models/` on first use; no
-  API key required.
+  API key required. These models transcribe only -- they cannot back the
+  analysis agents, which always call Google or OpenAI (see
+  [Configuration](configuration.md#privacy-first-local-only-mode)).
 - Everything else goes to Gemini: the segment is wrapped as WAV and sent
   with a transcription prompt (`backend/app/services/batch_transcriber.py`).
 

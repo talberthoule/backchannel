@@ -5,6 +5,10 @@ Applied the fixes from `design-review/web-review.md`. Scope was `site/` only
 No commit; changes left in the working tree. All copy stays ASCII; SEO meta,
 JSON-LD, sitemap, and comparison-table accuracy preserved.
 
+> **Record of one fix pass.** The detector counts below (6 files, 12 -> 11 warnings) were
+> true for that pass and are kept as-is. `site/` now has twelve comparison pages and a
+> much larger scanned surface; a fresh run is appended at the bottom (2026-07-24).
+
 ## Detector result
 
 `npx --yes ui-craft-detect site`
@@ -90,3 +94,63 @@ swap `assets/shots/postcall-insights.png` in the hero.
   spot + a mis-applied React data-state heuristic); not chased further.
 - Mobile nav still collapses (hides the nav CTA) under 720px -- pre-existing
   behavior; hero CTAs cover mobile. No mobile-nav rework was in scope.
+
+---
+
+# Update -- 2026-07-24: fresh detector run (appended)
+
+The "Detector result" section above is a record of the original fix pass and is left
+unedited. `site/` has grown from 4 comparison pages to 12 (commits 476422b, 10da057),
+plus release pages and a downloads bundle, so the file count and warning tallies there
+no longer describe the current tree.
+
+## Current run
+
+```bash
+npx --yes ui-craft-detect site
+```
+
+**ui-craft anti-slop detector v0.11.0** -- same version as the original run, so the delta
+is scope, not tooling.
+
+| | Original pass | 2026-07-24 |
+| --- | --- | --- |
+| Files scanned | 6 | **39** |
+| Files flagged | 6 | **29** |
+| Errors | 0 | **0** |
+| Warnings | 11 (after fixes) | **58** |
+| Auto-fixed | 0 | **0** |
+
+Warning breakdown:
+
+| Count | Warning | Where |
+| --- | --- | --- |
+| 56 | table without overflow handling or sticky header | 2 per file across 28 HTML files (12 comparison pages, `site/index.html`, `site/releases/index.html`, 14 versioned release pages) |
+| 2 | data-fetching component without empty/error states | `site/downloads/downloads.js:115`, `site/index.html:717` |
+
+## Reading of the result
+
+**No regression.** Both warning classes are the same false positives the original pass
+diagnosed; the count grew because the surface grew, not because quality dropped.
+
+- The 56 table warnings are the documented external-CSS blind spot. The detector reads
+  each HTML file in isolation and never resolves the linked stylesheet, so it cannot see
+  `.table-scroll { overflow-x: auto }` or the `thead th { position: sticky }` rule in
+  `site/style.css`. Every flagged table inherits both. Ratio is unchanged from the
+  original pass (2 warnings per table-bearing file: 10 across 5 files then, 56 across 28
+  now).
+- The `site/index.html` data-fetching warning is the same nav star-count `fetch` the
+  original pass analyzed -- it has both an `r.ok` guard and a `.catch`, and the heuristic
+  (aimed at React data components) does not credit them.
+- `site/downloads/downloads.js:115` is a **new** instance of that same heuristic,
+  introduced with the downloads portal after the original pass. It was not reviewed as
+  part of this update; someone should confirm it has real empty/error handling rather
+  than assume it inherits the index.html verdict.
+
+## Consequence for future runs
+
+The detector's absolute warning count is now useless as a quality signal for `site/` --
+it scales with page count, and every new comparison page adds exactly 2 warnings if it
+carries a table. Track **errors** (still 0) and the per-class breakdown instead. A
+thirteenth comparison page is expected to take this to 60 warnings with no quality
+change.
