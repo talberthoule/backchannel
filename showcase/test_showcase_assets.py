@@ -1,6 +1,7 @@
 import unittest
 from collections import Counter
 from pathlib import Path
+import sys
 
 from PIL import Image
 
@@ -8,6 +9,9 @@ from showcase import seed_demo
 
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "backend"))
+from app.routers.offerings import _get_seed_data
+
 SCREENSHOTS = REPO / "showcase" / "screenshots"
 SHOTS = REPO / "site" / "assets" / "shots"
 
@@ -68,14 +72,27 @@ class ShowcaseFixtureTests(unittest.TestCase):
         for marker in RETIRED_MARKERS:
             self.assertNotIn(marker, current_story)
 
+    def test_catalog_supports_the_recovery_services_story(self):
+        offerings = _get_seed_data()
+        product_names = {offering["product_name"] for offering in offerings}
+        self.assertTrue(
+            {
+                "Recovery Readiness Assessment",
+                "Recovery Implementation Pilot",
+                "Managed Recovery Operations",
+            }
+            <= product_names
+        )
+        self.assertNotIn("In-House", {offering["vendor"] for offering in offerings})
+
+
+class ShowcaseAssetTests(unittest.TestCase):
     def test_public_showcase_text_does_not_reference_the_retired_story(self):
         for path in PUBLIC_TEXT:
             text = path.read_text(encoding="utf8")
             for marker in RETIRED_MARKERS:
                 self.assertNotIn(marker, text, path)
 
-
-class ShowcaseAssetTests(unittest.TestCase):
     def test_source_png_manifest_is_complete(self):
         expected = {
             f"{name}{suffix}.png"
