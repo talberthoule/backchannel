@@ -324,9 +324,15 @@ WeSpeaker embedding approach. What is ours is live per-segment attribution durin
 the call, voice enrollment, split mic/system-track identities, and the fact that
 those labels feed nine agents.
 
-**Second concession, unavoidable in this category.** Meetily CE, Anarlog, and
-Vibe all summarize fully offline through Ollama. We cannot. That is ALP-137 and
-it is the sharpest attack available against us in this category ([LFO]).
+**Second concession -- RESOLVED in v0.3.7 (2026-07-25).** This previously read
+that Meetily CE, Anarlog, and Vibe all summarize fully offline through Ollama
+and we could not. ALP-137 shipped, so the agents now target any
+OpenAI-compatible endpoint and a deployment can run end to end with no cloud
+key. The remaining, narrower concession is that the Privacy First switch still
+disables the agents, because its gate recognizes only the local transcription
+models -- so a fully local setup is configured through the endpoint rather than
+that toggle. Meetily's Ollama-first design is still smoother on that one path;
+say so.
 
 **Links.** Primary `/vs-meetily/`. Secondary `/vs-anarlog/`. Hub link.
 
@@ -576,10 +582,12 @@ and stays that way. Say so in the post rather than letting someone discover it.
 > **What runs where.** Voice activity detection (Silero VAD) and speaker
 > embeddings (WeSpeaker ResNet152) are ONNX and always run on your box.
 > Transcription is either a local ONNX Whisper/Parakeet model or a cloud model,
-> your choice. The insight agents currently need a Gemini or OpenAI key. **There
-> is no local LLM option yet** -- that is the honest gap, and I am not going to
-> pretend the stack is air-gapped when it is not. Local Ollama / LM Studio
-> support is the next thing I want to ship.
+> your choice. As of v0.3.7 the insight agents can point at any
+> OpenAI-compatible server -- Ollama, LM Studio, vLLM -- so the whole stack can
+> run with no key from anyone. One honest caveat I will not paper over: the
+> Privacy First switch still turns the agents off, because it only recognizes
+> the local transcription models. A fully local setup means configuring the
+> endpoint yourself rather than flipping that toggle.
 >
 > **Stack.** React + TypeScript frontend, FastAPI backend, PostgreSQL 16, all in
 > compose. Recorded audio lands as per-segment WAV on disk, so you can
@@ -688,9 +696,10 @@ automatically. Never paste into Medium's editor.
    and it is cheap because the briefing runs once.
 8. **What I would do differently.** The interval-based triggers should be
    event-based with backpressure. The dedup should be embedding-based. And the
-   LLM route should have been an OpenAI-compatible base URL from day one, because
-   hardcoding `https://api.openai.com/v1` is now the single biggest limitation in
-   the project (ALP-137).
+   LLM route should have been an OpenAI-compatible base URL from day one.
+   Hardcoding `https://api.openai.com/v1` was the single biggest limitation in
+   the project until v0.3.7 fixed it (ALP-137) -- worth telling as a mistake we
+   made and corrected, which reads better than presenting it as a feature.
 9. **Honest limits** -- the same caveat block as the Show HN comment, compressed.
 10. **Links.** Canonical article, and the repo. Nothing else. (See section D.)
 
@@ -755,7 +764,7 @@ same article to Hacker News twice.
 | --- | --- | --- |
 | Hacker News (Show HN) | B1 for the product; article 6 or 1 as a standalone link post | Weekday, 08:00-10:00 ET, Tue-Thu preferred. One submission. No vote solicitation. Author in-thread for the first four hours. |
 | r/selfhosted | B2 | Disclose authorship in the first line. Correct flair. Compose path only. |
-| r/LocalLLaMA | **Blocked -- do not post** | Gated on ALP-137. See section E. |
+| r/LocalLLaMA | **Unblocked as of v0.3.7** | ALP-137 shipped 2026-07-25. Lead with the OpenAI-compatible endpoint and name the Privacy First caveat up front; this audience will find it. |
 | r/opensource | Article 4 or article 6 | Project-and-license framing, not a pitch. |
 | r/SideProject | B1 body, softened | Lowest signal of the four; use it last. |
 
