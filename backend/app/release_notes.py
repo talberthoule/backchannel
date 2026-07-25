@@ -10,10 +10,33 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.3.6"
+APP_VERSION = "0.3.7"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.3.7",
+        "date": "2026-07-25",
+        "title": "Run the agents on your own machine",
+        "body": """The analysis agents can now use a self-hosted
+OpenAI-compatible server instead of a cloud provider.
+
+- Point the agents at Ollama, LM Studio, vLLM, or LiteLLM by setting a
+  base URL and model id in Admin -> API Keys, then pick the
+  OpenAI-Compatible model for any agent. Paired with local ONNX
+  transcription, the whole pipeline runs on your hardware with no API
+  key from anyone.
+- Local endpoints usually need no credential, so none is required and
+  no authorization header is sent. Set one only if your server expects
+  it.
+- Nothing changes unless you configure it. With no base URL set, every
+  existing setup behaves exactly as before.
+
+One thing to know: the Privacy First switch still turns the analysis
+agents off, because it recognizes only the local transcription models.
+A fully local setup is configured through the endpoint rather than
+through that switch.""",
+    },
     {
         "version": "0.3.6",
         "date": "2026-07-23",

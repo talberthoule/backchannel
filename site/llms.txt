@@ -40,7 +40,7 @@ Key facts:
 ## Docs
 
 - [Download portal](https://downloads.backchannel.page/): authenticated Windows, macOS, and Linux executable delivery for approved Backchannel accounts
-- [Desktop release v0.3.6](https://backchannel.page/releases/v0.3.6/): public asset inventory, release notes, install notes, and first-run guidance
+- [Desktop release v0.3.7](https://backchannel.page/releases/v0.3.7/): public asset inventory, release notes, install notes, and first-run guidance
 - [All releases](https://backchannel.page/releases/): version history with publish dates and per-release notes
 - [Full documentation as one file](https://backchannel.page/llms-full.txt): every docs page concatenated as plain markdown for agents
 - [Quickstart](https://backchannel.page/docs/quickstart/): Docker Compose setup, local development, migrations, tests
