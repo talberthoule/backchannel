@@ -223,6 +223,41 @@ class DiarizationWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([(b"bad", "inference failed")], errors)
         self.assertEqual([b"good"], handled)
 
+    async def test_item_done_failure_is_logged_and_worker_continues(self):
+        class EchoDiarizer:
+            def feed_audio(self, pcm_bytes):
+                return [SimpleNamespace(speaker_id="auto_1", pcm_bytes=pcm_bytes)]
+
+        handled = []
+
+        async def on_segment(item, segment):
+            handled.append(segment.pcm_bytes)
+
+        def on_item_done(item):
+            if item.pcm_bytes == b"first":
+                raise RuntimeError("bookkeeping failed")
+
+        queue = asyncio.Queue()
+        worker = asyncio.create_task(
+            audio_handler._run_diarization_worker(
+                queue,
+                EchoDiarizer(),
+                MagicMock(),
+                on_segment,
+                AsyncMock(),
+                on_item_done,
+            )
+        )
+        queue.put_nowait(audio_handler._QueuedAudioFrame(0, b"first", False, 1.0))
+        queue.put_nowait(audio_handler._QueuedAudioFrame(0, b"second", False, 2.0))
+        queue.put_nowait(None)
+
+        with self.assertLogs("app.ws.audio_handler", level="WARNING") as logs:
+            await worker
+
+        self.assertEqual([b"first", b"second"], handled)
+        self.assertIn("Diarization item completion callback failed", logs.output[0])
+
 
 class AudioFrameDecodingTests(unittest.TestCase):
     def test_local_embedding_is_enrolled_only_when_passed_to_registry(self):

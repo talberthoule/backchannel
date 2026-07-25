@@ -250,7 +250,10 @@ async def _run_diarization_worker(
                 logger.warning("Diarization error callback failed", exc_info=True)
         finally:
             if on_item_done is not None:
-                on_item_done(item)
+                try:
+                    on_item_done(item)
+                except Exception:
+                    logger.warning("Diarization item completion callback failed", exc_info=True)
 
 
 async def _flush_remaining_audio(
