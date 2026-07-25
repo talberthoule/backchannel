@@ -52,6 +52,11 @@ Key facts:
 - [Configuration](https://backchannel.page/docs/configuration/): settings, environment variables, model registry
 - [Deployment](https://backchannel.page/docs/deployment/): compose services, GPU support, startup behavior
 
+## Writing
+
+- [Writing index](https://backchannel.page/blog/): dated, vendor-sourced notes on the AI meeting-assistant category
+- [Live meeting AI arrived in one week, and all of it is Enterprise-gated](https://backchannel.page/blog/live-meeting-ai-enterprise-gate/) (2026-07-25): Otter Live Assist (2026-07-21, Otter Enterprise) and Zoom Revenue Accelerator Sales Assist (2026-07-22, Essentials from $66/user/mo and Premium from $99.99/user/mo annual, Essentials dated August) both shipped real-time in-call guidance within 48 hours. Compares the three mechanisms now in market: Zoom pre-configures guidance per topic category via admin setup, Otter grounds it in playbooks and SOPs you supply, and Backchannel generates it from the trailing transcript window. Concedes that pre-authored guidance is more consistent and reviewable.
+
 ## Compare
 
 - [Open-source Otter.ai alternative](https://backchannel.page/otter-alternative/): self-hosted transcripts and insights without minute caps

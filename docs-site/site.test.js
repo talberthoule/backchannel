@@ -12,6 +12,8 @@ const customerFiles = [
   '../AGENTS.md',
   '../CLAUDE.md',
   '../site/index.html',
+  '../site/blog/index.html',
+  '../site/blog/live-meeting-ai-enterprise-gate/index.html',
   '../site/fireflies-alternative/index.html',
   '../site/granola-alternative/index.html',
   '../site/otter-alternative/index.html',
