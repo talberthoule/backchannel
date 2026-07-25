@@ -56,11 +56,6 @@ async def _handle_audio_frame(
                     (mixed, mic, system),
                     state.split_track_established,
                 )
-            if state.gateway_available:
-                state.gateway_available = await _send_gateway_audio(
-                    orchestrator,
-                    mixed,
-                )
 
         state.split_track_established = _split_track_established_after_frame(
             track,
@@ -76,6 +71,11 @@ async def _handle_audio_frame(
                 enqueued_at=enqueued_at,
             )
         )
+        if mixed_frames and state.gateway_available:
+            state.gateway_available = await _send_gateway_audio(
+                orchestrator,
+                mixed,
+            )
         audio_flow = _record_audio_flow(
             state.audio_bytes_by_track,
             track,

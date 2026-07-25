@@ -14,7 +14,7 @@ import numpy as np
 
 from app.models import CallSegment, TranscriptEntry
 from app.services.agents.orchestrator import AgentOrchestrator
-from app.ws import audio_handler
+from app.ws import audio_handler, audio_messages
 from app.ws.audio_handler import (
     _decode_audio_frame,
 )
@@ -298,6 +298,74 @@ class DiarizationWorkerShutdownTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AudioPipelineOrderingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_gateway_cancellation_keeps_persisted_frame_queued(self):
+        events = []
+        gateway_started = asyncio.Event()
+        never = asyncio.Event()
+        queue = asyncio.Queue()
+        pending = deque()
+        writers = {
+            track: MagicMock(
+                append=MagicMock(
+                    side_effect=lambda _pcm, track=track: events.append(track)
+                )
+            )
+            for track in ("mixed", "mic", "system")
+        }
+        state = SimpleNamespace(
+            audio_chunks_received=0,
+            audio_bytes_received=0,
+            audio_bytes_by_track=[0, 0],
+            last_audio_status_at=monotonic(),
+            split_track_established=False,
+            gateway_available=True,
+        )
+        gateway_saw_queued_frame = []
+
+        async def blocked_gateway(*_args):
+            events.append("gateway")
+            gateway_saw_queued_frame.append(not queue.empty())
+            gateway_started.set()
+            await never.wait()
+
+        with patch(
+            "app.ws.audio_messages._send_gateway_audio",
+            side_effect=blocked_gateway,
+        ):
+            task = asyncio.create_task(
+                audio_messages._handle_audio_frame(
+                    b"\x00\x01\x02",
+                    MagicMock(send_json=AsyncMock()),
+                    MagicMock(),
+                    MagicMock(
+                        add=MagicMock(
+                            return_value=(b"mixed", b"mic", b"system")
+                        )
+                    ),
+                    writers,
+                    queue,
+                    pending,
+                    state,
+                )
+            )
+            await gateway_started.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        self.assertEqual(
+            ["mixed", "mic", "system", "gateway"],
+            events,
+        )
+        self.assertEqual([True], gateway_saw_queued_frame)
+        item = queue.get_nowait()
+        self.assertEqual((0, b"\x01\x02", False), (
+            item.track,
+            item.pcm_bytes,
+            item.split_track_established,
+        ))
+        self.assertEqual(1, len(pending))
+
     async def test_persists_before_gateway_and_stops_worker_before_finalize(self):
         events = []
         segment_id = uuid.uuid4()
@@ -477,7 +545,11 @@ class AudioGatewayIsolationTests(unittest.IsolatedAsyncioTestCase):
     async def test_gateway_send_timeout_is_nonfatal(self):
         never = asyncio.Event()
         orchestrator = MagicMock()
-        orchestrator.send_audio = AsyncMock(side_effect=never.wait)
+
+        async def block_send(_pcm_data):
+            await never.wait()
+
+        orchestrator.send_audio = AsyncMock(side_effect=block_send)
 
         with patch(
             "app.ws.audio_runtime._GATEWAY_SEND_TIMEOUT_SECONDS",

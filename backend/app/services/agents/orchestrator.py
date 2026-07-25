@@ -374,7 +374,11 @@ class AgentOrchestrator:
         self.directives.append(text)
 
     async def check_health(self) -> bool:
-        if self._gateway_task and self._gateway_task.done():
+        if not self._is_enabled("audio_gateway"):
+            return True
+        if self._gateway_task is None:
+            return False
+        if self._gateway_task.done():
             exc = (
                 self._gateway_task.exception()
                 if not self._gateway_task.cancelled()
