@@ -2,6 +2,7 @@ import asyncio
 import threading
 import unittest
 import uuid
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -256,6 +257,45 @@ class DiarizationWorkerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual([b"first", b"second"], handled)
         self.assertIn("Diarization item completion callback failed", logs.output[0])
+
+
+class DiarizationWorkerShutdownTests(unittest.IsolatedAsyncioTestCase):
+    async def test_shutdown_waits_for_sentinel_and_reports_backlog(self):
+        queue = asyncio.Queue()
+        pending = deque([monotonic() - 10])
+        websocket = MagicMock(send_json=AsyncMock())
+        finished = asyncio.Event()
+
+        async def slow_worker():
+            await asyncio.sleep(0.03)
+            pending.popleft()
+            finished.set()
+            return "system-diarizer"
+
+        task = asyncio.create_task(slow_worker())
+
+        with patch.object(
+            audio_handler,
+            "_DIARIZATION_DRAIN_STATUS_SECONDS",
+            0.01,
+        ):
+            result = await audio_handler._stop_diarization_worker(
+                websocket,
+                queue,
+                task,
+                pending,
+            )
+
+        self.assertTrue(finished.is_set())
+        self.assertEqual("system-diarizer", result)
+        self.assertIsNone(queue.get_nowait())
+        statuses = [
+            call.args[0]["data"]
+            for call in websocket.send_json.await_args_list
+        ]
+        self.assertTrue(
+            any(status["state"] == "post_processing" for status in statuses)
+        )
 
 
 class AudioFrameDecodingTests(unittest.TestCase):
