@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AgentConfig, AnalystLens, KnowledgeSource, ModelInfo, PrivacyConfig } from "../types";
 import * as api from "../services/api";
+import { groupModels, optionLabel, optionState, runsLocally } from "../lib/modelOptions";
 import { useConfirm } from "./ConfirmProvider";
 import DiarizationCapabilityCard from "./DiarizationCapabilityCard";
 import BatchTranscriptionCard from "./BatchTranscriptionCard";
 import ApiKeysCard from "./ApiKeysCard";
+import EndpointsCard from "./EndpointsCard";
 import PrivacyModeCard from "./PrivacyModeCard";
 import ProviderOnboardingCard from "./ProviderOnboardingCard";
 import AboutCard from "./AboutCard";
@@ -351,8 +353,10 @@ function AgentCard({
   const intervalDriven = agent.agent_type === "text" || agent.slug === "strategic_signals";
   const modelOptions = models.filter((m) => (agent.agent_type === "audio" ? m.supports_live_audio : m.supports_text));
   const hasLockedModels = modelOptions.some((m) => m.key_available === false);
-  // Privacy First mode sidelines any agent that has no local model to run on
-  const blockedByPrivacy = localOnly && !modelOptions.some((m) => m.provider === "Local");
+  // Privacy First mode sidelines any agent that has no local model to run on.
+  // A self-hosted text model counts, which is how the analysis agents keep
+  // working with the mode on.
+  const blockedByPrivacy = localOnly && !modelOptions.some(runsLocally);
 
   return (
     <div className={`rounded-xl bg-surface shadow-sm ring-1 ring-brand-light-gray-1/60 transition-opacity ${isSaving ? "opacity-70" : ""} ${agent.enabled && !blockedByPrivacy ? "" : "opacity-80"}`}>
@@ -409,17 +413,18 @@ function AgentCard({
             onChange={(e) => onUpdate(agent.slug, "model_id", e.target.value)}
             className="w-full rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 text-sm text-brand-dark-gray focus:border-brand-teal"
           >
-            {modelOptions.map((m) => {
-              const cloudBlocked = localOnly && m.provider !== "Local";
-              const keyLocked = m.key_available === false;
-              const locked = (keyLocked || cloudBlocked) && m.id !== agent.model_id;
-              const suffix = cloudBlocked ? " — cloud model, off in Privacy First" : keyLocked ? " — add API key to enable" : "";
-              return (
-                <option key={m.id} value={m.id} disabled={locked}>
-                  {m.name} ({m.id}){suffix}
-                </option>
-              );
-            })}
+            {groupModels(modelOptions).map((group) => (
+              <optgroup key={group.provider} label={group.provider}>
+                {group.models.map((m) => {
+                  const { locked, suffix } = optionState(m, agent.model_id, localOnly);
+                  return (
+                    <option key={m.id} value={m.id} disabled={locked}>
+                      {optionLabel(m)}{suffix}
+                    </option>
+                  );
+                })}
+              </optgroup>
+            ))}
           </select>
           {hasLockedModels && (
             <p className="mt-1 font-body text-[10px] text-brand-mid-gray">
@@ -770,6 +775,14 @@ export default function AdminPanel({ onBack, initialTab, highlightSince, onboard
                 onChanged={() => {
                   refreshModels();
                   setKeysRefresh((n) => n + 1);
+                }}
+              />
+              {/* Adding or removing an endpoint changes which models exist, and
+                  an on-prem one changes what Privacy First can still run. */}
+              <EndpointsCard
+                onChanged={() => {
+                  refreshModels();
+                  void api.getPrivacyConfig().then(setPrivacy).catch(() => {});
                 }}
               />
             </div>

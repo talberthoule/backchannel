@@ -228,6 +228,38 @@ export interface ModelInfo {
   supports_text?: boolean;
   supports_batch_audio?: boolean;
   supports_live_audio?: boolean;
+  /** Runs on this machine or its network, so Privacy First mode allows it. */
+  runs_locally?: boolean;
+  /** Set when the model is served by a saved self-hosted endpoint. */
+  endpoint_id?: string | null;
+}
+
+/** A self-hosted OpenAI-compatible server (LM Studio, Ollama, vLLM, LiteLLM). */
+export interface CustomEndpointModel {
+  id: string;
+  label: string;
+  /** Registry id to store on an agent, e.g. "endpoint:lm-studio:antares-1b". */
+  model_id: string;
+}
+
+export interface CustomEndpoint {
+  id: string;
+  name: string;
+  base_url: string;
+  has_api_key: boolean;
+  models: CustomEndpointModel[];
+  enabled: boolean;
+  on_prem: boolean;
+  last_status: "ok" | "error" | "";
+  last_error: string;
+  last_checked_at: string | null;
+}
+
+export interface EndpointProbeResult {
+  ok: boolean;
+  message: string;
+  served_models: string[];
+  on_prem?: boolean;
 }
 
 // USD per 1M tokens at standard text-tier rates (no long-context or

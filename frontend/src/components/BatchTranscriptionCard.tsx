@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ModelInfo, TranscriptionConfig } from "../types";
 import * as api from "../services/api";
+import { groupModels, optionLabel, optionState } from "../lib/modelOptions";
 
 interface BatchTranscriptionCardProps {
   models: ModelInfo[];
@@ -62,14 +63,19 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
     }
   };
 
-  const optionState = (model: ModelInfo, currentId: string | undefined) => {
-    const cloudBlocked = localOnly && model.provider !== "Local";
-    const keyLocked = model.key_available === false;
-    return {
-      locked: (keyLocked || cloudBlocked) && model.id !== currentId,
-      suffix: cloudBlocked ? " — cloud model, off in Privacy First" : keyLocked ? " — add API key to enable" : "",
-    };
-  };
+  const renderOptions = (available: ModelInfo[], currentId: string | undefined) =>
+    groupModels(available).map((group) => (
+      <optgroup key={group.provider} label={group.provider}>
+        {group.models.map((model) => {
+          const { locked, suffix } = optionState(model, currentId, localOnly);
+          return (
+            <option key={model.id} value={model.id} disabled={locked}>
+              {optionLabel(model)}{suffix}
+            </option>
+          );
+        })}
+      </optgroup>
+    ));
 
   return (
     <div className={`rounded-xl bg-surface p-5 shadow-sm transition-opacity ${saving ? "opacity-70" : ""}`}>
@@ -120,14 +126,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
             onChange={(event) => void update({ batch_model_id: event.target.value })}
             className="w-full rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 text-sm text-brand-dark-gray transition-colors focus:border-brand-teal disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
           >
-            {batchModels.map((model) => {
-              const { locked, suffix } = optionState(model, config?.batch_model_id);
-              return (
-                <option key={model.id} value={model.id} disabled={locked}>
-                  {model.name} ({model.id}){suffix}
-                </option>
-              );
-            })}
+            {renderOptions(batchModels, config?.batch_model_id)}
           </select>
         </div>
         <div>
@@ -138,14 +137,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
             onChange={(event) => void update({ live_preview_model_id: event.target.value })}
             className="w-full rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 text-sm text-brand-dark-gray transition-colors focus:border-brand-teal disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
           >
-            {liveModels.map((model) => {
-              const { locked, suffix } = optionState(model, config?.live_preview_model_id);
-              return (
-                <option key={model.id} value={model.id} disabled={locked}>
-                  {model.name} ({model.id}){suffix}
-                </option>
-              );
-            })}
+            {renderOptions(liveModels, config?.live_preview_model_id)}
           </select>
         </div>
       </div>

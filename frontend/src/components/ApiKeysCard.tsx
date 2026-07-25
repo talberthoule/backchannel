@@ -1,101 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { useConfirm } from "./ConfirmProvider";
 import * as api from "../services/api";
-import type { CredentialInfo, TextEndpointConfig } from "../services/api";
+import type { CredentialInfo } from "../services/api";
 
+// Self-hosted servers are configured per endpoint in EndpointsCard, not as a
+// single workspace-wide key, so that provider is not listed here.
 const COMPATIBLE = api.OPENAI_COMPATIBLE_PROVIDER;
 
 const PROVIDER_LABELS: Record<string, string> = {
   google: "Google (Gemini)",
   openai: "OpenAI",
-  [COMPATIBLE]: "OpenAI-Compatible Endpoint",
 };
 
 // Direct links to each provider's key-creation page so users never hunt
-// through console menus. The self-hosted endpoint has no such page.
+// through console menus.
 const PROVIDER_KEY_PAGES: Record<string, string> = {
   google: "https://aistudio.google.com/apikey",
   openai: "https://platform.openai.com/api-keys",
 };
-
-// Base URL and model id for a self-hosted OpenAI-compatible chat server.
-// Both are optional: unset leaves the backend on its built-in defaults, so an
-// untouched workspace behaves exactly as it did before this section existed.
-function TextEndpointFields({ onSaved }: { onSaved?: () => void }) {
-  const [config, setConfig] = useState<TextEndpointConfig | null>(null);
-  const [baseUrl, setBaseUrl] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
-
-  const apply = (next: TextEndpointConfig) => {
-    setConfig(next);
-    setBaseUrl(next.base_url);
-    setModelId(next.model_id);
-  };
-
-  useEffect(() => {
-    api.getTextEndpoint().then(apply).catch((err) => console.error("Failed to load text endpoint", err));
-  }, []);
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      apply(await api.saveTextEndpoint({ base_url: baseUrl, model_id: modelId }));
-      setMessage({ ok: true, text: "Saved" });
-      onSaved?.();
-    } catch (err) {
-      setMessage({ ok: false, text: err instanceof Error ? err.message : "Save failed" });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const dirty = !!config && (baseUrl !== config.base_url || modelId !== config.model_id);
-
-  return (
-    <div className={`mt-2 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 p-3 transition-opacity ${busy ? "opacity-70" : ""}`}>
-      <div className="grid gap-3 md:grid-cols-2">
-        <div>
-          <label className="mb-1 block font-body text-[10px] font-medium text-brand-gray">Base URL</label>
-          <input
-            type="text"
-            value={baseUrl}
-            placeholder={config?.fallback_base_url || "http://localhost:11434/v1"}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            className="w-full rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1.5 font-mono text-xs text-brand-dark-gray focus:border-brand-teal"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block font-body text-[10px] font-medium text-brand-gray">Model id</label>
-          <input
-            type="text"
-            value={modelId}
-            placeholder="llama3.1:8b"
-            onChange={(e) => setModelId(e.target.value)}
-            className="w-full rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1.5 font-mono text-xs text-brand-dark-gray focus:border-brand-teal"
-          />
-        </div>
-      </div>
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          onClick={save}
-          disabled={busy || !dirty}
-          className="rounded bg-brand-teal px-3 py-1.5 font-body text-xs font-medium text-white transition-opacity disabled:opacity-40"
-        >
-          Save endpoint
-        </button>
-        <p className="font-body text-[10px] text-brand-mid-gray">
-          Ollama uses http://localhost:11434/v1, LM Studio http://localhost:1234/v1. Leave both blank to
-          keep the built-in defaults. Pick &quot;OpenAI-Compatible Endpoint&quot; as an agent&apos;s model to use it.
-        </p>
-      </div>
-      {message && (
-        <p className={`mt-1 font-body text-xs ${message.ok ? "text-brand-teal" : "text-red-600"}`}>{message.text}</p>
-      )}
-    </div>
-  );
-}
 
 interface ApiKeysCardProps {
   onChanged?: () => void;
@@ -110,7 +32,8 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
 
   const load = useCallback(async () => {
     try {
-      setCredentials(await api.listCredentials());
+      const all = await api.listCredentials();
+      setCredentials(all.filter((cred) => cred.provider !== COMPATIBLE));
     } catch (err) {
       console.error("Failed to load credentials", err);
     }
@@ -176,17 +99,15 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
 
   return (
     <div className="rounded-xl bg-surface p-5 shadow-sm">
-      <h3 className="font-display text-base font-bold text-brand-dark-gray">API Keys</h3>
+      <h3 className="font-display text-base font-bold text-brand-dark-gray">Cloud Provider Keys</h3>
       <p className="mt-1 mb-4 font-body text-xs text-brand-gray leading-relaxed">
         Workspace keys are encrypted at rest and used by all agents. Environment variables remain a fallback.
+        Self-hosted servers are configured below and usually need no key at all.
       </p>
       <div className="space-y-4">
         {credentials.map((cred) => {
           const isBusy = busy === cred.provider;
           const result = results[cred.provider];
-          // A self-hosted server usually needs no key, so its row must not
-          // read as broken when none is stored and Test must stay usable.
-          const keyOptional = cred.provider === COMPATIBLE;
           return (
             <div key={cred.provider} className={`transition-opacity ${isBusy ? "opacity-70" : ""}`}>
               <div className="flex items-center gap-2 mb-1">
@@ -213,7 +134,7 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
                   </>
                 ) : (
                   <span className="inline-flex rounded-full bg-brand-light-gray-1 px-2 py-0.5 text-[10px] font-medium text-brand-dark-gray">
-                    {keyOptional ? "No key needed" : "Not configured"}
+                    Not configured
                   </span>
                 )}
                 {PROVIDER_KEY_PAGES[cred.provider] && (
@@ -230,7 +151,7 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
               <div className="flex items-center gap-2">
                 <input
                   type="password"
-                  placeholder={cred.configured ? "Replace key..." : keyOptional ? "Optional API key..." : "Paste API key..."}
+                  placeholder={cred.configured ? "Replace key..." : "Paste API key..."}
                   value={inputs[cred.provider] || ""}
                   onChange={(e) => setInputs((prev) => ({ ...prev, [cred.provider]: e.target.value }))}
                   className="w-full max-w-md rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 font-mono text-sm text-brand-dark-gray focus:border-brand-teal"
@@ -244,7 +165,7 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
                 </button>
                 <button
                   onClick={() => handleTest(cred.provider)}
-                  disabled={isBusy || (!keyOptional && !cred.configured && !cred.env_fallback)}
+                  disabled={isBusy || (!cred.configured && !cred.env_fallback)}
                   className="rounded border border-brand-light-gray-1 px-3 py-1.5 font-body text-xs font-medium text-brand-dark-gray transition-opacity disabled:opacity-40"
                 >
                   Test
@@ -264,7 +185,6 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
                   {result.message}
                 </p>
               )}
-              {keyOptional && <TextEndpointFields onSaved={onChanged} />}
             </div>
           );
         })}

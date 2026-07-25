@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import MODEL_REGISTRY
 from app.services.app_settings import get_app_setting, set_app_setting
+from app.services.custom_endpoints import is_endpoint_model, resolve_target_standalone
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,22 @@ def is_local_model(model_id: str) -> bool:
     return model_id.startswith("local-")
 
 
+async def allows_local_only(model_id: str) -> bool:
+    """True when this model can still run with Privacy First mode on.
+
+    Bundled ONNX models qualify, and so does any model served by an endpoint
+    on this machine or its network: the audio and text never leave the
+    perimeter, which is the guarantee the mode exists to make. An endpoint
+    reachable only over the public internet does not qualify.
+    """
+    if is_local_model(model_id):
+        return True
+    if not is_endpoint_model(model_id):
+        return False
+    target = await resolve_target_standalone(model_id)
+    return bool(target and target.on_prem)
+
+
 def local_models(capability: str) -> list[dict]:
     """Registry entries with the given capability that run locally."""
     return [
@@ -63,14 +80,18 @@ async def set_local_only(db: AsyncSession, enabled: bool) -> None:
     logger.info(f"Privacy First (local-only) mode {'enabled' if enabled else 'disabled'}")
 
 
-def privacy_impact() -> dict:
+def privacy_impact(on_prem_text_models: list[dict] | None = None) -> dict:
     """What keeps working and what stops, derived from the model registry.
 
     Computed dynamically so the lists stay accurate if local models gain
-    text or live-audio support later.
+    text or live-audio support later. on_prem_text_models are the models
+    served by endpoints on this machine or its network (see
+    services/custom_endpoints.py): configuring one moves the analysis agents
+    from the disabled list to the available list, because a self-hosted model
+    can do that work without an outside API call.
     """
     local_batch = local_models("supports_batch_audio")
-    local_text = local_models("supports_text")
+    local_text = local_models("supports_text") + list(on_prem_text_models or [])
     local_live = local_models("supports_live_audio")
 
     available = [
@@ -97,6 +118,16 @@ def privacy_impact() -> dict:
             "detail": "All stored in the local PostgreSQL database.",
         },
     ]
+
+    if local_text:
+        available.append({
+            "feature": "AI analysis agents, transcript analysis, and meeting chat",
+            "detail": (
+                "Point them at a self-hosted model: "
+                + ", ".join(m["name"] for m in local_text)
+                + ". Prompts and transcripts stay on your network."
+            ),
+        })
 
     disabled = []
     if not local_live:

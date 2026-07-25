@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ModelInfo, Session } from "../../types";
 import * as api from "../../services/api";
+import { groupModels } from "../../lib/modelOptions";
 
 interface MeetingChatProps {
   session: Session;
@@ -163,8 +164,12 @@ export default function MeetingChat({ session }: MeetingChatProps) {
             onChange={(e) => setModelId(e.target.value)}
             className="ml-auto rounded border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-dark-gray focus:border-brand-teal"
           >
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>{m.name}</option>
+            {groupModels(models).map((group) => (
+              <optgroup key={group.provider} label={group.provider}>
+                {group.models.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
           <button

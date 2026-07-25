@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import Question, Session, SessionSynthesis, Speaker, TranscriptEntry
+from app.services.custom_endpoints import endpoint_model_entry
 from app.services.llm import generate_text, provider_for, registry_entry
 from app.services.provider_errors import PROVIDER_ERROR_TYPES, provider_error_to_http
 
@@ -147,7 +148,8 @@ def build_chat_prompt(
 
 @router.post("")
 async def chat(body: ChatIn, db: AsyncSession = Depends(get_db)):
-    entry = registry_entry(body.model_id)
+    # Self-hosted endpoint models are not in the static registry.
+    entry = registry_entry(body.model_id) or await endpoint_model_entry(db, body.model_id)
     if not entry or not entry.get("supports_text"):
         raise HTTPException(400, f"Model {body.model_id} does not support text generation")
 

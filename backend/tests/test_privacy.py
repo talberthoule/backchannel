@@ -1,7 +1,11 @@
 import unittest
+from unittest import mock
 
+from app.services import privacy as privacy_mod
+from app.services.custom_endpoints import EndpointTarget
 from app.services.privacy import (
     DEFAULT_LOCAL_BATCH_MODEL,
+    allows_local_only,
     is_local_model,
     local_models,
     privacy_impact,
@@ -49,6 +53,58 @@ class TestPrivacyImpact(unittest.TestCase):
         impact = privacy_impact()
         features = [item["feature"] for item in impact["available"]]
         self.assertTrue(any("Transcription" in f for f in features))
+
+    def test_a_self_hosted_text_model_re_enables_the_analysis_features(self):
+        impact = privacy_impact([{"id": "endpoint:lm-studio:antares-1b", "name": "antares-1b"}])
+        available = [item["feature"] for item in impact["available"]]
+        disabled = [item["feature"] for item in impact["disabled"]]
+        self.assertTrue(any("AI analysis agents" in f for f in available))
+        self.assertNotIn("AI analysis agents", disabled)
+        self.assertNotIn("Meeting chat", disabled)
+        # Interim captions still have no local option, so they stay disabled.
+        self.assertIn("Live interim captions (audio gateway)", disabled)
+        self.assertIn("antares-1b", "".join(i["detail"] for i in impact["available"]))
+
+
+class TestPrivacyAllowsSelfHostedModels(unittest.IsolatedAsyncioTestCase):
+    """Privacy First is about where data goes, not which vendor serves it."""
+
+    def _patch_target(self, target):
+        patcher = mock.patch.object(
+            privacy_mod, "resolve_target_standalone", mock.AsyncMock(return_value=target)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _target(self, on_prem: bool):
+        return EndpointTarget(
+            endpoint_id="lm-studio",
+            name="LM Studio",
+            base_url="http://localhost:1234/v1" if on_prem else "https://api.together.xyz/v1",
+            model="antares-1b",
+            api_key="",
+            on_prem=on_prem,
+            enabled=True,
+        )
+
+    async def test_bundled_local_models_are_allowed(self):
+        self.assertTrue(await allows_local_only("local-whisper-base"))
+
+    async def test_cloud_models_are_not_allowed(self):
+        self.assertFalse(await allows_local_only("gemini-3.5-flash"))
+        self.assertFalse(await allows_local_only("gpt-5.4-mini"))
+
+    async def test_a_model_on_this_network_is_allowed(self):
+        self._patch_target(self._target(on_prem=True))
+        self.assertTrue(await allows_local_only("endpoint:lm-studio:antares-1b"))
+
+    async def test_a_model_on_a_public_endpoint_is_not_allowed(self):
+        self._patch_target(self._target(on_prem=False))
+        self.assertFalse(await allows_local_only("endpoint:lm-studio:antares-1b"))
+
+    async def test_a_missing_endpoint_is_not_allowed(self):
+        self._patch_target(None)
+        self.assertFalse(await allows_local_only("endpoint:gone:antares-1b"))
 
 
 if __name__ == "__main__":

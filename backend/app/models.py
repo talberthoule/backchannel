@@ -142,7 +142,9 @@ class TokenUsage(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("sessions.id", ondelete="CASCADE"), index=True)
     source: Mapped[str] = mapped_column(String(100))
-    model_id: Mapped[str] = mapped_column(String(100))
+    # Wide enough for "endpoint:<slug>:<served model name>" ids (see
+    # services/custom_endpoints.py), not just registry ids.
+    model_id: Mapped[str] = mapped_column(String(160))
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
@@ -362,7 +364,9 @@ class AgentConfig(Base):
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(Text, default="")
     agent_type: Mapped[str] = mapped_column(String(20))  # audio, text, meta, db
-    model_id: Mapped[str] = mapped_column(String(100))
+    # Registry id, or "endpoint:<slug>:<served model name>" for a model on a
+    # self-hosted endpoint (see services/custom_endpoints.py).
+    model_id: Mapped[str] = mapped_column(String(160))
     prompt: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     sub_types: Mapped[str] = mapped_column(String(200), default="")  # comma-separated item_types (legacy; superseded by lenses where present)
@@ -401,4 +405,30 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CustomEndpoint(Base):
+    """A self-hosted OpenAI-compatible chat server (LM Studio, Ollama, vLLM, ...).
+
+    Each row contributes one selectable model per entry in models, so a
+    workstation running two models shows two named options in every model
+    picker instead of one opaque placeholder. api_key is a Fernet token (see
+    services/secrets.py) and is usually empty: local servers are unauthenticated.
+    """
+
+    __tablename__ = "custom_endpoints"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)  # slug used in model ids
+    name: Mapped[str] = mapped_column(String(80))
+    base_url: Mapped[str] = mapped_column(String(255))
+    api_key: Mapped[str] = mapped_column(Text, default="")  # encrypted; "" means keyless
+    models: Mapped[list] = mapped_column(JSON, default=list)  # [{"id": ..., "label": ...}]
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Last connection-test outcome, so the UI can show reachability without probing on load.
+    last_status: Mapped[str] = mapped_column(String(20), default="")  # "ok", "error", or ""
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

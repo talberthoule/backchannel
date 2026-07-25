@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.services.custom_endpoints import endpoint_models
 from app.services.privacy import get_local_only, privacy_impact, set_local_only
 from app.services.transcription_runtime import get_transcription_runtime_config
 
@@ -15,10 +16,11 @@ class PrivacyUpdate(BaseModel):
 
 async def _config_payload(db: AsyncSession) -> dict:
     runtime = await get_transcription_runtime_config(db)
+    on_prem_text = [m for m in await endpoint_models(db) if m["runs_locally"] and m["supports_text"]]
     return {
         "local_only": await get_local_only(db),
         "batch_model_id": runtime.batch_model_id,
-        "impact": privacy_impact(),
+        "impact": privacy_impact(on_prem_text),
     }
 
 
