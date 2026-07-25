@@ -1,26 +1,17 @@
-import asyncio
-import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from time import monotonic
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket
 from sqlalchemy import func, select
 
 from app.database import async_session
-from app.models import AgentConfig, CallSegment, Directive, Question, Session, SessionAgentOverride, Speaker, TranscriptEntry
+from app.models import AgentConfig, CallSegment, Question, Session, SessionAgentOverride, Speaker, TranscriptEntry
 from app.services.agents.orchestrator import AgentOrchestrator, drain_progress_percent
 from app.services.session_manager import get_active_directives, get_document_summaries, get_next_sequence
 from app.services.audio_store import SegmentAudioWriter
-from app.services.local_transcriber import create_transcriber
-from app.services.track_mixer import TrackMixer
-from app.services.diarizer_factory import create_diarizer
-from app.services.diarizer_runtime import get_diarizer_runtime_config
-from app.services.diarizer_selection import flush_diarizer_segments
 from app.services.speaker_assignment import (
-    LOCAL_VOICE_PROFILE_ID,
     auto_speaker_would_create_new_speaker,
     is_unknown_auto_speaker,
     load_live_mic_voice_embedding,
@@ -28,12 +19,33 @@ from app.services.speaker_assignment import (
     resolve_live_mic_speaker,
 )
 from app.services.speaker_ghost_filter import should_defer_new_speaker_segment
-from app.services.speaker_diarizer import SpeakerRegistry
 from app.services.ordered_transcription import OrderedTranscriptionQueue
-from app.services.privacy import get_local_only, is_local_model
-from app.services.secrets import data_dir
-from app.services.transcription_readiness import TranscriptionReadiness, get_transcription_readiness
-from app.services.transcription_runtime import get_transcription_runtime_config
+from app.ws.audio_persistence import (
+    _append_audio_frames,
+    _close_audio_writers,
+    _flush_remaining_audio,
+)
+from app.ws.audio_pipeline import (
+    _run_audio_pipeline,
+    _transcription_failure_handler,
+)
+from app.ws.audio_runtime import (
+    _QueuedAudioFrame,
+    _create_audio_processors,
+    _decode_audio_frame,
+    _load_audio_runtime,
+    _new_speaker_registry,
+    _queued_speaker_auto_id,
+    _receive_websocket_message,
+    _reconnect_audio_gateway,
+    _record_audio_flow,
+    _run_diarization_worker,
+    _send_gateway_audio,
+    _send_status,
+    _split_track_established_after_frame,
+    _split_track_established_after_message,
+    _stop_diarization_worker,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,26 +53,12 @@ router = APIRouter()
 
 # Default colors for auto-created speakers
 _SPEAKER_COLORS = ["#0d9488", "#f59e0b", "#e74c3c", "#2ecc71", "#9b59b6", "#f39c12"]
-_PCM_BYTES_PER_SECOND = 32_000
-_AUDIO_FLOW_LOG_INTERVAL_BYTES = 10 * _PCM_BYTES_PER_SECOND
-
-# Drain modes a client may request on stop. "minimal" is reserved for the
-# disconnect/error path and cannot be requested over the wire.
 _STOP_DRAIN_MODES = ("full", "skip_analysis")
 
 
-def _new_speaker_registry(
-    threshold: float,
-    local_embedding=None,
-) -> SpeakerRegistry:
-    registry = SpeakerRegistry(threshold=threshold)
-    if local_embedding is not None:
-        registry.enroll(
-            LOCAL_VOICE_PROFILE_ID,
-            local_embedding,
-            fallback_for_unmatched=False,
-        )
-    return registry
+def _requested_drain_mode(data: dict) -> str:
+    requested = data.get("drain")
+    return requested if requested in _STOP_DRAIN_MODES else "full"
 
 
 async def _load_agent_configs(db, session_id: uuid.UUID) -> dict[str, AgentConfig]:
@@ -74,19 +72,6 @@ async def _load_agent_configs(db, session_id: uuid.UUID) -> dict[str, AgentConfi
         if slug in overrides:
             config.enabled = overrides[slug]
     return configs
-
-
-def _requested_drain_mode(data: dict) -> str:
-    """Drain mode requested by a stop message; a bare stop keeps full behavior."""
-    requested = data.get("drain")
-    return requested if requested in _STOP_DRAIN_MODES else "full"
-
-
-async def _send_status(websocket: WebSocket, state: str, message: str, **extra: Any):
-    try:
-        await websocket.send_json({"type": "status", "data": {"state": state, "message": message, **extra}})
-    except Exception:
-        pass
 
 
 async def _send_post_processing_status(
@@ -159,36 +144,6 @@ async def _should_defer_new_speaker(
     return would_create and should_defer_new_speaker_segment(pcm_bytes, text)
 
 
-def _decode_audio_frame(raw_frame: bytes) -> tuple[int, bytes]:
-    if len(raw_frame) % 2 == 0:
-        return 0, raw_frame
-    track = raw_frame[0] if raw_frame[0] in (0, 1) else 0
-    return track, raw_frame[1:]
-
-
-def _record_audio_flow(track_bytes: list[int], track: int, byte_count: int) -> tuple[float, float] | None:
-    previous_total = sum(track_bytes)
-    track_bytes[track] += byte_count
-    current_total = sum(track_bytes)
-    if current_total // _AUDIO_FLOW_LOG_INTERVAL_BYTES == previous_total // _AUDIO_FLOW_LOG_INTERVAL_BYTES:
-        return None
-    return track_bytes[0] / _PCM_BYTES_PER_SECOND, track_bytes[1] / _PCM_BYTES_PER_SECOND
-
-
-def _split_track_established_after_message(data: dict, current: bool) -> bool:
-    if data.get("type") == "track_state" and data.get("track") == 1:
-        return current or data.get("active") is True
-    return current
-
-
-def _split_track_established_after_frame(track: int, current: bool) -> bool:
-    return current or track == 1
-
-
-def _queued_speaker_auto_id(auto_id: str, track: int, split_track_established: bool) -> str:
-    return f"mic_{auto_id}" if track == 0 and split_track_established else auto_id
-
-
 def _normalize_speaker_auto_id(auto_id: str) -> tuple[str, bool]:
     return (auto_id[4:], True) if auto_id.startswith("mic_") else (auto_id, False)
 
@@ -197,54 +152,9 @@ def _speaker_identity(speaker: Speaker) -> tuple[str, str, str]:
     return str(speaker.id), speaker.name, speaker.speaker_type
 
 
-async def _flush_remaining_audio(
-    diarizer: Any,
-    transcription_queue: OrderedTranscriptionQueue,
-    speaker_prefix: str = "",
-):
-    for seg in await asyncio.to_thread(flush_diarizer_segments, diarizer):
-        try:
-            transcription_queue.add(f"{speaker_prefix}{seg.speaker_id}", seg.pcm_bytes)
-        except Exception:
-            pass
-
-
-async def _reconnect_audio_pipeline(
-    websocket: WebSocket,
-    diarizer: Any,
-    sys_diarizer: Any | None,
-    transcription_queue: OrderedTranscriptionQueue,
-    orchestrator: AgentOrchestrator,
-    split_track_established: bool = False,
-) -> bool:
-    for seg in await asyncio.to_thread(flush_diarizer_segments, diarizer):
-        transcription_queue.add(_queued_speaker_auto_id(seg.speaker_id, 0, split_track_established), seg.pcm_bytes)
-    diarizer.reset()
-    if sys_diarizer is not None:
-        for seg in await asyncio.to_thread(flush_diarizer_segments, sys_diarizer):
-            transcription_queue.add(f"sys_{seg.speaker_id}", seg.pcm_bytes)
-        sys_diarizer.reset()
-    try:
-        success = await orchestrator._reconnect_gateway()
-        if success:
-            await websocket.send_json(
-                {
-                    "type": "status",
-                    "data": {
-                        "state": "active",
-                        "message": "Reconnected to AI",
-                    },
-                }
-            )
-        return success
-    except Exception as exc:
-        logger.error(f"Reconnect failed: {exc}")
-        return False
-
-
 async def _refuse_unready_transcription(
     websocket: WebSocket,
-    readiness: TranscriptionReadiness,
+    readiness: Any,
 ) -> bool:
     """Refuse to start a call whose batch transcriber cannot produce text."""
     if readiness.ready:
@@ -332,9 +242,12 @@ async def _restore_session_after_refusal(session_id: uuid.UUID) -> str | None:
 
 async def _start_call_segment(
     session_id: uuid.UUID,
-) -> dict[str, SegmentAudioWriter | None] | None:
+) -> tuple[uuid.UUID, dict[str, SegmentAudioWriter | None]] | None:
     async with async_session() as db:
-        session = await db.get(Session, session_id)
+        result = await db.execute(
+            select(Session).where(Session.id == session_id).with_for_update()
+        )
+        session = result.scalar_one_or_none()
         if session is None:
             return None
 
@@ -346,7 +259,9 @@ async def _start_call_segment(
         )
         last_segment_number = result.scalar_one_or_none()
         segment_number = (last_segment_number or 0) + 1
+        segment_id = uuid.uuid4()
         segment = CallSegment(
+            id=segment_id,
             session_id=session_id,
             segment_number=segment_number,
             started_at=datetime.now(timezone.utc),
@@ -367,87 +282,13 @@ async def _start_call_segment(
             )
             db.add(marker)
 
-        if session.state in ("pre_call", "completed"):
-            session.state = "active"
-            if not session.started_at:
-                session.started_at = datetime.now(timezone.utc)
-            session.ended_at = None
+        session.state = "active"
+        if not session.started_at:
+            session.started_at = datetime.now(timezone.utc)
+        session.ended_at = None
 
         await db.commit()
-        return audio_writers
-
-
-def _close_audio_writers(
-    audio_writers: dict[str, SegmentAudioWriter | None],
-    split_track_established: bool,
-) -> dict[str, str | None]:
-    paths: dict[str, str | None] = {}
-    for track, writer in audio_writers.items():
-        try:
-            paths[track] = writer.close() if writer else None
-        except Exception as exc:
-            logger.warning("Failed to finalize %s segment audio: %s", track, exc)
-            paths[track] = None
-    if not split_track_established:
-        for path in (paths["mic"], paths["system"]):
-            if path:
-                (data_dir() / path).unlink(missing_ok=True)
-        paths["mic"] = paths["system"] = None
-    return {
-        "audio_path": paths["mixed"],
-        "mic_audio_path": paths["mic"],
-        "system_audio_path": paths["system"],
-    }
-
-
-def _append_audio_frames(
-    audio_writers: dict[str, SegmentAudioWriter | None],
-    frames: tuple[bytes, bytes, bytes],
-    split_track_established: bool = True,
-) -> None:
-    for track, pcm in zip(("mixed", "mic", "system"), frames):
-        if track != "mixed" and not split_track_established:
-            continue
-        writer = audio_writers[track]
-        if not writer:
-            continue
-        try:
-            writer.append(pcm)
-        except Exception as exc:
-            logger.warning("Disabling %s segment audio persistence: %s", track, exc)
-            try:
-                failed_path = writer.close()
-                if isinstance(failed_path, str):
-                    (data_dir() / failed_path).unlink(missing_ok=True)
-            except Exception:
-                pass
-            audio_writers[track] = None
-
-
-def _establish_split_audio_persistence(
-    audio_writers: dict[str, SegmentAudioWriter | None],
-) -> None:
-    mixed = audio_writers["mixed"]
-    if not mixed:
-        return
-    try:
-        for pcm in mixed.pcm_chunks():
-            for track, backfill in (("mic", pcm), ("system", bytes(len(pcm)))):
-                writer = audio_writers[track]
-                if writer:
-                    writer.append(backfill)
-    except Exception as exc:
-        logger.warning("Failed to backfill split-track audio: %s", exc)
-        for track in ("mic", "system"):
-            writer = audio_writers[track]
-            if writer:
-                try:
-                    path = writer.close()
-                    if path:
-                        (data_dir() / path).unlink(missing_ok=True)
-                except Exception:
-                    pass
-            audio_writers[track] = None
+        return segment_id, audio_writers
 
 
 async def _finalize_call(
@@ -460,6 +301,7 @@ async def _finalize_call(
     sys_diarizer: Any = None,
     split_track_established: bool = False,
     drain_mode: str = "full",
+    call_segment_id: uuid.UUID | None = None,
 ):
     if drain_mode == "minimal":
         # Disconnect/error path: stop the orchestrator's live analysis tasks
@@ -557,26 +399,40 @@ async def _finalize_call(
 
     async with async_session() as db:
         result = await db.execute(
-            select(CallSegment)
-            .where(CallSegment.session_id == session_id, CallSegment.ended_at.is_(None))
-            .order_by(CallSegment.segment_number.desc())
-            .limit(1)
+            select(Session).where(Session.id == session_id).with_for_update()
         )
-        open_segment = result.scalar_one_or_none()
-        if open_segment:
-            open_segment.ended_at = datetime.now(timezone.utc)
+        session = result.scalar_one_or_none()
+        owned_segment = (
+            await db.get(CallSegment, call_segment_id)
+            if call_segment_id is not None
+            else None
+        )
+        if owned_segment and owned_segment.ended_at is None:
+            owned_segment.ended_at = datetime.now(timezone.utc)
             if audio_writers:
                 try:
                     for field, path in _close_audio_writers(
                         audio_writers,
                         split_track_established,
                     ).items():
-                        setattr(open_segment, field, path)
+                        setattr(owned_segment, field, path)
                 except Exception as e:
                     logger.warning(f"Failed to finalize segment audio: {e}")
 
-        session = await db.get(Session, session_id)
-        if session and session.state == "active":
+        newer_open_segment_id = None
+        if owned_segment is not None:
+            result = await db.execute(
+                select(CallSegment.id)
+                .where(
+                    CallSegment.session_id == session_id,
+                    CallSegment.ended_at.is_(None),
+                    CallSegment.segment_number > owned_segment.segment_number,
+                )
+                .limit(1)
+            )
+            newer_open_segment_id = result.scalar_one_or_none()
+
+        if session and session.state == "active" and newer_open_segment_id is None:
             session.state = "completed"
             session.ended_at = datetime.now(timezone.utc)
         await db.commit()
@@ -629,10 +485,9 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
 
         agent_configs = await _load_agent_configs(db, session_id)
 
-        runtime_config = await get_diarizer_runtime_config(db, probe_sortformer=False)
-        transcription_config = await get_transcription_runtime_config(db)
-        local_only = await get_local_only(db)
-        readiness = await get_transcription_readiness(db)
+        runtime_config, transcription_config, local_only, readiness = (
+            await _load_audio_runtime(db)
+        )
 
     if not readiness.ready:
         # Restore the row before notifying so the client's refresh reads the
@@ -645,12 +500,6 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         await _refuse_unready_transcription(websocket, readiness)
         return
 
-    stopped = False
-    stop_drain_mode = "full"
-    audio_chunks_received = 0
-    audio_bytes_received = 0
-    audio_bytes_by_track = [0, 0]
-    last_audio_status_at = 0.0
     # Track active (unanswered) questions for agent context
     active_questions: list[dict] = list(existing_questions)
 
@@ -669,16 +518,14 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
     )
 
     # --- Speaker diarization ---
-    registry = _new_speaker_registry(
-        runtime_config.speaker_similarity_threshold,
-        local_voice_embedding,
+    diarizer, transcriber, create_system_diarizer, batch_model_is_local = (
+        _create_audio_processors(
+            runtime_config,
+            transcription_config,
+            session_id,
+            local_voice_embedding,
+        )
     )
-    diarizer = create_diarizer(runtime_config.effective_live_diarizer, registry=registry)
-    # Second diarizer for the system-audio track, created on first use.
-    sys_diarizer = None
-    split_track_established = False
-    mixer = TrackMixer()
-    transcriber = create_transcriber(transcription_config.batch_model_id, session_id=session_id)
 
     # Map auto-assigned speaker IDs ("auto_1", "auto_2") to DB Speaker rows
     auto_speaker_map: dict[str, str] = {}  # "auto_1" -> str(speaker.id)
@@ -790,190 +637,23 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
             },
         )
 
-    last_transcription_failure_status_at = 0.0
-    batch_model_is_local = is_local_model(transcription_config.batch_model_id)
-
-    async def _on_transcription_failure(failed_count: int, kind: str):
-        # Throttle so a burst of failing segments does not spam the frontend.
-        nonlocal last_transcription_failure_status_at
-        now = monotonic()
-        if failed_count > 1 and now - last_transcription_failure_status_at < 10:
-            return
-        last_transcription_failure_status_at = now
-        plural = "s" if failed_count != 1 else ""
-        if kind == "emit":
-            message = (
-                f"Saving transcript text failed for {failed_count} speech "
-                f"segment{plural} this call; transcript entries may be missing."
-            )
-        elif batch_model_is_local:
-            message = (
-                f"Local transcription failed for {failed_count} speech "
-                f"segment{plural} this call; transcript text may be missing."
-            )
-        else:
-            message = (
-                f"Transcription failed for {failed_count} speech segment{plural} "
-                "this call; transcript text may be missing. Check the provider "
-                "API key in Admin -> API Keys."
-            )
-        await _send_status(
-            websocket,
-            "transcription_error",
-            message,
-            details={"failed": failed_count, "kind": kind},
-        )
-
     transcription_queue = OrderedTranscriptionQueue(
         transcribe=transcriber.transcribe_segment,
         emit=_emit_transcript,
-        on_failure=_on_transcription_failure,
+        on_failure=_transcription_failure_handler(
+            websocket,
+            batch_model_is_local,
+        ),
     )
-
-    audio_writers: dict[str, SegmentAudioWriter | None] | None = None
-
-    try:
-        await websocket.send_json({"type": "status", "data": {"state": "connecting", "message": "Connecting to AI agents..."}})
-        await orchestrator.start()
-        active_message = (
-            "Listening (Privacy First: local transcription only, cloud AI agents off)..."
-            if local_only
-            else "Listening..."
-        )
-        await websocket.send_json({"type": "status", "data": {"state": "active", "message": active_message}})
-
-        audio_writers = await _start_call_segment(session_id)
-
-        while not stopped:
-            try:
-                message = await websocket.receive()
-            except WebSocketDisconnect:
-                logger.info(f"Browser disconnected for session {session_id}")
-                break
-
-            if "bytes" in message:
-                track, pcm_data = _decode_audio_frame(message["bytes"])
-                try:
-                    audio_chunks_received += 1
-                    audio_bytes_received += len(pcm_data)
-                    now = monotonic()
-                    if now - last_audio_status_at >= 5:
-                        last_audio_status_at = now
-                        await _send_status(
-                            websocket,
-                            "audio_received",
-                            (
-                                f"Backend received {audio_bytes_received // _PCM_BYTES_PER_SECOND}s audio "
-                                f"({audio_chunks_received} chunks)"
-                            ),
-                            details={
-                                "chunks": audio_chunks_received,
-                                "bytes": audio_bytes_received,
-                                "seconds": audio_bytes_received / _PCM_BYTES_PER_SECOND,
-                            },
-                        )
-
-                    if track == 1 and not split_track_established:
-                        if audio_writers:
-                            _establish_split_audio_persistence(audio_writers)
-                        split_track_established = True
-
-                    # Mix tracks into one stream for the gateway and the session recording
-                    mixed_frames = mixer.add(track, pcm_data)
-                    if mixed_frames:
-                        mixed, mic, system = mixed_frames
-                        if audio_writers:
-                            _append_audio_frames(
-                                audio_writers,
-                                (mixed, mic, system),
-                                split_track_established,
-                            )
-                        # Forward to orchestrator for the audio gateway and text-agent context
-                        await orchestrator.send_audio(mixed)
-
-                    # Feed into the per-track diarizer for speaker-attributed transcription
-                    if track == 1:
-                        if sys_diarizer is None:
-                            sys_diarizer = create_diarizer(
-                                runtime_config.effective_live_diarizer,
-                                registry=_new_speaker_registry(
-                                    runtime_config.speaker_similarity_threshold
-                                ),
-                            )
-                        # Diarizer inference (and its lazy model load) is CPU-bound;
-                        # keep it off the event loop or websocket keepalives starve
-                        # and both the browser and gateway sockets die with 1011.
-                        segments = await asyncio.to_thread(sys_diarizer.feed_audio, pcm_data)
-                        for seg in segments:
-                            seg.speaker_id = f"sys_{seg.speaker_id}"
-                    else:
-                        segments = await asyncio.to_thread(diarizer.feed_audio, pcm_data)
-                    split_track_established = _split_track_established_after_frame(track, split_track_established)
-                    audio_flow = _record_audio_flow(audio_bytes_by_track, track, len(pcm_data))
-                    if audio_flow:
-                        mic_seconds, system_seconds = audio_flow
-                        logger.info(
-                            "Audio flow: mic=%.1fs system=%.1fs aggregate_track_seconds=%.1fs",
-                            mic_seconds,
-                            system_seconds,
-                            mic_seconds + system_seconds,
-                        )
-                    for seg in segments:
-                        logger.info(f"Diarized segment: speaker={seg.speaker_id} bytes={len(seg.pcm_bytes)}")
-                        await _send_status(
-                            websocket,
-                            "audio_segment",
-                            f"Queued {len(seg.pcm_bytes) // _PCM_BYTES_PER_SECOND}s speech segment for transcription",
-                            details={
-                                "speaker_auto_id": seg.speaker_id,
-                                "bytes": len(seg.pcm_bytes),
-                            },
-                        )
-                        queued_speaker = _queued_speaker_auto_id(seg.speaker_id, track, split_track_established)
-                        transcription_queue.add(queued_speaker, seg.pcm_bytes)
-
-                except Exception as e:
-                    logger.warning(f"Audio send failed, reconnecting: {e}")
-                    if not await _reconnect_audio_pipeline(websocket, diarizer, sys_diarizer, transcription_queue, orchestrator, split_track_established):
-                        break
-
-            elif "text" in message:
-                data = json.loads(message["text"])
-                updated_split_state = _split_track_established_after_message(
-                    data, split_track_established
-                )
-                if updated_split_state and not split_track_established and audio_writers:
-                    _establish_split_audio_persistence(audio_writers)
-                split_track_established = updated_split_state
-                if data.get("type") == "stop":
-                    stopped = True
-                    stop_drain_mode = _requested_drain_mode(data)
-                    break
-                elif data.get("type") == "directive":
-                    directive_text = data.get("text", "")
-                    if directive_text:
-                        async with async_session() as db:
-                            directive = Directive(session_id=session_id, text=directive_text)
-                            db.add(directive)
-                            await db.commit()
-                        await orchestrator.send_directive(directive_text)
-
-            # Check audio gateway health
-            if not await orchestrator.check_health():
-                if not await _reconnect_audio_pipeline(websocket, diarizer, sys_diarizer, transcription_queue, orchestrator, split_track_established):
-                    break
-
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        try:
-            await websocket.send_json({"type": "status", "data": {"state": "error", "message": str(e)}})
-        except Exception:
-            pass
-    finally:
-        # A deliberate stop honors the requested drain mode; a disconnect or
-        # error runs the minimal drain (no analysis LLM calls).
-        await _finalize_call(
-            session_id, websocket, diarizer, orchestrator, transcription_queue,
-            audio_writers=audio_writers, sys_diarizer=sys_diarizer, split_track_established=split_track_established,
-            drain_mode=stop_drain_mode if stopped else "minimal",
-        )
+    await _run_audio_pipeline(
+        session_id,
+        websocket,
+        local_only,
+        diarizer,
+        orchestrator,
+        transcription_queue,
+        create_system_diarizer,
+        _requested_drain_mode,
+        _start_call_segment,
+        _finalize_call,
+    )

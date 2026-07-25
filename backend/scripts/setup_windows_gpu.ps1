@@ -53,4 +53,4 @@ $env:DATABASE_URL = "postgresql+asyncpg://${pgUser}:${pgPass}@localhost:5432/${p
 
 Write-Host "Backend starting on http://localhost:8000 - start the frontend with: cd frontend; npm run dev"
 Set-Location $backendDir
-& $venvPython -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+& $venvPython -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --ws-ping-timeout 90 --ws-max-queue 2048 --ws-max-size 65536

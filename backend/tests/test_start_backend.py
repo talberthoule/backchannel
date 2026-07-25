@@ -18,6 +18,22 @@ with mock.patch.dict(sys.modules, {"install_sortformer": _fake_installer}):
     _spec.loader.exec_module(_start_backend)
 
 
+EXPECTED_COMMAND = [
+    "uvicorn",
+    "app.main:app",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "8000",
+    "--ws-ping-timeout",
+    "90",
+    "--ws-max-queue",
+    "2048",
+    "--ws-max-size",
+    "65536",
+]
+
+
 class BackendStartupTests(unittest.TestCase):
     def test_execs_uvicorn_without_reload(self):
         with (
@@ -30,7 +46,7 @@ class BackendStartupTests(unittest.TestCase):
 
         execvp.assert_called_once_with(
             "uvicorn",
-            ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"],
+            EXPECTED_COMMAND,
         )
 
     def test_execs_uvicorn_with_reload_last(self):
@@ -42,8 +58,21 @@ class BackendStartupTests(unittest.TestCase):
         ):
             _start_backend.main()
 
-        execvp.assert_called_once()
-        self.assertEqual("--reload", execvp.call_args.args[1][-1])
+        execvp.assert_called_once_with(
+            "uvicorn",
+            EXPECTED_COMMAND + ["--reload"],
+        )
+
+    def test_native_gpu_start_uses_same_websocket_limits(self):
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "scripts"
+            / "setup_windows_gpu.ps1"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("--ws-ping-timeout 90", script)
+        self.assertIn("--ws-max-queue 2048", script)
+        self.assertIn("--ws-max-size 65536", script)
 
 
 if __name__ == "__main__":

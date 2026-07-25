@@ -324,6 +324,9 @@ def run(headless: bool = False) -> int:
             port=app_port,
             log_config=None,
             headers=[(INSTANCE_HEADER, instance_token)],
+            ws_ping_timeout=90.0,
+            ws_max_queue=2048,
+            ws_max_size=65_536,
         )
     )
     thread = threading.Thread(
