@@ -274,9 +274,8 @@ class DiarizationWorkerShutdownTests(unittest.IsolatedAsyncioTestCase):
 
         task = asyncio.create_task(slow_worker())
 
-        with patch.object(
-            audio_handler,
-            "_DIARIZATION_DRAIN_STATUS_SECONDS",
+        with patch(
+            "app.ws.audio_runtime._DIARIZATION_DRAIN_STATUS_SECONDS",
             0.01,
         ):
             result = await audio_handler._stop_diarization_worker(
@@ -295,6 +294,81 @@ class DiarizationWorkerShutdownTests(unittest.IsolatedAsyncioTestCase):
         ]
         self.assertTrue(
             any(status["state"] == "post_processing" for status in statuses)
+        )
+
+
+class AudioPipelineOrderingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_persists_before_gateway_and_stops_worker_before_finalize(self):
+        events = []
+        segment_id = uuid.uuid4()
+        writers = {
+            track: MagicMock(append=MagicMock(side_effect=lambda pcm, track=track: events.append(track)))
+            for track in ("mixed", "mic", "system")
+        }
+        websocket = MagicMock(
+            send_json=AsyncMock(),
+            receive=AsyncMock(
+                side_effect=[
+                    {"bytes": b"\x00\x01\x02"},
+                    {"text": '{"type":"stop","drain":"skip_analysis"}'},
+                ]
+            ),
+        )
+        orchestrator = MagicMock(
+            start=AsyncMock(),
+            check_health=AsyncMock(return_value=True),
+        )
+        transcription_queue = MagicMock()
+
+        async def worker(queue, *_args):
+            item = await queue.get()
+            events.append(("worker", item.pcm_bytes))
+            self.assertIsNone(await queue.get())
+            events.append("worker_stopped")
+            return "system-diarizer"
+
+        async def send_gateway(*_args):
+            events.append("gateway")
+            return True
+
+        async def finalize(*_args, **kwargs):
+            events.append("finalize")
+            self.assertEqual(segment_id, kwargs["call_segment_id"])
+            self.assertIs(writers, kwargs["audio_writers"])
+            self.assertEqual("system-diarizer", kwargs["sys_diarizer"])
+            self.assertEqual("skip_analysis", kwargs["drain_mode"])
+
+        mixer = MagicMock(add=MagicMock(return_value=(b"mixed", b"mic", b"system")))
+        start_segment = AsyncMock(return_value=(segment_id, writers))
+        with (
+            patch("app.ws.audio_pipeline.TrackMixer", return_value=mixer),
+            patch("app.ws.audio_pipeline._run_diarization_worker", side_effect=worker),
+            patch("app.ws.audio_messages._send_gateway_audio", side_effect=send_gateway),
+        ):
+            await audio_handler._run_audio_pipeline(
+                uuid.uuid4(),
+                websocket,
+                False,
+                MagicMock(),
+                orchestrator,
+                transcription_queue,
+                MagicMock(),
+                audio_handler._requested_drain_mode,
+                start_segment,
+                finalize,
+            )
+
+        self.assertEqual(
+            [
+                "mixed",
+                "mic",
+                "system",
+                "gateway",
+                ("worker", b"\x01\x02"),
+                "worker_stopped",
+                "finalize",
+            ],
+            events,
         )
 
 
@@ -405,9 +479,8 @@ class AudioGatewayIsolationTests(unittest.IsolatedAsyncioTestCase):
         orchestrator = MagicMock()
         orchestrator.send_audio = AsyncMock(side_effect=never.wait)
 
-        with patch.object(
-            audio_handler,
-            "_GATEWAY_SEND_TIMEOUT_SECONDS",
+        with patch(
+            "app.ws.audio_runtime._GATEWAY_SEND_TIMEOUT_SECONDS",
             0.01,
         ):
             sent = await audio_handler._send_gateway_audio(
@@ -513,7 +586,7 @@ class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("app.ws.audio_handler.async_session", return_value=db),
-            patch("app.ws.audio_handler.flush_diarizer_segments", return_value=[]),
+            patch("app.ws.audio_persistence.flush_diarizer_segments", return_value=[]),
         ):
             await audio_handler._finalize_call(
                 uuid.uuid4(),
@@ -674,7 +747,7 @@ class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("app.ws.audio_handler.async_session", return_value=db),
-            patch("app.ws.audio_handler.flush_diarizer_segments", return_value=[]),
+            patch("app.ws.audio_persistence.flush_diarizer_segments", return_value=[]),
         ):
             await audio_handler._finalize_call(
                 session_id,
@@ -724,7 +797,7 @@ class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("app.ws.audio_handler.async_session", return_value=db),
-            patch("app.ws.audio_handler.flush_diarizer_segments", return_value=[]),
+            patch("app.ws.audio_persistence.flush_diarizer_segments", return_value=[]),
         ):
             await audio_handler._finalize_call(
                 session_id,
@@ -765,7 +838,7 @@ class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("app.ws.audio_handler.async_session", return_value=db),
-            patch("app.ws.audio_handler.flush_diarizer_segments", return_value=[]),
+            patch("app.ws.audio_persistence.flush_diarizer_segments", return_value=[]),
         ):
             await audio_handler._finalize_call(
                 session_id,
@@ -874,7 +947,7 @@ class MinimalFinalizeAnalysisShutdownTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("app.ws.audio_handler.async_session", return_value=db),
-            patch("app.ws.audio_handler.flush_diarizer_segments", return_value=[]),
+            patch("app.ws.audio_persistence.flush_diarizer_segments", return_value=[]),
         ):
             await audio_handler._finalize_call(
                 uuid.uuid4(),
@@ -1096,7 +1169,7 @@ class SegmentAudioPersistenceTests(unittest.TestCase):
                 "system": MagicMock(close=MagicMock(return_value="audio/sys.wav")),
             }
 
-            with patch("app.ws.audio_handler.data_dir", return_value=root):
+            with patch("app.ws.audio_persistence.data_dir", return_value=root):
                 paths = audio_handler._close_audio_writers(
                     writers,
                     split_track_established=False,
