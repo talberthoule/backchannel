@@ -9,6 +9,14 @@ entries are saved.
 
 ## The agents
 
+Every agent below is configurable from Admin -> Agents: its model, its system
+prompt, its trigger, and whether it runs at all.
+
+<picture>
+  <source srcset="/assets/shots/admin-agents-dark.webp" media="(prefers-color-scheme: dark)" />
+  <img src="/assets/shots/admin-agents.webp" width="1185" height="900" alt="Admin Agents tab: the Privacy First toggle above the agent lineup, each agent showing its type, slug, model selector, and system prompt control." />
+</picture>
+
 | Agent slug | Type | Trigger | Code | Purpose |
 | --- | --- | --- | --- | --- |
 | `audio_gateway` | audio | Continuous audio stream | `backend/app/services/gemini_live.py` / `backend/app/services/openai_realtime.py` | Silent live listener (Gemini Live or OpenAI Realtime, chosen by the agent's configured model) that produces interim transcription |

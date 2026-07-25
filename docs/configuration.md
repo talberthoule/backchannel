@@ -32,6 +32,16 @@ fallbacks when no credential row exists for a provider.
 `POST /api/credentials/{provider}/test` validates a stored key with a real
 provider call.
 
+## Transcription and audio
+
+Transcription model, batch behavior, and audio handling are set in
+Admin -> Transcription & Audio.
+
+<picture>
+  <source srcset="/assets/shots/admin-transcription-dark.webp" media="(prefers-color-scheme: dark)" />
+  <img src="/assets/shots/admin-transcription.webp" width="1185" height="900" alt="Admin Transcription and Audio tab: batch transcription model selection and audio handling settings." />
+</picture>
+
 ## Privacy First (local-only) mode
 
 The Admin panel has a "Privacy First" switch (`GET/PUT /api/privacy`,
@@ -43,11 +53,39 @@ audio or transcript text leaves the machine:
   re-transcription; selecting a cloud transcriber is rejected.
 - The audio gateway (interim captions) and every analysis agent
   (consolidated analyst, objection handler, synthesizer, opportunity
-  specialist, strategic signals, and the three briefing lenses) are skipped
-  because no local model can run them: `local-whisper-base` and
-  `local-parakeet-tdt-0.6b` declare `supports_text: False` in
-  `MODEL_REGISTRY`, and text calls resolve only to Google or OpenAI
-  endpoints. Privacy First and the live agents are mutually exclusive.
+  specialist, strategic signals, and the three briefing lenses) are skipped.
+  The gate is `provider != "local"` in `backend/app/services/llm.py`, and only
+  `local-whisper-base` and `local-parakeet-tdt-0.6b` carry that provider --
+  both `supports_text: False`. The `openai-compatible` provider is **not**
+  exempt even when its base URL points at your own machine, because the
+  setting accepts any URL and the gate cannot tell loopback from a remote
+  host. So Privacy First and the live agents remain mutually exclusive.
+
+  If you want local analysis, configure the OpenAI-compatible endpoint below
+  and leave Privacy First off. That path runs end to end on your hardware; it
+  simply is not enforced by the switch.
+
+## OpenAI-compatible endpoint
+
+The `openai-compatible` model in `MODEL_REGISTRY` targets any OpenAI-shaped
+chat server -- Ollama (`http://localhost:11434/v1`), LM Studio
+(`http://localhost:1234/v1`), vLLM, or LiteLLM. Set its base URL and model id
+in Admin -> API Keys, then select it per agent like any other model.
+
+Resolution is layered, highest precedence first:
+
+1. The `llm.openai_compatible.base_url` app setting (Admin)
+2. The `OPENAI_BASE_URL` environment variable
+3. `https://api.openai.com/v1`
+
+The model id resolves the same way through `llm.openai_compatible.model_id`
+and `OPENAI_COMPATIBLE_MODEL_ID`. The app setting applies only to this
+provider, so a saved Ollama URL never redirects a genuine OpenAI model.
+
+No API key is required: `requires_key` is `None` for this provider and no
+`Authorization` header is sent at all, since an empty bearer token breaks
+some servers rather than being ignored. Set `OPENAI_COMPATIBLE_API_KEY` if
+your endpoint does expect one.
 - `generate_text` raises `LocalOnlyModeError` for any non-local model, so
   post-import analysis, meeting chat, insight enhancement, and document
   summarization return HTTP 409/400 with an explanatory message.

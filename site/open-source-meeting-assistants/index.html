@@ -68,7 +68,7 @@
             "name": "Can an open-source meeting assistant run completely offline?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Some can, end to end. Meetily transcribes locally with Whisper or Parakeet and summarizes locally through Ollama, so no part of the pipeline needs the internet. Backchannel is partially offline: capture, voice activity detection, speaker diarization, and transcription can all run locally with ONNX models, but its analysis agents require a Google or OpenAI API key. Backchannel ships a Privacy First mode that enforces this by disabling every feature that would make an outside call."
+              "text": "Several can, end to end. Meetily transcribes locally with Whisper or Parakeet and summarizes locally through Ollama, so no part of the pipeline needs the internet. Backchannel can now do the same: capture, voice activity detection, speaker diarization, and transcription run locally with ONNX models, and its analysis agents can target a self-hosted OpenAI-compatible server such as Ollama, LM Studio, or vLLM. One caveat particular to Backchannel: its Privacy First switch recognizes only the local transcription models, so turning that switch on still disables the agents. A fully local Backchannel is configured through the endpoint setting instead of through the switch."
             }
           },
           {
@@ -379,12 +379,14 @@
           trigger is editable in the admin panel.
         </p>
         <p>
-          Now the honest reasons to pick something else. <strong>Our agents
-          require a cloud API key.</strong> There is no local LLM route in the
-          codebase today, so unlike Meetily we cannot summarize or analyze
-          with the network off -- Backchannel's Privacy First mode is explicit
-          about this and switches the analysis agents off entirely rather than
-          pretending. <strong>We are the heaviest thing here to install</strong>,
+          Now the honest reasons to pick something else. <strong>Our
+          Privacy First switch still turns the agents off.</strong> The
+          agents themselves can run against a self-hosted OpenAI-compatible
+          server, so analysis with the network off is possible -- but that
+          switch recognizes only the local transcription models, so a fully
+          local setup means configuring the endpoint yourself rather than
+          flipping one toggle. Meetily's Ollama-first design is smoother on
+          that specific path. <strong>We are the heaviest thing here to install</strong>,
           a Docker Compose stack with PostgreSQL rather than a signed
           download. <strong>Our prebuilt desktop downloads require an approved
           Backchannel account</strong>, where most peers are a direct download.
@@ -434,7 +436,7 @@
         </div>
         <div class="card">
           <h3>Can an open-source meeting assistant run completely offline?</h3>
-          <p>Some can, end to end. Meetily transcribes locally with Whisper or Parakeet and summarizes locally through Ollama, so no part of the pipeline needs the internet. Backchannel is partially offline: capture, voice activity detection, speaker diarization, and transcription can all run locally with ONNX models, but its analysis agents require a Google or OpenAI API key. Backchannel ships a Privacy First mode that enforces this by disabling every feature that would make an outside call.</p>
+          <p>Several can, end to end. Meetily transcribes locally with Whisper or Parakeet and summarizes locally through Ollama, so no part of the pipeline needs the internet. Backchannel can now do the same: capture, voice activity detection, speaker diarization, and transcription run locally with ONNX models, and its analysis agents can target a self-hosted OpenAI-compatible server such as Ollama, LM Studio, or vLLM. One caveat particular to Backchannel: its Privacy First switch recognizes only the local transcription models, so turning that switch on still disables the agents. A fully local Backchannel is configured through the endpoint setting instead of through the switch.</p>
         </div>
         <div class="card">
           <h3>Do any open-source meeting assistants give advice during the call?</h3>

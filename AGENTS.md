@@ -253,9 +253,13 @@ Required:
 
 - `GEMINI_API_KEY` (or an OpenAI key for OpenAI-routed agents)
 
-Local ONNX transcription needs no key, but no local registry entry sets
-`supports_text`, so the analysis agents always require a Google or OpenAI
-key. Local audio and local analysis are not the same thing.
+Local ONNX transcription needs no key, and no local registry entry sets
+`supports_text` -- so local analysis runs through the `openai-compatible`
+provider (Ollama, LM Studio, vLLM), not through those transcription models.
+Configure its base URL in Admin -> API Keys or via `OPENAI_BASE_URL`. Without
+it, the analysis agents require a Google or OpenAI key. Note that the Privacy
+First switch gates on `provider != "local"` and so still disables the agents
+even when the endpoint is local.
 
 Database variables are optional in Docker because defaults are provided:
 

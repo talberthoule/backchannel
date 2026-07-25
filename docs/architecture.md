@@ -8,7 +8,12 @@ local transcription.
 Diarization always runs on your hardware and transcription can too, but the
 analysis agents cannot: the local ONNX entries in `MODEL_REGISTRY` are
 transcription-only, and `backend/app/services/llm.py` routes every text call
-to Google or OpenAI. A deployment is local for audio, not end to end -- see
+to Google, OpenAI, or any OpenAI-compatible endpoint you point them at
+(Ollama, LM Studio, vLLM). Pairing a local endpoint with local ONNX
+transcription makes a deployment local end to end, with no cloud key
+anywhere. Note that the Privacy First toggle is a separate mechanism and
+still switches the agents off; it recognizes only the local ONNX
+transcription models. See
 [Privacy First mode](configuration.md#privacy-first-local-only-mode) for what
 turning the agents off actually buys.
 

@@ -145,7 +145,7 @@
     <g transform="translate(20, 160)">
       <rect width="280" height="90" rx="16" fill="#f0fdf4" stroke="#bbf7d0" />
       <text x="140" y="30" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-weight="600" font-size="14" fill="#166534">TEXT + BATCH LLMs</text>
-      <text x="140" y="55" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="12" fill="#15803d">Gemini 3.x / OpenAI (model registry)</text>
+      <text x="140" y="55" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="12" fill="#15803d">Gemini / OpenAI / self-hosted (registry)</text>
       <text x="140" y="75" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#16a34a">Agent analysis + transcription</text>
     </g>
 

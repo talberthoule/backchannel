@@ -329,15 +329,17 @@
           Docker Compose stack and our prebuilt desktop downloads require an
           approved Backchannel account rather than a direct download.
         </p>
-        <h3>Something we cannot do either</h3>
+        <h3>A rough edge on our side</h3>
         <p>
-          Backchannel's analysis agents need a Google or OpenAI API key.
           Capture, voice activity detection, speaker diarization, and
-          transcription can all run locally, but there is no local LLM route
-          in the codebase today, so the agents will not run offline. Our
-          Privacy First mode turns them off rather than pretending otherwise.
-          If your requirement is meeting summaries with genuinely zero cloud
-          calls, some of
+          transcription all run locally, and the analysis agents can be
+          pointed at a self-hosted OpenAI-compatible server (Ollama, LM
+          Studio, vLLM), so a zero-cloud deployment is possible. The rough
+          edge is that our Privacy First switch does not yet account for
+          that: it recognizes only the local transcription models, so it
+          still turns the agents off. Getting fully local analysis means
+          configuring the endpoint rather than flipping the switch. If you
+          want that path to be one click, some of
           <a href="/open-source-meeting-assistants/">the other open-source options</a>
           handle that better than we do.
         </p>

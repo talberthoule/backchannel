@@ -78,7 +78,7 @@
             "name": "Does my meeting audio leave my machine?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API. You can route agents to OpenAI instead, or transcribe fully offline with local ONNX Whisper or Parakeet models. The insight agents are the one exception: there is no local text model yet, so they always call Gemini or OpenAI. Recordings and transcripts stay on your server."
+              "text": "Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API. You can route agents to OpenAI instead, transcribe fully offline with local ONNX Whisper or Parakeet models, or point the agents at a self-hosted OpenAI-compatible server such as Ollama or LM Studio -- which makes the whole pipeline local, with no key from anyone. Recordings and transcripts stay on your server."
             }
           },
           {
@@ -226,7 +226,7 @@
       <div class="feature-row">
         <div class="feature-copy">
           <h3>Provider-routed models, on your keys</h3>
-          <p>Mix Google Gemini and OpenAI per agent, or transcribe fully offline with local ONNX Whisper and Parakeet -- no API key needed for transcription. Privacy First keeps every byte on the machine, with one honest tradeoff: there is no local text model, so the insight agents switch off.</p>
+          <p>Mix Google Gemini and OpenAI per agent, transcribe fully offline with local ONNX Whisper and Parakeet, or point the agents at your own OpenAI-compatible server -- Ollama, LM Studio, vLLM -- and run the whole pipeline with no key from anyone. One honest wrinkle: the Privacy First switch recognizes only the local transcription models, so it still turns the agents off; a fully local setup is configured through the endpoint instead.</p>
         </div>
         <div class="feature-visual">
           <picture>
@@ -534,7 +534,7 @@ docker compose up --build
         </div>
         <div class="faq-item">
           <h3>Does my meeting audio leave my machine?</h3>
-          <p>Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API. You can route agents to OpenAI instead, or transcribe fully offline with local ONNX Whisper or Parakeet models. The insight agents are the one exception: there is no local text model yet, so they always call Gemini or OpenAI. Recordings and transcripts stay on your server.</p>
+          <p>Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API. You can route agents to OpenAI instead, transcribe fully offline with local ONNX Whisper or Parakeet models, or point the agents at a self-hosted OpenAI-compatible server such as Ollama or LM Studio -- which makes the whole pipeline local, with no key from anyone. Recordings and transcripts stay on your server.</p>
         </div>
         <div class="faq-item">
           <h3>Does it work with Zoom, Google Meet, and Teams?</h3>

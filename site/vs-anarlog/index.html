@@ -188,7 +188,7 @@
             <tr>
               <td>Fully-offline analysis</td>
               <td>Yes -- on-device transcription plus LM Studio or Ollama for summaries and chat</td>
-              <td>Partial: transcription and diarization offline; insight agents need Gemini or OpenAI keys</td>
+              <td>Yes -- local ONNX transcription plus any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM) for the agents</td>
             </tr>
             <tr>
               <td>Install experience</td>
@@ -309,14 +309,17 @@
         </p>
         <h3>The offline story</h3>
         <p>
-          Anarlog wins here, honestly. With an on-device transcription model
-          plus LM Studio or Ollama, it records, transcribes, summarizes, and
-          chats with no internet connection at all. Backchannel's diarization
-          is always local and transcription can run fully offline with local
-          ONNX models, but the insight agents -- the feature you probably
-          came for -- currently require a Gemini or OpenAI key. There is no
-          Ollama or LM Studio route in the codebase today. If air-gapped
-          analysis is a hard requirement, Anarlog fits better right now.
+          Both sides can now do this. With an on-device transcription model
+          plus LM Studio or Ollama, Anarlog records, transcribes, summarizes,
+          and chats with no internet connection at all. Backchannel's
+          diarization is always local, transcription runs offline with local
+          ONNX models, and the insight agents can point at any
+          OpenAI-compatible server -- Ollama, LM Studio, vLLM -- so the live
+          analysis runs on your hardware too, with no key from anyone.
+          One honest wrinkle on our side: the Privacy First switch still
+          turns the agents off, because it recognizes only the local
+          transcription models. A fully local Backchannel is configured
+          through the endpoint setting rather than by flipping that switch.
         </p>
         <h3>Maturity and community</h3>
         <p>

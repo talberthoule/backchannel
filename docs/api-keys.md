@@ -11,13 +11,19 @@ You only need one key to start:
 | Google (Gemini) | Batch transcription, live interim transcription, and the default analysis agents -- start here | Free tier, no credit card |
 | OpenAI | Optional; only for agents you point at OpenAI models (for example the audio gateway on OpenAI Realtime) | Prepaid credit, minimum $5 |
 
-Prefer not to use a cloud provider at all? Turn on
-[Privacy First mode](configuration.md#privacy-first-local-only-mode) under
-Administration to transcribe and diarize entirely on your own machine. Be
-aware of the trade: the local ONNX models are transcription-only, so that
-mode also switches off every analysis agent. Privacy First and the live
-agents are mutually exclusive -- the agents always require a Google or
-OpenAI key.
+Prefer not to use a cloud provider at all? You do not have to. Point the
+agents at a self-hosted OpenAI-compatible server -- Ollama, LM Studio, vLLM,
+or LiteLLM -- under Admin -> API Keys, and pair it with a local ONNX
+transcription model. That combination runs end to end on your own hardware
+and needs no key from anyone. See
+[the OpenAI-compatible endpoint](configuration.md#openai-compatible-endpoint).
+
+One caveat worth knowing: the
+[Privacy First switch](configuration.md#privacy-first-local-only-mode) is a
+separate mechanism and still turns every analysis agent off, because it
+recognizes only the local ONNX transcription models. A fully local
+deployment is configured through the endpoint setting rather than through
+that switch.
 
 ## Google Gemini key (about 2 minutes, free)
 
@@ -55,6 +61,15 @@ missing, use a personal Google account or ask your admin to enable it.
    <https://platform.openai.com/settings/organization/billing>.
 
 ## Connect the key to Backchannel
+
+Keys are managed in Admin -> API Keys. Each provider shows whether a key is
+stored, whether an environment fallback is in play, and a test button that
+verifies the key against the provider before you rely on it.
+
+<picture>
+  <source srcset="/assets/shots/admin-api-keys-dark.webp" media="(prefers-color-scheme: dark)" />
+  <img src="/assets/shots/admin-api-keys.webp" width="1185" height="900" alt="Admin API Keys tab: per-provider credential entry with stored-key status and a connection test." />
+</picture>
 
 1. In Backchannel, open **Admin -> API Keys**. The first-run checklist's
    **Add API key** button lands in the same place, and each provider row has

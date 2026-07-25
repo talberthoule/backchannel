@@ -321,13 +321,14 @@
           Compose stack, and our prebuilt desktop downloads need an approved
           Backchannel account rather than being a direct download.
         </p>
-        <h3>One more thing we cannot do</h3>
+        <h3>One rough edge worth naming</h3>
         <p>
-          Backchannel's analysis agents require a Google or OpenAI API key.
-          Capture, diarization, and transcription all run locally, but there
-          is no local LLM route in the codebase today, so the agents cannot
-          run with the network off. Our Privacy First mode is explicit about
-          this: switching it on disables every feature that would make an
+          Backchannel's analysis agents can now run against a self-hosted
+          OpenAI-compatible server (Ollama, LM Studio, vLLM), so with local
+          ONNX transcription the whole pipeline works with the network off
+          and no key from anyone. The wrinkle is that our Privacy First
+          switch does not yet know that: it recognizes only the local
+          transcription models, so switching it on still disables every
           outside call, including the agents. If you need summarization with
           zero cloud calls, look at
           <a href="/open-source-meeting-assistants/">the other open-source options</a>
