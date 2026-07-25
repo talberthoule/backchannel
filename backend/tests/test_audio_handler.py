@@ -21,12 +21,25 @@ from app.services.voice_enrollment import LOCAL_VOICE_PROFILE_ID
 
 
 class FakeSessionContext:
-    def __init__(self, session, last_segment_number=None, insight_total=0):
+    def __init__(
+        self,
+        session,
+        last_segment_number=None,
+        insight_total=0,
+        call_segment=None,
+        execute_results=None,
+    ):
         self.session = session
         self.last_segment_number = last_segment_number
         # The session's total Question row count; an Exception instance makes
         # the count query fail so tests can prove finalize survives it.
         self.insight_total = insight_total
+        self.call_segment = call_segment
+        self._execute_results = list(
+            execute_results
+            if execute_results is not None
+            else [last_segment_number]
+        )
         self.added = []
         self.commits = 0
 
@@ -37,12 +50,15 @@ class FakeSessionContext:
         return False
 
     async def get(self, model, item_id):
+        if model is CallSegment:
+            if self.call_segment and self.call_segment.id == item_id:
+                return self.call_segment
+            return None
         return self.session
 
     async def execute(self, statement):
-        return SimpleNamespace(
-            scalar_one_or_none=lambda: self.last_segment_number
-        )
+        value = self._execute_results.pop(0) if self._execute_results else None
+        return SimpleNamespace(scalar_one_or_none=lambda: value)
 
     async def scalar(self, statement):
         if isinstance(self.insight_total, Exception):
@@ -422,6 +438,48 @@ class FinalizeCallDrainModeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("completed", session.state)
         self.assertIsNotNone(session.ended_at)
 
+    async def test_stale_finalizer_does_not_complete_resumed_session(self):
+        session_id = uuid.uuid4()
+        owned_id = uuid.uuid4()
+        newer_id = uuid.uuid4()
+        owned = SimpleNamespace(
+            id=owned_id,
+            ended_at=None,
+            audio_path=None,
+            mic_audio_path=None,
+            system_audio_path=None,
+        )
+        session = SimpleNamespace(state="active", ended_at=None)
+        db = FakeSessionContext(
+            session,
+            call_segment=owned,
+            execute_results=[newer_id],
+        )
+        orchestrator = self._make_orchestrator(briefing=False)
+        websocket = MagicMock(send_json=AsyncMock())
+        transcription_queue = MagicMock(
+            drain=AsyncMock(),
+            stats={"jobs": 0, "emitted": 0, "failed": 0},
+        )
+
+        with (
+            patch("app.ws.audio_handler.async_session", return_value=db),
+            patch("app.ws.audio_handler.flush_diarizer_segments", return_value=[]),
+        ):
+            await audio_handler._finalize_call(
+                session_id,
+                websocket,
+                MagicMock(),
+                orchestrator,
+                transcription_queue,
+                call_segment_id=owned_id,
+                drain_mode="minimal",
+            )
+
+        self.assertIsNotNone(owned.ended_at)
+        self.assertEqual("active", session.state)
+        self.assertIsNone(session.ended_at)
+
 
 class MinimalFinalizeAnalysisShutdownTests(unittest.IsolatedAsyncioTestCase):
     """Real-orchestrator coverage for the disconnect path.
@@ -582,9 +640,11 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
         ):
             result = await start_call_segment(session_id)
 
+        segment_id, result_writers = result
+        self.assertEqual(db.added[0].id, segment_id)
         self.assertEqual(
             {"mixed": writers[0], "mic": writers[1], "system": writers[2]},
-            result,
+            result_writers,
         )
         writer_class.assert_has_calls(
             [
@@ -627,7 +687,7 @@ class CallSegmentStartTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SegmentAudioPersistenceTests(unittest.TestCase):
-    def test_mic_only_frames_write_only_the_mixed_file(self):
+    def test_pre_split_frames_write_all_aligned_files(self):
         writers = {
             "mixed": MagicMock(),
             "mic": MagicMock(),
@@ -636,26 +696,13 @@ class SegmentAudioPersistenceTests(unittest.TestCase):
 
         audio_handler._append_audio_frames(
             writers,
-            (b"mixed", b"mic", b"system"),
+            (b"mixed", b"mic", b"\x00" * len(b"system")),
             split_track_established=False,
         )
 
         writers["mixed"].append.assert_called_once_with(b"mixed")
-        writers["mic"].append.assert_not_called()
-        writers["system"].append.assert_not_called()
-
-    def test_establishing_split_backfills_aligned_track_prefixes(self):
-        writers = {
-            "mixed": MagicMock(),
-            "mic": MagicMock(),
-            "system": MagicMock(),
-        }
-        writers["mixed"].pcm_chunks.return_value = [b"past-mic"]
-
-        audio_handler._establish_split_audio_persistence(writers)
-
-        writers["mic"].append.assert_called_once_with(b"past-mic")
-        writers["system"].append.assert_called_once_with(bytes(len(b"past-mic")))
+        writers["mic"].append.assert_called_once_with(b"mic")
+        writers["system"].append.assert_called_once_with(b"\x00" * len(b"system"))
 
     def test_auxiliary_append_failure_keeps_mixed_writer_active(self):
         self.assertTrue(hasattr(audio_handler, "_append_audio_frames"))

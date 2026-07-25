@@ -332,7 +332,7 @@ async def _restore_session_after_refusal(session_id: uuid.UUID) -> str | None:
 
 async def _start_call_segment(
     session_id: uuid.UUID,
-) -> dict[str, SegmentAudioWriter | None] | None:
+) -> tuple[uuid.UUID, dict[str, SegmentAudioWriter | None]] | None:
     async with async_session() as db:
         session = await db.get(Session, session_id)
         if session is None:
@@ -346,7 +346,9 @@ async def _start_call_segment(
         )
         last_segment_number = result.scalar_one_or_none()
         segment_number = (last_segment_number or 0) + 1
+        segment_id = uuid.uuid4()
         segment = CallSegment(
+            id=segment_id,
             session_id=session_id,
             segment_number=segment_number,
             started_at=datetime.now(timezone.utc),
@@ -374,7 +376,7 @@ async def _start_call_segment(
             session.ended_at = None
 
         await db.commit()
-        return audio_writers
+        return segment_id, audio_writers
 
 
 def _close_audio_writers(
@@ -406,8 +408,6 @@ def _append_audio_frames(
     split_track_established: bool = True,
 ) -> None:
     for track, pcm in zip(("mixed", "mic", "system"), frames):
-        if track != "mixed" and not split_track_established:
-            continue
         writer = audio_writers[track]
         if not writer:
             continue
@@ -423,33 +423,6 @@ def _append_audio_frames(
                 pass
             audio_writers[track] = None
 
-
-def _establish_split_audio_persistence(
-    audio_writers: dict[str, SegmentAudioWriter | None],
-) -> None:
-    mixed = audio_writers["mixed"]
-    if not mixed:
-        return
-    try:
-        for pcm in mixed.pcm_chunks():
-            for track, backfill in (("mic", pcm), ("system", bytes(len(pcm)))):
-                writer = audio_writers[track]
-                if writer:
-                    writer.append(backfill)
-    except Exception as exc:
-        logger.warning("Failed to backfill split-track audio: %s", exc)
-        for track in ("mic", "system"):
-            writer = audio_writers[track]
-            if writer:
-                try:
-                    path = writer.close()
-                    if path:
-                        (data_dir() / path).unlink(missing_ok=True)
-                except Exception:
-                    pass
-            audio_writers[track] = None
-
-
 async def _finalize_call(
     session_id: uuid.UUID,
     websocket: WebSocket,
@@ -460,6 +433,7 @@ async def _finalize_call(
     sys_diarizer: Any = None,
     split_track_established: bool = False,
     drain_mode: str = "full",
+    call_segment_id: uuid.UUID | None = None,
 ):
     if drain_mode == "minimal":
         # Disconnect/error path: stop the orchestrator's live analysis tasks
@@ -556,27 +530,38 @@ async def _finalize_call(
     )
 
     async with async_session() as db:
-        result = await db.execute(
-            select(CallSegment)
-            .where(CallSegment.session_id == session_id, CallSegment.ended_at.is_(None))
-            .order_by(CallSegment.segment_number.desc())
-            .limit(1)
+        owned_segment = (
+            await db.get(CallSegment, call_segment_id)
+            if call_segment_id is not None
+            else None
         )
-        open_segment = result.scalar_one_or_none()
-        if open_segment:
-            open_segment.ended_at = datetime.now(timezone.utc)
+        if owned_segment and owned_segment.ended_at is None:
+            owned_segment.ended_at = datetime.now(timezone.utc)
             if audio_writers:
                 try:
                     for field, path in _close_audio_writers(
                         audio_writers,
                         split_track_established,
                     ).items():
-                        setattr(open_segment, field, path)
+                        setattr(owned_segment, field, path)
                 except Exception as e:
                     logger.warning(f"Failed to finalize segment audio: {e}")
 
+        newer_open_segment_id = None
+        if call_segment_id is not None:
+            result = await db.execute(
+                select(CallSegment.id)
+                .where(
+                    CallSegment.session_id == session_id,
+                    CallSegment.ended_at.is_(None),
+                    CallSegment.id != call_segment_id,
+                )
+                .limit(1)
+            )
+            newer_open_segment_id = result.scalar_one_or_none()
+
         session = await db.get(Session, session_id)
-        if session and session.state == "active":
+        if session and session.state == "active" and newer_open_segment_id is None:
             session.state = "completed"
             session.ended_at = datetime.now(timezone.utc)
         await db.commit()
@@ -830,6 +815,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         on_failure=_on_transcription_failure,
     )
 
+    call_segment_id: uuid.UUID | None = None
     audio_writers: dict[str, SegmentAudioWriter | None] | None = None
 
     try:
@@ -842,7 +828,9 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         )
         await websocket.send_json({"type": "status", "data": {"state": "active", "message": active_message}})
 
-        audio_writers = await _start_call_segment(session_id)
+        segment_start = await _start_call_segment(session_id)
+        if segment_start is not None:
+            call_segment_id, audio_writers = segment_start
 
         while not stopped:
             try:
@@ -874,8 +862,6 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                         )
 
                     if track == 1 and not split_track_established:
-                        if audio_writers:
-                            _establish_split_audio_persistence(audio_writers)
                         split_track_established = True
 
                     # Mix tracks into one stream for the gateway and the session recording
@@ -942,8 +928,6 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                 updated_split_state = _split_track_established_after_message(
                     data, split_track_established
                 )
-                if updated_split_state and not split_track_established and audio_writers:
-                    _establish_split_audio_persistence(audio_writers)
                 split_track_established = updated_split_state
                 if data.get("type") == "stop":
                     stopped = True
@@ -976,4 +960,5 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
             session_id, websocket, diarizer, orchestrator, transcription_queue,
             audio_writers=audio_writers, sys_diarizer=sys_diarizer, split_track_established=split_track_established,
             drain_mode=stop_drain_mode if stopped else "minimal",
+            call_segment_id=call_segment_id,
         )
