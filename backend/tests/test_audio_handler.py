@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import unittest
 import uuid
 from datetime import datetime, timezone
@@ -95,6 +96,132 @@ class AgentConfigLoadingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIs(config, result["analyst"])
         self.assertFalse(result["analyst"].enabled)
+
+
+class DiarizationWorkerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_slow_worker_does_not_block_producer_enqueue(self):
+        started = threading.Event()
+        release = threading.Event()
+
+        class SlowDiarizer:
+            def feed_audio(self, pcm_bytes):
+                started.set()
+                release.wait(timeout=2)
+                return []
+
+        queue = asyncio.Queue()
+        worker = asyncio.create_task(
+            audio_handler._run_diarization_worker(
+                queue,
+                SlowDiarizer(),
+                MagicMock(),
+                AsyncMock(),
+                AsyncMock(),
+            )
+        )
+        queue.put_nowait(
+            audio_handler._QueuedAudioFrame(0, b"first", False, monotonic())
+        )
+        self.assertTrue(await asyncio.to_thread(started.wait, 1))
+
+        queue.put_nowait(
+            audio_handler._QueuedAudioFrame(0, b"second", False, monotonic())
+        )
+        self.assertEqual(1, queue.qsize())
+
+        release.set()
+        queue.put_nowait(None)
+        await worker
+
+    async def test_worker_preserves_arrival_and_split_state(self):
+        events = []
+
+        class EchoDiarizer:
+            def __init__(self, prefix):
+                self.prefix = prefix
+
+            def feed_audio(self, pcm_bytes):
+                return [
+                    SimpleNamespace(
+                        speaker_id=f"{self.prefix}_{pcm_bytes.decode()}",
+                        pcm_bytes=pcm_bytes,
+                    )
+                ]
+
+        async def on_segment(item, segment):
+            events.append(
+                (
+                    item.track,
+                    item.pcm_bytes,
+                    item.split_track_established,
+                    segment.speaker_id,
+                )
+            )
+
+        mic = EchoDiarizer("mic")
+        system = EchoDiarizer("sys")
+        create_system = MagicMock(return_value=system)
+        queue = asyncio.Queue()
+        worker = asyncio.create_task(
+            audio_handler._run_diarization_worker(
+                queue,
+                mic,
+                create_system,
+                on_segment,
+                AsyncMock(),
+            )
+        )
+        queue.put_nowait(audio_handler._QueuedAudioFrame(0, b"a", False, 1.0))
+        queue.put_nowait(audio_handler._QueuedAudioFrame(1, b"b", True, 2.0))
+        queue.put_nowait(audio_handler._QueuedAudioFrame(0, b"c", True, 3.0))
+        queue.put_nowait(None)
+
+        returned_system = await worker
+
+        self.assertIs(system, returned_system)
+        create_system.assert_called_once_with()
+        self.assertEqual(
+            [
+                (0, b"a", False, "mic_a"),
+                (1, b"b", True, "sys_b"),
+                (0, b"c", True, "mic_c"),
+            ],
+            events,
+        )
+
+    async def test_item_failure_reports_and_continues(self):
+        class FlakyDiarizer:
+            def feed_audio(self, pcm_bytes):
+                if pcm_bytes == b"bad":
+                    raise RuntimeError("inference failed")
+                return [SimpleNamespace(speaker_id="auto_1", pcm_bytes=pcm_bytes)]
+
+        handled = []
+        errors = []
+
+        async def on_segment(item, segment):
+            handled.append(segment.pcm_bytes)
+
+        async def on_error(item, exc):
+            errors.append((item.pcm_bytes, str(exc)))
+
+        queue = asyncio.Queue()
+        worker = asyncio.create_task(
+            audio_handler._run_diarization_worker(
+                queue,
+                FlakyDiarizer(),
+                MagicMock(),
+                on_segment,
+                on_error,
+            )
+        )
+        queue.put_nowait(audio_handler._QueuedAudioFrame(0, b"bad", False, 1.0))
+        queue.put_nowait(audio_handler._QueuedAudioFrame(0, b"good", False, 2.0))
+        queue.put_nowait(None)
+        await worker
+
+        self.assertEqual([(b"bad", "inference failed")], errors)
+        self.assertEqual([b"good"], handled)
 
 
 class AudioFrameDecodingTests(unittest.TestCase):

@@ -2,6 +2,8 @@ import asyncio
 import json
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import monotonic
 from typing import Any
@@ -43,6 +45,15 @@ router = APIRouter()
 _SPEAKER_COLORS = ["#0d9488", "#f59e0b", "#e74c3c", "#2ecc71", "#9b59b6", "#f39c12"]
 _PCM_BYTES_PER_SECOND = 32_000
 _AUDIO_FLOW_LOG_INTERVAL_BYTES = 10 * _PCM_BYTES_PER_SECOND
+
+
+@dataclass(frozen=True)
+class _QueuedAudioFrame:
+    track: int
+    pcm_bytes: bytes
+    split_track_established: bool
+    enqueued_at: float
+
 
 # Drain modes a client may request on stop. "minimal" is reserved for the
 # disconnect/error path and cannot be requested over the wire.
@@ -195,6 +206,51 @@ def _normalize_speaker_auto_id(auto_id: str) -> tuple[str, bool]:
 
 def _speaker_identity(speaker: Speaker) -> tuple[str, str, str]:
     return str(speaker.id), speaker.name, speaker.speaker_type
+
+
+async def _run_diarization_worker(
+    queue: asyncio.Queue[_QueuedAudioFrame | None],
+    mic_diarizer: Any,
+    create_system_diarizer: Callable[[], Any],
+    on_segment: Callable[[_QueuedAudioFrame, Any], Awaitable[None]],
+    on_error: Callable[[_QueuedAudioFrame, Exception], Awaitable[None]],
+    on_item_done: Callable[[_QueuedAudioFrame], None] | None = None,
+) -> Any | None:
+    system_diarizer = None
+    while True:
+        item = await queue.get()
+        if item is None:
+            return system_diarizer
+        try:
+            diarizer = mic_diarizer
+            if item.track == 1:
+                if system_diarizer is None:
+                    system_diarizer = create_system_diarizer()
+                diarizer = system_diarizer
+            segments = await asyncio.to_thread(diarizer.feed_audio, item.pcm_bytes)
+            for segment in segments:
+                await on_segment(item, segment)
+            item_age = max(0.0, monotonic() - item.enqueued_at)
+            if item_age >= 5.0 or queue.qsize() >= 50:
+                logger.info(
+                    "Diarization backlog: remaining=%s item_age=%.1fs track=%s",
+                    queue.qsize(),
+                    item_age,
+                    item.track,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Diarization failed for queued track %s: %s",
+                item.track,
+                exc,
+            )
+            try:
+                await on_error(item, exc)
+            except Exception:
+                logger.warning("Diarization error callback failed", exc_info=True)
+        finally:
+            if on_item_done is not None:
+                on_item_done(item)
 
 
 async def _flush_remaining_audio(
