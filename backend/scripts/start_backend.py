@@ -18,6 +18,12 @@ def main() -> int:
         "0.0.0.0",
         "--port",
         "8000",
+        "--ws-ping-timeout",
+        "90",
+        "--ws-max-queue",
+        "2048",
+        "--ws-max-size",
+        "65536",
     ]
     if os.getenv("BACKEND_RELOAD", "true").strip().lower() not in {"0", "false", "no", "off"}:
         command.append("--reload")

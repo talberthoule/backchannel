@@ -287,6 +287,9 @@ class LauncherHelperTests(unittest.TestCase):
             port=54321,
             log_config=None,
             headers=[(launcher.INSTANCE_HEADER, "ours")],
+            ws_ping_timeout=90.0,
+            ws_max_queue=2048,
+            ws_max_size=65_536,
         )
 
     def test_tray_open_action_uses_browser_opener(self):
