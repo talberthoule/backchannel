@@ -260,7 +260,7 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
         <div className="mt-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
           <p className="font-body text-xs leading-relaxed text-brand-gray">
             No self-hosted text models found. Add an on-prem OpenAI-compatible endpoint (Ollama, LM Studio,
-            vLLM, LiteLLM) under <span className="font-semibold text-brand-dark-gray">API Keys</span> to test
+            vLLM, LiteLLM) under <span className="font-semibold text-brand-dark-gray">Connections</span> to test
             local analysis. The bundled ASR models are still tested below.
           </p>
         </div>

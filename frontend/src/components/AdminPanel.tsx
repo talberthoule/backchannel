@@ -57,7 +57,7 @@ export type AdminTab = "agents" | "transcription" | "keys" | "about";
 const TABS: { id: AdminTab; label: string; hint: string }[] = [
   { id: "agents", label: "Agents", hint: "Models, prompts, and behavior for each analysis agent" },
   { id: "transcription", label: "Transcription & Audio", hint: "Speaker diarization and batch transcription settings" },
-  { id: "keys", label: "API Keys", hint: "Provider credentials for Google and OpenAI models" },
+  { id: "keys", label: "Connections", hint: "Connect AI providers and self-hosted model servers" },
   { id: "about", label: "About", hint: "Application version and release notes" },
 ];
 
@@ -437,7 +437,7 @@ function AgentCard({
           </select>
           {hasLockedModels && (
             <p className="mt-1 font-body text-[10px] text-brand-mid-gray">
-              Grayed-out models need an API key for their provider (see the API Keys tab)
+              Grayed-out models need an API key for their provider (see the Connections tab)
             </p>
           )}
         </div>
