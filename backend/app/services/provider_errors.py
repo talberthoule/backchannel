@@ -112,7 +112,7 @@ def provider_error_message(provider: str, exc: Exception) -> str:
         key_name = _KEY_NAMES.get(provider, provider)
         return (
             f"{label} rejected the API key ({_short_message(exc)}). "
-            f"Update the {key_name} key in Admin -> API Keys."
+            f"Update the {key_name} key in Admin -> Connections."
         )
 
     return f"{label} error: {_short_message(exc)}"

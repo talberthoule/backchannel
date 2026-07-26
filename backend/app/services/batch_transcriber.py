@@ -114,7 +114,7 @@ class BatchTranscriber:
         self._session_id = session_id
 
     async def _get_client(self):
-        # Lazy so the workspace-stored key (Admin -> API Keys) is picked up.
+        # Lazy so the workspace-stored key (Admin -> Connections) is picked up.
         if self._client is None:
             key = await resolve_provider_key("google")
             self._client = genai.Client(api_key=key)

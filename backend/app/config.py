@@ -291,7 +291,7 @@ MODEL_REGISTRY: list[dict] = [
     },
     # Any OpenAI-compatible chat server (Ollama, LM Studio, vLLM, LiteLLM).
     # One stable registry id stands in for whatever model the server exposes:
-    # the base URL and the wire model name are configured in Admin -> API Keys
+    # the base URL and the wire model name are configured in Admin -> Connections
     # (see services/llm_endpoint.py). requires_key is None because local
     # servers accept unauthenticated calls, so this entry never gets locked
     # out of the agent model pickers.
@@ -299,7 +299,7 @@ MODEL_REGISTRY: list[dict] = [
         "id": "openai-compatible",
         "name": "OpenAI-Compatible Endpoint",
         "provider": "OpenAI-Compatible",
-        "description": "Self-hosted OpenAI-compatible chat server (Ollama, LM Studio, vLLM, LiteLLM); set its base URL and model id in Admin -> API Keys",
+        "description": "Self-hosted OpenAI-compatible chat server (Ollama, LM Studio, vLLM, LiteLLM); set its base URL and model id in Admin -> Connections",
         "tier": "stable",
         "requires_key": None,
         "supports_text": True,

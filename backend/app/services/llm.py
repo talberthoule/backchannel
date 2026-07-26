@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 class LLMKeyMissing(ValueError):
     def __init__(self, provider: str):
-        super().__init__(f"No API key configured for {provider}; add one in Admin -> API Keys")
+        super().__init__(f"No API key configured for {provider}; add one in Admin -> Connections")
         self.provider = provider
 
 

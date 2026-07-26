@@ -103,7 +103,7 @@ class OpenAIRealtimeSession:
     async def connect(self):
         key = self._api_key or await resolve_provider_key("openai")
         if not key:
-            raise RuntimeError("No API key configured for openai; add one in Admin -> API Keys")
+            raise RuntimeError("No API key configured for openai; add one in Admin -> Connections")
         self._ws = await websockets.connect(
             REALTIME_URL,
             additional_headers={"Authorization": f"Bearer {key}"},
