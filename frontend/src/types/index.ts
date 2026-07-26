@@ -354,11 +354,32 @@ export interface LocalFitRoleCatalogEntry {
   default_interval: number;
 }
 
+export interface LocalServiceOption {
+  key: string;
+  label: string;
+  local_options: { id: string; name: string }[];
+  cloud_only: boolean;
+  note: string;
+}
+
+export interface LocalModelUsage {
+  id: string;
+  name: string;
+  usable_for: string[];
+}
+
+export interface LocalCapabilities {
+  services: LocalServiceOption[];
+  models: LocalModelUsage[];
+}
+
 export interface LocalFitSummary {
   has_local_text_models: boolean;
   models: { id: string; name: string }[];
   intervals: Record<string, number>;
   roles: LocalFitRoleCatalogEntry[];
+  // Present on current backends; optional so an older backend still parses.
+  capabilities?: LocalCapabilities;
 }
 
 export interface LocalFitReport extends LocalFitSummary {

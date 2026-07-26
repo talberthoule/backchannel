@@ -311,6 +311,66 @@ def role_catalog() -> list[dict]:
     ]
 
 
+# --- Local capability map (where each local model can be used) -------------
+#
+# Each user-facing AI service and the model capability flag it needs. Derived
+# straight from the registry flags so this map never drifts from what actually
+# routes. "Meeting chat" and the analysis agents both need text, so a chat
+# endpoint shows up under both.
+
+LOCAL_SERVICES: tuple[tuple[str, str, str], ...] = (
+    ("batch_transcription", "Batch transcription", "supports_batch_audio"),
+    ("live_captions", "Live interim captions", "supports_live_audio"),
+    ("analysis_agents", "Analysis agents", "supports_text"),
+    ("meeting_chat", "Meeting chat & summarization", "supports_text"),
+)
+
+# When nothing local can fill a service, name the cloud capability it needs so
+# the gap is actionable rather than a blank.
+_CLOUD_ONLY_NOTE = {
+    "live_captions": "needs a cloud streaming model (Gemini Live or OpenAI Realtime)",
+}
+
+
+def _model_usable_for(model: dict) -> list[str]:
+    return [label for _key, label, cap in LOCAL_SERVICES if model.get(cap)]
+
+
+def build_local_capabilities(models: list[dict]) -> dict:
+    """Map local models to the services they can fill, and each service back to
+    its local options (or a cloud-only note when there are none).
+
+    `models` are registry-shaped dicts (id, name, supports_*). Pure, so the
+    service/capability mapping is unit-tested without a DB or live models.
+    """
+    services = []
+    for key, label, cap in LOCAL_SERVICES:
+        options = [{"id": m["id"], "name": m["name"]} for m in models if m.get(cap)]
+        services.append(
+            {
+                "key": key,
+                "label": label,
+                "local_options": options,
+                "cloud_only": not options,
+                "note": "" if options else _CLOUD_ONLY_NOTE.get(key, ""),
+            }
+        )
+    model_usage = [
+        {"id": m["id"], "name": m["name"], "usable_for": _model_usable_for(m)}
+        for m in models
+    ]
+    return {"services": services, "models": model_usage}
+
+
+async def local_models_all(db: AsyncSession) -> list[dict]:
+    """Every model that runs on this machine: bundled ONNX plus on-prem endpoints."""
+    from app.config import MODEL_REGISTRY
+
+    bundled = [m for m in MODEL_REGISTRY if str(m.get("provider", "")).lower() == "local"]
+    served = [m for m in await endpoint_models(db) if m.get("runs_locally")]
+    return bundled + served
+
+
 async def summarize_local_fit(db: AsyncSession) -> dict:
     """Light payload the card renders before running: what is available to test."""
     models = await local_text_models(db)
@@ -319,6 +379,7 @@ async def summarize_local_fit(db: AsyncSession) -> dict:
         "models": [{"id": m["id"], "name": m["name"]} for m in models],
         "intervals": await current_intervals(db),
         "roles": role_catalog(),
+        "capabilities": build_local_capabilities(await local_models_all(db)),
     }
 
 
@@ -340,6 +401,7 @@ async def run_local_fit(
         "intervals": intervals,
         "roles": role_catalog(),
         "text_models": text_models,
+        "capabilities": build_local_capabilities(await local_models_all(db)),
     }
 
 

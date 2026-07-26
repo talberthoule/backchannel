@@ -111,6 +111,18 @@ speech clip and it times each bundled local ONNX ASR model
 and red slower than real time. Unlike the text test this needs a real clip
 because `LocalTranscriber` gates on an energy floor and a speech check.
 
+To answer "where can this model actually go?", the card shows, per model, the
+services it can fill (a **Usable for** list) and a **What can run locally** map
+of each AI service to its local option. Both are derived from the registry
+capability flags (`supports_batch_audio`, `supports_text`, `supports_live_audio`)
+by `build_local_capabilities`, so they never drift from how calls route: local
+ONNX ASR is batch-transcription-only, a self-hosted chat endpoint drives the
+analysis agents and meeting chat, and live interim captions have no local option
+(they need a cloud streaming model), which is why live preview is off under
+Privacy First. The card also auto-retries its summary fetch so it recovers on
+its own if the backend was still starting or an endpoint was connected after
+the page loaded.
+
 ## Insight lifecycle
 
 1. A text agent proposes an item (question, observation, opportunity,

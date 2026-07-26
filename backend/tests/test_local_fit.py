@@ -15,6 +15,7 @@ from app.services.local_fit import (
     apply_recommended_intervals,
     benchmark_asr_model,
     benchmark_text_model,
+    build_local_capabilities,
     classify_latency,
     classify_rtf,
     is_asr_clip_too_short,
@@ -270,6 +271,57 @@ class RunAsrFitTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(report["asr_models"]), 2)
         self.assertTrue(all(m["status"] == "ok" for m in report["asr_models"]))
         self.assertGreater(report["audio_seconds"], 0)
+
+
+class BuildLocalCapabilitiesTests(unittest.TestCase):
+    MODELS = [
+        {
+            "id": "local-whisper-base",
+            "name": "Whisper Base (Local)",
+            "supports_text": False,
+            "supports_batch_audio": True,
+            "supports_live_audio": False,
+        },
+        {
+            "id": "endpoint:antares:antares",
+            "name": "antares-1b",
+            "supports_text": True,
+            "supports_batch_audio": False,
+            "supports_live_audio": False,
+        },
+    ]
+
+    def _services(self):
+        return {s["key"]: s for s in build_local_capabilities(self.MODELS)["services"]}
+
+    def test_batch_and_text_services_list_the_right_models(self):
+        svc = self._services()
+        self.assertEqual(
+            [o["id"] for o in svc["batch_transcription"]["local_options"]],
+            ["local-whisper-base"],
+        )
+        self.assertEqual(
+            [o["id"] for o in svc["analysis_agents"]["local_options"]],
+            ["endpoint:antares:antares"],
+        )
+        # Meeting chat is text too, so the chat endpoint also fills it.
+        self.assertEqual(
+            [o["id"] for o in svc["meeting_chat"]["local_options"]],
+            ["endpoint:antares:antares"],
+        )
+
+    def test_live_captions_have_no_local_option_and_name_the_cloud_need(self):
+        live = self._services()["live_captions"]
+        self.assertEqual(live["local_options"], [])
+        self.assertTrue(live["cloud_only"])
+        self.assertIn("cloud", live["note"].lower())
+
+    def test_per_model_usable_for_is_derived_from_flags(self):
+        usage = {m["id"]: m["usable_for"] for m in build_local_capabilities(self.MODELS)["models"]}
+        self.assertEqual(usage["local-whisper-base"], ["Batch transcription"])
+        self.assertIn("Analysis agents", usage["endpoint:antares:antares"])
+        self.assertIn("Meeting chat & summarization", usage["endpoint:antares:antares"])
+        self.assertNotIn("Live interim captions", usage["endpoint:antares:antares"])
 
 
 if __name__ == "__main__":

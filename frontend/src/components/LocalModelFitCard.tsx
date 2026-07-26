@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import type { AsrFitReport, AsrModelFit, FitRole, FitVerdict, LocalFitReport, LocalFitSummary, TextModelFit } from "../types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { AsrFitReport, AsrModelFit, FitRole, FitVerdict, LocalCapabilities, LocalFitReport, LocalFitSummary, TextModelFit } from "../types";
 import * as api from "../services/api";
 import { useClipRecorder } from "../hooks/useClipRecorder";
 
@@ -61,6 +61,14 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
   }, []);
 
   useEffect(() => { void loadSummary(); }, [loadSummary]);
+
+  // Self-heal when the first load lands before the backend is ready or before
+  // an endpoint is connected: keep retrying until a summary comes back.
+  useEffect(() => {
+    if (!error || summary) return;
+    const retry = window.setTimeout(() => { void loadSummary(); }, 3000);
+    return () => window.clearTimeout(retry);
+  }, [error, summary, loadSummary]);
 
   const runTest = async () => {
     setRunning(true);
@@ -126,6 +134,12 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
   });
 
   const hasModels = summary?.has_local_text_models ?? false;
+  const capabilities = summary?.capabilities ?? null;
+  const usableForById = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const model of capabilities?.models ?? []) map[model.id] = model.usable_for;
+    return map;
+  }, [capabilities]);
 
   return (
     <div className="rounded-xl bg-surface p-5 shadow-sm">
@@ -155,8 +169,10 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
         </div>
       </div>
 
+      {capabilities && <LocalCapabilityMap capabilities={capabilities} />}
+
       {!loading && !hasModels && (
-        <div className="rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
+        <div className="mt-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
           <p className="font-body text-xs leading-relaxed text-brand-gray">
             No self-hosted text models found. Add an on-prem OpenAI-compatible endpoint (Ollama, LM Studio,
             vLLM, LiteLLM) under <span className="font-semibold text-brand-dark-gray">API Keys</span>, then
@@ -166,7 +182,7 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
       )}
 
       {hasModels && summary && !report && !running && (
-        <div className="rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
+        <div className="mt-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
           <p className="font-body text-xs text-brand-gray">
             Ready to test {summary.models.length} self-hosted text model{summary.models.length === 1 ? "" : "s"}:
             {" "}
@@ -177,7 +193,7 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
       )}
 
       {running && (
-        <div className="rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
+        <div className="mt-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
           <p className="font-body text-xs text-brand-gray">
             Running the fit test... timing a short-window and a long-window call on each model.
           </p>
@@ -185,11 +201,12 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
       )}
 
       {report && !running && (
-        <div className="space-y-4">
+        <div className="mt-4 space-y-4">
           {report.text_models.map((model) => (
             <ModelFitBlock
               key={model.model_id}
               model={model}
+              usableFor={usableForById[model.model_id] ?? []}
               applying={applyingModel === model.model_id}
               onApply={() => void applyIntervals(model)}
             />
@@ -256,12 +273,17 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
                   <th className="py-1 pr-3 font-medium">Model</th>
                   <th className="py-1 pr-3 font-medium">Processing</th>
                   <th className="py-1 pr-3 font-medium">Real-time factor</th>
-                  <th className="py-1 font-medium">Verdict</th>
+                  <th className="py-1 pr-3 font-medium">Verdict</th>
+                  <th className="py-1 font-medium">Usable for</th>
                 </tr>
               </thead>
               <tbody>
                 {asrReport.asr_models.map((model) => (
-                  <AsrRow key={model.model_id} model={model} />
+                  <AsrRow
+                    key={model.model_id}
+                    model={model}
+                    usableFor={usableForById[model.model_id] ?? ["Batch transcription"]}
+                  />
                 ))}
               </tbody>
             </table>
@@ -289,12 +311,12 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
   );
 }
 
-function AsrRow({ model }: { model: AsrModelFit }) {
+function AsrRow({ model, usableFor }: { model: AsrModelFit; usableFor: string[] }) {
   if (model.status !== "ok" || model.real_time_factor == null) {
     return (
       <tr className="border-t border-brand-light-gray-1">
         <td className="py-1.5 pr-3 text-brand-dark-gray">{model.model_name}</td>
-        <td className="py-1.5 pr-3 text-brand-mid-gray" colSpan={3}>{model.reason || "Benchmark failed."}</td>
+        <td className="py-1.5 pr-3 text-brand-mid-gray" colSpan={4}>{model.reason || "Benchmark failed."}</td>
       </tr>
     );
   }
@@ -304,21 +326,24 @@ function AsrRow({ model }: { model: AsrModelFit }) {
       <td className="py-1.5 pr-3 text-brand-dark-gray">{model.model_name}</td>
       <td className="py-1.5 pr-3 text-brand-gray">{model.processing_seconds.toFixed(1)}s</td>
       <td className="py-1.5 pr-3 text-brand-gray">{model.real_time_factor.toFixed(2)}x</td>
-      <td className="py-1.5">
+      <td className="py-1.5 pr-3">
         <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${VERDICT_STYLE[verdict]}`}>
           {VERDICT_LABEL[verdict]}
         </span>
       </td>
+      <td className="py-1.5 text-brand-gray">{usableFor.join(", ") || "-"}</td>
     </tr>
   );
 }
 
 function ModelFitBlock({
   model,
+  usableFor,
   applying,
   onApply,
 }: {
   model: TextModelFit;
+  usableFor: string[];
   applying: boolean;
   onApply: () => void;
 }) {
@@ -337,6 +362,11 @@ function ModelFitBlock({
             </p>
           ) : (
             <p className="mt-0.5 font-body text-[11px] text-red-700">{model.reason || "Benchmark failed."}</p>
+          )}
+          {usableFor.length > 0 && (
+            <p className="mt-0.5 font-body text-[11px] text-brand-mid-gray">
+              Usable for: <span className="text-brand-gray">{usableFor.join(", ")}</span>
+            </p>
           )}
         </div>
         {model.status === "ok" && changes > 0 && (
@@ -395,6 +425,31 @@ function RoleRow({ role }: { role: FitRole }) {
         )}
       </td>
     </tr>
+  );
+}
+
+/** What each AI service can run locally, or the cloud capability it still needs. */
+function LocalCapabilityMap({ capabilities }: { capabilities: LocalCapabilities }) {
+  return (
+    <div className="mt-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
+      <p className="mb-2 font-body text-[10px] font-semibold uppercase tracking-wide text-brand-mid-gray">
+        What can run locally on this machine
+      </p>
+      <ul className="space-y-1.5">
+        {capabilities.services.map((service) => (
+          <li key={service.key} className="flex flex-wrap items-baseline gap-x-2 font-body text-xs">
+            <span className="font-medium text-brand-dark-gray">{service.label}:</span>
+            {service.cloud_only ? (
+              <span className="text-amber-700">no local option{service.note ? ` - ${service.note}` : ""}</span>
+            ) : (
+              <span className="text-brand-gray">
+                {service.local_options.map((option) => option.name).join(", ")}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
