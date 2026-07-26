@@ -140,7 +140,7 @@ transcription with a self-hosted endpoint for the agents
 ```bash
 git clone https://github.com/talberthoule/backchannel.git
 cd backchannel
-cp .env.example .env   # set GEMINI_API_KEY (or add keys later in Admin -> API Keys)
+cp .env.example .env   # set GEMINI_API_KEY (or add keys later in Admin -> Connections)
 docker compose up --build
 ```
 

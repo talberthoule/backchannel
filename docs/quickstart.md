@@ -14,7 +14,7 @@ for the current asset inventory.
   package-manager installer): `tar -xzf` it and run `Backchannel/Backchannel`.
   Data lives in `~/.local/share/backchannel`.
 
-The app runs from your system tray / menu bar and stores data per-user, no Docker needed. Set a Gemini API key in Admin -> API Keys on first run ([Getting API Keys](api-keys.md) shows how to create one in about two minutes). For the full self-hosted stack, use Docker Compose below.
+The app runs from your system tray / menu bar and stores data per-user, no Docker needed. Set a Gemini API key in Admin -> Connections on first run ([Getting API Keys](api-keys.md) shows how to create one in about two minutes). For the full self-hosted stack, use Docker Compose below.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ The app runs from your system tray / menu bar and stores data per-user, no Docke
 
 API keys can be supplied two ways:
 
-1. In the app: Admin -> API Keys stores keys encrypted at rest
+1. In the app: Admin -> Connections stores keys encrypted at rest
    (see [Configuration](configuration.md)) -- recommended.
 2. Environment fallback: copy `.env.example` to `.env` and set
    `GEMINI_API_KEY` (and optionally `OPENAI_API_KEY`).

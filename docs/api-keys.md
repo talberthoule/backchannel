@@ -12,7 +12,7 @@ You only need one key to start:
 | OpenAI | Optional; only for agents you point at OpenAI models (for example the audio gateway on OpenAI Realtime) | Prepaid credit, minimum $5 |
 
 Prefer not to use a cloud provider at all? You do not have to. Under
-Admin -> API Keys -> **Self-Hosted Models**, add any OpenAI-compatible server
+Admin -> Connections -> **Self-Hosted Models**, add any OpenAI-compatible server
 you run -- LM Studio, Ollama, vLLM, or LiteLLM, on your workstation, home lab,
 or a GPU box on the corporate network. Click **Connect & list models** and
 Backchannel reads the model list straight off the server; each model you keep
@@ -63,16 +63,16 @@ missing, use a personal Google account or ask your admin to enable it.
 
 ## Connect the key to Backchannel
 
-Keys are managed in Admin -> API Keys. Each provider shows whether a key is
+Keys are managed in Admin -> Connections. Each provider shows whether a key is
 stored, whether an environment fallback is in play, and a test button that
 verifies the key against the provider before you rely on it.
 
 <picture>
   <source srcset="/assets/shots/admin-api-keys-dark.webp" media="(prefers-color-scheme: dark)" />
-  <img src="/assets/shots/admin-api-keys.webp" width="1185" height="900" alt="Admin API Keys tab: per-provider credential entry with stored-key status and a connection test." />
+  <img src="/assets/shots/admin-api-keys.webp" width="1185" height="900" alt="Admin Connections tab: per-provider credential entry with stored-key status and a connection test." />
 </picture>
 
-1. In Backchannel, open **Admin -> API Keys**. The first-run checklist's
+1. In Backchannel, open **Admin -> Connections**. The first-run checklist's
    **Add API key** button lands in the same place, and each provider row has
    a **Get a key** link back to the pages above.
 2. Paste the key into the provider's **Paste API key...** field and click
@@ -91,7 +91,7 @@ environment fallback work.
 
 For scripted or containerized setups, copy `.env.example` to `.env` and set
 `GEMINI_API_KEY` (and optionally `OPENAI_API_KEY`) before starting the
-stack. Keys saved in Admin -> API Keys take precedence over environment
+stack. Keys saved in Admin -> Connections take precedence over environment
 variables.
 
 ## Keep the key safe
@@ -100,7 +100,7 @@ Treat an API key like a password: anyone holding it can spend your quota.
 Do not commit it to a repository, paste it into chat tools, or share
 screenshots that include it. If a key leaks, revoke it on the provider page
 (both consoles support deleting a key) and save a replacement in
-Admin -> API Keys.
+Admin -> Connections.
 
 ## Troubleshooting
 

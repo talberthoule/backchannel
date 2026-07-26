@@ -127,7 +127,7 @@ async function runCompleted(colorScheme, suffix) {
 
   for (const [name, asset] of [
     [/Transcription & Audio/, "admin-transcription"],
-    [/API Keys/, "admin-api-keys"],
+    [/Connections/, "admin-api-keys"],
     [/About/, "admin-about"],
   ]) {
     await page.getByRole("button", { name }).first().click();

@@ -245,7 +245,7 @@ Main state lives in `frontend/src/App.tsx`.
 - `PreCallView`: session setup, speaker setup, directives, document upload, transcript/audio import, per-session agent selection
 - `ActiveCallView`: live call controls, transcript/interim transcript display, insight list, audio indicator, mid-call directive bar
 - `PostCallView`: review tabs for insights, transcript, speakers, documents, directives, and token usage; supports resume, export, delete, and speaker rename
-- Admin surfaces: `AdminPanel` (tabs: Agents, Transcription & Audio, API Keys, About with version + release notes) and `OfferingsManager` for catalog management. The API Keys tab holds `ApiKeysCard` (cloud provider keys) and `EndpointsCard` (self-hosted servers: presets, connect-and-list-models, per-endpoint test/enable/remove). Every model `<select>` renders through `frontend/src/lib/modelOptions.ts`, which groups options by provider and owns the Privacy First lock rule
+- Admin surfaces: `AdminPanel` (tabs: Agents, Transcription & Audio, Connections, About with version + release notes) and `OfferingsManager` for catalog management. The Connections tab holds `ApiKeysCard` (cloud provider keys) and `EndpointsCard` (self-hosted servers: presets, connect-and-list-models, per-endpoint test/enable/remove). Every model `<select>` renders through `frontend/src/lib/modelOptions.ts`, which groups options by provider and owns the Privacy First lock rule
 - `WelcomeView`: shown when no session is selected; with zero sessions it becomes a first-run checklist (connect a provider or Privacy First, create a session, start/import a call) driven by live credential and privacy state
 - What's-new banner: `useWhatsNew` keeps `backchannel.last_seen_version` in localStorage; when the served version differs, App shows a dismissible toast linking to Admin -> About, where releases since that version are badged "New" (first launch baselines silently)
 
@@ -283,7 +283,7 @@ Key files:
 
 ## Environment
 
-API keys can be set per provider in Admin -> API Keys (encrypted with Fernet; master key auto-generated at `DATA_DIR/master.key`, overridable via `CREDENTIALS_MASTER_KEY`). Env vars remain fallbacks:
+API keys can be set per provider in Admin -> Connections (encrypted with Fernet; master key auto-generated at `DATA_DIR/master.key`, overridable via `CREDENTIALS_MASTER_KEY`). Env vars remain fallbacks:
 
 - `GEMINI_API_KEY` (Google fallback)
 - `OPENAI_API_KEY` (OpenAI fallback)
