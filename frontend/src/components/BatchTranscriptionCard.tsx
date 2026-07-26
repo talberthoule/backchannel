@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ModelInfo, TranscriptionConfig } from "../types";
 import * as api from "../services/api";
-import { groupModels, optionLabel, optionState } from "../lib/modelOptions";
+import { groupModels, optionLabel, optionState, runsLocally } from "../lib/modelOptions";
 
 interface BatchTranscriptionCardProps {
   models: ModelInfo[];
@@ -48,6 +48,11 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
 
   const selectedModel = batchModels.find((model) => model.id === config?.batch_model_id);
   const liveModel = liveModels.find((model) => model.id === config?.live_preview_model_id);
+  // Under Privacy First a local live model (the experimental on-device captioner)
+  // is still usable; only a cloud gateway is off.
+  const liveIsLocal = liveModel ? runsLocally(liveModel) : false;
+  const livePreviewOff = localOnly && !liveIsLocal;
+  const hasLocalLiveModel = liveModels.some((model) => runsLocally(model));
 
   const update = async (data: { batch_model_id?: string; live_preview_model_id?: string }) => {
     setSaving(true);
@@ -111,7 +116,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
         <div className="rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 p-3">
           <p className="font-body text-[10px] uppercase text-brand-mid-gray">Live preview model</p>
           <p className="mt-1 truncate font-display text-sm font-bold text-brand-dark-gray" title={config?.live_preview_model_id ?? ""}>
-            {localOnly ? "Off (Privacy First)" : liveModel?.name ?? config?.live_preview_model_id ?? "Loading"}
+            {livePreviewOff ? "Off (Privacy First)" : liveModel?.name ?? config?.live_preview_model_id ?? "Loading"}
           </p>
           <p className="mt-1 truncate font-mono text-[10px] text-brand-mid-gray">{config?.live_preview_model_id}</p>
         </div>
@@ -133,7 +138,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
           <label className="mb-1 block font-body text-xs font-medium text-brand-gray">Live preview (interim captions) model</label>
           <select
             value={config?.live_preview_model_id ?? ""}
-            disabled={!config || saving || localOnly}
+            disabled={!config || saving}
             onChange={(event) => void update({ live_preview_model_id: event.target.value })}
             className="w-full rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 text-sm text-brand-dark-gray transition-colors focus:border-brand-teal disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
           >
@@ -144,9 +149,10 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
 
       {localOnly && (
         <p className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 font-body text-xs text-amber-900">
-          Privacy First mode is on: only local ONNX models can transcribe, and live interim captions
-          are off entirely (no local live model exists). Your previous cloud choices are restored when
-          the mode is turned off.
+          Privacy First mode is on: only local ONNX models can transcribe. Cloud live-caption gateways are
+          off, but the experimental on-device captioner ({hasLocalLiveModel ? "Parakeet Live" : "when available"})
+          can be selected here - it is CPU-heavy, so check the fit test&apos;s live-caption feasibility first.
+          Your previous cloud choices are restored when the mode is turned off.
         </p>
       )}
 

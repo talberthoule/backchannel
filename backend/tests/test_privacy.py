@@ -35,10 +35,12 @@ class TestLocalModelDetection(unittest.TestCase):
 class TestPrivacyImpact(unittest.TestCase):
     def test_impact_reflects_current_registry(self):
         impact = privacy_impact()
+        available = [item["feature"] for item in impact["available"]]
         disabled = [item["feature"] for item in impact["disabled"]]
-        # No local text or live-audio models exist today, so cloud-only
-        # features must be listed as disabled.
-        self.assertIn("Live interim captions (audio gateway)", disabled)
+        # A local live-caption model exists (local-parakeet-live), so live captions
+        # are available on-device; text analysis is still cloud-only by default.
+        self.assertIn("Live interim captions (on-device)", available)
+        self.assertNotIn("Live interim captions (audio gateway)", disabled)
         self.assertIn("AI analysis agents", disabled)
         self.assertIn("Meeting chat", disabled)
         self.assertIn("Document upload & summarization", disabled)
@@ -61,8 +63,9 @@ class TestPrivacyImpact(unittest.TestCase):
         self.assertTrue(any("AI analysis agents" in f for f in available))
         self.assertNotIn("AI analysis agents", disabled)
         self.assertNotIn("Meeting chat", disabled)
-        # Interim captions still have no local option, so they stay disabled.
-        self.assertIn("Live interim captions (audio gateway)", disabled)
+        # Interim captions now have a local option (the on-device captioner).
+        self.assertIn("Live interim captions (on-device)", available)
+        self.assertNotIn("Live interim captions (audio gateway)", disabled)
         self.assertIn("antares-1b", "".join(i["detail"] for i in impact["available"]))
 
 

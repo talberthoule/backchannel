@@ -39,6 +39,7 @@ from app.services.briefing_synthesis import (
 )
 from app.services.gemini_live import GeminiLiveSession
 from app.services.llm import provider_for
+from app.services.local_live_captioner import LocalLiveCaptioner, is_local_live_model
 from app.services.openai_realtime import OpenAIRealtimeSession
 from app.services.meeting_context import build_meeting_context_text, normalize_meeting_type, should_match_offerings
 
@@ -193,9 +194,12 @@ class AgentOrchestrator:
         self._get_interval = _get_interval
         self._get_knowledge_source_ids = _get_knowledge_source_ids
 
-        # Audio Gateway (native-audio model — silent listener only)
+        # Audio Gateway: a cloud streaming session (Gemini Live / OpenAI Realtime)
+        # or the on-device local captioner, chosen by the gateway agent's model.
         gw_model = _get_model("audio_gateway", settings.GEMINI_MODEL)
-        if provider_for(gw_model) == "openai":
+        if is_local_live_model(gw_model):
+            self.audio_gateway = LocalLiveCaptioner(model_override=gw_model, session_id=session_id)
+        elif provider_for(gw_model) == "openai":
             self.audio_gateway = OpenAIRealtimeSession(model_override=gw_model, session_id=session_id)
         else:
             self.audio_gateway = GeminiLiveSession(model_override=gw_model, session_id=session_id)

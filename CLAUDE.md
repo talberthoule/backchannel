@@ -157,7 +157,7 @@ The app also runs `Base.metadata.create_all()` on startup and `_add_missing_colu
 
 `backend/app/services/gemini_live.py` opens a Gemini Live session as a silent listener. It relays `input_transcription` events to the frontend as `interim_transcript` messages. This is an audio gateway only; analysis is handled by text agents over saved transcript text.
 
-The seeded default live model is currently `gemini-3.1-flash-live-preview`.
+The seeded default live model is currently `gemini-3.1-flash-live-preview`. Setting the `audio_gateway` model to `local-parakeet-live` instead routes interim captions to `backend/app/services/local_live_captioner.py`, an on-device captioner (no cloud; works under Privacy First) that transcribes short non-overlapping audio chunks with local Parakeet ONNX. It is experimental and CPU-heavy; the fit test projects whether the machine can sustain it.
 
 ## Agent System
 
@@ -165,7 +165,7 @@ Agents are coordinated by `AgentOrchestrator` and configured by `agent_configs` 
 
 | Agent slug | Type | Trigger | Code | Purpose |
 | --- | --- | --- | --- | --- |
-| `audio_gateway` | audio | Continuous audio stream | `backend/app/services/gemini_live.py` / `backend/app/services/openai_realtime.py` | Silent live listener (Gemini Live or OpenAI Realtime, chosen by the agent's model) for interim transcription |
+| `audio_gateway` | audio | Continuous audio stream | `backend/app/services/gemini_live.py` / `backend/app/services/openai_realtime.py` / `backend/app/services/local_live_captioner.py` | Silent live listener for interim transcription: Gemini Live, OpenAI Realtime, or the on-device local captioner (`local-parakeet-live`), chosen by the agent's model |
 | `consolidated_analyst` | text | Interval, default 40s, plus a final pass | `backend/app/services/agents/consolidated_analyst.py` | Single Gemini call that can produce questions, observations, opportunities, and action items |
 | `objection_handler` | text | Interval, default 10s, over only the last ~90s of transcript | `backend/app/services/agents/objection_handler.py` | Low-latency objection scan; each `objection` insight pairs an immediate suggested response (micro) with the underlying concern and strategic angle (macro). Skips the LLM call when the window is unchanged |
 | `synthesizer` | meta | `new_insight` / `insight_updated` events, 75s cooldown, 120s fallback | `backend/app/services/agents/synthesizer.py` | Reconciles and enriches saved insights, detects answered questions, may elevate item type |

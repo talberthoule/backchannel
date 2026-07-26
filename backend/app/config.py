@@ -275,6 +275,20 @@ MODEL_REGISTRY: list[dict] = [
         "supports_batch_audio": True,
         "supports_live_audio": False,
     },
+    {
+        # On-device interim captions (ALP-147): a rolling-commit local captioner,
+        # not a cloud streaming session. CPU-heavy; the fit test projects whether
+        # this machine can sustain it (Live captions feasibility).
+        "id": "local-parakeet-live",
+        "name": "Parakeet Live (Local, experimental)",
+        "provider": "Local",
+        "description": "Experimental on-device live captions: transcribes short audio chunks with local Parakeet ONNX. No cloud; works under Privacy First. CPU-heavy - check the fit test's live-caption feasibility first.",
+        "tier": "experimental",
+        "requires_key": None,
+        "supports_text": False,
+        "supports_batch_audio": False,
+        "supports_live_audio": True,
+    },
     # Any OpenAI-compatible chat server (Ollama, LM Studio, vLLM, LiteLLM).
     # One stable registry id stands in for whatever model the server exposes:
     # the base URL and the wire model name are configured in Admin -> API Keys
