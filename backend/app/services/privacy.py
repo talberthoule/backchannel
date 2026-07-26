@@ -129,6 +129,16 @@ def privacy_impact(on_prem_text_models: list[dict] | None = None) -> dict:
             ),
         })
 
+    if local_live:
+        available.append({
+            "feature": "Live interim captions (on-device)",
+            "detail": (
+                "Experimental on-device captioner: "
+                + ", ".join(m["name"] for m in local_live)
+                + " transcribes short audio chunks locally. CPU-heavy; check the fit test first."
+            ),
+        })
+
     disabled = []
     if not local_live:
         disabled.append({

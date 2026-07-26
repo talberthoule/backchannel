@@ -19,7 +19,7 @@ prompt, its trigger, and whether it runs at all.
 
 | Agent slug | Type | Trigger | Code | Purpose |
 | --- | --- | --- | --- | --- |
-| `audio_gateway` | audio | Continuous audio stream | `backend/app/services/gemini_live.py` / `backend/app/services/openai_realtime.py` | Silent live listener (Gemini Live or OpenAI Realtime, chosen by the agent's configured model) that produces interim transcription |
+| `audio_gateway` | audio | Continuous audio stream | `backend/app/services/gemini_live.py` / `backend/app/services/openai_realtime.py` / `backend/app/services/local_live_captioner.py` | Silent live listener that produces interim transcription: a cloud streaming session (Gemini Live or OpenAI Realtime) or the on-device local captioner (`local-parakeet-live`), chosen by the agent's configured model |
 | `consolidated_analyst` | text | Interval, default 40s, plus a final pass | `backend/app/services/agents/consolidated_analyst.py` | Single LLM call that can produce questions, observations, opportunities, and action items in one pass |
 | `objection_handler` | text | Interval, default 10s, over only the last 90s of transcript | `backend/app/services/agents/objection_handler.py` | Low-latency objection scan; each `objection` insight pairs an immediate suggested response with the underlying concern and strategic angle |
 | `synthesizer` | meta | `new_insight` / `insight_updated` events, 75s cooldown, 120s fallback | `backend/app/services/agents/synthesizer.py` | Reconciles and enriches saved insights, detects answered questions, may elevate an item's type |
@@ -65,7 +65,19 @@ to the next call, not the current one.
 
 Model choice is per agent: each agent row references a model from the
 registry in `backend/app/config.py`, and text calls are routed to the right
-provider (Google or OpenAI) by `backend/app/services/llm.py`. Setting the
+provider (Google or OpenAI) by `backend/app/services/llm.py`.
+
+**On-device live captions (experimental, ALP-147).** Setting the `audio_gateway`
+model to `local-parakeet-live` routes interim captions to
+`local_live_captioner.py` instead of a cloud gateway: it batches mic audio into
+short, non-overlapping ~3 s chunks and transcribes each with local Parakeet
+ONNX, so captions work with no cloud call (and under Privacy First). Latency is
+about one chunk (~3 s), not the cloud gateways' sub-second partials, and it is
+CPU-heavy - it shares the machine with diarization and batch transcription - so
+run the fit test's live-caption feasibility first. The `supports_live_audio`
+routing for the cloud gateways is unchanged.
+
+Setting the
 `audio_gateway` agent to an OpenAI realtime transcription model
 (`gpt-realtime-whisper`, `gpt-4o-transcribe`, or `gpt-4o-mini-transcribe`)
 switches the interim gateway from Gemini Live to the OpenAI Realtime API.
