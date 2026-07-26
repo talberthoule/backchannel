@@ -15,6 +15,7 @@ analysis only.
 from __future__ import annotations
 
 import math
+import re
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Awaitable, Callable
@@ -74,13 +75,6 @@ AGENT_ROLES: tuple[AgentRole, ...] = (
 
 _ROLES_BY_SLUG = {role.slug: role for role in AGENT_ROLES}
 
-# A bounded instruction so we measure prompt-processing plus a small, realistic
-# generation, which is what the agents actually do (they emit compact JSON).
-_INSTRUCTION = (
-    "You are assisting live on a sales call. From the transcript below, list up "
-    "to three concise bullet points a seller should notice. Keep it under 60 words."
-)
-
 # ~90 seconds of dialogue: the objection/opportunity fast-cycle window.
 _SHORT_TRANSCRIPT = (
     "Rep: Thanks for making time today. How is the current rollout going on your side?\n"
@@ -93,8 +87,10 @@ _SHORT_TRANSCRIPT = (
     "Rep: It is. Let me show you the on-prem path and what it needs from your side.\n"
 )
 
-# ~300 seconds of dialogue: the analyst/synthesizer wider-context window.
-_LONG_TRANSCRIPT = _SHORT_TRANSCRIPT + (
+# Several minutes of dialogue: the analyst/synthesizer wider-context window.
+# Deliberately large so the long-window call carries a realistic prefill and the
+# short/long measurements diverge on a model that is actually prefill-bound.
+_LONG_TAIL = (
     "Customer: Good. While we are here, the executive sponsor also cares about time-to-value. "
     "The last tool we bought took six months to actually get used.\n"
     "Rep: That is fair. Most teams your size are live in two to three weeks because the import "
@@ -107,20 +103,112 @@ _LONG_TRANSCRIPT = _SHORT_TRANSCRIPT + (
     "hardware, that shortens the review a lot. Who else has done that with you?\n"
     "Rep: Two regulated customers run the fully self-hosted deployment; I can share a redacted "
     "architecture and their review checklist so your team is not starting cold.\n"
-    "Customer: That plus the volume pricing might get procurement over the line. Send the "
-    "on-prem details and let us line up the security walkthrough for next week.\n"
-    "Rep: Will do. I will also include the rollout plan so the sponsor sees the time-to-value "
-    "path, not just the licensing.\n"
+    "Customer: Procurement will also ask about total cost. Between licensing, the hardware to "
+    "self-host, and the internal time to run it, what does year one really look like?\n"
+    "Rep: I can build a side-by-side: hosted versus self-hosted, including the GPU box you would "
+    "need and the hours your team spends versus us managing it. Most land on hosted for year one "
+    "and revisit self-hosting once volume grows.\n"
+    "Customer: The compliance team flagged data retention too. We are required to purge call "
+    "recordings after ninety days. Can the platform enforce that automatically?\n"
+    "Rep: Yes, retention is a per-workspace policy; you set the window and it purges audio and "
+    "derived transcripts on schedule, with an export hook if legal needs an archive first.\n"
+    "Customer: One of the regional leads is worried the AI will surface the wrong talking points "
+    "mid-call and distract reps instead of helping.\n"
+    "Rep: That is why the live prompts are advisory and ranked; a rep can collapse them. We can "
+    "also tune how aggressively each agent fires so it stays quiet unless something matters.\n"
+    "Customer: If we pilot, who needs to be involved and how do we measure whether it worked?\n"
+    "Rep: A pilot is two or three reps, your security reviewer, and one regional lead. Success "
+    "is faster follow-ups, fewer missed action items, and the reps choosing to keep it on after "
+    "four weeks. We agree the metrics up front so it is not subjective.\n"
+    "Customer: Okay. Send the on-prem details, the cost comparison, the retention policy note, "
+    "and a pilot plan. If security signs off we can start next month.\n"
+    "Rep: Perfect. I will package all of that today and include references from the two regulated "
+    "customers so your reviewer has something concrete to work from.\n"
+)
+_LONG_TRANSCRIPT = _SHORT_TRANSCRIPT + _LONG_TAIL
+
+# The timed calls are user messages (transcript + a brief directive); the heavy
+# lifting is the agent's real system prompt, passed separately, which is what
+# makes the measurement resemble a production call rather than a toy prompt.
+_SHORT_USER = (
+    f"Transcript (most recent ~90 seconds of a live call):\n{_SHORT_TRANSCRIPT}\n\n"
+    "Follow your instructions for this transcript and return your findings as JSON."
+)
+_LONG_USER = (
+    f"Transcript (most recent several minutes of a live call):\n{_LONG_TRANSCRIPT}\n\n"
+    "Follow your instructions for this transcript and return your findings as JSON."
+)
+_PROMPTS = {"short": _SHORT_USER, "long": _LONG_USER}
+
+# Fallback system prompt if an agent row and its seed default are both missing,
+# so the benchmark still runs (just less representative).
+_FALLBACK_SYSTEM = (
+    "You are assisting live on a sales call. Analyze the transcript and return up to six "
+    "concise findings (questions, observations, opportunities, action items) as JSON objects."
 )
 
-_PROMPTS = {
-    "short": f"{_INSTRUCTION}\n\nTranscript:\n{_SHORT_TRANSCRIPT}",
-    "long": f"{_INSTRUCTION}\n\nTranscript:\n{_LONG_TRANSCRIPT}",
+# Which agent's real system prompt represents each window: a light fast-cycle
+# role for short, the heavy multi-lens analyst for long.
+_PROFILE_ROLE = {"short": "objection_handler", "long": "consolidated_analyst"}
+
+# Representative filler for the analyst prompt's runtime placeholders so the
+# benchmark prompt has a realistic size and shape without pulling in the
+# orchestrator's live prompt-composition.
+_REPRESENTATIVE_LENS_BLOCK = (
+    "## Lens: Strategic Follow-Up Questions\n"
+    "Surface the highest-leverage questions the seller should ask next, grounded in what the "
+    "buyer just said. Prefer questions that advance the deal or de-risk the evaluation.\n\n"
+    "## Lens: Observations\n"
+    "Call out meaningful shifts in sentiment, authority, urgency, or buying criteria.\n\n"
+    "## Lens: Product & Service Opportunities\n"
+    "Identify where a specific offering maps to a stated need, with the need quoted from the "
+    "transcript.\n\n"
+    "## Lens: Action Items\n"
+    "Extract concrete commitments and owners so nothing agreed on the call is dropped."
+)
+_REPRESENTATIVE_CONTEXT = (
+    "Meeting context: a mid-market prospect is evaluating the platform, weighing hosted versus "
+    "self-hosted deployment, pricing, a security review, and time-to-value before a pilot."
+)
+_PLACEHOLDER_FILLERS = {
+    "lens_sections": _REPRESENTATIVE_LENS_BLOCK,
+    "meeting_context_text": _REPRESENTATIVE_CONTEXT,
 }
+_PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z0-9_]+)\}")
 
 # One tiny call before the timed ones so model load / JIT warmup is not charged
 # to the measurement.
 _WARMUP_PROMPT = "Reply with the single word: ready."
+
+
+def _fill_placeholders(prompt: str) -> str:
+    """Fill an agent prompt's runtime placeholders with representative text.
+
+    Known placeholders get realistic filler; any unknown `{token}` is dropped so
+    the benchmark never sends a stray literal brace to a picky server.
+    """
+    return _PLACEHOLDER_RE.sub(lambda m: _PLACEHOLDER_FILLERS.get(m.group(1), ""), prompt)
+
+
+async def role_system_prompts(db: AsyncSession) -> dict[str, str]:
+    """The real system prompt for each window's representative agent.
+
+    Uses the live AgentConfig prompt (falling back to the seeded default, then a
+    generic system prompt) with placeholders filled, so the timed call carries
+    the same heavy prefill a production call would.
+    """
+    from app.services.seed_agents import DEFAULT_PROMPTS
+
+    slugs = list(_PROFILE_ROLE.values())
+    rows = (
+        await db.execute(select(AgentConfig).where(AgentConfig.slug.in_(slugs)))
+    ).scalars().all()
+    by_slug = {row.slug: row.prompt for row in rows}
+    prompts: dict[str, str] = {}
+    for profile, slug in _PROFILE_ROLE.items():
+        raw = by_slug.get(slug) or DEFAULT_PROMPTS.get(slug) or _FALLBACK_SYSTEM
+        prompts[profile] = _fill_placeholders(raw)
+    return prompts
 
 
 @dataclass(frozen=True)
@@ -238,14 +326,18 @@ async def benchmark_text_model(
     model_id: str,
     model_name: str,
     *,
+    system_prompts: dict[str, str] | None = None,
     generate: GenerateText = generate_text,
 ) -> TextModelFit:
     """Warm up, then time one short-window and one long-window call.
 
-    A model that errors on any call (server down, unsupported request) returns a
-    failed fit with the reason rather than raising, so one bad endpoint does not
-    abort the whole run.
+    Each timed call carries the representative agent's real system prompt (via
+    system_prompts) so the measurement resembles a production call. A model that
+    errors on any call (server down, unsupported request) returns a failed fit
+    with the reason rather than raising, so one bad endpoint does not abort the
+    whole run.
     """
+    system_prompts = system_prompts or {}
     try:
         await generate(model_id, _WARMUP_PROMPT, source="local_fit")
     except Exception as exc:  # noqa: BLE001 - surfaced to the user as a reason
@@ -255,7 +347,9 @@ async def benchmark_text_model(
     for name, prompt in _PROMPTS.items():
         try:
             started = time.perf_counter()
-            text = await generate(model_id, prompt, source="local_fit")
+            text = await generate(
+                model_id, prompt, system=system_prompts.get(name), source="local_fit"
+            )
             elapsed = time.perf_counter() - started
         except Exception as exc:  # noqa: BLE001
             return TextModelFit(
@@ -391,9 +485,12 @@ async def run_local_fit(
     """Benchmark every on-prem text model and score it against each agent role."""
     models = await local_text_models(db)
     intervals = await current_intervals(db)
+    systems = await role_system_prompts(db)
     text_models: list[dict] = []
     for model in models:
-        fit = await benchmark_text_model(model["id"], model["name"], generate=generate)
+        fit = await benchmark_text_model(
+            model["id"], model["name"], system_prompts=systems, generate=generate
+        )
         fit.roles = score_text_model(fit, intervals)
         text_models.append(fit.to_dict())
     return {
