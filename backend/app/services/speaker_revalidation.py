@@ -76,7 +76,7 @@ def batch_failure_reason(error: Exception | str) -> str:
     if any(marker in lowered for marker in _AUTH_MARKERS) or _AUTH_CODE.search(lowered):
         return (
             "The model provider rejected the API key - update it in "
-            "Admin -> API Keys."
+            "Admin -> Connections."
         )
     if not text:
         return "Revalidation batch failed unexpectedly."

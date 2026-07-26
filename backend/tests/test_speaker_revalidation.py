@@ -64,7 +64,7 @@ class BatchFailureReasonTests(unittest.TestCase):
 
         self.assertEqual(
             "The model provider rejected the API key - update it in "
-            "Admin -> API Keys.",
+            "Admin -> Connections.",
             reason,
         )
 

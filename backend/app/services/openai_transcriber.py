@@ -89,7 +89,7 @@ class OpenAITranscriber:
         if not key:
             raise TranscriptionError(
                 "OpenAI batch transcription needs an OpenAI API key; "
-                "add one in Admin -> API Keys or switch the batch model."
+                "add one in Admin -> Connections or switch the batch model."
             )
 
         logger.info(f"Transcribing segment via OpenAI ({len(pcm_bytes)} bytes)")
@@ -183,7 +183,7 @@ class OpenAIChatTranscriber:
         if not key:
             raise TranscriptionError(
                 "OpenAI batch transcription needs an OpenAI API key; "
-                "add one in Admin -> API Keys or switch the batch model."
+                "add one in Admin -> Connections or switch the batch model."
             )
 
         logger.info(f"Transcribing segment via OpenAI chat audio ({len(pcm_bytes)} bytes)")

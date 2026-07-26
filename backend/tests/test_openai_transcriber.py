@@ -163,7 +163,7 @@ class OpenAITranscriberTests(unittest.IsolatedAsyncioTestCase):
                 await transcriber.transcribe_segment(_speech_pcm())
 
         self.assertIn("OpenAI API key", str(ctx.exception))
-        self.assertIn("Admin -> API Keys", str(ctx.exception))
+        self.assertIn("Admin -> Connections", str(ctx.exception))
         self.assertEqual([], client.calls)
 
     async def test_http_error_raises_transcription_error(self):
@@ -278,7 +278,7 @@ class OpenAIChatTranscriberTests(unittest.IsolatedAsyncioTestCase):
                 await transcriber.transcribe_segment(_speech_pcm())
 
         self.assertIn("OpenAI API key", str(ctx.exception))
-        self.assertIn("Admin -> API Keys", str(ctx.exception))
+        self.assertIn("Admin -> Connections", str(ctx.exception))
         self.assertEqual([], client.calls)
 
     async def test_http_error_raises_transcription_error(self):

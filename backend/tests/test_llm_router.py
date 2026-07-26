@@ -58,7 +58,7 @@ class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(llm.LLMKeyMissing) as ctx:
                 await llm.generate_text("gpt-5.5", "hello")
         self.assertIn("openai", str(ctx.exception))
-        self.assertIn("Admin -> API Keys", str(ctx.exception))
+        self.assertIn("Admin -> Connections", str(ctx.exception))
 
     def test_provider_for(self):
         self.assertEqual("openai", llm.provider_for("gpt-5.5"))

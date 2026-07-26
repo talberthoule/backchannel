@@ -117,7 +117,7 @@ class WireModelTests(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(llm_endpoint, "settings", _FakeSettings()):
             with self.assertRaises(TextEndpointNotConfigured) as ctx:
                 await resolve_wire_model(_FakeDB(), OPENAI_COMPATIBLE_PROVIDER, OPENAI_COMPATIBLE_MODEL)
-        self.assertIn("Admin -> API Keys", str(ctx.exception))
+        self.assertIn("Admin -> Connections", str(ctx.exception))
         # ValueError, so routers already translate it into a 400 rather than a 500.
         self.assertIsInstance(ctx.exception, ValueError)
 

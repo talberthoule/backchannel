@@ -125,7 +125,7 @@ async def resolve_wire_model(db: AsyncSession, provider: str, model_id: str) -> 
     if not resolved:
         raise TextEndpointNotConfigured(
             "No model id configured for the OpenAI-compatible endpoint; set the "
-            "model your server exposes in Admin -> API Keys"
+            "model your server exposes in Admin -> Connections"
         )
     return resolved
 
@@ -134,11 +134,11 @@ def _from_target(target, model_id: str) -> OpenAIEndpoint:
     if target is None:
         raise EndpointUnavailable(
             f"The endpoint behind {model_id} no longer exists; pick another model "
-            "or re-add the endpoint in Admin -> API Keys"
+            "or re-add the endpoint in Admin -> Connections"
         )
     if not target.enabled:
         raise EndpointUnavailable(
-            f"Endpoint '{target.name}' is turned off; enable it in Admin -> API Keys "
+            f"Endpoint '{target.name}' is turned off; enable it in Admin -> Connections "
             f"or pick another model"
         )
     return OpenAIEndpoint(base_url=target.base_url, model=target.model, api_key=target.api_key)

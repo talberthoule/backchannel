@@ -106,7 +106,7 @@ def _transcription_failure_handler(
             message = (
                 f"Transcription failed for {failed_count} speech segment{plural} "
                 "this call; transcript text may be missing. Check the provider "
-                "API key in Admin -> API Keys."
+                "API key in Admin -> Connections."
             )
         await _send_status(
             websocket,

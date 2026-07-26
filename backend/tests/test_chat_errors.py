@@ -88,7 +88,7 @@ class ChatProviderErrorTests(unittest.IsolatedAsyncioTestCase):
         result = await self._run_chat(GOOGLE_MODEL, exc)
         self.assertEqual(502, result.status_code)
         self.assertIn("Gemini rejected the API key", result.detail)
-        self.assertIn("Admin -> API Keys", result.detail)
+        self.assertIn("Admin -> Connections", result.detail)
 
     async def test_google_permission_denied_maps_to_502(self):
         exc = genai_errors.ClientError(
@@ -103,7 +103,7 @@ class ChatProviderErrorTests(unittest.IsolatedAsyncioTestCase):
         )
         result = await self._run_chat(GOOGLE_MODEL, exc)
         self.assertEqual(502, result.status_code)
-        self.assertIn("Admin -> API Keys", result.detail)
+        self.assertIn("Admin -> Connections", result.detail)
 
     async def test_openai_rate_limit_maps_to_429_with_remedy(self):
         exc = _openai_status_error(429, "You exceeded your current quota.")
@@ -118,7 +118,7 @@ class ChatProviderErrorTests(unittest.IsolatedAsyncioTestCase):
         result = await self._run_chat(OPENAI_MODEL, exc)
         self.assertEqual(502, result.status_code)
         self.assertIn("OpenAI rejected the API key", result.detail)
-        self.assertIn("Admin -> API Keys", result.detail)
+        self.assertIn("Admin -> Connections", result.detail)
 
     async def test_transport_error_maps_to_502_chat_failed(self):
         exc = httpx.ConnectError("connection refused")

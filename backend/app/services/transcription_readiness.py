@@ -71,13 +71,13 @@ async def get_transcription_readiness(db: AsyncSession) -> TranscriptionReadines
     if status["configured"] or status["env_fallback"]:
         reason = (
             f"Transcription cannot run: the {label} API key failed its last "
-            "connection test. Replace or re-test it in Admin -> API Keys, or "
+            "connection test. Replace or re-test it in Admin -> Connections, or "
             "switch to a local transcription model."
         )
     else:
         reason = (
             f"Transcription cannot run: the selected model '{model_id}' needs "
-            f"a {label} API key and none is configured. Add one in Admin -> "
-            "API Keys, or switch to a local transcription model."
+            f"a {label} API key and none is configured. Add one in "
+            "Admin -> Connections, or switch to a local transcription model."
         )
     return TranscriptionReadiness(False, model_id, required_key, reason)
