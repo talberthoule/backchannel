@@ -83,10 +83,14 @@ only works if that model finishes each cycle before the next one is due. The
 `backend/app/services/local_fit.py`) measures that keep-up speed -- not answer
 quality.
 
-For every on-prem, text-capable endpoint model it times one short-window
-(~90 s of transcript) and one long-window (~300 s) `generate_text` call after a
-warmup, then scores each interval-driven agent against its cycle budget
-(`AgentConfig.interval_seconds`, or the seeded default):
+For every on-prem, text-capable endpoint model it times one short-window and
+one long-window `generate_text` call after a warmup. Each timed call carries a
+representative agent's **real system prompt** (the `objection_handler` prompt
+for the short window, the multi-lens `consolidated_analyst` prompt for the long
+window, pulled live from `AgentConfig` with runtime placeholders filled) plus a
+realistically sized transcript, so the measurement reflects production prefill
+rather than a toy prompt. It then scores each interval-driven agent against its
+cycle budget (`AgentConfig.interval_seconds`, or the seeded default):
 
 - **Keeps up (green)** -- the call finishes within half the budget.
 - **Tight (yellow)** -- it finishes within the budget but with little headroom.

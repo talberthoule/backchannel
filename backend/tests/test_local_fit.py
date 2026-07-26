@@ -12,6 +12,7 @@ from app.services.local_fit import (
     YELLOW,
     ProfileLatency,
     TextModelFit,
+    _fill_placeholders,
     apply_recommended_intervals,
     benchmark_asr_model,
     benchmark_text_model,
@@ -159,6 +160,26 @@ class BenchmarkTextModelTests(unittest.IsolatedAsyncioTestCase):
         # Warmup + short + long.
         self.assertEqual(len(calls), 3)
 
+    async def test_timed_calls_carry_the_role_system_prompts(self):
+        systems: list[str | None] = []
+
+        async def fake_generate(model_id, prompt, **kwargs):
+            systems.append(kwargs.get("system"))
+            return "ok"
+
+        fit = await benchmark_text_model(
+            "endpoint:x:m",
+            "m",
+            system_prompts={"short": "SHORT_SYS", "long": "LONG_SYS"},
+            generate=fake_generate,
+        )
+
+        self.assertEqual(fit.status, "ok")
+        self.assertEqual(len(systems), 3)
+        self.assertIsNone(systems[0])  # warmup carries no system prompt
+        self.assertIn("SHORT_SYS", systems)
+        self.assertIn("LONG_SYS", systems)
+
     async def test_failed_call_returns_failed_fit_without_raising(self):
         async def broken_generate(model_id, prompt, **kwargs):
             raise RuntimeError("connection refused")
@@ -271,6 +292,19 @@ class RunAsrFitTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(report["asr_models"]), 2)
         self.assertTrue(all(m["status"] == "ok" for m in report["asr_models"]))
         self.assertGreater(report["audio_seconds"], 0)
+
+
+class FillPlaceholdersTests(unittest.TestCase):
+    def test_known_placeholders_get_representative_filler(self):
+        filled = _fill_placeholders("Analyze.\n{lens_sections}\nContext: {meeting_context_text}")
+        self.assertNotIn("{lens_sections}", filled)
+        self.assertNotIn("{meeting_context_text}", filled)
+        self.assertIn("Lens", filled)  # representative lens block was inserted
+
+    def test_unknown_placeholders_are_dropped_not_left_literal(self):
+        filled = _fill_placeholders("Hello {unknown_token} world")
+        self.assertNotIn("{unknown_token}", filled)
+        self.assertNotIn("{", filled)
 
 
 class BuildLocalCapabilitiesTests(unittest.TestCase):
