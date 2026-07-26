@@ -75,6 +75,35 @@ switches the interim gateway from Gemini Live to the OpenAI Realtime API.
 orchestrator primarily uses the database rows and only falls back to some
 subtype flags.
 
+## Local Model Fit Test
+
+Running analysis on a self-hosted model (an on-prem OpenAI-compatible endpoint)
+only works if that model finishes each cycle before the next one is due. The
+**Local Model Fit Test** (Admin -> Transcription & Audio, backed by
+`backend/app/services/local_fit.py`) measures that keep-up speed -- not answer
+quality.
+
+For every on-prem, text-capable endpoint model it times one short-window
+(~90 s of transcript) and one long-window (~300 s) `generate_text` call after a
+warmup, then scores each interval-driven agent against its cycle budget
+(`AgentConfig.interval_seconds`, or the seeded default):
+
+- **Keeps up (green)** -- the call finishes within half the budget.
+- **Tight (yellow)** -- it finishes within the budget but with little headroom.
+- **Too slow (red)** -- the call is slower than the budget; the agent would fall
+  behind.
+
+The short-window roles are `objection_handler` and `opportunity_specialist`;
+the long-window roles are `consolidated_analyst`, `strategic_signals`, and
+`synthesizer`. Briefing lenses and the audio bridge are not scored (they have no
+live cycle budget). When a model is tight or too slow, the test recommends a
+longer interval (about twice the call latency, rounded to 5 s, clamped to
+5-180 s) and offers one-click apply, which writes `interval_seconds` on the
+matching agents via `POST /api/diagnostics/local-fit/apply`. Because
+`interval_seconds` is global per agent, apply the intervals for the one model
+you intend those agents to run on. Local transcription (ASR) keep-up is a
+separate measurement on the Diarization Capability card.
+
 ## Insight lifecycle
 
 1. A text agent proposes an item (question, observation, opportunity,

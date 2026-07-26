@@ -1,4 +1,4 @@
-import type { AgentConfig, AppMeta, CallSegment, CustomEndpoint, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EndpointProbeResult, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, MeetingType, ModelInfo, ModelPricingResponse, Offering, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptEntry } from "../types";
+import type { AgentConfig, AppMeta, CallSegment, CustomEndpoint, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EndpointProbeResult, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, LocalFitReport, LocalFitSummary, MeetingType, ModelInfo, ModelPricingResponse, Offering, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptEntry } from "../types";
 
 const BASE = "/api";
 
@@ -295,6 +295,19 @@ export const replaceVoiceProfile = async (file: File): Promise<VoiceProfileStatu
 
 export const deleteVoiceProfile = () =>
   request<void>("/diagnostics/diarization/voice-profile", { method: "DELETE" });
+
+// Local Model Fit Test
+export const getLocalFitSummary = () =>
+  request<LocalFitSummary>("/diagnostics/local-fit");
+
+export const runLocalFit = () =>
+  request<LocalFitReport>("/diagnostics/local-fit/run", { method: "POST" });
+
+export const applyLocalFitIntervals = (updates: { slug: string; interval_seconds: number }[]) =>
+  request<{ applied: Record<string, number> }>("/diagnostics/local-fit/apply", {
+    method: "POST",
+    body: JSON.stringify({ updates }),
+  });
 
 export const getPrivacyConfig = () => request<PrivacyConfig>("/privacy");
 

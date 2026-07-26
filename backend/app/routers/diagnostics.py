@@ -18,6 +18,11 @@ from app.services.diarizer_runtime import (
     set_selected_diarizer,
     set_speaker_similarity_threshold,
 )
+from app.services.local_fit import (
+    apply_recommended_intervals,
+    run_local_fit,
+    summarize_local_fit,
+)
 from app.services.transcription_readiness import get_transcription_readiness
 from app.services.transcription_runtime import (
     get_transcription_runtime_config,
@@ -61,6 +66,15 @@ class DiarizerSelectionUpdate(BaseModel):
 class BatchTranscriberUpdate(BaseModel):
     batch_model_id: str | None = None
     live_preview_model_id: str | None = None
+
+
+class LocalFitIntervalUpdate(BaseModel):
+    slug: str
+    interval_seconds: int
+
+
+class LocalFitApplyRequest(BaseModel):
+    updates: list[LocalFitIntervalUpdate]
 
 
 def is_supported_benchmark_audio_filename(filename: str) -> bool:
@@ -168,6 +182,33 @@ async def update_transcription_config(
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return runtime.to_dict()
+
+
+@router.get("/local-fit")
+async def get_local_fit_summary(db: AsyncSession = Depends(get_db)):
+    """What the fit test can measure: on-prem text models plus current intervals."""
+    return await summarize_local_fit(db)
+
+
+@router.post("/local-fit/run")
+async def run_local_fit_test(db: AsyncSession = Depends(get_db)):
+    """Benchmark every on-prem text model and score each live agent role."""
+    return await run_local_fit(db)
+
+
+@router.post("/local-fit/apply")
+async def apply_local_fit_intervals(
+    body: LocalFitApplyRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Apply recommended cycle intervals to the matching agents (speed tuning)."""
+    try:
+        applied = await apply_recommended_intervals(
+            db, [u.model_dump() for u in body.updates]
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"applied": applied}
 
 
 @router.post("/diarization/sortformer/benchmark")
