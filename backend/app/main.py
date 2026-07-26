@@ -124,6 +124,10 @@ async def _add_missing_columns(conn):
                 connection.execute(
                     text("ALTER TABLE agent_configs ADD COLUMN lenses TEXT NOT NULL DEFAULT ''")
                 )
+            if "model_intervals" not in columns:
+                connection.execute(
+                    text("ALTER TABLE agent_configs ADD COLUMN model_intervals TEXT NOT NULL DEFAULT ''")
+                )
             if "knowledge_source_id" in columns:
                 # Migrate and drop the legacy single-source column (its FK would
                 # otherwise block deleting knowledge sources).

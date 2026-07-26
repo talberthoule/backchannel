@@ -44,6 +44,21 @@ from app.services.meeting_context import build_meeting_context_text, normalize_m
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_model_intervals(raw: str) -> dict[str, int]:
+    """Parse AgentConfig.model_intervals JSON into {model_id: interval}, tolerant
+    of empty/garbage so a bad value never breaks scheduling."""
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): int(v) for k, v in data.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+
+
 _DEDUP_WINDOW_SECONDS = 60
 ProgressCallback = Callable[[dict[str, object]], Awaitable[None]]
 
@@ -149,7 +164,14 @@ class AgentOrchestrator:
 
         def _get_interval(slug: str, fallback: int) -> int:
             cfg = self._agent_configs.get(slug)
-            return cfg.interval_seconds if cfg and cfg.interval_seconds else fallback
+            if not cfg:
+                return fallback
+            # A per-model budget for the agent's assigned model wins, so the same
+            # agent can run tighter on a fast model and looser on a slow one.
+            per_model = _parse_model_intervals(getattr(cfg, "model_intervals", "")).get(cfg.model_id)
+            if per_model:
+                return per_model
+            return cfg.interval_seconds if cfg.interval_seconds else fallback
 
         def _get_knowledge_source_ids(slug: str) -> list[uuid.UUID]:
             cfg = self._agent_configs.get(slug)

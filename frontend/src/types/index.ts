@@ -335,7 +335,12 @@ export interface FitRole {
   verdict: FitVerdict;
   recommended_interval_seconds: number;
   changed: boolean;
+  // Post-call briefing agents run once at call end: no live budget, not editable.
+  post_call: boolean;
+  editable: boolean;
 }
+
+export type FitFeasibility = "feasible" | "marginal" | "no" | "";
 
 export interface TextModelFit {
   model_id: string;
@@ -352,6 +357,7 @@ export interface LocalFitRoleCatalogEntry {
   name: string;
   prompt_profile: "short" | "long";
   default_interval: number;
+  post_call: boolean;
 }
 
 export interface LocalServiceOption {
@@ -384,6 +390,8 @@ export interface LocalFitSummary {
 
 export interface LocalFitReport extends LocalFitSummary {
   text_models: TextModelFit[];
+  contention: number;
+  asr: AsrFitReport | null;
 }
 
 // Local transcription (ASR) keep-up: real-time factor per bundled ONNX model.
@@ -396,10 +404,14 @@ export interface AsrModelFit {
   processing_seconds: number;
   real_time_factor: number | null;
   verdict: FitVerdict | "";
+  short_real_time_factor: number | null;
+  live_feasibility: FitFeasibility;
+  estimated: boolean;
 }
 
 export interface AsrFitReport {
   audio_seconds: number;
+  estimated: boolean;
   asr_models: AsrModelFit[];
 }
 

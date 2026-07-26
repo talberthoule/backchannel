@@ -1,24 +1,67 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AsrFitReport, AsrModelFit, FitRole, FitVerdict, LocalCapabilities, LocalFitReport, LocalFitSummary, TextModelFit } from "../types";
+import type {
+  AsrFitReport,
+  AsrModelFit,
+  FitFeasibility,
+  FitRole,
+  FitVerdict,
+  LocalCapabilities,
+  LocalFitReport,
+  LocalFitSummary,
+  TextModelFit,
+} from "../types";
 import * as api from "../services/api";
 import { useClipRecorder } from "../hooks/useClipRecorder";
 
-// Longest mic clip to record for the ASR check; the backend needs >= 3s and
-// trims anything over 30s.
 const MAX_ASR_RECORD_SECONDS = 15;
 
-// Mirrors backend app/services/local_fit.py HEADROOM: a call should finish
-// within half its interval. Used only to keep verdicts truthful after applying
-// new intervals without re-benchmarking.
+// --- Scoring mirror of backend app/services/local_fit.py --------------------
+// The contention slider recomputes verdicts/recommendations live without
+// re-benchmarking, so this math must match the backend. Keep the two in sync.
 const HEADROOM = 0.5;
+const MIN_INTERVAL = 5;
+const MAX_INTERVAL = 180;
+const ROUND_STEP = 5;
+const MIN_CONTENTION = 1;
+const MAX_CONTENTION = 3;
+const DEFAULT_CONTENTION = 1.5;
+const POST_CALL_GREEN = 60;
+const POST_CALL_YELLOW = 180;
+const ASR_GREEN_RTF = 0.5;
+const ASR_YELLOW_RTF = 1.0;
+const ASR_LIVE_FEASIBLE = 0.33;
+const ASR_LIVE_MARGINAL = 0.66;
 
-function verdictFor(latencySeconds: number, budgetSeconds: number): FitVerdict {
-  if (latencySeconds <= 0) return "green";
-  if (budgetSeconds <= 0) return "red";
-  const ratio = latencySeconds / budgetSeconds;
+const clampContention = (c: number) => Math.min(Math.max(c, MIN_CONTENTION), MAX_CONTENTION);
+const effective = (value: number, contention: number) => value * clampContention(contention);
+const roundUp = (value: number, step = ROUND_STEP) => (value <= 0 ? step : Math.ceil(value / step) * step);
+
+function classifyLatency(eff: number, budget: number): FitVerdict {
+  if (eff <= 0) return "green";
+  if (budget <= 0) return "red";
+  const ratio = eff / budget;
   if (ratio <= HEADROOM) return "green";
   if (ratio <= 1) return "yellow";
   return "red";
+}
+function classifyPostCall(eff: number): FitVerdict {
+  if (eff <= POST_CALL_GREEN) return "green";
+  if (eff <= POST_CALL_YELLOW) return "yellow";
+  return "red";
+}
+function recommendInterval(eff: number, budget: number): number {
+  const needed = eff > 0 ? roundUp(eff / HEADROOM) : MIN_INTERVAL;
+  return Math.min(Math.max(budget, needed, MIN_INTERVAL), MAX_INTERVAL);
+}
+function classifyRtf(eff: number): FitVerdict {
+  if (eff <= ASR_GREEN_RTF) return "green";
+  if (eff <= ASR_YELLOW_RTF) return "yellow";
+  return "red";
+}
+function classifyFeasibility(eff: number): FitFeasibility {
+  if (eff <= ASR_LIVE_FEASIBLE) return "feasible";
+  if (eff <= ASR_LIVE_MARGINAL) return "marginal";
+  return "no";
 }
 
 const VERDICT_STYLE: Record<FitVerdict, string> = {
@@ -26,15 +69,24 @@ const VERDICT_STYLE: Record<FitVerdict, string> = {
   yellow: "border-amber-200 bg-amber-50 text-amber-800",
   red: "border-red-200 bg-red-50 text-red-700",
 };
-
-const VERDICT_LABEL: Record<FitVerdict, string> = {
-  green: "Keeps up",
-  yellow: "Tight",
-  red: "Too slow",
+const VERDICT_LABEL: Record<FitVerdict, string> = { green: "Keeps up", yellow: "Tight", red: "Too slow" };
+const POST_CALL_LABEL: Record<FitVerdict, string> = { green: "Fine", yellow: "Slow", red: "Too slow" };
+const FEASIBILITY: Record<Exclude<FitFeasibility, "">, { label: string; cls: string }> = {
+  feasible: { label: "Feasible", cls: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+  marginal: { label: "Marginal", cls: "border-amber-200 bg-amber-50 text-amber-800" },
+  no: { label: "Not feasible", cls: "border-red-200 bg-red-50 text-red-700" },
 };
 
+// A resolved, contention-aware view of one agent row.
+interface RoleView {
+  role: FitRole;
+  budget: number;
+  verdict: FitVerdict;
+  recommended: number;
+  changed: boolean;
+}
+
 interface LocalModelFitCardProps {
-  /** Called after intervals are applied so the Agents tab reflects the change. */
   onIntervalsApplied?: () => void;
 }
 
@@ -46,6 +98,9 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
   const [applyingModel, setApplyingModel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [contention, setContention] = useState(DEFAULT_CONTENTION);
+  // Per-model, per-agent budget the user has set/applied: {model_id: {slug: seconds}}.
+  const [budgets, setBudgets] = useState<Record<string, Record<string, number>>>({});
 
   const loadSummary = useCallback(async () => {
     setLoading(true);
@@ -61,9 +116,6 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
   }, []);
 
   useEffect(() => { void loadSummary(); }, [loadSummary]);
-
-  // Self-heal when the first load lands before the backend is ready or before
-  // an endpoint is connected: keep retrying until a summary comes back.
   useEffect(() => {
     if (!error || summary) return;
     const retry = window.setTimeout(() => { void loadSummary(); }, 3000);
@@ -75,7 +127,10 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
     setError(null);
     setNotice(null);
     try {
-      setReport(await api.runLocalFit());
+      const result = await api.runLocalFit();
+      setReport(result);
+      setContention(result.contention || DEFAULT_CONTENTION);
+      setBudgets({}); // start from the server's stored budgets
     } catch (err) {
       console.error("Local fit test failed", err);
       setError(err instanceof Error ? err.message : "Fit test failed.");
@@ -84,35 +139,63 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
     }
   };
 
-  const applyIntervals = async (model: TextModelFit) => {
+  const budgetFor = useCallback(
+    (modelId: string, role: FitRole) => budgets[modelId]?.[role.slug] ?? role.budget_seconds,
+    [budgets],
+  );
+
+  const resolveRole = useCallback(
+    (modelId: string, role: FitRole): RoleView => {
+      const eff = effective(role.latency_seconds, contention);
+      if (role.post_call) {
+        return { role, budget: role.budget_seconds, verdict: classifyPostCall(eff), recommended: 0, changed: false };
+      }
+      const budget = budgetFor(modelId, role);
+      const recommended = recommendInterval(eff, budget);
+      return { role, budget, verdict: classifyLatency(eff, budget), recommended, changed: recommended !== budget };
+    },
+    [contention, budgetFor],
+  );
+
+  const persistBudget = async (modelId: string, slug: string, seconds: number) => {
+    const clamped = Math.min(Math.max(Math.round(seconds), MIN_INTERVAL), MAX_INTERVAL);
+    setBudgets((prev) => ({ ...prev, [modelId]: { ...prev[modelId], [slug]: clamped } }));
+    try {
+      await api.applyLocalFitIntervals(modelId, [{ slug, interval_seconds: clamped }]);
+      onIntervalsApplied?.();
+    } catch (err) {
+      console.error("Saving budget failed", err);
+      setError(err instanceof Error ? err.message : "Unable to save budget.");
+    }
+  };
+
+  const applyRecommended = async (model: TextModelFit) => {
     const updates = model.roles
-      .filter((role) => role.changed)
-      .map((role) => ({ slug: role.slug, interval_seconds: role.recommended_interval_seconds }));
+      .filter((r) => !r.post_call && r.editable)
+      .map((r) => resolveRole(model.model_id, r))
+      .filter((v) => v.changed)
+      .map((v) => ({ slug: v.role.slug, interval_seconds: v.recommended }));
     if (updates.length === 0) return;
     setApplyingModel(model.model_id);
     setError(null);
     setNotice(null);
     try {
-      const { applied } = await api.applyLocalFitIntervals(updates);
-      // Reflect the new budgets in the shown report without re-benchmarking.
-      setReport((prev) => (prev ? applyToReport(prev, applied) : prev));
-      setNotice(`Applied ${Object.keys(applied).length} interval change(s) for ${model.model_name}.`);
-      await loadSummary();
+      const { applied } = await api.applyLocalFitIntervals(model.model_id, updates);
+      setBudgets((prev) => ({ ...prev, [model.model_id]: { ...prev[model.model_id], ...applied } }));
+      setNotice(`Applied ${Object.keys(applied).length} budget change(s) for ${model.model_name} (contention ${contention.toFixed(1)}x).`);
       onIntervalsApplied?.();
     } catch (err) {
-      console.error("Applying intervals failed", err);
-      setError(err instanceof Error ? err.message : "Unable to apply intervals.");
+      console.error("Applying budgets failed", err);
+      setError(err instanceof Error ? err.message : "Unable to apply budgets.");
     } finally {
       setApplyingModel(null);
     }
   };
 
-  // --- Transcription (ASR) keep-up ---
+  // --- Transcription (ASR) manual measurement ---
   const [asrReport, setAsrReport] = useState<AsrFitReport | null>(null);
-  const [asrFile, setAsrFile] = useState<File | null>(null);
   const [asrBusy, setAsrBusy] = useState(false);
   const [asrError, setAsrError] = useState<string | null>(null);
-
   const measureAsr = useCallback(async (file: File) => {
     setAsrBusy(true);
     setAsrError(null);
@@ -125,7 +208,7 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
       setAsrBusy(false);
     }
   }, []);
-
+  const [asrFile, setAsrFile] = useState<File | null>(null);
   const recorder = useClipRecorder({
     maxSeconds: MAX_ASR_RECORD_SECONDS,
     baseName: "asr-clip",
@@ -140,6 +223,8 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
     for (const model of capabilities?.models ?? []) map[model.id] = model.usable_for;
     return map;
   }, [capabilities]);
+  // Prefer a real-voice measurement; fall back to the auto synthetic-clip run.
+  const asr = asrReport ?? report?.asr ?? null;
 
   return (
     <div className="rounded-xl bg-surface p-5 shadow-sm">
@@ -147,8 +232,8 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
         <div>
           <h3 className="font-display text-base font-bold text-brand-dark-gray">Local Model Fit Test</h3>
           <p className="mt-1 max-w-2xl font-body text-xs leading-relaxed text-brand-gray">
-            Times a role-sized analysis call on each self-hosted text model and checks whether it keeps
-            up with every live agent&apos;s cycle. This measures keep-up speed only, not answer quality.
+            Times a role-sized call on each local text model and the bundled ASR models, then checks whether
+            each agent keeps up. Speed only, not answer quality.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -175,19 +260,8 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
         <div className="mt-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
           <p className="font-body text-xs leading-relaxed text-brand-gray">
             No self-hosted text models found. Add an on-prem OpenAI-compatible endpoint (Ollama, LM Studio,
-            vLLM, LiteLLM) under <span className="font-semibold text-brand-dark-gray">API Keys</span>, then
-            run this test to see whether it can drive the live analysis agents offline.
-          </p>
-        </div>
-      )}
-
-      {hasModels && summary && !report && !running && (
-        <div className="mt-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
-          <p className="font-body text-xs text-brand-gray">
-            Ready to test {summary.models.length} self-hosted text model{summary.models.length === 1 ? "" : "s"}:
-            {" "}
-            <span className="text-brand-dark-gray">{summary.models.map((m) => m.name).join(", ")}</span>.
-            The test makes a few short calls per model, so it takes a moment.
+            vLLM, LiteLLM) under <span className="font-semibold text-brand-dark-gray">API Keys</span> to test
+            local analysis. The bundled ASR models are still tested below.
           </p>
         </div>
       )}
@@ -195,45 +269,49 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
       {running && (
         <div className="mt-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
           <p className="font-body text-xs text-brand-gray">
-            Running the fit test... timing a short-window and a long-window call on each model.
+            Running the fit test... timing each text model and the local ASR models. First run may download
+            the ASR models.
           </p>
         </div>
       )}
 
       {report && !running && (
-        <div className="mt-4 space-y-4">
-          {report.text_models.map((model) => (
-            <ModelFitBlock
-              key={model.model_id}
-              model={model}
-              usableFor={usableForById[model.model_id] ?? []}
-              applying={applyingModel === model.model_id}
-              onApply={() => void applyIntervals(model)}
-            />
-          ))}
-        </div>
+        <>
+          <ContentionSlider contention={contention} onChange={setContention} />
+          <div className="mt-3 space-y-4">
+            {report.text_models.map((model) => (
+              <ModelFitBlock
+                key={model.model_id}
+                model={model}
+                usableFor={usableForById[model.model_id] ?? []}
+                contention={contention}
+                applying={applyingModel === model.model_id}
+                resolveRole={(role) => resolveRole(model.model_id, role)}
+                onEditBudget={(slug, seconds) => setBudgets((prev) => ({ ...prev, [model.model_id]: { ...prev[model.model_id], [slug]: seconds } }))}
+                onCommitBudget={(slug, seconds) => void persistBudget(model.model_id, slug, seconds)}
+                onApply={() => void applyRecommended(model)}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       {notice && (
-        <p className="mt-3 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 font-body text-xs text-emerald-800">
-          {notice}
-        </p>
+        <p className="mt-3 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 font-body text-xs text-emerald-800">{notice}</p>
       )}
       {error && (
-        <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 font-body text-xs text-red-700">
-          {error}
-        </p>
+        <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 font-body text-xs text-red-700">{error}</p>
       )}
 
+      {/* Transcription keep-up (local ASR) */}
       <div className="mt-4 border-t border-brand-light-gray-1 pt-4">
-        <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h4 className="font-display text-sm font-bold text-brand-dark-gray">Transcription keep-up (local ASR)</h4>
-            <p className="mt-1 max-w-2xl font-body text-xs leading-relaxed text-brand-gray">
-              Times the bundled local speech-to-text models on a short clip of your speech. A real-time
-              factor under 1.0 means transcription keeps up with the live call.
-            </p>
-          </div>
+        <div className="mb-2">
+          <h4 className="font-display text-sm font-bold text-brand-dark-gray">Transcription keep-up (local ASR)</h4>
+          <p className="mt-1 max-w-2xl font-body text-xs leading-relaxed text-brand-gray">
+            Real-time factor for the bundled speech-to-text models. Run fit test measures them on a synthetic
+            clip (an estimate); upload or record real speech for a precise number. Live-caption feasibility is
+            experimental (see roadmap): a projection of whether a rolling-window local captioner could keep up.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -249,7 +327,7 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
             disabled={!asrFile || asrBusy || recorder.recording}
             className="rounded bg-brand-teal px-3 py-1.5 font-body text-xs font-medium text-white transition-colors hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:bg-brand-light-gray-1"
           >
-            {asrBusy ? "Measuring..." : "Measure transcription speed"}
+            {asrBusy ? "Measuring..." : "Measure real speech"}
           </button>
           {recorder.supported && (
             <button
@@ -262,111 +340,108 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
           )}
         </div>
 
-        {asrReport && (
+        {asr && (
           <div className="mt-3 overflow-x-auto rounded border border-brand-light-gray-1 p-3">
             <p className="mb-2 font-body text-[11px] text-brand-mid-gray">
-              Measured on {asrReport.audio_seconds.toFixed(1)}s of audio
+              {asr.estimated ? "Estimated on a synthetic clip" : "Measured on real speech"} - {asr.audio_seconds.toFixed(1)}s of audio
             </p>
             <table className="w-full border-collapse font-body text-xs">
               <thead>
                 <tr className="text-left text-brand-mid-gray">
                   <th className="py-1 pr-3 font-medium">Model</th>
-                  <th className="py-1 pr-3 font-medium">Processing</th>
                   <th className="py-1 pr-3 font-medium">Real-time factor</th>
-                  <th className="py-1 pr-3 font-medium">Verdict</th>
-                  <th className="py-1 font-medium">Usable for</th>
+                  <th className="py-1 pr-3 font-medium">Batch transcription</th>
+                  <th className="py-1 font-medium">Live captions (exp.)</th>
                 </tr>
               </thead>
               <tbody>
-                {asrReport.asr_models.map((model) => (
-                  <AsrRow
-                    key={model.model_id}
-                    model={model}
-                    usableFor={usableForById[model.model_id] ?? ["Batch transcription"]}
-                  />
+                {asr.asr_models.map((m) => (
+                  <AsrRow key={m.model_id} model={m} contention={contention} />
                 ))}
               </tbody>
             </table>
           </div>
         )}
-
         {asrError && (
-          <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 font-body text-xs text-red-700">
-            {asrError}
-          </p>
+          <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 font-body text-xs text-red-700">{asrError}</p>
         )}
-
-        <p className="mt-3 font-body text-[11px] leading-relaxed text-brand-mid-gray">
-          The first run downloads the ONNX model, so it takes longer than the timed measurement.
-        </p>
       </div>
 
       <div className="mt-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-2">
         <p className="font-body text-xs leading-relaxed text-brand-gray">
-          To actually run an agent on a local model, also select it on the Agents tab. For a fully offline
-          setup, pair a green local ASR model here with a self-hosted text model that keeps up above.
+          To run an agent on a local model, also select it on the Agents tab. Budgets you set here are
+          per-model: the agent uses this budget only when it runs that model. Live interim captions have no
+          local option today (they need a cloud streaming model).
         </p>
       </div>
     </div>
   );
 }
 
-function AsrRow({ model, usableFor }: { model: AsrModelFit; usableFor: string[] }) {
-  if (model.status !== "ok" || model.real_time_factor == null) {
-    return (
-      <tr className="border-t border-brand-light-gray-1">
-        <td className="py-1.5 pr-3 text-brand-dark-gray">{model.model_name}</td>
-        <td className="py-1.5 pr-3 text-brand-mid-gray" colSpan={4}>{model.reason || "Benchmark failed."}</td>
-      </tr>
-    );
-  }
-  const verdict = (model.verdict || "red") as FitVerdict;
+function ContentionSlider({ contention, onChange }: { contention: number; onChange: (c: number) => void }) {
   return (
-    <tr className="border-t border-brand-light-gray-1">
-      <td className="py-1.5 pr-3 text-brand-dark-gray">{model.model_name}</td>
-      <td className="py-1.5 pr-3 text-brand-gray">{model.processing_seconds.toFixed(1)}s</td>
-      <td className="py-1.5 pr-3 text-brand-gray">{model.real_time_factor.toFixed(2)}x</td>
-      <td className="py-1.5 pr-3">
-        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${VERDICT_STYLE[verdict]}`}>
-          {VERDICT_LABEL[verdict]}
-        </span>
-      </td>
-      <td className="py-1.5 text-brand-gray">{usableFor.join(", ") || "-"}</td>
-    </tr>
+    <div className="mt-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="font-body text-[10px] font-semibold uppercase tracking-wide text-brand-mid-gray">Assumed load headroom</p>
+          <p className="mt-0.5 font-body text-xs text-brand-gray">
+            Reserve for recording, diarization, and other apps: <span className="font-semibold text-brand-dark-gray">{contention.toFixed(1)}x</span> measured latency
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-body text-[10px] text-brand-mid-gray">1x</span>
+          <input
+            type="range"
+            min={MIN_CONTENTION}
+            max={MAX_CONTENTION}
+            step={0.1}
+            value={contention}
+            onChange={(e) => onChange(Number(e.target.value))}
+            className="w-48 accent-brand-teal"
+          />
+          <span className="font-body text-[10px] text-brand-mid-gray">3x</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
 function ModelFitBlock({
   model,
   usableFor,
+  contention,
   applying,
+  resolveRole,
+  onEditBudget,
+  onCommitBudget,
   onApply,
 }: {
   model: TextModelFit;
   usableFor: string[];
+  contention: number;
   applying: boolean;
+  resolveRole: (role: FitRole) => RoleView;
+  onEditBudget: (slug: string, seconds: number) => void;
+  onCommitBudget: (slug: string, seconds: number) => void;
   onApply: () => void;
 }) {
-  const changes = model.roles.filter((role) => role.changed).length;
+  const views = model.status === "ok" ? model.roles.map(resolveRole) : [];
+  const changes = views.filter((v) => v.changed).length;
 
   return (
     <div className="rounded-lg border border-brand-light-gray-1 p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate font-display text-sm font-bold text-brand-dark-gray" title={model.model_id}>
-            {model.model_name}
-          </p>
+          <p className="truncate font-display text-sm font-bold text-brand-dark-gray" title={model.model_id}>{model.model_name}</p>
           {model.status === "ok" && model.short && model.long ? (
             <p className="mt-0.5 font-body text-[11px] text-brand-mid-gray">
-              Short window {model.short.latency_seconds.toFixed(1)}s - Long window {model.long.latency_seconds.toFixed(1)}s per call
+              Short {model.short.latency_seconds.toFixed(1)}s - Long {model.long.latency_seconds.toFixed(1)}s per call
             </p>
           ) : (
             <p className="mt-0.5 font-body text-[11px] text-red-700">{model.reason || "Benchmark failed."}</p>
           )}
           {usableFor.length > 0 && (
-            <p className="mt-0.5 font-body text-[11px] text-brand-mid-gray">
-              Usable for: <span className="text-brand-gray">{usableFor.join(", ")}</span>
-            </p>
+            <p className="mt-0.5 font-body text-[11px] text-brand-mid-gray">Usable for: <span className="text-brand-gray">{usableFor.join(", ")}</span></p>
           )}
         </div>
         {model.status === "ok" && changes > 0 && (
@@ -375,12 +450,12 @@ function ModelFitBlock({
             disabled={applying}
             className="rounded bg-brand-teal px-3 py-1.5 font-body text-xs font-medium text-white transition-colors hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:bg-brand-light-gray-1"
           >
-            {applying ? "Applying..." : `Apply recommended intervals (${changes})`}
+            {applying ? "Applying..." : `Apply recommended budgets (${changes})`}
           </button>
         )}
       </div>
 
-      {model.status === "ok" && model.roles.length > 0 && (
+      {views.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse font-body text-xs">
             <thead>
@@ -394,47 +469,118 @@ function ModelFitBlock({
               </tr>
             </thead>
             <tbody>
-              {model.roles.map((role) => (
-                <RoleRow key={role.slug} role={role} />
+              {views.map((view) => (
+                <RoleRow
+                  key={view.role.slug}
+                  view={view}
+                  contention={contention}
+                  onEditBudget={onEditBudget}
+                  onCommitBudget={onCommitBudget}
+                />
               ))}
             </tbody>
           </table>
+          <p className="mt-2 font-body text-[10px] text-brand-mid-gray">
+            Briefing agents run once at call end (no live loop), so they show an acceptable-wait verdict, not a cycle budget.
+          </p>
         </div>
       )}
     </div>
   );
 }
 
-function RoleRow({ role }: { role: FitRole }) {
+function RoleRow({
+  view,
+  contention,
+  onEditBudget,
+  onCommitBudget,
+}: {
+  view: RoleView;
+  contention: number;
+  onEditBudget: (slug: string, seconds: number) => void;
+  onCommitBudget: (slug: string, seconds: number) => void;
+}) {
+  const { role, budget, verdict, recommended, changed } = view;
+  const eff = effective(role.latency_seconds, contention);
   return (
     <tr className="border-t border-brand-light-gray-1">
-      <td className="py-1.5 pr-3 text-brand-dark-gray">{role.name}</td>
+      <td className="py-1.5 pr-3 text-brand-dark-gray">
+        {role.name}
+        {role.post_call && <span className="ml-1 text-[10px] text-brand-mid-gray">(post-call)</span>}
+      </td>
       <td className="py-1.5 pr-3 capitalize text-brand-gray">{role.prompt_profile}</td>
-      <td className="py-1.5 pr-3 text-brand-gray">{role.latency_seconds.toFixed(1)}s</td>
-      <td className="py-1.5 pr-3 text-brand-gray">{role.budget_seconds}s</td>
+      <td className="py-1.5 pr-3 text-brand-gray" title={`${eff.toFixed(1)}s at ${contention.toFixed(1)}x load`}>{role.latency_seconds.toFixed(1)}s</td>
+      <td className="py-1.5 pr-3 text-brand-gray">
+        {role.post_call ? (
+          <span className="text-brand-mid-gray">end-of-call</span>
+        ) : role.editable ? (
+          <input
+            type="number"
+            min={MIN_INTERVAL}
+            max={MAX_INTERVAL}
+            value={budget}
+            onChange={(e) => { const v = parseInt(e.target.value, 10); if (!Number.isNaN(v)) onEditBudget(role.slug, v); }}
+            onBlur={(e) => { const v = parseInt(e.target.value, 10); if (!Number.isNaN(v)) onCommitBudget(role.slug, v); }}
+            className="w-16 rounded border border-brand-light-gray-1 bg-surface px-2 py-0.5 text-xs text-brand-dark-gray focus:border-brand-teal"
+          />
+        ) : (
+          <span>{budget}s</span>
+        )}
+      </td>
       <td className="py-1.5 pr-3">
-        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${VERDICT_STYLE[role.verdict]}`}>
-          {VERDICT_LABEL[role.verdict]}
+        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${VERDICT_STYLE[verdict]}`}>
+          {(role.post_call ? POST_CALL_LABEL : VERDICT_LABEL)[verdict]}
         </span>
       </td>
       <td className="py-1.5 text-brand-gray">
-        {role.changed ? (
-          <span className="font-semibold text-brand-teal">{role.recommended_interval_seconds}s</span>
+        {role.post_call ? (
+          <span className="text-brand-mid-gray">-</span>
+        ) : changed ? (
+          <span className="font-semibold text-brand-teal">{recommended}s</span>
         ) : (
-          <span className="text-brand-mid-gray">{role.budget_seconds}s (no change)</span>
+          <span className="text-brand-mid-gray">no change</span>
         )}
       </td>
     </tr>
   );
 }
 
-/** What each AI service can run locally, or the cloud capability it still needs. */
+function AsrRow({ model, contention }: { model: AsrModelFit; contention: number }) {
+  if (model.status !== "ok" || model.real_time_factor == null) {
+    return (
+      <tr className="border-t border-brand-light-gray-1">
+        <td className="py-1.5 pr-3 text-brand-dark-gray">{model.model_name}</td>
+        <td className="py-1.5 pr-3 text-brand-mid-gray" colSpan={3}>{model.reason || "Benchmark failed."}</td>
+      </tr>
+    );
+  }
+  const effRtf = effective(model.real_time_factor, contention);
+  const verdict = classifyRtf(effRtf);
+  const feasibility = model.short_real_time_factor != null
+    ? classifyFeasibility(effective(model.short_real_time_factor, contention))
+    : "";
+  return (
+    <tr className="border-t border-brand-light-gray-1">
+      <td className="py-1.5 pr-3 text-brand-dark-gray">{model.model_name}</td>
+      <td className="py-1.5 pr-3 text-brand-gray" title={`${effRtf.toFixed(2)}x at ${contention.toFixed(1)}x load`}>{model.real_time_factor.toFixed(2)}x</td>
+      <td className="py-1.5 pr-3">
+        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${VERDICT_STYLE[verdict]}`}>{VERDICT_LABEL[verdict]}</span>
+      </td>
+      <td className="py-1.5">
+        {feasibility ? (
+          <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${FEASIBILITY[feasibility].cls}`}>{FEASIBILITY[feasibility].label}</span>
+        ) : (
+          <span className="text-brand-mid-gray">-</span>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 function LocalCapabilityMap({ capabilities }: { capabilities: LocalCapabilities }) {
   return (
     <div className="mt-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
-      <p className="mb-2 font-body text-[10px] font-semibold uppercase tracking-wide text-brand-mid-gray">
-        What can run locally on this machine
-      </p>
+      <p className="mb-2 font-body text-[10px] font-semibold uppercase tracking-wide text-brand-mid-gray">What can run locally on this machine</p>
       <ul className="space-y-1.5">
         {capabilities.services.map((service) => (
           <li key={service.key} className="flex flex-wrap items-baseline gap-x-2 font-body text-xs">
@@ -442,32 +588,11 @@ function LocalCapabilityMap({ capabilities }: { capabilities: LocalCapabilities 
             {service.cloud_only ? (
               <span className="text-amber-700">no local option{service.note ? ` - ${service.note}` : ""}</span>
             ) : (
-              <span className="text-brand-gray">
-                {service.local_options.map((option) => option.name).join(", ")}
-              </span>
+              <span className="text-brand-gray">{service.local_options.map((o) => o.name).join(", ")}</span>
             )}
           </li>
         ))}
       </ul>
     </div>
   );
-}
-
-/** Fold applied intervals back into the report so verdicts stay truthful. */
-function applyToReport(report: LocalFitReport, applied: Record<string, number>): LocalFitReport {
-  const text_models = report.text_models.map((model) => ({
-    ...model,
-    roles: model.roles.map((role) => {
-      const budget = applied[role.slug];
-      if (budget == null) return role;
-      return {
-        ...role,
-        budget_seconds: budget,
-        verdict: verdictFor(role.latency_seconds, budget),
-        recommended_interval_seconds: budget,
-        changed: false,
-      };
-    }),
-  }));
-  return { ...report, intervals: { ...report.intervals, ...applied }, text_models };
 }

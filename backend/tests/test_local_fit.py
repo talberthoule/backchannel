@@ -3,11 +3,17 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from app.services.local_fit import (
+    DEFAULT_CONTENTION,
+    FEASIBLE,
     GREEN,
+    MARGINAL,
     MAX_ASR_SECONDS,
     MIN_ASR_SECONDS,
     MAX_INTERVAL,
     MIN_INTERVAL,
+    NOT_FEASIBLE,
+    POST_CALL_GREEN_SECONDS,
+    POST_CALL_YELLOW_SECONDS,
     RED,
     YELLOW,
     ProfileLatency,
@@ -16,16 +22,23 @@ from app.services.local_fit import (
     apply_recommended_intervals,
     benchmark_asr_model,
     benchmark_text_model,
+    budgets_for_model,
     build_local_capabilities,
     classify_latency,
+    classify_live_feasibility,
+    classify_post_call,
     classify_rtf,
+    effective_latency,
     is_asr_clip_too_short,
+    parse_model_intervals,
     recommend_interval,
     run_asr_fit,
     score_text_model,
+    synthetic_speech_clip,
     trim_asr_clip,
     validate_interval_updates,
 )
+from app.services.local_fit import clip_has_speech
 
 
 class ClassifyLatencyTests(unittest.TestCase):
@@ -84,39 +97,83 @@ class ScoreTextModelTests(unittest.TestCase):
         failed = TextModelFit("x", "x", status="failed", reason="down")
         self.assertEqual(score_text_model(failed, {}), [])
 
+    def test_includes_interval_and_post_call_agents(self):
+        roles = {r.slug: r for r in score_text_model(_fit(3.0, 20.0), {}, contention=1.0)}
+        # Five interval agents plus the three post-call briefing agents.
+        for slug in ("objection_handler", "opportunity_specialist", "consolidated_analyst",
+                     "strategic_signals", "synthesizer"):
+            self.assertFalse(roles[slug].post_call)
+            self.assertTrue(roles[slug].editable)
+        for slug in ("brief_meeting_lens", "brief_discovery_lens", "brief_arbiter"):
+            self.assertTrue(roles[slug].post_call)
+            self.assertFalse(roles[slug].editable)
+
     def test_fast_model_is_green_across_roles_with_no_changes(self):
-        roles = score_text_model(_fit(3.0, 20.0), {})
-        self.assertEqual({r.slug for r in roles}, {
-            "objection_handler",
-            "opportunity_specialist",
-            "consolidated_analyst",
-            "strategic_signals",
-            "synthesizer",
-        })
-        self.assertTrue(all(r.verdict == GREEN for r in roles))
-        self.assertTrue(all(not r.changed for r in roles))
+        roles = score_text_model(_fit(3.0, 20.0), {}, contention=1.0)
+        interval_roles = [r for r in roles if not r.post_call]
+        self.assertTrue(all(r.verdict == GREEN for r in interval_roles))
+        self.assertTrue(all(not r.changed for r in interval_roles))
 
     def test_slow_model_flags_and_recommends_longer_intervals(self):
-        by_slug = {r.slug: r for r in score_text_model(_fit(8.0, 50.0), {})}
+        by_slug = {r.slug: r for r in score_text_model(_fit(8.0, 50.0), {}, contention=1.0)}
 
-        # Short-window agent, tight at 10s.
         self.assertEqual(by_slug["objection_handler"].verdict, YELLOW)
         self.assertEqual(by_slug["objection_handler"].recommended_interval_seconds, 20)
         self.assertTrue(by_slug["objection_handler"].changed)
 
-        # Long-window agents over budget.
         self.assertEqual(by_slug["consolidated_analyst"].verdict, RED)
         self.assertEqual(by_slug["consolidated_analyst"].recommended_interval_seconds, 100)
 
-        # Roomy cooldown stays green and untouched.
         self.assertEqual(by_slug["opportunity_specialist"].verdict, GREEN)
         self.assertFalse(by_slug["opportunity_specialist"].changed)
 
-    def test_stored_intervals_override_defaults_as_budget(self):
-        # A user who already widened the analyst to 120s should read as green.
-        roles = {r.slug: r for r in score_text_model(_fit(8.0, 50.0), {"consolidated_analyst": 120})}
+    def test_per_model_budget_overrides_default(self):
+        # A per-model budget of 120s for the analyst reads as green even when slow.
+        roles = {r.slug: r for r in score_text_model(
+            _fit(8.0, 50.0), {"consolidated_analyst": 120}, contention=1.0)}
         self.assertEqual(roles["consolidated_analyst"].budget_seconds, 120)
         self.assertEqual(roles["consolidated_analyst"].verdict, GREEN)
+
+    def test_contention_makes_verdicts_stricter(self):
+        # Analyst at 20s vs 40s budget: green at 1x (0.5), tips to yellow at 1.5x.
+        green = {r.slug: r for r in score_text_model(_fit(3.0, 20.0), {}, contention=1.0)}
+        strict = {r.slug: r for r in score_text_model(_fit(3.0, 20.0), {}, contention=1.5)}
+        self.assertEqual(green["consolidated_analyst"].verdict, GREEN)
+        self.assertEqual(strict["consolidated_analyst"].verdict, YELLOW)
+        self.assertTrue(strict["consolidated_analyst"].changed)
+
+    def test_post_call_briefing_judged_on_end_of_call_wait(self):
+        # Long call 40s: post-call briefing is fine (<=60s), interval analyst is not.
+        roles = {r.slug: r for r in score_text_model(_fit(5.0, 40.0), {}, contention=1.0)}
+        self.assertEqual(roles["brief_arbiter"].verdict, GREEN)
+        # A 200s briefing would be over the acceptable end-of-call wait.
+        slow = {r.slug: r for r in score_text_model(_fit(5.0, 200.0), {}, contention=1.0)}
+        self.assertEqual(slow["brief_arbiter"].verdict, RED)
+
+
+class ContentionAndPostCallHelperTests(unittest.TestCase):
+    def test_effective_latency_scales_and_clamps(self):
+        self.assertEqual(effective_latency(10.0, 1.5), 15.0)
+        self.assertEqual(effective_latency(10.0, 5.0), 30.0)  # clamped to MAX_CONTENTION=3
+        self.assertEqual(effective_latency(10.0, 0.1), 10.0)  # clamped to MIN_CONTENTION=1
+
+    def test_classify_post_call_thresholds(self):
+        self.assertEqual(classify_post_call(POST_CALL_GREEN_SECONDS), GREEN)
+        self.assertEqual(classify_post_call(POST_CALL_YELLOW_SECONDS), YELLOW)
+        self.assertEqual(classify_post_call(POST_CALL_YELLOW_SECONDS + 1), RED)
+
+    def test_default_contention_is_conservative(self):
+        self.assertGreater(DEFAULT_CONTENTION, 1.0)
+
+
+class ParseModelIntervalsTests(unittest.TestCase):
+    def test_valid_and_invalid_payloads(self):
+        self.assertEqual(parse_model_intervals('{"m1": 40, "m2": 90}'), {"m1": 40, "m2": 90})
+        self.assertEqual(parse_model_intervals(""), {})
+        self.assertEqual(parse_model_intervals("not json"), {})
+        self.assertEqual(parse_model_intervals("[1,2]"), {})
+        # Booleans are not intervals.
+        self.assertEqual(parse_model_intervals('{"m1": true}'), {})
 
 
 class ValidateIntervalUpdatesTests(unittest.TestCase):
@@ -191,27 +248,100 @@ class BenchmarkTextModelTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ApplyRecommendedIntervalsTests(unittest.IsolatedAsyncioTestCase):
-    async def test_applies_validated_intervals_and_commits(self):
-        row = SimpleNamespace(slug="objection_handler", interval_seconds=10, updated_at=None)
+    async def test_writes_per_model_budget_and_commits(self):
+        row = SimpleNamespace(
+            slug="objection_handler", interval_seconds=10, model_intervals="", updated_at=None
+        )
         result = MagicMock()
         result.scalars.return_value.all.return_value = [row]
         db = AsyncMock()
         db.execute.return_value = result
 
         applied = await apply_recommended_intervals(
-            db, [{"slug": "objection_handler", "interval_seconds": 25}]
+            db, "endpoint:x:m", [{"slug": "objection_handler", "interval_seconds": 25}]
         )
 
         self.assertEqual(applied, {"objection_handler": 25})
-        self.assertEqual(row.interval_seconds, 25)
+        # Stored under the model id, not on the global interval.
+        self.assertEqual(row.interval_seconds, 10)
+        self.assertEqual(parse_model_intervals(row.model_intervals), {"endpoint:x:m": 25})
         self.assertIsNotNone(row.updated_at)
         db.commit.assert_awaited_once()
+
+    async def test_preserves_other_models_budgets(self):
+        row = SimpleNamespace(
+            slug="objection_handler",
+            interval_seconds=10,
+            model_intervals='{"endpoint:a:a": 30}',
+            updated_at=None,
+        )
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [row]
+        db = AsyncMock()
+        db.execute.return_value = result
+
+        await apply_recommended_intervals(
+            db, "endpoint:b:b", [{"slug": "objection_handler", "interval_seconds": 45}]
+        )
+
+        self.assertEqual(
+            parse_model_intervals(row.model_intervals),
+            {"endpoint:a:a": 30, "endpoint:b:b": 45},
+        )
 
     async def test_invalid_payload_raises_before_touching_db(self):
         db = AsyncMock()
         with self.assertRaises(ValueError):
-            await apply_recommended_intervals(db, [{"slug": "nope", "interval_seconds": 25}])
+            await apply_recommended_intervals(db, "m", [{"slug": "nope", "interval_seconds": 25}])
         db.commit.assert_not_awaited()
+
+    async def test_missing_model_id_raises(self):
+        db = AsyncMock()
+        with self.assertRaises(ValueError):
+            await apply_recommended_intervals(db, "", [{"slug": "objection_handler", "interval_seconds": 25}])
+
+
+class BudgetsForModelTests(unittest.IsolatedAsyncioTestCase):
+    def _db_with_rows(self, rows):
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = rows
+        db = AsyncMock()
+        db.execute.return_value = result
+        return db
+
+    async def test_per_model_budget_wins_then_global_then_default(self):
+        rows = [
+            SimpleNamespace(slug="consolidated_analyst", interval_seconds=40,
+                            model_intervals='{"m1": 90}'),
+            SimpleNamespace(slug="objection_handler", interval_seconds=None, model_intervals=""),
+        ]
+        db = self._db_with_rows(rows)
+
+        m1 = await budgets_for_model(db, "m1")
+        self.assertEqual(m1["consolidated_analyst"], 90)   # per-model wins
+        self.assertEqual(m1["objection_handler"], 10)      # seeded default (no global, no per-model)
+
+        db2 = self._db_with_rows(rows)
+        m2 = await budgets_for_model(db2, "m2")
+        self.assertEqual(m2["consolidated_analyst"], 40)   # falls back to global interval
+
+    async def test_only_interval_agents_are_returned(self):
+        db = self._db_with_rows([])
+        budgets = await budgets_for_model(db, "m1")
+        self.assertNotIn("brief_arbiter", budgets)
+        self.assertIn("synthesizer", budgets)
+
+
+class LiveFeasibilityAndSyntheticClipTests(unittest.TestCase):
+    def test_live_feasibility_thresholds(self):
+        self.assertEqual(classify_live_feasibility(0.2), FEASIBLE)
+        self.assertEqual(classify_live_feasibility(0.5), MARGINAL)
+        self.assertEqual(classify_live_feasibility(0.9), NOT_FEASIBLE)
+
+    def test_synthetic_clip_has_speech_energy_and_length(self):
+        clip = synthetic_speech_clip(seconds=4)
+        self.assertEqual(len(clip), 4 * 16000 * 2)
+        self.assertTrue(clip_has_speech(clip))
 
 
 class ClassifyRtfTests(unittest.TestCase):

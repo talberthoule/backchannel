@@ -303,10 +303,13 @@ export const getLocalFitSummary = () =>
 export const runLocalFit = () =>
   request<LocalFitReport>("/diagnostics/local-fit/run", { method: "POST" });
 
-export const applyLocalFitIntervals = (updates: { slug: string; interval_seconds: number }[]) =>
+export const applyLocalFitIntervals = (
+  modelId: string,
+  updates: { slug: string; interval_seconds: number }[],
+) =>
   request<{ applied: Record<string, number> }>("/diagnostics/local-fit/apply", {
     method: "POST",
-    body: JSON.stringify({ updates }),
+    body: JSON.stringify({ model_id: modelId, updates }),
   });
 
 export const runAsrFit = async (file: File): Promise<AsrFitReport> => {
