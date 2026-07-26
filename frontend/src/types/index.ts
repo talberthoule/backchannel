@@ -365,6 +365,23 @@ export interface LocalFitReport extends LocalFitSummary {
   text_models: TextModelFit[];
 }
 
+// Local transcription (ASR) keep-up: real-time factor per bundled ONNX model.
+export interface AsrModelFit {
+  model_id: string;
+  model_name: string;
+  status: "ok" | "failed";
+  reason: string;
+  audio_seconds: number;
+  processing_seconds: number;
+  real_time_factor: number | null;
+  verdict: FitVerdict | "";
+}
+
+export interface AsrFitReport {
+  audio_seconds: number;
+  asr_models: AsrModelFit[];
+}
+
 export interface PrivacyImpactItem {
   feature: string;
   detail: string;

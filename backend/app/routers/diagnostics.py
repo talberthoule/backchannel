@@ -19,7 +19,11 @@ from app.services.diarizer_runtime import (
     set_speaker_similarity_threshold,
 )
 from app.services.local_fit import (
+    MIN_ASR_SECONDS,
     apply_recommended_intervals,
+    clip_has_speech,
+    is_asr_clip_too_short,
+    run_asr_fit,
     run_local_fit,
     summarize_local_fit,
 )
@@ -209,6 +213,30 @@ async def apply_local_fit_intervals(
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"applied": applied}
+
+
+@router.post("/local-fit/asr")
+async def benchmark_local_asr(file: UploadFile):
+    """Measure real-time factor for the local ONNX ASR models on an uploaded clip."""
+    filename = file.filename or ""
+    ext = os.path.splitext(filename)[1].lower()
+    if not is_supported_benchmark_audio_filename(filename):
+        raise HTTPException(400, f"Unsupported audio format: {ext}")
+
+    content = await file.read()
+    try:
+        pcm_data = convert_to_pcm16(content, ext.lstrip("."))
+    except Exception as exc:
+        raise HTTPException(400, f"Audio conversion failed: {exc}") from exc
+    if is_asr_clip_too_short(pcm_data):
+        raise HTTPException(
+            400, f"Clip must be at least {MIN_ASR_SECONDS} seconds of audio."
+        )
+    if not clip_has_speech(pcm_data):
+        raise HTTPException(
+            400, "Clip needs audible speech to measure transcription speed."
+        )
+    return await run_asr_fit(pcm_data)
 
 
 @router.post("/diarization/sortformer/benchmark")

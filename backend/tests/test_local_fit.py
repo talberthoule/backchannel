@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from app.services.local_fit import (
     GREEN,
+    MAX_ASR_SECONDS,
+    MIN_ASR_SECONDS,
     MAX_INTERVAL,
     MIN_INTERVAL,
     RED,
@@ -11,10 +13,15 @@ from app.services.local_fit import (
     ProfileLatency,
     TextModelFit,
     apply_recommended_intervals,
+    benchmark_asr_model,
     benchmark_text_model,
     classify_latency,
+    classify_rtf,
+    is_asr_clip_too_short,
     recommend_interval,
+    run_asr_fit,
     score_text_model,
+    trim_asr_clip,
     validate_interval_updates,
 )
 
@@ -183,6 +190,86 @@ class ApplyRecommendedIntervalsTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await apply_recommended_intervals(db, [{"slug": "nope", "interval_seconds": 25}])
         db.commit.assert_not_awaited()
+
+
+class ClassifyRtfTests(unittest.TestCase):
+    def test_faster_than_half_real_time_is_green(self):
+        self.assertEqual(classify_rtf(0.2), GREEN)
+        self.assertEqual(classify_rtf(0.5), GREEN)  # boundary
+
+    def test_up_to_real_time_is_yellow(self):
+        self.assertEqual(classify_rtf(0.8), YELLOW)
+        self.assertEqual(classify_rtf(1.0), YELLOW)  # boundary
+
+    def test_slower_than_real_time_is_red(self):
+        self.assertEqual(classify_rtf(1.4), RED)
+
+
+class AsrClipHelperTests(unittest.TestCase):
+    def test_too_short_clip_is_rejected(self):
+        min_bytes = MIN_ASR_SECONDS * 16000 * 2
+        self.assertTrue(is_asr_clip_too_short(b"\x00" * (min_bytes - 1)))
+        self.assertFalse(is_asr_clip_too_short(b"\x00" * min_bytes))
+
+    def test_long_clip_is_trimmed_to_cap(self):
+        cap_bytes = MAX_ASR_SECONDS * 16000 * 2
+        self.assertEqual(len(trim_asr_clip(b"\x00" * (cap_bytes + 5000))), cap_bytes)
+
+
+class BenchmarkAsrModelTests(unittest.IsolatedAsyncioTestCase):
+    async def test_successful_benchmark_reports_rtf_and_verdict(self):
+        calls: list[bytes] = []
+
+        class FakeTranscriber:
+            def __init__(self, model_id):
+                self.model_id = model_id
+
+            async def transcribe_segment(self, pcm_bytes):
+                calls.append(pcm_bytes)
+                return "hello there"
+
+        fit = await benchmark_asr_model(
+            "local-whisper-base", b"\x00" * 320000, 10.0, make_transcriber=FakeTranscriber
+        )
+
+        self.assertEqual(fit.status, "ok")
+        self.assertEqual(fit.audio_seconds, 10.0)
+        self.assertIsNotNone(fit.real_time_factor)
+        self.assertIn(fit.verdict, {GREEN, YELLOW, RED})
+        # Warmup + timed call.
+        self.assertEqual(len(calls), 2)
+
+    async def test_failed_transcription_returns_failed_fit(self):
+        class BrokenTranscriber:
+            def __init__(self, model_id):
+                pass
+
+            async def transcribe_segment(self, pcm_bytes):
+                raise RuntimeError("onnx runtime missing")
+
+        fit = await benchmark_asr_model(
+            "local-whisper-base", b"\x00" * 320000, 10.0, make_transcriber=BrokenTranscriber
+        )
+
+        self.assertEqual(fit.status, "failed")
+        self.assertIn("onnx runtime missing", fit.reason)
+
+
+class RunAsrFitTests(unittest.IsolatedAsyncioTestCase):
+    async def test_benchmarks_every_bundled_local_asr_model(self):
+        class FakeTranscriber:
+            def __init__(self, model_id):
+                pass
+
+            async def transcribe_segment(self, pcm_bytes):
+                return "hi"
+
+        report = await run_asr_fit(b"\x00" * 320000, make_transcriber=FakeTranscriber)
+
+        # Both bundled local ASR models are measured.
+        self.assertEqual(len(report["asr_models"]), 2)
+        self.assertTrue(all(m["status"] == "ok" for m in report["asr_models"]))
+        self.assertGreater(report["audio_seconds"], 0)
 
 
 if __name__ == "__main__":

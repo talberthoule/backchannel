@@ -23,8 +23,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AgentConfig
+from app.services.batch_transcriber import _audio_has_speech_energy
 from app.services.custom_endpoints import endpoint_models
 from app.services.llm import generate_text
+from app.services.local_transcriber import LOCAL_MODEL_MAP, LocalTranscriber
 
 # Verdicts, worst-to-best kept explicit so the UI and tests share one vocabulary.
 GREEN = "green"
@@ -384,3 +386,123 @@ async def apply_recommended_intervals(db: AsyncSession, updates: list[dict]) -> 
         applied[row.slug] = cleaned[row.slug]
     await db.commit()
     return applied
+
+
+# --- Transcription (local ASR) keep-up -------------------------------------
+#
+# The other half of running everything locally: each diarized segment must
+# transcribe faster than real time (real-time factor < 1) or the transcript
+# falls behind the call. Unlike the text test this needs a real speech clip,
+# because LocalTranscriber gates on an energy floor and a speech check.
+
+_PCM16_BYTES_PER_SECOND = 16000 * 2
+# Enough audio for a stable factor; a diarized segment tops out around 15s, so
+# a longer upload is trimmed to keep the measurement bounded.
+MIN_ASR_SECONDS = 3
+MAX_ASR_SECONDS = 30
+
+# RTF = processing_seconds / audio_seconds. Under half real time leaves comfort;
+# up to real time keeps up with no margin; over real time falls behind live.
+ASR_GREEN_RTF = 0.5
+ASR_YELLOW_RTF = 1.0
+
+
+@dataclass
+class ASRModelFit:
+    model_id: str
+    model_name: str
+    status: str  # "ok" or "failed"
+    reason: str = ""
+    audio_seconds: float = 0.0
+    processing_seconds: float = 0.0
+    real_time_factor: float | None = None
+    verdict: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def classify_rtf(rtf: float) -> str:
+    """green: comfortably faster than real time; yellow: keeps up; red: behind."""
+    if rtf <= ASR_GREEN_RTF:
+        return GREEN
+    if rtf <= ASR_YELLOW_RTF:
+        return YELLOW
+    return RED
+
+
+def asr_clip_seconds(pcm_bytes: bytes) -> float:
+    return len(pcm_bytes) / _PCM16_BYTES_PER_SECOND
+
+
+def is_asr_clip_too_short(pcm_bytes: bytes) -> bool:
+    return len(pcm_bytes) < MIN_ASR_SECONDS * _PCM16_BYTES_PER_SECOND
+
+
+def trim_asr_clip(pcm_bytes: bytes) -> bytes:
+    return pcm_bytes[: MAX_ASR_SECONDS * _PCM16_BYTES_PER_SECOND]
+
+
+def clip_has_speech(pcm_bytes: bytes) -> bool:
+    return _audio_has_speech_energy(pcm_bytes)
+
+
+def _asr_model_name(model_id: str) -> str:
+    from app.config import MODEL_REGISTRY
+
+    entry = next((m for m in MODEL_REGISTRY if m["id"] == model_id), None)
+    return entry["name"] if entry else model_id
+
+
+async def benchmark_asr_model(
+    model_id: str,
+    pcm_bytes: bytes,
+    audio_seconds: float,
+    *,
+    make_transcriber: Callable[[str], Any] = LocalTranscriber,
+) -> ASRModelFit:
+    """Warm up (loads/downloads the model, untimed), then time one transcription."""
+    name = _asr_model_name(model_id)
+    try:
+        transcriber = make_transcriber(model_id)
+        await transcriber.transcribe_segment(pcm_bytes)  # warmup: model load is not charged
+        started = time.perf_counter()
+        await transcriber.transcribe_segment(pcm_bytes)
+        elapsed = time.perf_counter() - started
+    except Exception as exc:  # noqa: BLE001 - surfaced to the user as a reason
+        return ASRModelFit(
+            model_id,
+            name,
+            status="failed",
+            reason=f"Transcription failed: {exc}",
+            audio_seconds=round(audio_seconds, 2),
+        )
+    rtf = round(elapsed / audio_seconds, 3) if audio_seconds > 0 else None
+    return ASRModelFit(
+        model_id,
+        name,
+        status="ok",
+        audio_seconds=round(audio_seconds, 2),
+        processing_seconds=round(elapsed, 3),
+        real_time_factor=rtf,
+        verdict=classify_rtf(rtf) if rtf is not None else RED,
+    )
+
+
+async def run_asr_fit(
+    pcm_bytes: bytes,
+    *,
+    make_transcriber: Callable[[str], Any] = LocalTranscriber,
+) -> dict:
+    """Measure real-time factor for every bundled local ASR model on one clip."""
+    clip = trim_asr_clip(pcm_bytes)
+    audio_seconds = asr_clip_seconds(clip)
+    models = [
+        (
+            await benchmark_asr_model(
+                model_id, clip, audio_seconds, make_transcriber=make_transcriber
+            )
+        ).to_dict()
+        for model_id in LOCAL_MODEL_MAP
+    ]
+    return {"audio_seconds": round(audio_seconds, 2), "asr_models": models}

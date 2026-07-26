@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import type { FitRole, FitVerdict, LocalFitReport, LocalFitSummary, TextModelFit } from "../types";
+import type { AsrFitReport, AsrModelFit, FitRole, FitVerdict, LocalFitReport, LocalFitSummary, TextModelFit } from "../types";
 import * as api from "../services/api";
+import { useClipRecorder } from "../hooks/useClipRecorder";
+
+// Longest mic clip to record for the ASR check; the backend needs >= 3s and
+// trims anything over 30s.
+const MAX_ASR_RECORD_SECONDS = 15;
 
 // Mirrors backend app/services/local_fit.py HEADROOM: a call should finish
 // within half its interval. Used only to keep verdicts truthful after applying
@@ -94,6 +99,32 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
     }
   };
 
+  // --- Transcription (ASR) keep-up ---
+  const [asrReport, setAsrReport] = useState<AsrFitReport | null>(null);
+  const [asrFile, setAsrFile] = useState<File | null>(null);
+  const [asrBusy, setAsrBusy] = useState(false);
+  const [asrError, setAsrError] = useState<string | null>(null);
+
+  const measureAsr = useCallback(async (file: File) => {
+    setAsrBusy(true);
+    setAsrError(null);
+    try {
+      setAsrReport(await api.runAsrFit(file));
+    } catch (err) {
+      console.error("ASR fit failed", err);
+      setAsrError(err instanceof Error ? err.message : "Transcription speed check failed.");
+    } finally {
+      setAsrBusy(false);
+    }
+  }, []);
+
+  const recorder = useClipRecorder({
+    maxSeconds: MAX_ASR_RECORD_SECONDS,
+    baseName: "asr-clip",
+    onClip: (file) => { setAsrFile(file); void measureAsr(file); },
+    onError: (message) => setAsrError(message),
+  });
+
   const hasModels = summary?.has_local_text_models ?? false;
 
   return (
@@ -177,13 +208,108 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
         </p>
       )}
 
+      <div className="mt-4 border-t border-brand-light-gray-1 pt-4">
+        <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h4 className="font-display text-sm font-bold text-brand-dark-gray">Transcription keep-up (local ASR)</h4>
+            <p className="mt-1 max-w-2xl font-body text-xs leading-relaxed text-brand-gray">
+              Times the bundled local speech-to-text models on a short clip of your speech. A real-time
+              factor under 1.0 means transcription keeps up with the live call.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="file"
+            accept=".m4a,.mp3,.wav,.ogg,.flac,.webm,audio/*"
+            onChange={(e) => setAsrFile(e.target.files?.[0] ?? null)}
+            disabled={asrBusy || recorder.recording}
+            className="max-w-xs rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 font-body text-xs text-brand-dark-gray"
+          />
+          <button
+            onClick={() => asrFile && void measureAsr(asrFile)}
+            disabled={!asrFile || asrBusy || recorder.recording}
+            className="rounded bg-brand-teal px-3 py-1.5 font-body text-xs font-medium text-white transition-colors hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:bg-brand-light-gray-1"
+          >
+            {asrBusy ? "Measuring..." : "Measure transcription speed"}
+          </button>
+          {recorder.supported && (
+            <button
+              onClick={recorder.recording ? recorder.stop : () => void recorder.start()}
+              disabled={asrBusy && !recorder.recording}
+              className="rounded border border-brand-teal px-3 py-1.5 font-body text-xs font-medium text-brand-teal transition-colors hover:bg-brand-teal hover:text-white disabled:cursor-not-allowed disabled:border-brand-light-gray-1 disabled:text-brand-mid-gray"
+            >
+              {recorder.recording ? `Stop (${recorder.seconds}s)` : "Record 15s clip"}
+            </button>
+          )}
+        </div>
+
+        {asrReport && (
+          <div className="mt-3 overflow-x-auto rounded border border-brand-light-gray-1 p-3">
+            <p className="mb-2 font-body text-[11px] text-brand-mid-gray">
+              Measured on {asrReport.audio_seconds.toFixed(1)}s of audio
+            </p>
+            <table className="w-full border-collapse font-body text-xs">
+              <thead>
+                <tr className="text-left text-brand-mid-gray">
+                  <th className="py-1 pr-3 font-medium">Model</th>
+                  <th className="py-1 pr-3 font-medium">Processing</th>
+                  <th className="py-1 pr-3 font-medium">Real-time factor</th>
+                  <th className="py-1 font-medium">Verdict</th>
+                </tr>
+              </thead>
+              <tbody>
+                {asrReport.asr_models.map((model) => (
+                  <AsrRow key={model.model_id} model={model} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {asrError && (
+          <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 font-body text-xs text-red-700">
+            {asrError}
+          </p>
+        )}
+
+        <p className="mt-3 font-body text-[11px] leading-relaxed text-brand-mid-gray">
+          The first run downloads the ONNX model, so it takes longer than the timed measurement.
+        </p>
+      </div>
+
       <div className="mt-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-2">
         <p className="font-body text-xs leading-relaxed text-brand-gray">
-          To actually run an agent on a local model, also select it on the Agents tab. Local transcription
-          (speech-to-text) speed is measured separately on the Diarization Capability card below.
+          To actually run an agent on a local model, also select it on the Agents tab. For a fully offline
+          setup, pair a green local ASR model here with a self-hosted text model that keeps up above.
         </p>
       </div>
     </div>
+  );
+}
+
+function AsrRow({ model }: { model: AsrModelFit }) {
+  if (model.status !== "ok" || model.real_time_factor == null) {
+    return (
+      <tr className="border-t border-brand-light-gray-1">
+        <td className="py-1.5 pr-3 text-brand-dark-gray">{model.model_name}</td>
+        <td className="py-1.5 pr-3 text-brand-mid-gray" colSpan={3}>{model.reason || "Benchmark failed."}</td>
+      </tr>
+    );
+  }
+  const verdict = (model.verdict || "red") as FitVerdict;
+  return (
+    <tr className="border-t border-brand-light-gray-1">
+      <td className="py-1.5 pr-3 text-brand-dark-gray">{model.model_name}</td>
+      <td className="py-1.5 pr-3 text-brand-gray">{model.processing_seconds.toFixed(1)}s</td>
+      <td className="py-1.5 pr-3 text-brand-gray">{model.real_time_factor.toFixed(2)}x</td>
+      <td className="py-1.5">
+        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${VERDICT_STYLE[verdict]}`}>
+          {VERDICT_LABEL[verdict]}
+        </span>
+      </td>
+    </tr>
   );
 }
 
