@@ -78,6 +78,7 @@ class LocalFitIntervalUpdate(BaseModel):
 
 
 class LocalFitApplyRequest(BaseModel):
+    model_id: str
     updates: list[LocalFitIntervalUpdate]
 
 
@@ -205,10 +206,10 @@ async def apply_local_fit_intervals(
     body: LocalFitApplyRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Apply recommended cycle intervals to the matching agents (speed tuning)."""
+    """Apply recommended per-model cycle budgets to the matching agents."""
     try:
         applied = await apply_recommended_intervals(
-            db, [u.model_dump() for u in body.updates]
+            db, body.model_id, [u.model_dump() for u in body.updates]
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

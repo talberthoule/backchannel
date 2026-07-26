@@ -372,6 +372,10 @@ class AgentConfig(Base):
     sub_types: Mapped[str] = mapped_column(String(200), default="")  # comma-separated item_types (legacy; superseded by lenses where present)
     lenses: Mapped[str] = mapped_column(Text, default="")  # JSON array of {key,label,item_type,enabled,prompt} lens configs
     interval_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)  # cycle interval for periodic agents
+    # JSON dict {model_id: interval_seconds}: a per-model cycle budget that wins
+    # over interval_seconds when the agent runs that model. Empty falls back to
+    # interval_seconds, then the seeded default. Written from the fit test.
+    model_intervals: Mapped[str] = mapped_column(Text, default="")
     knowledge_source_ids: Mapped[str] = mapped_column(
         Text, default=""
     )  # comma-separated knowledge source UUIDs for db-type agents; empty falls back to the offerings catalog

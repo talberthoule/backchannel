@@ -14,6 +14,7 @@ analysis only.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 import time
@@ -51,29 +52,70 @@ _CHARS_PER_TOKEN = 4
 GenerateText = Callable[..., Awaitable[str]]
 
 
+# A real call is busier than this idle benchmark (recording, diarization, other
+# apps competing for CPU/RAM), so the fit screen scales measured latency by a
+# contention factor before judging. 1.5x is a conservative default; the slider
+# lets the user reserve more or less headroom.
+DEFAULT_CONTENTION = 1.5
+MIN_CONTENTION = 1.0
+MAX_CONTENTION = 3.0
+
+# Post-call briefing agents run once at call end, not on a live loop, so they are
+# judged against an acceptable end-of-call wait rather than a cycle interval.
+POST_CALL_GREEN_SECONDS = 60
+POST_CALL_YELLOW_SECONDS = 180
+
+
 @dataclass(frozen=True)
 class AgentRole:
-    """An interval-driven text agent and the prompt size it works over."""
+    """A text agent scored by the fit test and the prompt size it works over."""
 
     slug: str
     name: str
     prompt_profile: str  # "short" or "long"
     default_interval: int
+    # Post-call agents (the briefing lenses) run once at call end, so they have
+    # no live cycle budget and are judged on end-of-call wait instead.
+    post_call: bool = False
 
 
-# The five text agents whose loops are latency-critical during a live call.
-# Briefing lenses run at call end (no live budget) and the audio bridge is not a
-# text model, so neither is scored here. default_interval mirrors
-# seed_agents.SEED_CONFIGS and is the fallback when a row has no interval set.
+# Interval-driven agents whose loops are latency-critical during a live call,
+# plus the three post-call briefing agents (no live loop). default_interval
+# mirrors seed_agents.SEED_CONFIGS for interval agents; for post-call agents it
+# is the acceptable end-of-call wait. The audio bridge is not a text model, so
+# it is not scored here.
 AGENT_ROLES: tuple[AgentRole, ...] = (
     AgentRole("objection_handler", "Objection Handler", "short", 10),
     AgentRole("opportunity_specialist", "Opportunity Specialist", "short", 55),
     AgentRole("consolidated_analyst", "Consolidated Analyst", "long", 40),
     AgentRole("strategic_signals", "Strategic Signals", "long", 45),
     AgentRole("synthesizer", "Principal Agent", "long", 75),
+    AgentRole("brief_meeting_lens", "Briefing Meeting Lens", "long", POST_CALL_GREEN_SECONDS, post_call=True),
+    AgentRole("brief_discovery_lens", "Briefing Discovery Lens", "long", POST_CALL_GREEN_SECONDS, post_call=True),
+    AgentRole("brief_arbiter", "Briefing Arbiter", "long", POST_CALL_GREEN_SECONDS, post_call=True),
 )
 
 _ROLES_BY_SLUG = {role.slug: role for role in AGENT_ROLES}
+# Only interval-driven agents have a tunable cycle budget.
+_INTERVAL_ROLES = tuple(role for role in AGENT_ROLES if not role.post_call)
+
+
+def parse_model_intervals(raw: str) -> dict[str, int]:
+    """Parse AgentConfig.model_intervals JSON into {model_id: interval}, tolerant
+    of empty/garbage."""
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        str(k): int(v)
+        for k, v in data.items()
+        if isinstance(v, (int, float)) and not isinstance(v, bool)
+    }
 
 # ~90 seconds of dialogue: the objection/opportunity fast-cycle window.
 _SHORT_TRANSCRIPT = (
@@ -226,11 +268,15 @@ class RoleFit:
     slug: str
     name: str
     prompt_profile: str
-    latency_seconds: float
+    latency_seconds: float  # raw measured latency; the UI applies contention live
     budget_seconds: int
     verdict: str
     recommended_interval_seconds: int
     changed: bool
+    # Post-call briefing agents have no live cycle: not editable, no recommended
+    # interval, judged on end-of-call wait instead.
+    post_call: bool = False
+    editable: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -259,7 +305,10 @@ class TextModelFit:
 
 
 def classify_latency(latency_seconds: float, budget_seconds: int) -> str:
-    """green: comfortable headroom; yellow: keeps up but tight; red: falls behind."""
+    """green: comfortable headroom; yellow: keeps up but tight; red: falls behind.
+
+    latency_seconds is the *effective* latency (already scaled by contention).
+    """
     if latency_seconds <= 0:
         return GREEN
     if budget_seconds <= 0:
@@ -270,6 +319,21 @@ def classify_latency(latency_seconds: float, budget_seconds: int) -> str:
     if ratio <= 1.0:
         return YELLOW
     return RED
+
+
+def classify_post_call(effective_seconds: float) -> str:
+    """Verdict for a post-call briefing: judged on acceptable end-of-call wait."""
+    if effective_seconds <= POST_CALL_GREEN_SECONDS:
+        return GREEN
+    if effective_seconds <= POST_CALL_YELLOW_SECONDS:
+        return YELLOW
+    return RED
+
+
+def effective_latency(latency_seconds: float, contention: float) -> float:
+    """Measured latency scaled for the load a real call adds. Clamped to sane range."""
+    factor = min(max(contention, MIN_CONTENTION), MAX_CONTENTION)
+    return round(latency_seconds * factor, 3)
 
 
 def _round_up(value: float, step: int = ROUND_STEP) -> int:
@@ -291,16 +355,42 @@ def recommend_interval(latency_seconds: float, current_interval_seconds: int) ->
     return min(recommended, MAX_INTERVAL)
 
 
-def score_text_model(fit: TextModelFit, intervals: dict[str, int]) -> list[RoleFit]:
-    """Score every interval-driven agent against this model's measured latency."""
+def score_text_model(
+    fit: TextModelFit,
+    budgets: dict[str, int],
+    contention: float = DEFAULT_CONTENTION,
+) -> list[RoleFit]:
+    """Score every agent against this model's measured latency for this model's
+    per-model budgets, reserving headroom for contention.
+
+    `budgets` is the per-model cycle budget map for the interval-driven agents.
+    Post-call briefing agents are judged on end-of-call wait, not a budget.
+    """
     if fit.status != "ok" or fit.short is None or fit.long is None:
         return []
     roles: list[RoleFit] = []
     for role in AGENT_ROLES:
         profile = fit.long if role.prompt_profile == "long" else fit.short
         latency = profile.latency_seconds
-        budget = intervals.get(role.slug) or role.default_interval
-        recommended = recommend_interval(latency, budget)
+        effective = effective_latency(latency, contention)
+        if role.post_call:
+            roles.append(
+                RoleFit(
+                    slug=role.slug,
+                    name=role.name,
+                    prompt_profile=role.prompt_profile,
+                    latency_seconds=latency,
+                    budget_seconds=POST_CALL_GREEN_SECONDS,
+                    verdict=classify_post_call(effective),
+                    recommended_interval_seconds=0,
+                    changed=False,
+                    post_call=True,
+                    editable=False,
+                )
+            )
+            continue
+        budget = budgets.get(role.slug) or role.default_interval
+        recommended = recommend_interval(effective, budget)
         roles.append(
             RoleFit(
                 slug=role.slug,
@@ -308,9 +398,11 @@ def score_text_model(fit: TextModelFit, intervals: dict[str, int]) -> list[RoleF
                 prompt_profile=role.prompt_profile,
                 latency_seconds=latency,
                 budget_seconds=budget,
-                verdict=classify_latency(latency, budget),
+                verdict=classify_latency(effective, budget),
                 recommended_interval_seconds=recommended,
                 changed=recommended != budget,
+                post_call=False,
+                editable=True,
             )
         )
     return roles
@@ -379,18 +471,48 @@ async def local_text_models(db: AsyncSession) -> list[dict]:
     ]
 
 
-async def current_intervals(db: AsyncSession) -> dict[str, int]:
-    """Each scored agent's effective cycle budget (stored value or seeded default)."""
+async def _interval_agent_rows(db: AsyncSession) -> dict[str, AgentConfig]:
     rows = (
         await db.execute(
-            select(AgentConfig).where(AgentConfig.slug.in_(list(_ROLES_BY_SLUG)))
+            select(AgentConfig).where(
+                AgentConfig.slug.in_([role.slug for role in _INTERVAL_ROLES])
+            )
         )
     ).scalars().all()
-    stored = {row.slug: row.interval_seconds for row in rows}
+    return {row.slug: row for row in rows}
+
+
+async def current_intervals(db: AsyncSession) -> dict[str, int]:
+    """Each interval agent's global cycle budget (stored value or seeded default).
+
+    A baseline for display before a model is chosen; the actual scoring uses the
+    per-model budget from budgets_for_model().
+    """
+    by_slug = await _interval_agent_rows(db)
     return {
-        role.slug: stored.get(role.slug) or role.default_interval
-        for role in AGENT_ROLES
+        role.slug: (getattr(by_slug.get(role.slug), "interval_seconds", None) or role.default_interval)
+        for role in _INTERVAL_ROLES
     }
+
+
+async def budgets_for_model(db: AsyncSession, model_id: str) -> dict[str, int]:
+    """Per-model cycle budget for each interval agent: the model-specific value,
+    else the agent's global interval, else the seeded default."""
+    by_slug = await _interval_agent_rows(db)
+    budgets: dict[str, int] = {}
+    for role in _INTERVAL_ROLES:
+        row = by_slug.get(role.slug)
+        per_model = (
+            parse_model_intervals(getattr(row, "model_intervals", "")).get(model_id)
+            if row
+            else None
+        )
+        budgets[role.slug] = (
+            per_model
+            or (row.interval_seconds if row and row.interval_seconds else None)
+            or role.default_interval
+        )
+    return budgets
 
 
 def role_catalog() -> list[dict]:
@@ -400,6 +522,7 @@ def role_catalog() -> list[dict]:
             "name": role.name,
             "prompt_profile": role.prompt_profile,
             "default_interval": role.default_interval,
+            "post_call": role.post_call,
         }
         for role in AGENT_ROLES
     ]
@@ -481,23 +604,33 @@ async def run_local_fit(
     db: AsyncSession,
     *,
     generate: GenerateText = generate_text,
+    contention: float = DEFAULT_CONTENTION,
+    include_asr: bool = True,
 ) -> dict:
-    """Benchmark every on-prem text model and score it against each agent role."""
+    """Benchmark every on-prem text model against its per-model budgets, and the
+    bundled local ASR models on a synthetic clip, in one pass."""
     models = await local_text_models(db)
-    intervals = await current_intervals(db)
     systems = await role_system_prompts(db)
     text_models: list[dict] = []
     for model in models:
         fit = await benchmark_text_model(
             model["id"], model["name"], system_prompts=systems, generate=generate
         )
-        fit.roles = score_text_model(fit, intervals)
+        budgets = await budgets_for_model(db, model["id"])
+        fit.roles = score_text_model(fit, budgets, contention)
         text_models.append(fit.to_dict())
+    asr = None
+    if include_asr:
+        asr = await run_asr_fit(
+            synthetic_speech_clip(), contention=contention, estimated=True
+        )
     return {
         "has_local_text_models": bool(models),
-        "intervals": intervals,
+        "intervals": await current_intervals(db),
         "roles": role_catalog(),
+        "contention": contention,
         "text_models": text_models,
+        "asr": asr,
         "capabilities": build_local_capabilities(await local_models_all(db)),
     }
 
@@ -509,10 +642,11 @@ def validate_interval_updates(updates: list[dict]) -> dict[str, int]:
     within the live-interval range, so a stray payload cannot rewrite an
     unrelated agent or set a non-live cadence.
     """
+    interval_slugs = {role.slug for role in _INTERVAL_ROLES}
     cleaned: dict[str, int] = {}
     for update in updates:
         slug = str(update.get("slug") or "").strip()
-        if slug not in _ROLES_BY_SLUG:
+        if slug not in interval_slugs:
             raise ValueError(f"Unknown or non-tunable agent: {slug or '(empty)'}")
         raw = update.get("interval_seconds")
         if not isinstance(raw, int) or isinstance(raw, bool):
@@ -525,10 +659,18 @@ def validate_interval_updates(updates: list[dict]) -> dict[str, int]:
     return cleaned
 
 
-async def apply_recommended_intervals(db: AsyncSession, updates: list[dict]) -> dict[str, int]:
-    """Write validated cycle intervals onto the matching AgentConfig rows."""
+async def apply_recommended_intervals(
+    db: AsyncSession, model_id: str, updates: list[dict]
+) -> dict[str, int]:
+    """Write validated per-model cycle budgets onto the matching AgentConfig rows.
+
+    The budget is stored under model_id in each agent's model_intervals, so it
+    only applies when that agent runs that model; other models are untouched.
+    """
     from datetime import datetime, timezone
 
+    if not model_id or not isinstance(model_id, str):
+        raise ValueError("model_id is required")
     cleaned = validate_interval_updates(updates)
     if not cleaned:
         return {}
@@ -540,7 +682,9 @@ async def apply_recommended_intervals(db: AsyncSession, updates: list[dict]) -> 
     applied: dict[str, int] = {}
     now = datetime.now(timezone.utc)
     for row in rows:
-        row.interval_seconds = cleaned[row.slug]
+        model_intervals = parse_model_intervals(getattr(row, "model_intervals", ""))
+        model_intervals[model_id] = cleaned[row.slug]
+        row.model_intervals = json.dumps(model_intervals)
         row.updated_at = now
         applied[row.slug] = cleaned[row.slug]
     await db.commit()
@@ -565,6 +709,16 @@ MAX_ASR_SECONDS = 30
 ASR_GREEN_RTF = 0.5
 ASR_YELLOW_RTF = 1.0
 
+# Live-caption feasibility (experimental): a rolling-window local captioner (see
+# ALP-147) would re-transcribe a ~3s window frequently, so the short-window RTF
+# must sit well under real time with headroom. Deliberately very conservative.
+LIVE_WINDOW_SECONDS = 3
+ASR_LIVE_FEASIBLE_RTF = 0.33
+ASR_LIVE_MARGINAL_RTF = 0.66
+FEASIBLE = "feasible"
+MARGINAL = "marginal"
+NOT_FEASIBLE = "no"
+
 
 @dataclass
 class ASRModelFit:
@@ -576,6 +730,9 @@ class ASRModelFit:
     processing_seconds: float = 0.0
     real_time_factor: float | None = None
     verdict: str = ""
+    short_real_time_factor: float | None = None
+    live_feasibility: str = ""  # feasible / marginal / no (experimental)
+    estimated: bool = False  # measured on a synthetic clip, not real speech
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -588,6 +745,33 @@ def classify_rtf(rtf: float) -> str:
     if rtf <= ASR_YELLOW_RTF:
         return YELLOW
     return RED
+
+
+def classify_live_feasibility(short_rtf: float) -> str:
+    """Whether a short rolling window could sustain local live captions (ALP-147)."""
+    if short_rtf <= ASR_LIVE_FEASIBLE_RTF:
+        return FEASIBLE
+    if short_rtf <= ASR_LIVE_MARGINAL_RTF:
+        return MARGINAL
+    return NOT_FEASIBLE
+
+
+def synthetic_speech_clip(seconds: int = 8) -> bytes:
+    """A deterministic speech-band test tone with enough energy to pass the ASR
+    speech gate. It only exercises the model for a SPEED measurement - the audio
+    is not real speech, so its transcript is meaningless and unused."""
+    import numpy as np
+
+    sr = 16000
+    t = np.arange(int(seconds * sr), dtype=np.float32) / sr
+    tone = (
+        0.6 * np.sin(2 * np.pi * 180 * t)
+        + 0.4 * np.sin(2 * np.pi * 650 * t)
+        + 0.3 * np.sin(2 * np.pi * 1400 * t)
+    )
+    envelope = 0.55 + 0.45 * np.sin(2 * np.pi * 3.0 * t)  # syllable-rate modulation
+    signal = np.clip(tone * envelope * 0.4, -1.0, 1.0)
+    return (signal * 32767).astype("<i2").tobytes()
 
 
 def asr_clip_seconds(pcm_bytes: bytes) -> float:
@@ -618,9 +802,13 @@ async def benchmark_asr_model(
     pcm_bytes: bytes,
     audio_seconds: float,
     *,
+    short_pcm: bytes | None = None,
+    short_seconds: float = 0.0,
+    estimated: bool = False,
     make_transcriber: Callable[[str], Any] = LocalTranscriber,
 ) -> ASRModelFit:
-    """Warm up (loads/downloads the model, untimed), then time one transcription."""
+    """Warm up (loads/downloads the model, untimed), then time the full clip and,
+    for the live-caption feasibility check, a short rolling window."""
     name = _asr_model_name(model_id)
     try:
         transcriber = make_transcriber(model_id)
@@ -628,6 +816,11 @@ async def benchmark_asr_model(
         started = time.perf_counter()
         await transcriber.transcribe_segment(pcm_bytes)
         elapsed = time.perf_counter() - started
+        short_rtf = None
+        if short_pcm is not None and short_seconds > 0:
+            short_started = time.perf_counter()
+            await transcriber.transcribe_segment(short_pcm)
+            short_rtf = round((time.perf_counter() - short_started) / short_seconds, 3)
     except Exception as exc:  # noqa: BLE001 - surfaced to the user as a reason
         return ASRModelFit(
             model_id,
@@ -635,6 +828,7 @@ async def benchmark_asr_model(
             status="failed",
             reason=f"Transcription failed: {exc}",
             audio_seconds=round(audio_seconds, 2),
+            estimated=estimated,
         )
     rtf = round(elapsed / audio_seconds, 3) if audio_seconds > 0 else None
     return ASRModelFit(
@@ -645,23 +839,51 @@ async def benchmark_asr_model(
         processing_seconds=round(elapsed, 3),
         real_time_factor=rtf,
         verdict=classify_rtf(rtf) if rtf is not None else RED,
+        short_real_time_factor=short_rtf,
+        live_feasibility=classify_live_feasibility(short_rtf) if short_rtf is not None else "",
+        estimated=estimated,
     )
+
+
+def _apply_contention_to_asr(fit: ASRModelFit, contention: float) -> None:
+    """Re-derive the verdict + feasibility with the contention cushion applied."""
+    if fit.status != "ok" or fit.real_time_factor is None:
+        return
+    fit.verdict = classify_rtf(effective_latency(fit.real_time_factor, contention))
+    if fit.short_real_time_factor is not None:
+        fit.live_feasibility = classify_live_feasibility(
+            effective_latency(fit.short_real_time_factor, contention)
+        )
 
 
 async def run_asr_fit(
     pcm_bytes: bytes,
     *,
+    contention: float = DEFAULT_CONTENTION,
+    estimated: bool = False,
     make_transcriber: Callable[[str], Any] = LocalTranscriber,
 ) -> dict:
-    """Measure real-time factor for every bundled local ASR model on one clip."""
+    """Measure real-time factor (and short-window live-caption feasibility) for
+    every bundled local ASR model on one clip, with the contention cushion."""
     clip = trim_asr_clip(pcm_bytes)
     audio_seconds = asr_clip_seconds(clip)
-    models = [
-        (
-            await benchmark_asr_model(
-                model_id, clip, audio_seconds, make_transcriber=make_transcriber
-            )
-        ).to_dict()
-        for model_id in LOCAL_MODEL_MAP
-    ]
-    return {"audio_seconds": round(audio_seconds, 2), "asr_models": models}
+    short_pcm = clip[: LIVE_WINDOW_SECONDS * _PCM16_BYTES_PER_SECOND]
+    short_seconds = asr_clip_seconds(short_pcm)
+    models = []
+    for model_id in LOCAL_MODEL_MAP:
+        fit = await benchmark_asr_model(
+            model_id,
+            clip,
+            audio_seconds,
+            short_pcm=short_pcm,
+            short_seconds=short_seconds,
+            estimated=estimated,
+            make_transcriber=make_transcriber,
+        )
+        _apply_contention_to_asr(fit, contention)
+        models.append(fit.to_dict())
+    return {
+        "audio_seconds": round(audio_seconds, 2),
+        "estimated": estimated,
+        "asr_models": models,
+    }

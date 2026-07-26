@@ -396,6 +396,7 @@ class AgentConfigUpdate(BaseModel):
     sub_types: str | None = None
     lenses: str | None = None  # JSON array of lens configs; validated in the router
     interval_seconds: int | None = None
+    model_intervals: str | None = None  # JSON {model_id: interval}; validated in the router
     knowledge_source_ids: str | None = None  # comma-separated UUIDs; "" = default offerings
 
 
@@ -411,6 +412,7 @@ class AgentConfigOut(BaseModel):
     sub_types: str
     lenses: str = ""
     interval_seconds: int | None = None
+    model_intervals: str = ""
     knowledge_source_ids: str = ""
     display_order: int
     created_at: datetime

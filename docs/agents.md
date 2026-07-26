@@ -99,21 +99,34 @@ cycle budget (`AgentConfig.interval_seconds`, or the seeded default):
 
 The short-window roles are `objection_handler` and `opportunity_specialist`;
 the long-window roles are `consolidated_analyst`, `strategic_signals`, and
-`synthesizer`. Briefing lenses and the audio bridge are not scored (they have no
-live cycle budget). When a model is tight or too slow, the test recommends a
-longer interval (about twice the call latency, rounded to 5 s, clamped to
-5-180 s) and offers one-click apply, which writes `interval_seconds` on the
-matching agents via `POST /api/diagnostics/local-fit/apply`. Because
-`interval_seconds` is global per agent, apply the intervals for the one model
-you intend those agents to run on.
+`synthesizer`. The three **post-call briefing agents** (`brief_meeting_lens`,
+`brief_discovery_lens`, `brief_arbiter`) are also scored, but they run once at
+call end -- no live loop -- so they are judged on an acceptable end-of-call wait
+(green <= 60 s, yellow <= 180 s) rather than a cycle budget, and are not editable.
+The audio bridge is not a text model, so it is not scored.
 
-The same card also measures **transcription keep-up**: upload or record a short
-speech clip and it times each bundled local ONNX ASR model
-(`local-whisper-base`, `local-parakeet-tdt-0.6b`) via
-`POST /api/diagnostics/local-fit/asr`, reporting a real-time factor
-(processing / audio) with green below half real time, yellow up to real time,
-and red slower than real time. Unlike the text test this needs a real clip
-because `LocalTranscriber` gates on an energy floor and a speech check.
+**Per-model budgets.** A cycle budget is stored per agent *and per model* in
+`AgentConfig.model_intervals` (JSON `{model_id: seconds}`), so the analyst can
+run tighter on a fast model and looser on a slow one. The orchestrator's
+`_get_interval` resolves the per-model budget for the agent's assigned model
+first, then the global `interval_seconds`, then the seeded default. On the fit
+screen each budget is editable inline and "Apply recommended budgets" writes the
+per-model value via `POST /api/diagnostics/local-fit/apply` (`{model_id, updates}`).
+
+**Contention headroom.** A real call is busier than the idle benchmark
+(recording, diarization, other apps), so an **assumed-load slider** (1x-3x,
+default 1.5x) scales measured latency before judging: effective latency =
+measured x contention. Verdicts and recommended budgets recompute live as the
+slider moves (recommended budget is about twice the *effective* latency).
+
+The same card also measures **transcription keep-up** for the bundled local ONNX
+ASR models (`local-whisper-base`, `local-parakeet-tdt-0.6b`). "Run fit test"
+times them automatically on a synthetic speech-band clip (an estimate); upload or
+record real speech via `POST /api/diagnostics/local-fit/asr` for a precise
+number. It reports a real-time factor (processing / audio, green below half real
+time) plus an **experimental live-caption feasibility** projection (short-window
+RTF, very conservative) for the future local captioner (ALP-147). Note: local
+ASR is batch-only today, so live interim captions still have no local option.
 
 To answer "where can this model actually go?", the card shows, per model, the
 services it can fill (a **Usable for** list) and a **What can run locally** map
