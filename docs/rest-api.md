@@ -209,6 +209,7 @@ Providers: `google`, `openai`. Keys are stored encrypted (see
 | GET | `/api/diagnostics/local-fit` | On-prem text models available to test plus each scored agent's current cycle interval |
 | POST | `/api/diagnostics/local-fit/run` | Time a role-sized call on each on-prem text model and score keep-up per live agent role |
 | POST | `/api/diagnostics/local-fit/apply` | Apply recommended cycle intervals to the scored agents (speed tuning) |
+| POST | `/api/diagnostics/local-fit/asr` | Measure real-time factor for the local ONNX ASR models on an uploaded speech clip |
 
 ## WebSocket
 

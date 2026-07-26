@@ -354,15 +354,53 @@ export interface LocalFitRoleCatalogEntry {
   default_interval: number;
 }
 
+export interface LocalServiceOption {
+  key: string;
+  label: string;
+  local_options: { id: string; name: string }[];
+  cloud_only: boolean;
+  note: string;
+}
+
+export interface LocalModelUsage {
+  id: string;
+  name: string;
+  usable_for: string[];
+}
+
+export interface LocalCapabilities {
+  services: LocalServiceOption[];
+  models: LocalModelUsage[];
+}
+
 export interface LocalFitSummary {
   has_local_text_models: boolean;
   models: { id: string; name: string }[];
   intervals: Record<string, number>;
   roles: LocalFitRoleCatalogEntry[];
+  // Present on current backends; optional so an older backend still parses.
+  capabilities?: LocalCapabilities;
 }
 
 export interface LocalFitReport extends LocalFitSummary {
   text_models: TextModelFit[];
+}
+
+// Local transcription (ASR) keep-up: real-time factor per bundled ONNX model.
+export interface AsrModelFit {
+  model_id: string;
+  model_name: string;
+  status: "ok" | "failed";
+  reason: string;
+  audio_seconds: number;
+  processing_seconds: number;
+  real_time_factor: number | null;
+  verdict: FitVerdict | "";
+}
+
+export interface AsrFitReport {
+  audio_seconds: number;
+  asr_models: AsrModelFit[];
 }
 
 export interface PrivacyImpactItem {

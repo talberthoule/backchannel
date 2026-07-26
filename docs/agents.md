@@ -101,8 +101,27 @@ longer interval (about twice the call latency, rounded to 5 s, clamped to
 5-180 s) and offers one-click apply, which writes `interval_seconds` on the
 matching agents via `POST /api/diagnostics/local-fit/apply`. Because
 `interval_seconds` is global per agent, apply the intervals for the one model
-you intend those agents to run on. Local transcription (ASR) keep-up is a
-separate measurement on the Diarization Capability card.
+you intend those agents to run on.
+
+The same card also measures **transcription keep-up**: upload or record a short
+speech clip and it times each bundled local ONNX ASR model
+(`local-whisper-base`, `local-parakeet-tdt-0.6b`) via
+`POST /api/diagnostics/local-fit/asr`, reporting a real-time factor
+(processing / audio) with green below half real time, yellow up to real time,
+and red slower than real time. Unlike the text test this needs a real clip
+because `LocalTranscriber` gates on an energy floor and a speech check.
+
+To answer "where can this model actually go?", the card shows, per model, the
+services it can fill (a **Usable for** list) and a **What can run locally** map
+of each AI service to its local option. Both are derived from the registry
+capability flags (`supports_batch_audio`, `supports_text`, `supports_live_audio`)
+by `build_local_capabilities`, so they never drift from how calls route: local
+ONNX ASR is batch-transcription-only, a self-hosted chat endpoint drives the
+analysis agents and meeting chat, and live interim captions have no local option
+(they need a cloud streaming model), which is why live preview is off under
+Privacy First. The card also auto-retries its summary fetch so it recovers on
+its own if the backend was still starting or an endpoint was connected after
+the page loaded.
 
 ## Insight lifecycle
 

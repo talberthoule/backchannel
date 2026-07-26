@@ -1,4 +1,4 @@
-import type { AgentConfig, AppMeta, CallSegment, CustomEndpoint, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EndpointProbeResult, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, LocalFitReport, LocalFitSummary, MeetingType, ModelInfo, ModelPricingResponse, Offering, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptEntry } from "../types";
+import type { AgentConfig, AppMeta, AsrFitReport, CallSegment, CustomEndpoint, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EndpointProbeResult, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, LocalFitReport, LocalFitSummary, MeetingType, ModelInfo, ModelPricingResponse, Offering, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptEntry } from "../types";
 
 const BASE = "/api";
 
@@ -308,6 +308,24 @@ export const applyLocalFitIntervals = (updates: { slug: string; interval_seconds
     method: "POST",
     body: JSON.stringify({ updates }),
   });
+
+export const runAsrFit = async (file: File): Promise<AsrFitReport> => {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/diagnostics/local-fit/asr`, { method: "POST", body: form });
+  if (!res.ok) {
+    const text = await res.text();
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed.detail === "string") detail = parsed.detail;
+    } catch {
+      // Non-JSON error body; show it as-is.
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+};
 
 export const getPrivacyConfig = () => request<PrivacyConfig>("/privacy");
 
