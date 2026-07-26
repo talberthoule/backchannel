@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CallSegment, ModelInfo, Session } from "../../types";
 import * as api from "../../services/api";
+import { groupModels, optionLabel } from "../../lib/modelOptions";
 import { useConfirm } from "../ConfirmProvider";
 
 interface CallAudioPanelProps {
@@ -68,8 +69,12 @@ export default function CallAudioPanel({ session, segments, onRetranscribed }: C
             disabled={busy}
             className="rounded border border-brand-light-gray-1 bg-surface px-2 py-1.5 text-xs text-brand-dark-gray focus:border-brand-teal"
           >
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>{m.name}</option>
+            {groupModels(models).map((group) => (
+              <optgroup key={group.provider} label={group.provider}>
+                {group.models.map((m) => (
+                  <option key={m.id} value={m.id}>{optionLabel(m)}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
           <button

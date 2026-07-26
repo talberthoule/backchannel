@@ -42,10 +42,15 @@ export function optionLabel(model: ModelInfo): string {
 export function optionState(model: ModelInfo, currentId: string | undefined, localOnly: boolean) {
   const cloudBlocked = localOnly && !runsLocally(model);
   const keyLocked = model.key_available === false;
+  // An endpoint model is only "cloud" when its server is not on your machine or
+  // LAN, so name that reason instead of implying the model itself is hosted.
+  const cloudSuffix = model.endpoint_id
+    ? " - endpoint is not on your machine/LAN, off in Privacy First"
+    : " - cloud model, off in Privacy First";
   return {
     locked: (keyLocked || cloudBlocked) && model.id !== currentId,
     suffix: cloudBlocked
-      ? " - cloud model, off in Privacy First"
+      ? cloudSuffix
       : keyLocked
         ? " - add API key to enable"
         : "",
