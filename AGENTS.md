@@ -256,7 +256,7 @@ Required:
 Local ONNX transcription needs no key, and no local registry entry sets
 `supports_text` -- so local analysis runs through the `openai-compatible`
 provider (Ollama, LM Studio, vLLM), not through those transcription models.
-Configure its base URL in Admin -> API Keys or via `OPENAI_BASE_URL`. Without
+Configure its base URL in Admin -> Connections or via `OPENAI_BASE_URL`. Without
 it, the analysis agents require a Google or OpenAI key. Note that the Privacy
 First switch gates on `provider != "local"` and so still disables the agents
 even when the endpoint is local.

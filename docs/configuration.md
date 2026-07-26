@@ -24,7 +24,7 @@ Copy `.env.example` to `.env` as a starting point.
 
 ## API credentials
 
-Provider keys (`google`, `openai`) should be set in Admin -> API Keys, which
+Provider keys (`google`, `openai`) should be set in Admin -> Connections, which
 stores them encrypted with Fernet (`backend/app/routers/credentials.py`).
 The master key is auto-generated at `DATA_DIR/master.key` on first use, or
 supplied via `CREDENTIALS_MASTER_KEY`. Environment variables remain
@@ -73,7 +73,7 @@ working, and no call data leaves your perimeter.
 ## Self-hosted endpoints
 
 Any number of OpenAI-shaped chat servers can be registered in
-Admin -> API Keys -> Self-Hosted Models: LM Studio
+Admin -> Connections -> Self-Hosted Models: LM Studio
 (`http://localhost:1234/v1`), Ollama (`http://localhost:11434/v1`), vLLM,
 LiteLLM, or a shared GPU box on the LAN. Each endpoint is a row in the
 `custom_endpoints` table holding a name, base URL, optional Fernet-encrypted
