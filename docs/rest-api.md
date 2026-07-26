@@ -206,6 +206,9 @@ Providers: `google`, `openai`. Keys are stored encrypted (see
 | GET | `/api/diagnostics/transcription/readiness` | Whether the selected transcription models have usable credentials |
 | PATCH | `/api/diagnostics/transcription/config` | Update batch transcription config |
 | POST | `/api/diagnostics/diarization/sortformer/benchmark` | Benchmark Sortformer on an uploaded file (needs at least 15 seconds of audio) |
+| GET | `/api/diagnostics/local-fit` | On-prem text models available to test plus each scored agent's current cycle interval |
+| POST | `/api/diagnostics/local-fit/run` | Time a role-sized call on each on-prem text model and score keep-up per live agent role |
+| POST | `/api/diagnostics/local-fit/apply` | Apply recommended cycle intervals to the scored agents (speed tuning) |
 
 ## WebSocket
 

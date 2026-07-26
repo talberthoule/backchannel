@@ -317,6 +317,54 @@ export interface TranscriptionConfig {
   description: string;
 }
 
+// Local Model Fit Test: keep-up speed of self-hosted text models per agent role.
+export type FitVerdict = "green" | "yellow" | "red";
+
+export interface FitProfileLatency {
+  latency_seconds: number;
+  output_chars: number;
+  tokens_per_second: number | null;
+}
+
+export interface FitRole {
+  slug: string;
+  name: string;
+  prompt_profile: "short" | "long";
+  latency_seconds: number;
+  budget_seconds: number;
+  verdict: FitVerdict;
+  recommended_interval_seconds: number;
+  changed: boolean;
+}
+
+export interface TextModelFit {
+  model_id: string;
+  model_name: string;
+  status: "ok" | "failed";
+  reason: string;
+  short: FitProfileLatency | null;
+  long: FitProfileLatency | null;
+  roles: FitRole[];
+}
+
+export interface LocalFitRoleCatalogEntry {
+  slug: string;
+  name: string;
+  prompt_profile: "short" | "long";
+  default_interval: number;
+}
+
+export interface LocalFitSummary {
+  has_local_text_models: boolean;
+  models: { id: string; name: string }[];
+  intervals: Record<string, number>;
+  roles: LocalFitRoleCatalogEntry[];
+}
+
+export interface LocalFitReport extends LocalFitSummary {
+  text_models: TextModelFit[];
+}
+
 export interface PrivacyImpactItem {
   feature: string;
   detail: string;

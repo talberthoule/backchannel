@@ -5,6 +5,7 @@ import { groupModels, optionLabel, optionState, runsLocally } from "../lib/model
 import { useConfirm } from "./ConfirmProvider";
 import DiarizationCapabilityCard from "./DiarizationCapabilityCard";
 import BatchTranscriptionCard from "./BatchTranscriptionCard";
+import LocalModelFitCard from "./LocalModelFitCard";
 import ApiKeysCard from "./ApiKeysCard";
 import EndpointsCard from "./EndpointsCard";
 import PrivacyModeCard from "./PrivacyModeCard";
@@ -767,6 +768,7 @@ export default function AdminPanel({ onBack, initialTab, highlightSince, onboard
                 onLiveModelChanged={refreshAgents}
                 gatewayModelId={agents.find((a) => a.slug === "audio_gateway")?.model_id}
               />
+              <LocalModelFitCard onIntervalsApplied={refreshAgents} />
               <DiarizationCapabilityCard />
             </div>
 
