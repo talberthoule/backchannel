@@ -42,6 +42,11 @@ class _AudioPipelineState:
     gateway_available: bool = True
     gateway_reconnect_task: asyncio.Task | None = None
     gateway_retry_at: float = 0.0
+    # Audio queued for diarization but not yet processed, and how many frames
+    # were shed because the diarizer could not keep up (see ALP-153).
+    diarization_backlog_bytes: int = 0
+    diarization_frames_dropped: int = 0
+    diarization_overload_notified: bool = False
 
 
 async def _maintain_audio_gateway(
@@ -181,6 +186,9 @@ async def _run_audio_pipeline(
     def _on_diarization_item_done(item: _QueuedAudioFrame):
         if pending_enqueued_at:
             pending_enqueued_at.popleft()
+        state.diarization_backlog_bytes = max(
+            0, state.diarization_backlog_bytes - len(item.pcm_bytes)
+        )
 
     diarization_worker = asyncio.create_task(
         _run_diarization_worker(

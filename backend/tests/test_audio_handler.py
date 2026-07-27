@@ -15,6 +15,7 @@ import numpy as np
 from app.models import CallSegment, TranscriptEntry
 from app.services.agents.orchestrator import AgentOrchestrator
 from app.ws import audio_handler, audio_messages
+from app.ws.audio_pipeline import _AudioPipelineState
 from app.ws.audio_handler import (
     _decode_audio_frame,
 )
@@ -312,14 +313,11 @@ class AudioPipelineOrderingTests(unittest.IsolatedAsyncioTestCase):
             )
             for track in ("mixed", "mic", "system")
         }
-        state = SimpleNamespace(
-            audio_chunks_received=0,
-            audio_bytes_received=0,
-            audio_bytes_by_track=[0, 0],
-            last_audio_status_at=monotonic(),
-            split_track_established=False,
-            gateway_available=True,
-        )
+        # The real state object, not a hand-rolled double: a stand-in silently
+        # drifts from _AudioPipelineState, and a field added to production code
+        # then raises AttributeError here before the gateway is ever reached,
+        # hanging this test on an event that is never set.
+        state = _AudioPipelineState(last_audio_status_at=monotonic())
         gateway_saw_queued_frame = []
 
         async def blocked_gateway(*_args):
