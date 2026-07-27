@@ -55,7 +55,31 @@ exe = EXE(
     else None,
 )
 
-coll = COLLECT(exe, a.binaries, a.datas, name="Backchannel")
+updater_a = Analysis(
+    [str(repo / "desktop" / "updater.py")],
+    pathex=[str(repo / "desktop")],
+)
+updater_pyz = PYZ(updater_a.pure)
+updater_exe = EXE(
+    updater_pyz,
+    updater_a.scripts,
+    updater_a.binaries,
+    updater_a.datas,
+    [],
+    name="BackchannelUpdater",
+    console=False,
+    icon=str(repo / "desktop" / "assets" / "icon.ico")
+    if sys.platform == "win32"
+    else None,
+)
+
+coll = COLLECT(
+    exe,
+    updater_exe,
+    a.binaries,
+    a.datas,
+    name="Backchannel",
+)
 
 if sys.platform == "darwin":
     app = BUNDLE(

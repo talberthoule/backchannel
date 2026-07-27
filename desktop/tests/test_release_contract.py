@@ -278,6 +278,15 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertIn("icon.icns", SPEC)
         self.assertIn("release_signing_keys.json", SPEC)
 
+    def test_spec_builds_and_collects_a_standalone_onefile_updater(self):
+        self.assertIn('repo / "desktop" / "updater.py"', SPEC)
+        self.assertIn('name="BackchannelUpdater"', SPEC)
+        self.assertRegex(SPEC, r"updater_exe\s*=\s*EXE\(")
+        updater_block = SPEC[SPEC.index("updater_exe = EXE("):SPEC.index("coll = COLLECT")]
+        self.assertNotIn("exclude_binaries=True", updater_block)
+        self.assertRegex(SPEC, r"COLLECT\(\s*exe,\s*updater_exe,")
+        self.assertIn('release_signing_keys.json"), "."', SPEC)
+
 
 if __name__ == "__main__":
     unittest.main()

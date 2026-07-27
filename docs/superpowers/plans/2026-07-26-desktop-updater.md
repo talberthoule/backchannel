@@ -709,7 +709,7 @@ git commit -m "feat: download and stage desktop updates"
 - Consumes: Task 4's `apply.json`, staged root, restart marker, and instance
   health contract.
 
-- [ ] **Step 1: Write failing updater and launcher tests**
+- [x] **Step 1: Write failing updater and launcher tests**
 
 With real temporary sibling directories, assert:
 
@@ -747,7 +747,7 @@ self.assertFalse(backup.exists())
 self.assertEqual(fake_health.calls, 1)
 ```
 
-- [ ] **Step 2: Run updater tests and confirm RED**
+- [x] **Step 2: Run updater tests and confirm RED**
 
 Run:
 
@@ -758,7 +758,7 @@ python -m unittest desktop.tests.test_updater desktop.tests.test_launcher deskto
 
 Expected: import failure for `desktop.updater`.
 
-- [ ] **Step 3: Implement stdlib plan validation and swap**
+- [x] **Step 3: Implement stdlib plan validation and swap**
 
 Use a frozen dataclass for exact plan fields, `Path.resolve(strict=True)` for
 existing roots, strict resolution of each absent target's existing parent,
@@ -772,7 +772,7 @@ On rollback, move the failed new bundle to the plan's `failed_dir` only if that
 path is absent, restore backup, and relaunch the prior launcher. Cleanup never
 deletes backup before verified health.
 
-- [ ] **Step 4: Connect launcher restart and tray actions**
+- [x] **Step 4: Connect launcher restart and tray actions**
 
 Run one one-second watcher beside the tray. When the exact marker exists,
 `icon.stop()` lets the existing `finally` close uvicorn, listener, PostgreSQL,
@@ -788,7 +788,7 @@ current instance header, then opens Backchannel. When status is available, the
 same item names the version and first release-note title. Do not add a second
 tray process or IPC service.
 
-- [ ] **Step 5: Build the second PyInstaller executable**
+- [x] **Step 5: Build the second PyInstaller executable**
 
 Add a separate stdlib `Analysis`/`PYZ`/one-file `EXE` for
 `desktop/updater.py`; do not set `exclude_binaries=True` or make it depend on
@@ -809,7 +809,7 @@ python -m unittest discover -s desktop/tests
 Expected: focused and complete desktop suites pass. Run the suite elevated on
 Windows only for the existing symlink test.
 
-- [ ] **Step 7: Commit Task 5**
+- [x] **Step 7: Commit Task 5**
 
 ```powershell
 git add desktop/updater.py desktop/tests/test_updater.py desktop/launcher.py desktop/tests/test_launcher.py desktop/backchannel.spec desktop/tests/test_release_contract.py

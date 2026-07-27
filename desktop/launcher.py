@@ -13,6 +13,7 @@ import threading
 import time
 import urllib.request
 import webbrowser
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Dev checkout: make `app` (backend) importable. In the PyInstaller bundle
@@ -23,6 +24,7 @@ if _REPO_BACKEND.exists():
 
 from bcdesktop.paths import app_data_dir, free_port, resource
 from bcdesktop.pg import EmbeddedPostgres
+from updater import validate_plan
 
 LOCK_NAME = "launcher.json"
 STOP_NAME = "stop"
@@ -220,6 +222,119 @@ def _open_data_folder(data_dir: Path) -> None:
         logging.getLogger("launcher").exception("failed to open data folder")
 
 
+def _write_update_state(state_path: Path, value: dict) -> None:
+    temporary = state_path.with_suffix(".tmp")
+    with temporary.open("w", encoding="utf-8") as stream:
+        json.dump(value, stream, sort_keys=True, separators=(",", ":"))
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, state_path)
+
+
+def _reset_stale_apply(data_dir: Path, marker: Path) -> None:
+    marker.unlink(missing_ok=True)
+    state_path = data_dir / "updates" / "state.json"
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        if isinstance(state, dict) and state.get("state") == "applying":
+            state["state"] = "ready"
+            state["error"] = ""
+            _write_update_state(state_path, state)
+    except Exception:
+        pass
+
+
+def _claim_update_marker(data_dir: Path) -> bool:
+    marker = data_dir / "updates" / "apply.json"
+    if not marker.is_file() or marker.is_symlink():
+        return False
+    try:
+        value = json.loads(marker.read_text(encoding="utf-8"))
+        requested = datetime.strptime(
+            value["requested_at"], "%Y-%m-%dT%H:%M:%SZ"
+        ).replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - requested).total_seconds()
+        if age < 0 or age >= 60:
+            raise ValueError
+        validate_plan(value, marker)
+        return True
+    except Exception:
+        _reset_stale_apply(data_dir, marker)
+        return False
+
+
+def _watch_for_update(icon, data_dir: Path, requested: threading.Event, stopped: threading.Event) -> None:
+    while not stopped.is_set():
+        if _claim_update_marker(data_dir):
+            requested.set()
+            icon.stop()
+            return
+        stopped.wait(1)
+
+
+def _update_status(port: int) -> dict:
+    try:
+        with urllib.request.urlopen(
+            f"http://{LOOPBACK_HOST}:{port}/api/updates", timeout=2
+        ) as response:
+            body = response.read(65_537)
+        if response.status != 200 or len(body) > 65_536:
+            return {}
+        value = json.loads(body.decode("utf-8"))
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        return {}
+
+
+def _update_menu_label(port: int) -> str:
+    status = _update_status(port)
+    if status.get("state") not in {
+        "available",
+        "authorizing",
+        "downloading",
+        "needs_authorization",
+        "ready",
+    }:
+        return "Check for updates"
+    version = status.get("available_version")
+    notes = status.get("available_notes")
+    if not isinstance(version, str) or not isinstance(notes, str):
+        return "Check for updates"
+    title = next((line.strip().lstrip("#").strip() for line in notes.splitlines() if line.strip()), "")
+    return f"Update {version}: {title[:60]}" if title else f"Update {version}"
+
+
+def _check_for_updates(port: int, token: str) -> None:
+    try:
+        request = urllib.request.Request(
+            f"http://{LOOPBACK_HOST}:{port}/api/updates/check",
+            data=b"",
+            method="POST",
+            headers={INSTANCE_HEADER: token},
+        )
+        with urllib.request.urlopen(request, timeout=5):
+            pass
+    except Exception:
+        pass
+    browser_opener(f"{app_url(port)}/?view=about")
+
+
+def _launch_update_helper(data_dir: Path, helper_source: Path) -> Path:
+    marker = (data_dir / "updates" / "apply.json").resolve(strict=True)
+    value = json.loads(marker.read_text(encoding="utf-8"))
+    plan = validate_plan(value, marker)
+    source = helper_source.resolve(strict=True)
+    if helper_source.is_symlink() or not source.is_file():
+        raise RuntimeError("Update helper is unavailable.")
+    destination = data_dir / "updates" / "bin" / plan.version / source.name
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_suffix(".tmp")
+    shutil.copy2(source, temporary)
+    os.replace(temporary, destination)
+    subprocess.Popen([str(destination), str(marker)])
+    return destination
+
+
 def _tray_image():
     from PIL import Image, ImageDraw
 
@@ -237,10 +352,12 @@ def _tray_image():
     return image
 
 
-def _run_tray(port: int, data_dir: Path) -> None:
+def _run_tray(port: int, data_dir: Path, instance_token: str | None = None) -> bool:
     import pystray
 
     image = _tray_image()
+    requested = threading.Event()
+    stopped = threading.Event()
 
     icon = pystray.Icon(
         "backchannel",
@@ -255,10 +372,25 @@ def _run_tray(port: int, data_dir: Path) -> None:
                 "Open data folder",
                 lambda _icon, _item: _open_data_folder(data_dir),
             ),
+            pystray.MenuItem(
+                _update_menu_label(port) if instance_token else "Check for updates",
+                lambda _icon, _item: _check_for_updates(port, instance_token or ""),
+            ),
             pystray.MenuItem("Quit", lambda _icon, _item: icon.stop()),
         ),
     )
-    icon.run()
+    watcher = threading.Thread(
+        target=_watch_for_update,
+        args=(icon, data_dir, requested, stopped),
+        daemon=True,
+    )
+    watcher.start()
+    try:
+        icon.run()
+    finally:
+        stopped.set()
+        watcher.join(timeout=2)
+    return requested.is_set()
 
 
 def run(headless: bool = False) -> int:
@@ -324,12 +456,15 @@ def run(headless: bool = False) -> int:
     os.environ["DATA_DIR"] = str(data_dir / "data")
     os.environ["FRONTEND_DIST"] = str(resource("frontend"))
     root = install_root()
-    os.environ["BACKCHANNEL_DESKTOP"] = "1"
+    packaged = bool(getattr(sys, "frozen", False))
+    os.environ["BACKCHANNEL_DESKTOP"] = "1" if packaged else "0"
     os.environ["BACKCHANNEL_INSTANCE_TOKEN"] = instance_token
     os.environ["BACKCHANNEL_INSTALL_DIR"] = str(root)
     os.environ["BACKCHANNEL_UPDATE_KEYS"] = str(resource("release_signing_keys.json"))
     os.environ["BACKCHANNEL_UPDATE_HELPER"] = str(updater_path(root))
-    os.environ["BACKCHANNEL_UPDATE_APPLY_DISABLED"] = "1" if headless else "0"
+    os.environ["BACKCHANNEL_UPDATE_APPLY_DISABLED"] = (
+        "1" if headless or not packaged else "0"
+    )
     os.environ["BACKCHANNEL_BOUND_HOST"] = LOOPBACK_HOST
     ffmpeg = resource("ffmpeg") / (
         "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
@@ -359,6 +494,7 @@ def run(headless: bool = False) -> int:
     thread.start()
 
     lock = data_dir / LOCK_NAME
+    update_requested = False
     try:
         lock.write_text(
             json.dumps(
@@ -376,7 +512,7 @@ def run(headless: bool = False) -> int:
             _wait_for_stop_file(data_dir)
         else:
             browser_opener(app_url(app_port))
-            _run_tray(app_port, data_dir)
+            update_requested = _run_tray(app_port, data_dir, instance_token)
     finally:
         log.info("shutting down")
         server.should_exit = True
@@ -384,6 +520,15 @@ def run(headless: bool = False) -> int:
         listener.close()
         pg.stop()
         lock.unlink(missing_ok=True)
+    if update_requested:
+        try:
+            _launch_update_helper(data_dir, Path(os.environ["BACKCHANNEL_UPDATE_HELPER"]))
+        except Exception:
+            log.exception("failed to start update helper")
+            _error_dialog(
+                f"Backchannel could not start the update. See log: {data_dir / 'backchannel.log'}"
+            )
+            return 1
     return 0
 
 
