@@ -126,8 +126,14 @@ async def run_speaker_context_batch(
     question_ids: list[uuid.UUID],
     mapping_revision_id: uuid.UUID,
     apply_db: AsyncSession,
+    model_id: str | None = None,
 ) -> dict:
-    """Revalidate one assigned insight batch in the caller's transaction."""
+    """Revalidate one assigned insight batch in the caller's transaction.
+
+    model_id overrides the default refinement model, which lets the revalidation
+    runner retry a quota-blocked batch on a self-hosted fallback model without
+    this function needing to know anything about that policy.
+    """
     async with async_session() as db:
         session = await db.get(Session, session_id)
         if not session:
@@ -159,7 +165,7 @@ async def run_speaker_context_batch(
         )
 
     raw = await generate_text(
-        settings.REFINEMENT_MODEL,
+        model_id or settings.REFINEMENT_MODEL,
         prompt,
         session_id=session_id,
         source="speaker_context_enhancer",

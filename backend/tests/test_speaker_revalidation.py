@@ -1,8 +1,9 @@
 import unittest
 import uuid
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import inspect
 
@@ -12,14 +13,20 @@ from app.models import (
     SpeakerRevalidationBatch,
     SpeakerRevalidationRun,
 )
+from app.services import speaker_revalidation
+from app.services.privacy import LocalOnlyModeError
 from app.services.speaker_revalidation import (
+    _enhance_insights_with_fallback,
     batch_failure_reason,
     build_batch_specs,
     canonical_speaker_mapping,
     content_version,
     finalize_run_state,
+    is_quota_error,
+    is_rate_limit_error,
     mapping_hash,
     requeue_failed_batches,
+    select_fallback_models,
     start_or_resume_revalidation,
     summarize_run,
 )
@@ -43,8 +50,9 @@ class BatchFailureReasonTests(unittest.TestCase):
         reason = batch_failure_reason(exc)
 
         self.assertEqual(
-            "Gemini quota/spending cap exhausted - raise the cap in "
-            "AI Studio or switch the model in Admin.",
+            "Gemini quota/spending cap exhausted. Assign a self-hosted model "
+            "in Admin -> Agents (any on-prem endpoint), or raise the cap in "
+            "AI Studio.",
             reason,
         )
 
@@ -52,8 +60,9 @@ class BatchFailureReasonTests(unittest.TestCase):
         reason = batch_failure_reason(RuntimeError("429 Too Many Requests"))
 
         self.assertEqual(
-            "Model provider quota or rate limit exhausted - raise the limit "
-            "or switch the model in Admin.",
+            "Model provider quota or rate limit exhausted. Assign a self-hosted "
+            "model in Admin -> Agents (any on-prem endpoint), or raise the limit "
+            "in the provider console.",
             reason,
         )
 
@@ -294,8 +303,9 @@ class SpeakerRevalidationBatchTests(unittest.TestCase):
         self.assertEqual("partial", run.status)
         self.assertEqual(now, run.completed_at)
         self.assertEqual(
-            "1 revalidation batch failed. Gemini quota/spending cap exhausted "
-            "- raise the cap in AI Studio or switch the model in Admin.",
+            "1 revalidation batch failed. Gemini quota/spending cap exhausted. "
+            "Assign a self-hosted model in Admin -> Agents (any on-prem "
+            "endpoint), or raise the cap in AI Studio.",
             run.error_message,
         )
         self.assertTrue(session.speaker_context_dirty)
@@ -519,6 +529,169 @@ class _OrmResult:
 
     def __iter__(self):
         return iter(self.values)
+
+
+class QuotaClassificationTests(unittest.TestCase):
+    def test_hard_cap_is_a_quota_error_but_not_a_rate_limit(self):
+        exc = RuntimeError("429 RESOURCE_EXHAUSTED: monthly spending cap")
+        self.assertTrue(is_quota_error(exc))
+        self.assertFalse(is_rate_limit_error(exc))
+
+    def test_bare_429_is_treated_as_a_transient_rate_limit(self):
+        exc = RuntimeError("429 Too Many Requests")
+        self.assertTrue(is_quota_error(exc))
+        self.assertTrue(is_rate_limit_error(exc))
+
+    def test_a_plain_failure_is_neither_quota_nor_rate_limit(self):
+        exc = RuntimeError("Connection refused")
+        self.assertFalse(is_quota_error(exc))
+        self.assertFalse(is_rate_limit_error(exc))
+
+
+class FallbackModelSelectionTests(unittest.IsolatedAsyncioTestCase):
+    async def _select(self, endpoints, primary, local_only, admitted=None):
+        admit = (
+            AsyncMock(side_effect=lambda ids, lo: set(ids))
+            if admitted is None
+            else AsyncMock(return_value=set(admitted))
+        )
+        with (
+            patch(
+                "app.services.speaker_revalidation.endpoint_models",
+                new=AsyncMock(return_value=endpoints),
+            ),
+            patch(
+                "app.services.speaker_revalidation.admitted_model_ids",
+                new=admit,
+            ),
+        ):
+            return await select_fallback_models(primary, SimpleNamespace(), local_only)
+
+    async def test_prefers_on_prem_then_off_prem_and_excludes_the_primary(self):
+        endpoints = [
+            {"id": "endpoint:lab:qwen", "runs_locally": True, "supports_text": True},
+            {"id": "endpoint:cloud:gpt", "runs_locally": False, "supports_text": True},
+            {"id": "endpoint:lab:self", "runs_locally": True, "supports_text": True},
+        ]
+
+        result = await self._select(endpoints, "endpoint:lab:self", local_only=False)
+
+        self.assertEqual(["endpoint:lab:qwen", "endpoint:cloud:gpt"], result)
+
+    async def test_privacy_first_drops_non_on_prem_endpoints(self):
+        endpoints = [
+            {"id": "endpoint:lab:qwen", "runs_locally": True, "supports_text": True},
+            {"id": "endpoint:cloud:gpt", "runs_locally": False, "supports_text": True},
+        ]
+
+        result = await self._select(endpoints, "gemini-3.5-flash", local_only=True)
+
+        self.assertEqual(["endpoint:lab:qwen"], result)
+
+    async def test_unadmitted_candidates_are_dropped(self):
+        endpoints = [
+            {"id": "endpoint:lab:qwen", "runs_locally": True, "supports_text": True},
+        ]
+
+        result = await self._select(
+            endpoints, "gemini-3.5-flash", local_only=True, admitted=[]
+        )
+
+        self.assertEqual([], result)
+
+
+class EnhanceInsightsWithFallbackTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _metrics(enhanced=1):
+        return {
+            "processed_entries": 1,
+            "applied_operations": 1,
+            "enhanced_insights": enhanced,
+        }
+
+    async def _enhance(self, batch, fallbacks, *, local_only=False, sleep=None):
+        with ExitStack() as stack:
+            stack.enter_context(patch(
+                "app.services.speaker_revalidation.get_local_only",
+                new=AsyncMock(return_value=local_only),
+            ))
+            stack.enter_context(patch(
+                "app.services.speaker_revalidation.select_fallback_models",
+                new=AsyncMock(return_value=fallbacks),
+            ))
+            stack.enter_context(patch(
+                "app.services.speaker_revalidation.run_speaker_context_batch",
+                new=batch,
+            ))
+            stack.enter_context(patch(
+                "app.services.speaker_revalidation.asyncio.sleep",
+                new=sleep or AsyncMock(),
+            ))
+            stack.enter_context(patch.object(
+                speaker_revalidation.settings, "REFINEMENT_MODEL", "cloud-primary",
+            ))
+            return await _enhance_insights_with_fallback(
+                SimpleNamespace(), uuid.uuid4(), [], uuid.uuid4()
+            )
+
+    async def test_primary_success_never_touches_a_fallback(self):
+        batch = AsyncMock(return_value=self._metrics())
+
+        metrics = await self._enhance(batch, ["endpoint:lab:qwen"])
+
+        self.assertEqual(1, metrics["enhanced_insights"])
+        self.assertEqual(1, batch.await_count)
+        self.assertEqual("cloud-primary", batch.await_args.kwargs["model_id"])
+
+    async def test_hard_cap_falls_back_to_the_self_hosted_model(self):
+        cap = RuntimeError("429 RESOURCE_EXHAUSTED: spending cap")
+        batch = AsyncMock(side_effect=[cap, self._metrics(enhanced=2)])
+
+        metrics = await self._enhance(batch, ["endpoint:lab:qwen"])
+
+        self.assertEqual(2, metrics["enhanced_insights"])
+        self.assertEqual(2, batch.await_count)
+        self.assertEqual("cloud-primary", batch.await_args_list[0].kwargs["model_id"])
+        self.assertEqual("endpoint:lab:qwen", batch.await_args_list[1].kwargs["model_id"])
+
+    async def test_hard_cap_with_no_fallback_raises(self):
+        cap = RuntimeError("429 RESOURCE_EXHAUSTED: spending cap")
+        batch = AsyncMock(side_effect=cap)
+
+        with self.assertRaises(RuntimeError):
+            await self._enhance(batch, [])
+
+        self.assertEqual(1, batch.await_count)
+
+    async def test_transient_rate_limit_is_retried_on_the_same_model(self):
+        limit = RuntimeError("429 Too Many Requests")
+        batch = AsyncMock(side_effect=[limit, self._metrics()])
+        sleep = AsyncMock()
+
+        await self._enhance(batch, [], sleep=sleep)
+
+        self.assertEqual(2, batch.await_count)
+        self.assertEqual("cloud-primary", batch.await_args_list[1].kwargs["model_id"])
+        self.assertEqual(1, sleep.await_count)
+
+    async def test_a_plain_failure_does_not_fall_back(self):
+        boom = RuntimeError("Connection refused")
+        batch = AsyncMock(side_effect=boom)
+
+        with self.assertRaises(RuntimeError):
+            await self._enhance(batch, ["endpoint:lab:qwen"])
+
+        self.assertEqual(1, batch.await_count)
+
+    async def test_privacy_first_refusal_of_the_cloud_primary_falls_back(self):
+        refused = LocalOnlyModeError("insight enhancement", "cloud-primary")
+        batch = AsyncMock(side_effect=[refused, self._metrics(enhanced=3)])
+
+        metrics = await self._enhance(batch, ["endpoint:lab:qwen"], local_only=True)
+
+        self.assertEqual(3, metrics["enhanced_insights"])
+        self.assertEqual(2, batch.await_count)
+        self.assertEqual("endpoint:lab:qwen", batch.await_args_list[1].kwargs["model_id"])
 
 
 if __name__ == "__main__":
