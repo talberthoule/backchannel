@@ -282,8 +282,9 @@ for the marker.
 Apply atomically reserves shutdown in the activity counter before its final
 database/lock checks. New tracked work and new live-call WebSockets receive a
 conflict after that reservation, closing the check-to-shutdown race. A failed
-final check releases the reservation; an accepted apply holds it until the
-launcher begins shutdown.
+final check releases the reservation. An accepted reservation expires after
+60 seconds; the status service and launcher then delete its stale marker and
+return to `ready`, so a later launch cannot apply an abandoned request.
 
 For an allowed request:
 

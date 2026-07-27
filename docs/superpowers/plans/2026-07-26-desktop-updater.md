@@ -17,7 +17,8 @@
 - Automatic checks run off the startup path, use a short timeout, and cache success for 24 hours.
 - Download in bounded chunks, resume only after a valid `206 Content-Range`, and verify exact platform, filename, size, SHA-256, key ID, and Ed25519 signature before extraction.
 - Mutating loopback routes require the per-launch `X-Backchannel-Instance` token.
-- Applying is forbidden while any session is `active`; that state covers live capture and final drain.
+- Applying is forbidden while any tracked destructive/long-running operation or
+  active call is in flight.
 - The updater must preserve the only known-good bundle and automatically restore it if the new instance fails its token-bound health check.
 - UI uses existing tokens, 44px targets, visible focus, polite live status, light/dark support, and reduced motion.
 - No push, production secret write, CI/CD run, release publication, or remote merge is part of this plan.
@@ -34,7 +35,7 @@
 - Produces: a reviewed, frozen plan before Task 1 starts.
 - Consumes: the committed design and plan SHA.
 
-- [ ] **Step 1: Send the frozen plan SHA**
+- [x] **Step 1: Send the frozen plan SHA**
 
 Use the audited Herdr wrapper to ask `claude-comparison-1` for an independent
 second set of eyes. The review prompt must request:
@@ -49,14 +50,14 @@ second set of eyes. The review prompt must request:
 The reviewer must not edit updater files. Durable findings are copied to
 ALP-150.
 
-- [ ] **Step 2: Apply valid feedback to the documents**
+- [x] **Step 2: Apply valid feedback to the documents**
 
 For each finding, either revise the design/plan or record a concise technical
 reason it does not apply. Re-run the red-flag, spec-coverage, and type-name
 self-review, commit the document revision, and send the new SHA back for a
 final plan verdict.
 
-- [ ] **Step 3: Start Task 1 only after the verdict**
+- [x] **Step 3: Start Task 1 only after the verdict**
 
 Proceed when `claude-comparison-1` reports ready or ready with all requested
 changes incorporated. Stop and return to design review for any unresolved
@@ -225,7 +226,8 @@ git commit -m "feat: sign desktop release manifests"
 
 Add signed and unsigned progressive fixtures. Assert that signed platform
 metadata remains strict, catalog assets retain `update`, release summaries
-still redact `key`, `content_type`, and `update`, and the public descriptor is:
+still redact `key`, `content_type`, `update`, and `release_notes`, and the
+public descriptor is:
 
 ```js
 {
@@ -557,7 +559,8 @@ post-import analysis, destructive retranscription, on-demand synthesis, and
 the first-use `onnx_asr.load_model` call. Mark startup schema patching from
 lifespan entry through completion; the API is not served yet, and the explicit
 marker keeps the invariant testable. New tracked operations and new audio
-WebSockets reject while shutdown is reserved.
+WebSockets reject through `track()`/`busy_reason()` while shutdown is reserved,
+so they honor the same expiry path.
 
 Store a `time.monotonic()` deadline with the shutdown reservation. `track`,
 `busy_reason`, and `reserve_shutdown` clear an expired reservation under the
@@ -774,6 +777,9 @@ Run one one-second watcher beside the tray. When the exact marker exists,
 and lock file. After cleanup, copy the bundled updater to
 `<app-data>/updates/bin`, launch it with the validated plan, and exit.
 Headless mode never starts this watcher and the backend rejects apply.
+The marker carries `requested_at`; both status reconciliation and the watcher
+delete an unclaimed marker older than the 60-second reservation, returning
+`applying` to `ready` so a later launch cannot apply an abandoned request.
 
 Add a tray `Check for updates` item that POSTs `/api/updates/check` with the
 current instance header, then opens Backchannel. When status is available, the
