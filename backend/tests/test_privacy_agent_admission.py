@@ -68,6 +68,22 @@ class AdmittedModelIdsTests(unittest.IsolatedAsyncioTestCase):
     async def test_blank_ids_are_dropped(self):
         self.assertEqual(set(), await admitted_model_ids(["", None], local_only=True))
 
+    async def test_an_unresolvable_model_pauses_only_itself(self):
+        # A flaky endpoint lookup must not abort call setup for every agent,
+        # and the model it could not verify must stay out of the set.
+        async def resolve(model_id: str):
+            if model_id == PUBLIC_MODEL:
+                raise RuntimeError("database went away")
+            return _target(True)
+
+        with mock.patch.object(
+            privacy_mod, "resolve_target_standalone", mock.AsyncMock(side_effect=resolve)
+        ):
+            admitted = await admitted_model_ids(
+                [ON_PREM_MODEL, PUBLIC_MODEL, "local-whisper-base"], local_only=True
+            )
+        self.assertEqual({ON_PREM_MODEL, "local-whisper-base"}, admitted)
+
     async def test_each_distinct_id_is_resolved_once(self):
         await admitted_model_ids([ON_PREM_MODEL, ON_PREM_MODEL, ON_PREM_MODEL], local_only=True)
         self.assertEqual(1, privacy_mod.resolve_target_standalone.await_count)

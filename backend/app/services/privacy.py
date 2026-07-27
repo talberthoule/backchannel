@@ -90,8 +90,19 @@ async def admitted_model_ids(model_ids: Iterable[str], local_only: bool = True) 
         return unique
     admitted = set()
     for model_id in unique:
-        if await allows_local_only(model_id):
-            admitted.add(model_id)
+        try:
+            if await allows_local_only(model_id):
+                admitted.add(model_id)
+        except Exception:
+            # One unresolvable model (a transient database error reading its
+            # endpoint) pauses only its own agent instead of aborting call
+            # setup. Leaving it out of the set is the fail-closed choice: an
+            # unverified model is never admitted.
+            logger.warning(
+                "Could not resolve %s for Privacy First; treating it as not admitted",
+                model_id,
+                exc_info=True,
+            )
     return admitted
 
 
