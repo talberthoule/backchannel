@@ -242,6 +242,39 @@ async def _google_json(
     return _parse_google_response(response, response_schema)
 
 
+# OpenAI-shaped servers disagree on which response_format shapes they accept:
+# LM Studio requires json_schema or text and rejects json_object outright, while
+# other builds only know json_object. Negotiate by walking these in order and
+# remember the winner per base URL, so the cost is one rejected call per server
+# rather than one per request. The JSON contract is in the prompt either way, so
+# the "text" fallback still returns parseable output.
+_JSON_MODES = ("json_schema", "json_object", "text")
+_json_mode_by_base_url: dict[str, str] = {}
+
+
+def _response_format(mode: str, response_schema: type[BaseModel]) -> dict | None:
+    if mode == "json_object":
+        return {"type": "json_object"}
+    if mode == "json_schema":
+        # "strict" is deliberately omitted: it demands every property be
+        # required with additionalProperties false, which these schemas (all
+        # optional fields with defaults) do not satisfy.
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": response_schema.__name__,
+                "schema": response_schema.model_json_schema(),
+            },
+        }
+    return None
+
+
+def _rejects_response_format(exc: httpx.HTTPStatusError) -> bool:
+    if exc.response.status_code not in (400, 404, 422):
+        return False
+    return "response_format" in (exc.response.text or "").lower()
+
+
 async def _openai_json(
     model_id: str,
     endpoint: OpenAIEndpoint,
@@ -254,12 +287,11 @@ async def _openai_json(
 ):
     contract = _contract_prompt(prompt, schema_hint)
 
-    async def call(messages: list[dict]) -> str:
-        payload = {
-            "model": endpoint.model,
-            "messages": messages,
-            "response_format": {"type": "json_object"},
-        }
+    async def post(messages: list[dict], mode: str) -> str:
+        payload: dict = {"model": endpoint.model, "messages": messages}
+        response_format = _response_format(mode, response_schema)
+        if response_format is not None:
+            payload["response_format"] = response_format
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
                 f"{endpoint.base_url}/chat/completions",
@@ -270,6 +302,25 @@ async def _openai_json(
             data = resp.json()
         await record_token_usage(session_id, source, model_id, data.get("usage"))
         return data["choices"][0]["message"]["content"] or ""
+
+    async def call(messages: list[dict]) -> str:
+        start = _json_mode_by_base_url.get(endpoint.base_url, _JSON_MODES[0])
+        candidates = _JSON_MODES[_JSON_MODES.index(start):]
+        for mode in candidates:
+            try:
+                text = await post(messages, mode)
+            except httpx.HTTPStatusError as exc:
+                if not _rejects_response_format(exc) or mode == candidates[-1]:
+                    raise
+                logger.info(
+                    "%s rejected response_format '%s'; falling back", endpoint.base_url, mode
+                )
+                continue
+            if _json_mode_by_base_url.get(endpoint.base_url) != mode:
+                _json_mode_by_base_url[endpoint.base_url] = mode
+                logger.info("Using response_format '%s' for %s", mode, endpoint.base_url)
+            return text
+        raise RuntimeError("unreachable: response_format negotiation exhausted")
 
     text = await call([{"role": "user", "content": contract}])
     try:
