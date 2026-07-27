@@ -134,6 +134,7 @@ The production GitHub environment requires these repository secrets:
 - `CLOUDFLARE_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
+- `BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY`
 
 It also requires repository variable `R2_RELEASES_BUCKET` with value
 `backchannel-desktop-releases`. Create a separate bucket-scoped Cloudflare R2
@@ -141,12 +142,20 @@ API token with Object Read & Write permission; Cloudflare exposes its
 S3-compatible writer credentials as access-key and secret fields. Do not reuse
 or expand the site deployment token.
 
+The protected macOS publish job is blocked until
+`BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY` contains the unpadded base64url raw
+Ed25519 private key matching `desktop/release_signing_keys.json`. Never expose
+that secret to the credential-free build or cleanup jobs.
+
 The local coordinator requires the same four names as user-scoped environment
 variables: `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
 `R2_SECRET_ACCESS_KEY`, and `R2_RELEASES_BUCKET`. Never print their values. It
 also requires Python 3.12, Node 24 or newer, authenticated `gh`, a reachable
 Docker engine reporting `linux/x86_64`, and clean `master` synchronized with
 `origin/master`.
+Local publication reads the same signing material from
+`%LOCALAPPDATA%\Backchannel\release-signing\ed25519-2026-07.private`; an
+explicit `BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY` overrides that file.
 
 The checked-in `scripts/r2-object.mjs` client calls Cloudflare R2 directly and
 is the only release object transport. `AWS4-HMAC-SHA256` and `x-amz-*` are the
@@ -210,17 +219,20 @@ immutable metadata already matches.
 
 Every platform publisher performs this fail-closed sequence:
 
-1. Read or conditionally create the immutable release identity, then read it
+1. Require the versioned release-note file and matching Ed25519 private/public
+   key pair, then sign the complete public update descriptor before any R2
+   request.
+2. Read or conditionally create the immutable release identity, then read it
    back and require byte-equivalent metadata.
-2. Reject a conflicting platform manifest or accept an identical one as an
+3. Reject a conflicting platform manifest or accept an identical one as an
    idempotent completed publication.
-3. Conditionally create the asset with `If-None-Match: *`, its trusted content
+4. Conditionally create the asset with `If-None-Match: *`, its trusted content
    type, and attachment filename. On a retry, download an existing object and
    require byte-equivalence instead of overwriting it.
-4. Verify the remote object size.
-5. Conditionally create the platform manifest with `If-None-Match: *`.
-6. Read back and validate the platform manifest.
-7. Conditionally advance monotonic `releases/latest.json` last, using its ETag
+5. Verify the remote object size.
+6. Conditionally create the platform manifest with `If-None-Match: *`.
+7. Read back and validate the platform manifest.
+8. Conditionally advance monotonic `releases/latest.json` last, using its ETag
    or `If-None-Match: *`; an older version never replaces a newer Latest.
 
 The macOS handoff is a non-secret Actions cache entry keyed as

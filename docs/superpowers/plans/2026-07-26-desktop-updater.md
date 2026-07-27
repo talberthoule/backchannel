@@ -83,7 +83,7 @@ blocking safety or scope issue.
 - Produces: signed platform manifests with exact `update.key_id` and `update.signature`.
 - Consumes later: Tasks 2 and 4 use the same public descriptor shape and verification rules.
 
-- [ ] **Step 1: Write failing signing and verification tests**
+- [x] **Step 1: Write failing signing and verification tests**
 
 Add literal fixtures using the deterministic raw private key
 `bytes(range(1, 33))`. Assert exact canonical bytes, a successful round trip,
@@ -121,7 +121,7 @@ Extend the platform CLI test to pass a temporary keys file and
 `key_id`, `schema`, and `signature`, while `published_at` and the bounded
 release-note Markdown are signed top-level fields.
 
-- [ ] **Step 2: Run the focused tests and confirm RED**
+- [x] **Step 2: Run the focused tests and confirm RED**
 
 Run:
 
@@ -132,7 +132,7 @@ python -m unittest backend.tests.test_update_signing desktop.tests.test_platform
 
 Expected: import failure for `app.services.update_signing`.
 
-- [ ] **Step 3: Implement the minimum shared signing module**
+- [x] **Step 3: Implement the minimum shared signing module**
 
 Use `json.dumps(..., sort_keys=True, separators=(",", ":"))`,
 `base64.urlsafe_b64encode(...).rstrip(b"=")`, `hmac.compare_digest`, and
@@ -159,7 +159,7 @@ after schema `1`, strict UTC publication time, at-most-8-KiB release notes,
 platform, version, key, and signature checks succeed. Normalize installed bare
 versions once, while all signed versions remain canonical `vX.Y.Z`.
 
-- [ ] **Step 4: Generate and protect the production key outside the repo**
+- [x] **Step 4: Generate and protect the production key outside the repo**
 
 Create `%LOCALAPPDATA%\Backchannel\release-signing\ed25519-2026-07.private`,
 write unpadded base64url raw private bytes, restrict its ACL to the current
@@ -177,7 +177,7 @@ Windows user, and write only this public file:
 Confirm `git status` never names the private path and that the public key
 derives from the protected private file.
 
-- [ ] **Step 5: Require signing in the platform publisher and bundle trust data**
+- [x] **Step 5: Require signing in the platform publisher and bundle trust data**
 
 Make `build_platform_manifest.py` load the active public key file, immutable
 release timestamp, `.github/release-notes/<version>.md`, and
@@ -189,7 +189,7 @@ run until the secret is provisioned. Add `release_signing_keys.json` to the
 PyInstaller data list. Verification passes only the file's `keys` object, not
 its `active` selector.
 
-- [ ] **Step 6: Run GREEN and release contract checks**
+- [x] **Step 6: Run GREEN and release contract checks**
 
 Run:
 
@@ -201,7 +201,7 @@ python -m unittest backend.tests.test_update_signing desktop.tests.test_platform
 Expected: all focused tests pass and production-key material never appears in
 captured output.
 
-- [ ] **Step 7: Commit Task 1**
+- [x] **Step 7: Commit Task 1**
 
 ```powershell
 git add backend/app/services/update_signing.py backend/tests/test_update_signing.py desktop/release_signing_keys.json desktop/scripts/build_platform_manifest.py desktop/tests/test_platform_release_manifest.py scripts/publish_release_platform.ps1 desktop/backchannel.spec .github/workflows/desktop-release.yml

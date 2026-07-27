@@ -14,7 +14,13 @@ param(
     [string]$PlatformId,
 
     [Parameter(Mandatory = $true)]
-    [string]$AssetPath
+    [string]$AssetPath,
+
+    [string]$ReleaseNotesPath,
+
+    [string]$SigningKeysPath,
+
+    [string]$SigningPrivateKeyPath
 )
 
 . (Join-Path $PSScriptRoot "r2-release-common.ps1")
@@ -153,6 +159,41 @@ $AssetPath = $asset.FullName
 
 $script:Bucket = $env:R2_RELEASES_BUCKET
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$ReleaseNotesPath = if ($ReleaseNotesPath) {
+    $ReleaseNotesPath
+} else {
+    Join-Path $repoRoot ".github/release-notes/$Version.md"
+}
+$SigningKeysPath = if ($SigningKeysPath) {
+    $SigningKeysPath
+} else {
+    Join-Path $repoRoot "desktop/release_signing_keys.json"
+}
+foreach ($requiredFile in @($ReleaseNotesPath, $SigningKeysPath)) {
+    if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
+        throw "Required release signing file is missing: $requiredFile"
+    }
+}
+$signingPrivateKey = $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY
+if ([string]::IsNullOrWhiteSpace($signingPrivateKey)) {
+    if (-not $SigningPrivateKeyPath) {
+        if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+            throw "Missing required release signing private key"
+        }
+        $SigningPrivateKeyPath = Join-Path $env:LOCALAPPDATA "Backchannel/release-signing/ed25519-2026-07.private"
+    }
+    if (-not (Test-Path -LiteralPath $SigningPrivateKeyPath -PathType Leaf)) {
+        throw "Missing required release signing private key"
+    }
+    $privateFile = Get-Item -LiteralPath $SigningPrivateKeyPath
+    if (($privateFile.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Release signing private key must be a regular file"
+    }
+    $signingPrivateKey = (Get-Content -Raw -LiteralPath $SigningPrivateKeyPath).Trim()
+}
+if ([string]::IsNullOrWhiteSpace($signingPrivateKey)) {
+    throw "Missing required release signing private key"
+}
 $script:R2Client = Join-Path $repoRoot "scripts/r2-object.mjs"
 if (-not (Test-Path -LiteralPath $script:R2Client -PathType Leaf)) {
     throw "R2 client not found: $script:R2Client"
@@ -170,15 +211,24 @@ $currentLatestPath = Join-Path $temporary "current-latest.json"
 New-Item -ItemType Directory -Path $temporary | Out-Null
 
 try {
-    & python $metadataHelper `
-        --asset $AssetPath `
-        --platform-id $PlatformId `
-        --tag $Version `
-        --commit $Commit `
-        --published-at $PublishedAt `
-        --release-out $releasePath `
-        --platform-out $platformPath
-    if ($LASTEXITCODE -ne 0) {
+    $oldSigningPrivateKey = $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY
+    try {
+        $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $signingPrivateKey
+        & python $metadataHelper `
+            --asset $AssetPath `
+            --platform-id $PlatformId `
+            --tag $Version `
+            --commit $Commit `
+            --published-at $PublishedAt `
+            --keys-file $SigningKeysPath `
+            --release-notes-file $ReleaseNotesPath `
+            --release-out $releasePath `
+            --platform-out $platformPath
+        $metadataExitCode = $LASTEXITCODE
+    } finally {
+        $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $oldSigningPrivateKey
+    }
+    if ($metadataExitCode -ne 0) {
         throw "Platform metadata validation failed"
     }
     Write-Utf8 $latestPath (@{ version = $Version } | ConvertTo-Json -Compress)

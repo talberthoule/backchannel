@@ -28,6 +28,7 @@ datas = [
     (str(repo / "backend" / "models"), "models"),
     (str(repo / "desktop" / "pgsql"), "pgsql"),
     (str(repo / "desktop" / "assets"), "assets"),
+    (str(repo / "desktop" / "release_signing_keys.json"), "."),
 ]
 # Present only after desktop/scripts/download_ffmpeg.py runs (Windows/Linux
 # releases); macOS bundles stay ffmpeg-free.
