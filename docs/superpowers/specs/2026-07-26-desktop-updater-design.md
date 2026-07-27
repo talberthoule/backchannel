@@ -389,3 +389,7 @@ remain a later explicitly approved phase.
 
 Full signed archives, one persisted state file, one short-lived grant table,
 and one external swap helper are sufficient for ALP-150.
+
+Implementation verification: local Windows and Linux checks completed
+2026-07-26. Native macOS execution remains reserved for the later approved
+CI/secret phase; no push, publication, or CI run occurred in this phase.

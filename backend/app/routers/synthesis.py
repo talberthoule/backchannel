@@ -9,7 +9,6 @@ from app.models import Session
 from app.schemas import SessionSynthesisOut
 from app.services.agents.strategic_signals import run_strategic_signals_cycle
 from app.services.briefing_synthesis import get_session_synthesis, run_session_synthesis
-from app.services.runtime_activity import request_tracker
 
 router = APIRouter(prefix="/api/sessions/{session_id}/synthesis", tags=["synthesis"])
 
@@ -29,7 +28,6 @@ async def get_synthesis(
 @router.post(
     "/refresh",
     response_model=SessionSynthesisOut,
-    dependencies=[Depends(request_tracker("briefing synthesis"))],
 )
 async def refresh_synthesis(
     session_id: uuid.UUID,

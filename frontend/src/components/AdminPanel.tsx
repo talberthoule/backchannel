@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AgentConfig, AnalystLens, KnowledgeSource, ModelInfo, PrivacyConfig } from "../types";
+import type {
+  AgentConfig,
+  AnalystLens,
+  DesktopUpdateController,
+  KnowledgeSource,
+  ModelInfo,
+  PrivacyConfig,
+} from "../types";
 import * as api from "../services/api";
 import { groupModels, optionLabel, optionState, runsLocally } from "../lib/modelOptions";
 import { useConfirm } from "./ConfirmProvider";
@@ -11,7 +18,6 @@ import EndpointsCard from "./EndpointsCard";
 import PrivacyModeCard from "./PrivacyModeCard";
 import ProviderOnboardingCard from "./ProviderOnboardingCard";
 import AboutCard from "./AboutCard";
-import type { DesktopUpdateController } from "../hooks/useDesktopUpdate";
 
 const TYPE_BADGES: Record<string, { label: string; color: string }> = {
   audio: { label: "Audio", color: "#0d9488" },

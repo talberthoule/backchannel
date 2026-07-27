@@ -1125,14 +1125,18 @@ async function readDownloadBody(request) {
   return readAdminBody(request, DOWNLOAD_HOST, MAX_DOWNLOAD_BODY_BYTES, downloadJson);
 }
 
+function validUpdateGrantBody(body) {
+  return Object.keys(body).length === 3
+    && UPDATE_NONCE.test(body.nonce)
+    && VERSION.test(body.version)
+    && UPDATE_ASSET_IDS.has(body.asset_id);
+}
+
 async function handleUpdateGrant(request, env, dependencies) {
   const parsed = await readDownloadBody(request);
   if (parsed.response) return parsed.response;
   const body = parsed.body;
-  if (Object.keys(body).length !== 3
-    || !UPDATE_NONCE.test(body.nonce)
-    || !VERSION.test(body.version)
-    || !UPDATE_ASSET_IDS.has(body.asset_id)) {
+  if (!validUpdateGrantBody(body)) {
     return downloadJson(400, { ok: false, error: 'Request is invalid.' });
   }
 
@@ -1183,6 +1187,17 @@ async function handleUpdateGrant(request, env, dependencies) {
   });
 }
 
+function validStoredUpdateGrant(grant, match, now) {
+  const expiresAt = Date.parse(grant?.expires_at);
+  return grant
+    && grant.state === 'active'
+    && grant.release_decision === 'approved'
+    && grant.version === match[1]
+    && grant.asset_id === match[2]
+    && Number.isFinite(expiresAt)
+    && expiresAt > now.getTime();
+}
+
 async function handleUpdateDownload(request, env, dependencies) {
   const match = /^\/api\/update\/assets\/(v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))\/(windows-x64|macos-arm64|linux-x64)$/
     .exec(new URL(request.url).pathname);
@@ -1205,10 +1220,7 @@ async function handleUpdateDownload(request, env, dependencies) {
   } catch {
     return releaseNotFound();
   }
-  const expiresAt = Date.parse(grant?.expires_at);
-  if (!grant || grant.state !== 'active' || grant.release_decision !== 'approved'
-    || grant.version !== match[1] || grant.asset_id !== match[2]
-    || !Number.isFinite(expiresAt) || expiresAt <= now.getTime()) return releaseNotFound();
+  if (!validStoredUpdateGrant(grant, match, now)) return releaseNotFound();
 
   try {
     const authorization = await findReleaseAuthorization(env, grant.email);

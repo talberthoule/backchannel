@@ -28,7 +28,6 @@ from app.services.speaker_assignment import (
 from app.services.speaker_ghost_filter import should_defer_new_speaker_segment
 from app.services.speaker_diarizer import DiarizedSegment, SpeakerRegistry
 from app.services.transcription_runtime import get_transcription_runtime_config
-from app.services.runtime_activity import request_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -275,7 +274,7 @@ async def _transcribe_split_audio_diarized(
     return count
 
 
-@router.post("/transcript", dependencies=[Depends(request_tracker("transcript import"))])
+@router.post("/transcript")
 async def import_transcript(
     session_id: uuid.UUID,
     file: UploadFile,
@@ -311,7 +310,7 @@ async def import_transcript(
     return {"imported": count, "filename": filename}
 
 
-@router.post("/audio", dependencies=[Depends(request_tracker("audio import"))])
+@router.post("/audio")
 async def import_audio(
     session_id: uuid.UUID,
     file: UploadFile,

@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Session, Question, Speaker, TranscriptEntry, SessionSynthesis
-from app.services.runtime_activity import request_tracker
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -35,7 +34,7 @@ def _stream_bytes(data: bytes):
     yield data
 
 
-@router.get("/transcript-export", dependencies=[Depends(request_tracker("artifact export"))])
+@router.get("/transcript-export")
 async def export_transcript(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """Export session transcript as a downloadable text file. Generated in-memory, never stored."""
     session = await db.get(Session, session_id)
@@ -79,7 +78,7 @@ async def export_transcript(session_id: uuid.UUID, db: AsyncSession = Depends(ge
     )
 
 
-@router.get("/questions-export", dependencies=[Depends(request_tracker("artifact export"))])
+@router.get("/questions-export")
 async def export_insights(
     session_id: uuid.UUID,
     enhanced_only: bool = False,
@@ -231,7 +230,7 @@ async def export_insights(
     )
 
 
-@router.get("/summary-export", dependencies=[Depends(request_tracker("artifact export"))])
+@router.get("/summary-export")
 async def export_summary(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """Export a full session briefing as HTML. Generated in-memory, never stored."""
     session = await db.get(Session, session_id)

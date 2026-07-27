@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ModelInfo, ModelPricingResponse, ReleaseNote } from "../types";
+import type {
+  DesktopUpdateController,
+  ModelInfo,
+  ModelPricingResponse,
+  ReleaseNote,
+} from "../types";
 import * as api from "../services/api";
 import { formatRate } from "../lib/modelPricing";
 import { DesktopUpdateCard } from "./DesktopUpdate";
-import type { DesktopUpdateController } from "../hooks/useDesktopUpdate";
 
 interface AboutCardProps {
   version: string | null;

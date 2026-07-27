@@ -46,22 +46,22 @@ class RuntimeActivityTests(unittest.TestCase):
         asyncio.run(exercise())
 
     def test_long_running_http_routes_use_the_shared_tracker(self):
-        from app.routers import analyze, artifacts, imports, retranscribe, synthesis
+        from app.main import app
 
         expected = {
             "/api/sessions/{session_id}/analyze": "analysis",
             "/api/sessions/{session_id}/artifacts/transcript-export": "artifact export",
             "/api/sessions/{session_id}/artifacts/questions-export": "artifact export",
             "/api/sessions/{session_id}/artifacts/summary-export": "artifact export",
-            "/api/sessions/{session_id}/import/transcript": "transcript import",
-            "/api/sessions/{session_id}/import/audio": "audio import",
+            "/api/sessions/{session_id}/import/transcript": "import",
+            "/api/sessions/{session_id}/import/audio": "import",
             "/api/sessions/{session_id}/retranscribe": "retranscription",
             "/api/sessions/{session_id}/synthesis/refresh": "briefing synthesis",
         }
         routes = {
             route.path: route
-            for module in (analyze, artifacts, imports, retranscribe, synthesis)
-            for route in module.router.routes
+            for route in app.routes
+            if hasattr(route, "dependencies")
         }
 
         async def exercise():

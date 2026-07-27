@@ -1,11 +1,9 @@
 import logging
-import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import settings
 from app.database import engine
@@ -256,16 +254,11 @@ async def lifespan(app: FastAPI):
 
     from app.services.provider_health import verify_untested_provider_keys
     verify_task = asyncio.create_task(verify_untested_provider_keys())
-    update_task = None
-    if os.environ.get("BACKCHANNEL_DESKTOP") == "1":
-        from app.services.update_service import get_update_service
-
-        update_task = asyncio.create_task(asyncio.to_thread(get_update_service().check))
+    update_task = updates.start_background_check()
 
     yield
     verify_task.cancel()
-    if update_task:
-        update_task.cancel()
+    updates.stop_background_check(update_task)
     await engine.dispose()
 
 
@@ -278,15 +271,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-if os.environ.get("BACKCHANNEL_DESKTOP") == "1":
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=[
-            "localhost",
-            "127.0.0.1",
-            os.environ.get("BACKCHANNEL_BOUND_HOST", "127.0.0.1"),
-        ],
-    )
+updates.configure_app(app)
 
 app.include_router(sessions.router)
 app.include_router(agents.router)
@@ -296,17 +281,32 @@ app.include_router(documents.router)
 app.include_router(questions.router)
 app.include_router(transcripts.router)
 app.include_router(speakers.router)
-app.include_router(synthesis.router)
+app.include_router(
+    synthesis.router,
+    dependencies=[Depends(runtime_activity.request_tracker("briefing synthesis"))],
+)
 app.include_router(offerings.router)
 app.include_router(knowledge.router)
-app.include_router(artifacts.router)
-app.include_router(imports.router)
-app.include_router(analyze.router)
+app.include_router(
+    artifacts.router,
+    dependencies=[Depends(runtime_activity.request_tracker("artifact export"))],
+)
+app.include_router(
+    imports.router,
+    dependencies=[Depends(runtime_activity.request_tracker("import"))],
+)
+app.include_router(
+    analyze.router,
+    dependencies=[Depends(runtime_activity.request_tracker("analysis"))],
+)
 app.include_router(models.router)
 app.include_router(meta.router)
 app.include_router(credentials.router)
 app.include_router(endpoints.router)
-app.include_router(retranscribe.router)
+app.include_router(
+    retranscribe.router,
+    dependencies=[Depends(runtime_activity.request_tracker("retranscription"))],
+)
 app.include_router(chat.router)
 app.include_router(diagnostics.router)
 app.include_router(privacy.router)
@@ -316,11 +316,6 @@ app.include_router(audio_handler.router)
 
 @app.exception_handler(LocalOnlyModeError)
 async def local_only_mode_handler(request: Request, exc: LocalOnlyModeError):
-    return JSONResponse(status_code=409, content={"detail": str(exc)})
-
-
-@app.exception_handler(runtime_activity.ShutdownReserved)
-async def shutdown_reserved_handler(request: Request, exc: runtime_activity.ShutdownReserved):
     return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 

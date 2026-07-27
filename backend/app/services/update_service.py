@@ -271,18 +271,62 @@ class UpdateService:
             raise InvalidUpdate("descriptor replay")
         return value
 
+    def _claim_check(self, force: bool):
+        with self._lock:
+            if not force and self._cached_locked():
+                return self._copy_status_locked(), None
+            if self._checking:
+                return None, self._check_done
+            self._checking = True
+            self._check_done.clear()
+            return None, None
+
+    def _store_descriptor_locked(self, descriptor: dict) -> None:
+        current_high = self._state["highest_seen_version"]
+        current_time = self._state["highest_seen_published_at"]
+        if not current_high or _version(descriptor["version"]) > _version(current_high):
+            self._state["highest_seen_version"] = descriptor["version"]
+        if not current_time or _timestamp(descriptor["published_at"]) > _timestamp(current_time):
+            self._state["highest_seen_published_at"] = descriptor["published_at"]
+        if _version(descriptor["version"]) <= _version(self.current_version):
+            next_state = "idle"
+            available = ("", "", "", "", 0)
+        else:
+            same_ready = (
+                self._state["state"] == "ready"
+                and self._state["available_version"] == descriptor["version"]
+            )
+            next_state = "ready" if same_ready else "available"
+            asset = descriptor["asset"]
+            available = (
+                descriptor["version"],
+                descriptor["release_notes"],
+                descriptor["published_at"],
+                asset["filename"],
+                asset["size"],
+            )
+        (
+            self._state["available_version"],
+            self._state["available_notes"],
+            self._state["published_at"],
+            self._state["filename"],
+            self._state["size"],
+        ) = available
+        self._state["state"] = next_state
+        self._state["downloaded"] = (
+            self._state["size"] if next_state == "ready" else 0
+        )
+        self._state["checked_at"] = _utc_now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        self._state["error"] = ""
+        self._state["blocked_reason"] = ""
+        self._save_locked()
+
     def check(self, force: bool = False) -> dict:
         if not self.enabled:
             return {"enabled": False, "state": "idle"}
-        with self._lock:
-            if not force and self._cached_locked():
-                return self._copy_status_locked()
-            if self._checking:
-                done = self._check_done
-            else:
-                self._checking = True
-                self._check_done.clear()
-                done = None
+        cached, done = self._claim_check(force)
+        if cached is not None:
+            return cached
         if done is not None:
             done.wait(self.timeout + 1)
             return self.status()
@@ -290,44 +334,7 @@ class UpdateService:
         try:
             descriptor = self._fetch_descriptor()
             with self._lock:
-                current_high = self._state["highest_seen_version"]
-                current_time = self._state["highest_seen_published_at"]
-                if not current_high or _version(descriptor["version"]) > _version(current_high):
-                    self._state["highest_seen_version"] = descriptor["version"]
-                if not current_time or _timestamp(descriptor["published_at"]) > _timestamp(current_time):
-                    self._state["highest_seen_published_at"] = descriptor["published_at"]
-                if _version(descriptor["version"]) <= _version(self.current_version):
-                    next_state = "idle"
-                    available = ("", "", "", "", 0)
-                else:
-                    same_ready = (
-                        self._state["state"] == "ready"
-                        and self._state["available_version"] == descriptor["version"]
-                    )
-                    next_state = "ready" if same_ready else "available"
-                    asset = descriptor["asset"]
-                    available = (
-                        descriptor["version"],
-                        descriptor["release_notes"],
-                        descriptor["published_at"],
-                        asset["filename"],
-                        asset["size"],
-                    )
-                (
-                    self._state["available_version"],
-                    self._state["available_notes"],
-                    self._state["published_at"],
-                    self._state["filename"],
-                    self._state["size"],
-                ) = available
-                self._state["state"] = next_state
-                self._state["downloaded"] = (
-                    self._state["size"] if next_state == "ready" else 0
-                )
-                self._state["checked_at"] = _utc_now().strftime("%Y-%m-%dT%H:%M:%SZ")
-                self._state["error"] = ""
-                self._state["blocked_reason"] = ""
-                self._save_locked()
+                self._store_descriptor_locked(descriptor)
         except Exception:
             with self._lock:
                 self._state["state"] = "error"
@@ -421,91 +428,116 @@ class UpdateService:
             self._state["downloaded"] = downloaded
             self._save_locked()
 
+    def _available_descriptor(self) -> dict:
+        descriptor = self._fetch_descriptor()
+        expected = (
+            self._state["available_version"],
+            self._state["published_at"],
+            self._state["filename"],
+            self._state["size"],
+        )
+        actual = (
+            descriptor["version"],
+            descriptor["published_at"],
+            descriptor["asset"]["filename"],
+            descriptor["asset"]["size"],
+        )
+        if actual != expected:
+            raise InvalidUpdate("available update changed")
+        return descriptor
+
+    def _resume_digest(self, partial: Path, size: int):
+        partial.parent.mkdir(parents=True, exist_ok=True)
+        start = partial.stat().st_size if partial.exists() else 0
+        if start > size:
+            partial.unlink()
+            start = 0
+        digest = hashlib.sha256()
+        if start:
+            with partial.open("rb") as existing:
+                while chunk := existing.read(CHUNK_SIZE):
+                    digest.update(chunk)
+        self._progress(start)
+        return start, digest
+
+    def _open_download(self, grant: str, start: int, size: int):
+        response = self._asset_request(grant, start if start else None)
+        status = getattr(response, "status", None)
+        if start and status == 206:
+            wanted = f"bytes {start}-{size - 1}/{size}"
+            if response.headers.get("Content-Range") == wanted:
+                return response, start, None
+            response.close()
+            response = self._asset_request(grant, None)
+            if getattr(response, "status", None) != 200:
+                response.close()
+                raise InvalidUpdate("invalid download response")
+            return response, 0, hashlib.sha256()
+        if start and status == 200:
+            return response, 0, hashlib.sha256()
+        if status != 200:
+            response.close()
+            raise InvalidUpdate("invalid download response")
+        return response, start, None
+
+    def _stream_download(
+        self, response, partial: Path, start: int, size: int, digest
+    ) -> int | None:
+        mode = "ab" if start else "wb"
+        downloaded = start
+        with response, partial.open(mode) as output:
+            while chunk := response.read(CHUNK_SIZE):
+                if self._cancel.is_set():
+                    with self._lock:
+                        self._state["state"] = "available"
+                        self._state["downloaded"] = downloaded
+                        self._save_locked()
+                    return None
+                downloaded += len(chunk)
+                if downloaded > size:
+                    raise InvalidUpdate("download exceeded declared size")
+                output.write(chunk)
+                digest.update(chunk)
+                self._progress(downloaded)
+            output.flush()
+            os.fsync(output.fileno())
+        return downloaded
+
+    def _verify_download(
+        self, partial: Path, descriptor: dict, digest, downloaded: int
+    ) -> None:
+        asset = descriptor["asset"]
+        if downloaded != asset["size"]:
+            raise InvalidUpdate("download was shorter than declared size")
+        if not hmac.compare_digest(digest.hexdigest(), asset["sha256"]):
+            raise InvalidUpdate("download hash mismatch")
+        verify_update_descriptor(
+            descriptor, self.platform_id, self.current_version, self.public_keys
+        )
+        self._stage_archive(partial, descriptor)
+        with self._lock:
+            self._state["state"] = "ready"
+            self._state["downloaded"] = downloaded
+            self._state["error"] = ""
+            self._save_locked()
+
     def _download(self, grant: str) -> None:
         partial = self.partial_path
         try:
-            descriptor = self._fetch_descriptor()
-            expected = (
-                self._state["available_version"],
-                self._state["published_at"],
-                self._state["filename"],
-                self._state["size"],
+            descriptor = self._available_descriptor()
+            start, digest = self._resume_digest(
+                partial, descriptor["asset"]["size"]
             )
-            actual = (
-                descriptor["version"],
-                descriptor["published_at"],
-                descriptor["asset"]["filename"],
-                descriptor["asset"]["size"],
+            response, start, replacement = self._open_download(
+                grant, start, descriptor["asset"]["size"]
             )
-            if actual != expected:
-                raise InvalidUpdate("available update changed")
-            partial.parent.mkdir(parents=True, exist_ok=True)
-            start = partial.stat().st_size if partial.exists() else 0
-            if start > descriptor["asset"]["size"]:
-                partial.unlink()
-                start = 0
-            digest = hashlib.sha256()
-            if start:
-                with partial.open("rb") as existing:
-                    while chunk := existing.read(CHUNK_SIZE):
-                        digest.update(chunk)
-            self._progress(start)
-
-            response = self._asset_request(grant, start if start else None)
-            if start and getattr(response, "status", None) == 206:
-                wanted = (
-                    f"bytes {start}-{descriptor['asset']['size'] - 1}/"
-                    f"{descriptor['asset']['size']}"
-                )
-                if response.headers.get("Content-Range") != wanted:
-                    response.close()
-                    response = self._asset_request(grant, None)
-                    start = 0
-                    digest = hashlib.sha256()
-                    if getattr(response, "status", None) != 200:
-                        response.close()
-                        raise InvalidUpdate("invalid download response")
-            elif start and getattr(response, "status", None) == 200:
-                start = 0
-                digest = hashlib.sha256()
-            elif getattr(response, "status", None) != 200:
-                response.close()
-                raise InvalidUpdate("invalid download response")
-
-            mode = "ab" if start else "wb"
-            downloaded = start
-            with response, partial.open(mode) as output:
-                while chunk := response.read(CHUNK_SIZE):
-                    if self._cancel.is_set():
-                        with self._lock:
-                            self._state["state"] = "available"
-                            self._state["downloaded"] = downloaded
-                            self._save_locked()
-                        return
-                    downloaded += len(chunk)
-                    if downloaded > descriptor["asset"]["size"]:
-                        raise InvalidUpdate("download exceeded declared size")
-                    output.write(chunk)
-                    digest.update(chunk)
-                    self._progress(downloaded)
-                output.flush()
-                os.fsync(output.fileno())
-
-            if downloaded != descriptor["asset"]["size"]:
-                raise InvalidUpdate("download was shorter than declared size")
-            if not hmac.compare_digest(
-                digest.hexdigest(), descriptor["asset"]["sha256"]
-            ):
-                raise InvalidUpdate("download hash mismatch")
-            verify_update_descriptor(
-                descriptor, self.platform_id, self.current_version, self.public_keys
+            digest = replacement or digest
+            downloaded = self._stream_download(
+                response, partial, start, descriptor["asset"]["size"], digest
             )
-            self._stage_archive(partial, descriptor)
-            with self._lock:
-                self._state["state"] = "ready"
-                self._state["downloaded"] = downloaded
-                self._state["error"] = ""
-                self._save_locked()
+            if downloaded is None:
+                return
+            self._verify_download(partial, descriptor, digest, downloaded)
         except NeedsAuthorization:
             with self._lock:
                 self._state["state"] = "needs_authorization"
@@ -648,64 +680,71 @@ class UpdateService:
             self._remove_stage()
             raise
 
+    def _apply_bundle_paths_locked(self):
+        if self._state["state"] != "ready":
+            raise RuntimeError("The update is not ready to install.")
+        if (
+            not self.install_root.is_dir()
+            or self.install_root.is_symlink()
+            or not self.staged_root.is_dir()
+            or self.staged_root.is_symlink()
+            or not self.helper_path
+            or not self.helper_path.is_file()
+        ):
+            raise RuntimeError("The staged update is unavailable.")
+        parent = self.install_root.parent.resolve(strict=True)
+        install = self.install_root.resolve(strict=True)
+        staged = self.staged_root.resolve(strict=True)
+        if install.parent != parent or staged.parent != self.stage_dir.resolve(strict=True):
+            raise RuntimeError("The staged update path is invalid.")
+        if os.stat(parent).st_dev != os.stat(staged).st_dev or not os.access(parent, os.W_OK):
+            raise RuntimeError("The install location cannot be updated safely.")
+        return parent, install, staged
+
+    def _apply_plan_locked(self) -> dict:
+        parent, install, staged = self._apply_bundle_paths_locked()
+        version = self._state["available_version"]
+        backup = parent / f"{self.install_root.name}.backup-{version}"
+        failed = parent / f"{self.install_root.name}.failed-{version}"
+        if backup.exists() or failed.exists() or backup.is_symlink() or failed.is_symlink():
+            raise RuntimeError("A previous update needs recovery.")
+        launcher = LAUNCHERS[self.platform_id]
+        if not (install / Path(launcher)).is_file():
+            raise RuntimeError("The current launcher is unavailable.")
+        return {
+            "schema": 1,
+            "version": version,
+            "requested_at": _utc_now().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "old_pid": os.getpid(),
+            "app_data_dir": str(self.data_root),
+            "install_dir": str(install),
+            "staged_dir": str(staged),
+            "backup_dir": str(backup),
+            "failed_dir": str(failed),
+            "launcher": launcher,
+            "lock_path": str(self.data_root / "launcher.json"),
+            "state_path": str(self.state_path.resolve(strict=True)),
+        }
+
+    def _write_apply_plan_locked(self, plan: dict) -> None:
+        self._state["state"] = "applying"
+        self._state["error"] = ""
+        self._save_locked()
+        marker = self.update_root / "apply.json"
+        temporary = marker.with_suffix(".tmp")
+        with temporary.open("w", encoding="utf-8") as stream:
+            json.dump(plan, stream, sort_keys=True, separators=(",", ":"))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, marker)
+
     def request_apply(self) -> dict:
         if not self.enabled:
             return {"enabled": False, "state": "idle"}
         if self.apply_disabled:
             raise RuntimeError("Update installation is unavailable in headless mode.")
         with self._lock:
-            if self._state["state"] != "ready":
-                raise RuntimeError("The update is not ready to install.")
-            if (
-                not self.install_root.is_dir()
-                or self.install_root.is_symlink()
-                or not self.staged_root.is_dir()
-                or self.staged_root.is_symlink()
-                or not self.helper_path
-                or not self.helper_path.is_file()
-            ):
-                raise RuntimeError("The staged update is unavailable.")
-            parent = self.install_root.parent.resolve(strict=True)
-            install = self.install_root.resolve(strict=True)
-            staged = self.staged_root.resolve(strict=True)
-            if install.parent != parent or staged.parent != self.stage_dir.resolve(strict=True):
-                raise RuntimeError("The staged update path is invalid.")
-            if os.stat(parent).st_dev != os.stat(staged).st_dev or not os.access(parent, os.W_OK):
-                raise RuntimeError("The install location cannot be updated safely.")
-
-            version = self._state["available_version"]
-            backup = parent / f"{self.install_root.name}.backup-{version}"
-            failed = parent / f"{self.install_root.name}.failed-{version}"
-            if backup.exists() or failed.exists() or backup.is_symlink() or failed.is_symlink():
-                raise RuntimeError("A previous update needs recovery.")
-            launcher = LAUNCHERS[self.platform_id]
-            if not (install / Path(launcher)).is_file():
-                raise RuntimeError("The current launcher is unavailable.")
-
-            plan = {
-                "schema": 1,
-                "version": version,
-                "requested_at": _utc_now().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "old_pid": os.getpid(),
-                "app_data_dir": str(self.data_root),
-                "install_dir": str(install),
-                "staged_dir": str(staged),
-                "backup_dir": str(backup),
-                "failed_dir": str(failed),
-                "launcher": launcher,
-                "lock_path": str(self.data_root / "launcher.json"),
-                "state_path": str(self.state_path.resolve(strict=True)),
-            }
-            self._state["state"] = "applying"
-            self._state["error"] = ""
-            self._save_locked()
-            marker = self.update_root / "apply.json"
-            temporary = marker.with_suffix(".tmp")
-            with temporary.open("w", encoding="utf-8") as stream:
-                json.dump(plan, stream, sort_keys=True, separators=(",", ":"))
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary, marker)
+            self._write_apply_plan_locked(self._apply_plan_locked())
             return self._copy_status_locked()
 
 

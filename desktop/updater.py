@@ -99,7 +99,7 @@ def _absent_path(value: object, parent: Path) -> Path:
     return path
 
 
-def validate_plan(value: object, plan_path: Path) -> ApplyPlan:
+def _validate_identity(value: object) -> dict:
     if not isinstance(value, dict) or set(value) != PLAN_FIELDS:
         raise PlanError("invalid plan shape")
     if value["schema"] != 1 or type(value["old_pid"]) is not int or value["old_pid"] <= 0:
@@ -115,7 +115,10 @@ def validate_plan(value: object, plan_path: Path) -> ApplyPlan:
         datetime.strptime(value["requested_at"], "%Y-%m-%dT%H:%M:%SZ")
     except ValueError as error:
         raise PlanError("invalid plan timestamp") from error
+    return value
 
+
+def _bundle_roots(value: dict, plan_path: Path):
     plan_path = _existing_path(str(plan_path))
     app_data = _existing_path(value["app_data_dir"])
     updates = _existing_path(str(app_data / "updates"))
@@ -133,7 +136,10 @@ def validate_plan(value: object, plan_path: Path) -> ApplyPlan:
     expected_stage_parent = install.parent / f".backchannel-stage-{value['version']}"
     if staged.parent != expected_stage_parent or staged.parent.resolve(strict=True) != staged.parent:
         raise PlanError("invalid staging root")
+    return plan_path, app_data, updates, install, staged
 
+
+def _recovery_paths(value: dict, install: Path):
     backup = _absent_path(
         value["backup_dir"], install.parent
     )
@@ -144,7 +150,10 @@ def validate_plan(value: object, plan_path: Path) -> ApplyPlan:
         raise PlanError("invalid backup path")
     if failed.name != f"{install.name}.failed-{value['version']}":
         raise PlanError("invalid failed path")
+    return backup, failed
 
+
+def _validate_launcher(value: dict, install: Path, staged: Path) -> str:
     launcher = value["launcher"]
     if launcher != expected_launcher():
         raise PlanError("invalid launcher")
@@ -152,7 +161,16 @@ def validate_plan(value: object, plan_path: Path) -> ApplyPlan:
         executable = root / Path(launcher)
         if not executable.is_file() or executable.is_symlink():
             raise PlanError("launcher is unavailable")
+    return launcher
 
+
+def _runtime_paths(
+    value: dict,
+    app_data: Path,
+    updates: Path,
+    install: Path,
+    staged: Path,
+):
     lock_path = Path(value["lock_path"]) if isinstance(value["lock_path"], str) else Path()
     state_path = _existing_path(value["state_path"])
     if (
@@ -174,6 +192,19 @@ def validate_plan(value: object, plan_path: Path) -> ApplyPlan:
         raise PlanError("update is not applying")
     if os.stat(install.parent).st_dev != os.stat(staged).st_dev:
         raise PlanError("cross-filesystem update")
+    return lock_path, state_path
+
+
+def validate_plan(value: object, plan_path: Path) -> ApplyPlan:
+    value = _validate_identity(value)
+    plan_path, app_data, updates, install, staged = _bundle_roots(
+        value, plan_path
+    )
+    backup, failed = _recovery_paths(value, install)
+    launcher = _validate_launcher(value, install, staged)
+    lock_path, state_path = _runtime_paths(
+        value, app_data, updates, install, staged
+    )
 
     return ApplyPlan(
         version=value["version"],

@@ -1,10 +1,13 @@
+import asyncio
 import hmac
 import os
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.database import get_db
 from app.models import Session
@@ -17,6 +20,38 @@ router = APIRouter(prefix="/api/updates", tags=["updates"])
 
 class GrantIn(BaseModel):
     grant: str
+
+
+def start_background_check():
+    if os.environ.get("BACKCHANNEL_DESKTOP") != "1":
+        return None
+    return asyncio.create_task(asyncio.to_thread(get_update_service().check))
+
+
+def stop_background_check(task) -> None:
+    if task:
+        task.cancel()
+
+
+async def shutdown_reserved_handler(
+    request: Request, exc: runtime_activity.ShutdownReserved
+):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+def configure_app(app: FastAPI) -> None:
+    app.add_exception_handler(
+        runtime_activity.ShutdownReserved, shutdown_reserved_handler
+    )
+    if os.environ.get("BACKCHANNEL_DESKTOP") == "1":
+        app.add_middleware(
+            TrustedHostMiddleware,
+            allowed_hosts=[
+                "localhost",
+                "127.0.0.1",
+                os.environ.get("BACKCHANNEL_BOUND_HOST", "127.0.0.1"),
+            ],
+        )
 
 
 def require_instance_token(

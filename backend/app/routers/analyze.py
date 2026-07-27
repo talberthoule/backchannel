@@ -11,12 +11,11 @@ from app.services.llm import generate_text
 from app.database import get_db
 from app.models import Directive, Question, Session, TranscriptEntry
 from app.services.meeting_context import build_meeting_context_text
-from app.services.runtime_activity import request_tracker
 
 router = APIRouter(prefix="/api/sessions/{session_id}/analyze", tags=["analyze"])
 
 
-@router.post("", dependencies=[Depends(request_tracker("analysis"))])
+@router.post("")
 async def analyze_transcript(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """Analyze an imported transcript: generate questions, track answers, surface insights."""
     session = await db.get(Session, session_id)

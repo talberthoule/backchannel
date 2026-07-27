@@ -59,6 +59,13 @@ The checked-in `scripts/r2-object.mjs` client is the sole release object
 transport. Do not publish release objects with Amazon Web Services command-line
 tools or SDKs.
 
+New desktop platform manifests include a canonical Ed25519-signed public update
+descriptor. Keep private signing material outside the repository, deploy D1
+migration `0004_release_update_grants.sql` before enabling update grants, and
+run the native archive smoke before publication. Windows and Linux run locally;
+macOS runs against the real `.app` archive in the credential-free build before
+protected publication.
+
 ### Desktop bundle (Linux/macOS/Windows)
 
 `desktop/` contains a PyInstaller launcher that runs the backend with an

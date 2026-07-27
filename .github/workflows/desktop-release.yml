@@ -110,6 +110,10 @@ jobs:
           mkdir -p ../controller/release-assets
           ditto -c -k --keepParent dist/Backchannel.app ../controller/release-assets/Backchannel-macos-arm64.zip
 
+      - name: Smoke test macOS update archive
+        working-directory: source
+        run: python desktop/scripts/smoke_update_archive.py --platform macos-arm64 --archive ../controller/release-assets/Backchannel-macos-arm64.zip
+
       - name: Prepare macOS cache handoff
         id: handoff
         working-directory: controller

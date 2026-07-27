@@ -244,6 +244,14 @@ export interface DesktopUpdateStatus {
   blocked_reason?: string;
 }
 
+export interface DesktopUpdateController {
+  status: DesktopUpdateStatus;
+  check: () => Promise<void>;
+  authorize: () => Promise<void>;
+  cancel: () => Promise<void>;
+  apply: () => Promise<void>;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;

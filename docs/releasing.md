@@ -103,8 +103,10 @@ Each progressive release identity has exactly `version`, `published_at`, and
 }
 ```
 
-Each platform manifest has exactly `version`, `commit`, and `asset`. The asset
-has `id`, `platform`, `filename`, `key`, `size`, `sha256`, and `content_type`:
+Each newly published platform manifest has exactly `version`, `commit`,
+`published_at`, `release_notes`, `asset`, and `update`. The asset has `id`,
+`platform`, `filename`, `key`, `size`, `sha256`, and `content_type`; `update`
+has the signing key ID, schema, and unpadded base64url Ed25519 signature:
 
 ```json
 {
@@ -118,9 +120,26 @@ has `id`, `platform`, `filename`, `key`, `size`, `sha256`, and `content_type`:
     "size": 1
   },
   "commit": "<40 lowercase hex characters>",
+  "published_at": "<strict UTC ISO-8601 timestamp>",
+  "release_notes": "<1 to 8192 UTF-8 bytes>",
+  "update": {
+    "key_id": "ed25519-2026-07",
+    "schema": 1,
+    "signature": "<86-character unpadded base64url Ed25519 signature>"
+  },
   "version": "vX.Y.Z"
 }
 ```
+
+The signature covers the public descriptor only: `version`, `commit`,
+`published_at`, `release_notes`, public asset fields (`id`, `platform`,
+`filename`, `size`, `sha256`), `key_id`, and `schema`. Canonical bytes are
+UTF-8 JSON with recursively sorted keys, no insignificant whitespace, and
+non-ASCII characters preserved. The private R2 object key and content type are
+not signed or returned by `GET /api/update/latest/{platform_id}`.
+`latest.json` remains an unsigned pointer; clients verify the pointed
+descriptor and retain the greatest signed version and publication time they
+have observed.
 
 Content types are `application/zip` for Windows and macOS,
 `application/gzip` for Linux, and `application/json` for metadata files.
@@ -157,10 +176,82 @@ Local publication reads the same signing material from
 `%LOCALAPPDATA%\Backchannel\release-signing\ed25519-2026-07.private`; an
 explicit `BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY` overrides that file.
 
+Rotate signing keys by adding the new public key to
+`desktop/release_signing_keys.json`, retaining every still-accepted old key,
+and changing `active` to the new ID before building the first release signed
+by it. Keep the prior private key protected until supported installed versions
+have moved beyond it. Removing an old public key requires shipping a later
+desktop bundle; an offline client cannot receive an emergency revocation, so
+key compromise requires a new key, a new patch release, and direct operator
+communication. The persisted greatest-seen version/time limits replay after a
+client has observed the replacement but is not an offline revocation service.
+
 The checked-in `scripts/r2-object.mjs` client calls Cloudflare R2 directly and
 is the only release object transport. `AWS4-HMAC-SHA256` and `x-amz-*` are the
 protocol field names Cloudflare requires for its S3-compatible API; they are
 not AWS credentials or services.
+
+## Update authorization and desktop trust
+
+Deploy `docs-site/migrations/0004_release_update_grants.sql` before enabling
+desktop update authorization. The authenticated recipient portal calls
+`POST /api/download/update-grants`; the Worker stores only the grant hash with
+its exact account, version, asset, and 15-minute expiry. The desktop then
+streams `GET /api/update/assets/{version}/{asset_id}` with the raw grant once.
+Every request rechecks expiry, account state, revocation, and Latest or
+explicit-version entitlement. Raw grants must not enter D1, browser storage,
+URLs, logs, or desktop state.
+
+Frozen desktop TLS uses the direct `certifi` CA bundle. Downloads stay under
+the application-data update directory, while staging is an exact sibling of
+the install root so the final rename remains on one filesystem. Platform roots
+and launchers are:
+
+| Platform | Install/archive root | Launcher |
+| --- | --- | --- |
+| Windows x64 | `Backchannel/` | `Backchannel.exe` |
+| Linux x64 | `Backchannel/` | `Backchannel` |
+| macOS arm64 | `Backchannel.app/` | `Contents/MacOS/Backchannel` |
+
+Before extraction, require free space for the archive, declared expanded
+files, the installed backup, and a 10 percent margin. macOS extraction uses
+`/usr/bin/ditto -x -k`; Linux and macOS links must resolve within the one
+trusted root. Never replace these paths with a shared temporary filesystem or
+Python-only macOS zip extraction.
+
+## Updater acceptance
+
+Run the signed fake-server acceptance from the repository root:
+
+```powershell
+$env:PYTHONPATH="$PWD;$PWD\backend;$PWD\desktop"
+python -m unittest desktop.tests.test_update_acceptance
+```
+
+Run a real Windows archive through native extraction, token-bound health,
+successful swap, and forced rollback:
+
+```powershell
+python desktop/scripts/smoke_update_archive.py --platform windows-x64 --archive .\release-assets\vX.Y.Z\Backchannel-windows-x64.zip
+```
+
+The Linux release-container build performs the same native archive smoke after
+creating its tarball and before export:
+
+```powershell
+docker build --file desktop/Dockerfile.release-linux --build-context controller=desktop/scripts --target export --output type=local,dest=linux-output .
+```
+
+The credential-free macOS build runs
+`smoke_update_archive.py --platform macos-arm64` against the real
+`ditto -c -k --keepParent` `.app` archive before cache handoff. Its native run
+is reserved for the later approved CI phase. Configure
+`BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY` in the protected production
+environment before allowing that publication job to proceed.
+
+ALP-150's current phase ends after local verification and local merge. Do not
+push, publish, configure production secrets, or start CI/CD/scanning until the
+user explicitly approves the final release phase.
 
 ## Release checklist
 

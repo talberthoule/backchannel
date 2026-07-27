@@ -1,7 +1,7 @@
+import type { DesktopUpdateController } from "../types";
 import AdminPanel, { type AdminTab } from "./AdminPanel";
 import KnowledgeManager from "./KnowledgeManager";
 import OfferingsManager from "./OfferingsManager";
-import type { DesktopUpdateController } from "../hooks/useDesktopUpdate";
 
 export type { AdminTab };
 

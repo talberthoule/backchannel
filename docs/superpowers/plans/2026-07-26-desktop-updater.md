@@ -796,7 +796,7 @@ the main `_internal` directory. Collect the completed standalone binary beside
 `Backchannel` on Windows/Linux and into the macOS `BUNDLE`. Keep its console
 disabled and give the Windows binary the existing icon.
 
-- [ ] **Step 6: Run GREEN and desktop suite**
+- [x] **Step 6: Run GREEN and desktop suite**
 
 Run from the repository root with both import roots:
 
@@ -945,12 +945,35 @@ git commit -m "feat: add desktop update experience"
 ### Task 7: Prove end-to-end safety and prepare the local merge
 
 **Files:**
+- Create: `.dockerignore`
 - Create: `desktop/tests/test_update_acceptance.py`
 - Create: `desktop/scripts/smoke_update_archive.py`
+- Create: `frontend/src/components/AppOverlays.tsx`
+- Create: `frontend/src/hooks/desktopUpdateAuthorization.ts`
+- Create: `frontend/src/hooks/useAppUpdates.ts`
+- Create: `frontend/src/services/desktopUpdateApi.ts`
+- Modify: `backend/app/main.py`
+- Modify: `backend/app/routers/analyze.py`
+- Modify: `backend/app/routers/artifacts.py`
+- Modify: `backend/app/routers/imports.py`
+- Modify: `backend/app/routers/retranscribe.py`
+- Modify: `backend/app/routers/synthesis.py`
+- Modify: `backend/app/routers/updates.py`
+- Modify: `backend/app/services/update_service.py`
+- Modify: `backend/tests/test_runtime_activity.py`
+- Modify: `desktop/launcher.py`
+- Modify: `desktop/updater.py`
 - Modify: `desktop/tests/test_release_contract.py`
 - Modify: `scripts/release_desktop.ps1`
 - Modify: `desktop/Dockerfile.release-linux`
 - Modify: `.github/workflows/desktop-release.yml`
+- Modify: `docs-site/worker.js`
+- Modify: `frontend/src/App.tsx`
+- Modify: `frontend/src/components/ManagementView.tsx`
+- Modify: `frontend/src/hooks/useDesktopUpdate.ts`
+- Modify: `frontend/src/hooks/useSession.ts`
+- Modify: `frontend/src/services/api.ts`
+- Modify: `frontend/src/types/index.ts`
 - Modify: `docs/releasing.md`
 - Modify: `AGENTS.md`
 - Modify: `CLAUDE.md`
@@ -961,7 +984,7 @@ git commit -m "feat: add desktop update experience"
 - Consumes: every prior task.
 - Produces: one frozen feature-branch SHA for `claude-2` review and local merge.
 
-- [ ] **Step 1: Write the Windows acceptance test before its harness**
+- [x] **Step 1: Write the Windows acceptance test before its harness**
 
 Create a temporary old install, signed full update zip, local descriptor/grant
 server, and real updater plan. The Windows test must:
@@ -991,7 +1014,7 @@ creating the tarball, and the credential-free macOS build calls it after
 `ditto -c -k --keepParent` and before cache handoff. The macOS job must use the
 real `.app` archive, not a synthetic zip.
 
-- [ ] **Step 2: Run the acceptance test and confirm RED**
+- [x] **Step 2: Run the acceptance test and confirm RED**
 
 Run:
 
@@ -1004,14 +1027,14 @@ Expected: failure at the first missing integrated behavior, before adding any
 acceptance-only production path, and release-contract failure because the three
 native packaging paths do not yet invoke the smoke runner.
 
-- [ ] **Step 3: Make only integration corrections**
+- [x] **Step 3: Make only integration corrections**
 
 Wire existing interfaces until the acceptance test passes. Do not add a
 second downloader, test-only production switch, generic plugin interface, or
 new state store. Every discovered bug first receives the smallest focused
 regression test in the owning task's test file.
 
-- [ ] **Step 4: Update operator documentation**
+- [x] **Step 4: Update operator documentation**
 
 Document:
 
@@ -1031,7 +1054,7 @@ Document:
 Change the design status footer to record implementation verification date,
 and check completed plan boxes only after their commands have passed.
 
-- [ ] **Step 5: Run fresh complete verification**
+- [x] **Step 5: Run fresh complete verification**
 
 Create an isolated Python 3.12 environment for the backend requirements, then
 run:

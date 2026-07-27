@@ -393,6 +393,36 @@ def _run_tray(port: int, data_dir: Path, instance_token: str | None = None) -> b
     return requested.is_set()
 
 
+def _configure_update_environment(instance_token: str, headless: bool) -> None:
+    root = install_root()
+    packaged = bool(getattr(sys, "frozen", False))
+    os.environ["BACKCHANNEL_DESKTOP"] = "1" if packaged else "0"
+    os.environ["BACKCHANNEL_INSTANCE_TOKEN"] = instance_token
+    os.environ["BACKCHANNEL_INSTALL_DIR"] = str(root)
+    os.environ["BACKCHANNEL_UPDATE_KEYS"] = str(resource("release_signing_keys.json"))
+    os.environ["BACKCHANNEL_UPDATE_HELPER"] = str(updater_path(root))
+    os.environ["BACKCHANNEL_UPDATE_APPLY_DISABLED"] = (
+        "1" if headless or not packaged else "0"
+    )
+    os.environ["BACKCHANNEL_BOUND_HOST"] = LOOPBACK_HOST
+
+
+def _launch_requested_update(requested: bool, data_dir: Path, log) -> int:
+    if not requested:
+        return 0
+    try:
+        _launch_update_helper(
+            data_dir, Path(os.environ["BACKCHANNEL_UPDATE_HELPER"])
+        )
+        return 0
+    except Exception:
+        log.exception("failed to start update helper")
+        _error_dialog(
+            f"Backchannel could not start the update. See log: {data_dir / 'backchannel.log'}"
+        )
+        return 1
+
+
 def run(headless: bool = False) -> int:
     data_dir = app_data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -455,17 +485,7 @@ def run(headless: bool = False) -> int:
     os.environ["DATABASE_URL"] = pg.database_url(pg_port)
     os.environ["DATA_DIR"] = str(data_dir / "data")
     os.environ["FRONTEND_DIST"] = str(resource("frontend"))
-    root = install_root()
-    packaged = bool(getattr(sys, "frozen", False))
-    os.environ["BACKCHANNEL_DESKTOP"] = "1" if packaged else "0"
-    os.environ["BACKCHANNEL_INSTANCE_TOKEN"] = instance_token
-    os.environ["BACKCHANNEL_INSTALL_DIR"] = str(root)
-    os.environ["BACKCHANNEL_UPDATE_KEYS"] = str(resource("release_signing_keys.json"))
-    os.environ["BACKCHANNEL_UPDATE_HELPER"] = str(updater_path(root))
-    os.environ["BACKCHANNEL_UPDATE_APPLY_DISABLED"] = (
-        "1" if headless or not packaged else "0"
-    )
-    os.environ["BACKCHANNEL_BOUND_HOST"] = LOOPBACK_HOST
+    _configure_update_environment(instance_token, headless)
     ffmpeg = resource("ffmpeg") / (
         "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
     )
@@ -520,16 +540,7 @@ def run(headless: bool = False) -> int:
         listener.close()
         pg.stop()
         lock.unlink(missing_ok=True)
-    if update_requested:
-        try:
-            _launch_update_helper(data_dir, Path(os.environ["BACKCHANNEL_UPDATE_HELPER"]))
-        except Exception:
-            log.exception("failed to start update helper")
-            _error_dialog(
-                f"Backchannel could not start the update. See log: {data_dir / 'backchannel.log'}"
-            )
-            return 1
-    return 0
+    return _launch_requested_update(update_requested, data_dir, log)
 
 
 if __name__ == "__main__":

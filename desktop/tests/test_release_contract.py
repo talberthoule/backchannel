@@ -14,6 +14,7 @@ PLATFORM_PUBLISHER = (
 )
 LINUX_DOCKERFILE = (ROOT / "desktop" / "Dockerfile.release-linux").read_text()
 COORDINATOR = (ROOT / "scripts" / "release_desktop.ps1").read_text()
+UPDATE_SMOKE = ROOT / "desktop" / "scripts" / "smoke_update_archive.py"
 
 
 class ReleaseContractTests(unittest.TestCase):
@@ -286,6 +287,36 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertNotIn("exclude_binaries=True", updater_block)
         self.assertRegex(SPEC, r"COLLECT\(\s*exe,\s*updater_exe,")
         self.assertIn('release_signing_keys.json"), "."', SPEC)
+
+    def test_every_native_archive_runs_the_production_update_smoke(self):
+        self.assertTrue(UPDATE_SMOKE.is_file())
+        windows_zip = COORDINATOR.index("Compress-Archive")
+        windows_smoke = COORDINATOR.index("smoke_update_archive.py")
+        self.assertLess(windows_zip, windows_smoke)
+        self.assertIn("--platform windows-x64 --archive $AssetPath", COORDINATOR)
+
+        linux_archive = LINUX_DOCKERFILE.index(
+            'tar -C dist -czf "/out/Backchannel-linux-x64.tar.gz" Backchannel'
+        )
+        linux_smoke = LINUX_DOCKERFILE.index("smoke_update_archive.py")
+        self.assertLess(linux_archive, linux_smoke)
+        self.assertIn("--platform linux-x64", LINUX_DOCKERFILE)
+        self.assertIn(
+            "--archive /out/Backchannel-linux-x64.tar.gz",
+            LINUX_DOCKERFILE,
+        )
+
+        build = WORKFLOW.split("  publish-macos:", 1)[0]
+        mac_archive = build.index("ditto -c -k --keepParent")
+        mac_smoke = build.index("smoke_update_archive.py")
+        cache_handoff = build.index("Prepare macOS cache handoff")
+        self.assertLess(mac_archive, mac_smoke)
+        self.assertLess(mac_smoke, cache_handoff)
+        self.assertIn("--platform macos-arm64", build)
+        self.assertIn(
+            "--archive ../controller/release-assets/Backchannel-macos-arm64.zip",
+            build,
+        )
 
 
 if __name__ == "__main__":
