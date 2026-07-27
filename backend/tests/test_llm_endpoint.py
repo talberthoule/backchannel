@@ -150,8 +150,11 @@ class KeylessPathTests(unittest.IsolatedAsyncioTestCase):
              mock.patch.object(llm, "_call_openai", mock.AsyncMock(return_value=("local reply", None))) as call:
             reply = await llm.generate_text(OPENAI_COMPATIBLE_MODEL, "hello")
         self.assertEqual("local reply", reply)
-        self.assertEqual(endpoint, call.await_args.args[0])
-        self.assertEqual("", call.await_args.args[4])
+        # _call_openai takes the model id first so it can size the timeout and
+        # output budget for a self-hosted server (ALP-154).
+        self.assertEqual(OPENAI_COMPATIBLE_MODEL, call.await_args.args[0])
+        self.assertEqual(endpoint, call.await_args.args[1])
+        self.assertEqual("", call.await_args.args[5])
 
     async def test_hosted_openai_still_requires_a_key(self):
         with mock.patch.object(llm, "_resolve_key", mock.AsyncMock(return_value="")):
@@ -245,8 +248,9 @@ class EndpointModelRoutingTests(unittest.IsolatedAsyncioTestCase):
              mock.patch.object(llm, "_call_openai", mock.AsyncMock(return_value=("hi", None))) as call:
             reply = await llm.generate_text("endpoint:lm-studio:antares-1b", "hello")
         self.assertEqual("hi", reply)
-        self.assertEqual(endpoint, call.await_args.args[0])
-        self.assertEqual("", call.await_args.args[4])
+        self.assertEqual("endpoint:lm-studio:antares-1b", call.await_args.args[0])
+        self.assertEqual(endpoint, call.await_args.args[1])
+        self.assertEqual("", call.await_args.args[5])
 
 
 class LegacyEndpointRetirementTests(unittest.IsolatedAsyncioTestCase):

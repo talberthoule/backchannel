@@ -1,0 +1,227 @@
+"""Request limits sized for self-hosted models (ALP-154).
+
+A briefing against a local 4B model failed two ways at once: the meeting lens
+exceeded the 120 s request timeout, and the arbiter's JSON was cut off mid
+structure by the server's own output default, surfacing as a bare json decode
+error rather than anything the user could act on.
+"""
+
+import unittest
+from unittest import mock
+
+import httpx
+
+from app.config import settings
+from app.services import llm
+from app.services.llm import LLMReplyTruncated
+from app.services.llm_endpoint import OpenAIEndpoint
+from tests.test_briefing_provider_routing import FakeHTTPX, _chat_response
+from app.services.briefing_synthesis import BriefLensOutput
+
+SELF_HOSTED = "endpoint:lm-studio:qwen3.5-4b"
+HOSTED = "gpt-5.5"
+
+
+class RequestLimitTests(unittest.TestCase):
+    def test_a_self_hosted_model_gets_the_longer_timeout(self):
+        self.assertEqual(
+            settings.LLM_SELF_HOSTED_TIMEOUT_SECONDS, llm._request_timeout(SELF_HOSTED)
+        )
+
+    def test_a_hosted_model_keeps_the_short_timeout(self):
+        self.assertEqual(settings.LLM_TIMEOUT_SECONDS, llm._request_timeout(HOSTED))
+        # A stuck cloud call must still fail reasonably fast.
+        self.assertLess(
+            llm._request_timeout(HOSTED), llm._request_timeout(SELF_HOSTED)
+        )
+
+    def test_the_local_timeout_actually_covers_a_slow_briefing(self):
+        # The observed failure was a ReadTimeout at 120 s on one lens.
+        self.assertGreaterEqual(llm._request_timeout(SELF_HOSTED), 600)
+
+    def test_only_self_hosted_requests_carry_an_output_budget(self):
+        local = llm._apply_output_budget({}, SELF_HOSTED)
+        self.assertEqual(settings.LLM_SELF_HOSTED_MAX_TOKENS, local["max_tokens"])
+        self.assertNotIn("max_tokens", llm._apply_output_budget({}, HOSTED))
+
+    def test_the_budget_is_large_enough_for_the_briefing_contract(self):
+        # The arbiter reply died at ~6605 characters, roughly 1900 tokens.
+        self.assertGreaterEqual(settings.LLM_SELF_HOSTED_MAX_TOKENS, 4096)
+
+
+class TruncationDetectionTests(unittest.TestCase):
+    def test_a_length_stop_is_recognised(self):
+        self.assertTrue(llm._truncated({"choices": [{"finish_reason": "length"}]}))
+
+    def test_a_normal_stop_is_not(self):
+        self.assertFalse(llm._truncated({"choices": [{"finish_reason": "stop"}]}))
+
+    def test_a_reply_without_choices_is_not_treated_as_truncated(self):
+        self.assertFalse(llm._truncated({}))
+
+    def test_the_message_names_the_agent_and_the_remedy(self):
+        message = str(LLMReplyTruncated(SELF_HOSTED, "brief_arbiter"))
+        self.assertIn("brief_arbiter", message)
+        self.assertIn(SELF_HOSTED, message)
+        self.assertIn("output limit", message)
+        self.assertIn("max tokens", message)
+
+
+class TruncatedJsonCallTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.enterContext(
+            mock.patch.object(llm, "is_local_only", mock.AsyncMock(return_value=False))
+        )
+        self.enterContext(
+            mock.patch.object(llm, "_resolve_key", mock.AsyncMock(return_value="k"))
+        )
+        self.enterContext(mock.patch.object(llm, "record_token_usage", mock.AsyncMock()))
+        self.enterContext(
+            mock.patch.object(
+                llm,
+                "resolve_endpoint",
+                mock.AsyncMock(
+                    return_value=OpenAIEndpoint(
+                        base_url="http://localhost:1234/v1", model="qwen3.5-4b", api_key=""
+                    )
+                ),
+            )
+        )
+        llm._json_mode_by_base_url.clear()
+        self.addCleanup(llm._json_mode_by_base_url.clear)
+
+    def _truncated_response(self):
+        request = httpx.Request("POST", "http://localhost:1234/v1/chat/completions")
+        return httpx.Response(
+            200,
+            request=request,
+            json={
+                # Well-formed JSON right up to the cut, which is exactly why the
+                # raw decode error was so misleading.
+                "choices": [
+                    {"message": {"content": '{"notes": "part'}, "finish_reason": "length"}
+                ],
+                "usage": {},
+            },
+        )
+
+    async def test_a_truncated_reply_is_reported_as_an_output_limit(self):
+        fake = FakeHTTPX([self._truncated_response()])
+        self.enterContext(mock.patch.object(llm.httpx, "AsyncClient", fake))
+
+        with self.assertRaises(LLMReplyTruncated) as ctx:
+            await llm.generate_json(
+                SELF_HOSTED, "Prompt", BriefLensOutput, source="brief_arbiter"
+            )
+        self.assertEqual("brief_arbiter", ctx.exception.source)
+        # Retrying cannot help, so the same ceiling must not be hit twice.
+        self.assertEqual(1, len(fake.posts))
+
+    async def test_the_request_carries_the_output_budget(self):
+        fake = FakeHTTPX([_chat_response('{"notes": "ok"}')])
+        self.enterContext(mock.patch.object(llm.httpx, "AsyncClient", fake))
+
+        await llm.generate_json(SELF_HOSTED, "Prompt", BriefLensOutput)
+
+        self.assertEqual(
+            settings.LLM_SELF_HOSTED_MAX_TOKENS, fake.posts[0]["json"]["max_tokens"]
+        )
+
+
+class OutputBudgetNegotiationTests(unittest.IsolatedAsyncioTestCase):
+    """A budget is only safe relative to a context window we cannot see."""
+
+    def setUp(self):
+        self.enterContext(
+            mock.patch.object(llm, "is_local_only", mock.AsyncMock(return_value=False))
+        )
+        self.enterContext(
+            mock.patch.object(llm, "_resolve_key", mock.AsyncMock(return_value="k"))
+        )
+        self.enterContext(mock.patch.object(llm, "record_token_usage", mock.AsyncMock()))
+        self.enterContext(
+            mock.patch.object(
+                llm,
+                "resolve_endpoint",
+                mock.AsyncMock(
+                    return_value=OpenAIEndpoint(
+                        base_url="http://localhost:1234/v1", model="qwen3.5-4b", api_key=""
+                    )
+                ),
+            )
+        )
+        for cache in (llm._json_mode_by_base_url, llm._json_budget_by_base_url):
+            cache.clear()
+            self.addCleanup(cache.clear)
+
+    def _context_refusal(self):
+        request = httpx.Request("POST", "http://localhost:1234/v1/chat/completions")
+        return httpx.Response(
+            400,
+            request=request,
+            json={"error": "the prompt plus max_tokens exceeds the context length"},
+        )
+
+    async def test_the_budget_is_halved_until_the_server_accepts_it(self):
+        fake = FakeHTTPX(
+            [self._context_refusal(), self._context_refusal(), _chat_response('{"notes": "ok"}')]
+        )
+        self.enterContext(mock.patch.object(llm.httpx, "AsyncClient", fake))
+
+        parsed = await llm.generate_json(SELF_HOSTED, "Prompt", BriefLensOutput)
+
+        self.assertEqual("ok", parsed.notes)
+        budgets = [p["json"]["max_tokens"] for p in fake.posts]
+        self.assertEqual(
+            [
+                settings.LLM_SELF_HOSTED_MAX_TOKENS,
+                settings.LLM_SELF_HOSTED_MAX_TOKENS // 2,
+                settings.LLM_SELF_HOSTED_MAX_TOKENS // 4,
+            ],
+            budgets,
+        )
+
+    async def test_the_accepted_budget_is_reused_on_the_next_call(self):
+        fake = FakeHTTPX(
+            [
+                self._context_refusal(),
+                _chat_response('{"notes": "a"}'),
+                _chat_response('{"notes": "b"}'),
+            ]
+        )
+        self.enterContext(mock.patch.object(llm.httpx, "AsyncClient", fake))
+
+        await llm.generate_json(SELF_HOSTED, "Prompt", BriefLensOutput)
+        await llm.generate_json(SELF_HOSTED, "Prompt", BriefLensOutput)
+
+        # Three posts, not four: the second call starts at the learned budget.
+        self.assertEqual(3, len(fake.posts))
+        self.assertEqual(
+            settings.LLM_SELF_HOSTED_MAX_TOKENS // 2, fake.posts[2]["json"]["max_tokens"]
+        )
+
+    async def test_an_unrelated_400_is_not_mistaken_for_a_budget_problem(self):
+        request = httpx.Request("POST", "http://localhost:1234/v1/chat/completions")
+        broken = httpx.Response(400, request=request, json={"error": "model not loaded"})
+        fake = FakeHTTPX([broken])
+        self.enterContext(mock.patch.object(llm.httpx, "AsyncClient", fake))
+
+        with self.assertRaises(httpx.HTTPStatusError):
+            await llm.generate_json(SELF_HOSTED, "Prompt", BriefLensOutput)
+        self.assertEqual(1, len(fake.posts))
+
+    async def test_the_server_explanation_survives_in_the_error(self):
+        # Losing the body is what reduced a context refusal to a bare HTTP 400.
+        request = httpx.Request("POST", "http://localhost:1234/v1/chat/completions")
+        fake = FakeHTTPX(
+            [httpx.Response(400, request=request, json={"error": "model not loaded"})]
+        )
+        self.enterContext(mock.patch.object(llm.httpx, "AsyncClient", fake))
+
+        with self.assertRaises(httpx.HTTPStatusError) as ctx:
+            await llm.generate_json(SELF_HOSTED, "Prompt", BriefLensOutput)
+        self.assertIn("model not loaded", str(ctx.exception))
+
+
+if __name__ == "__main__":
+    unittest.main()

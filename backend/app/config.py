@@ -15,6 +15,16 @@ class Settings(BaseSettings):
     # Wire model name for the openai-compatible provider (e.g. "llama3.1:8b").
     # The llm.openai_compatible.model_id app setting takes precedence.
     OPENAI_COMPATIBLE_MODEL_ID: str = ""
+    # How long to wait on a chat-completions reply. Hosted models answer in
+    # seconds; a self-hosted model on CPU can take minutes on a long briefing
+    # prompt, so it gets its own far larger ceiling (ALP-154). Raising the
+    # hosted value instead would make a genuinely stuck cloud call hang.
+    LLM_TIMEOUT_SECONDS: float = 120
+    LLM_SELF_HOSTED_TIMEOUT_SECONDS: float = 900
+    # Completion budget sent to self-hosted servers. Left unset, the server's
+    # own default decides, and LM Studio's truncated a briefing mid-JSON at
+    # ~1900 tokens. Hosted providers keep their defaults.
+    LLM_SELF_HOSTED_MAX_TOKENS: int = 8192
     DATABASE_URL: str = "postgresql+asyncpg://callhelper:changeme@db:5432/callhelper"
     FRONTEND_DIST: str = ""  # path to built frontend; empty = nginx serves it (Docker)
     GEMINI_MODEL: str = "gemini-3.1-flash-live-preview"
