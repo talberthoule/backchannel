@@ -2224,6 +2224,37 @@ test('recipient host exposes only a strict signed Latest update descriptor', asy
   }
 });
 
+test('public Latest descriptor is served from edge cache after the first catalog read', async () => {
+  const bucket = progressiveReleaseBucket({ signed: true });
+  const bindingsValue = releaseBindings(bucket);
+  const stored = new Map();
+  const cache = {
+    async match(requestValue) {
+      return stored.get(requestValue.url)?.clone();
+    },
+    async put(requestValue, response) {
+      stored.set(requestValue.url, response.clone());
+    },
+  };
+  const requestValue = () => downloadRequest(
+    '/api/update/latest/windows-x64', undefined, { method: 'GET' },
+  );
+
+  const first = await workerModule.route(
+    requestValue(), bindingsValue.env, undefined, { cache },
+  );
+  assert.equal(first.status, 200);
+  const catalogReads = bucket.calls.length;
+  assert.ok(catalogReads > 0);
+
+  const second = await workerModule.route(
+    requestValue(), bindingsValue.env, undefined, { cache },
+  );
+  assert.equal(second.status, 200);
+  assert.equal(bucket.calls.length, catalogReads);
+  assert.deepEqual(await second.json(), await first.json());
+});
+
 const updateNonce = '0123456789abcdef0123456789abcdef';
 const updateGrantToken = await createSessionToken(
   (length) => new Uint8Array(length).fill(21),

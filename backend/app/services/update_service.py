@@ -461,7 +461,15 @@ class UpdateService:
         return start, digest
 
     def _open_download(self, grant: str, start: int, size: int):
-        response = self._asset_request(grant, start if start else None)
+        replacement = None
+        try:
+            response = self._asset_request(grant, start if start else None)
+        except urllib.error.HTTPError as error:
+            if not start or error.code != 416:
+                raise
+            response = self._asset_request(grant, None)
+            start = 0
+            replacement = hashlib.sha256()
         status = getattr(response, "status", None)
         if start and status == 206:
             wanted = f"bytes {start}-{size - 1}/{size}"
@@ -478,7 +486,7 @@ class UpdateService:
         if status != 200:
             response.close()
             raise InvalidUpdate("invalid download response")
-        return response, start, None
+        return response, start, replacement
 
     def _stream_download(
         self, response, partial: Path, start: int, size: int, digest
@@ -528,6 +536,9 @@ class UpdateService:
             start, digest = self._resume_digest(
                 partial, descriptor["asset"]["size"]
             )
+            if start == descriptor["asset"]["size"]:
+                self._verify_download(partial, descriptor, digest, start)
+                return
             response, start, replacement = self._open_download(
                 grant, start, descriptor["asset"]["size"]
             )

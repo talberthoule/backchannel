@@ -73,6 +73,7 @@ class UpdateFixture:
         self.asset_requests = []
         self.descriptor_delay = 0
         self.asset_status = 200
+        self.reject_range = False
         self.ignore_range = False
         self.wrong_range = False
         self.slow_asset = False
@@ -102,14 +103,22 @@ class UpdateFixture:
                     return
 
                 fixture.asset_requests.append(dict(self.headers))
+                range_value = self.headers.get("Range")
+                if range_value and fixture.reject_range:
+                    self.send_response(416)
+                    self.end_headers()
+                    return
                 if fixture.asset_status != 200:
                     self.send_response(fixture.asset_status)
                     self.end_headers()
                     return
                 start = 0
-                range_value = self.headers.get("Range")
                 if range_value and not fixture.ignore_range:
                     start = int(range_value.removeprefix("bytes=").removesuffix("-"))
+                    if start >= len(fixture.archive):
+                        self.send_response(416)
+                        self.end_headers()
+                        return
                     body = fixture.archive[start:]
                     self.send_response(206)
                     range_start = start + 1 if fixture.wrong_range else start
@@ -292,6 +301,20 @@ class UpdateServiceTests(unittest.TestCase):
             persisted = service.state_path.read_text()
             self.assertNotIn(GRANT, persisted)
 
+    def test_complete_partial_is_verified_without_an_unsatisfiable_range(self):
+        archive = zip_bundle()
+        with UpdateFixture(descriptor(archive), archive) as fixture:
+            service = self.service(fixture)
+            service.check(force=True)
+            service.partial_path.parent.mkdir(parents=True, exist_ok=True)
+            service.partial_path.write_bytes(archive)
+            service.start_download(GRANT)
+            service.wait_for_download()
+
+            self.assertEqual(service.status()["state"], "ready")
+            self.assertEqual(fixture.asset_requests, [])
+            self.assertTrue((service.staged_root / "Backchannel.exe").is_file())
+
     def test_range_ignored_restarts_and_expired_grant_preserves_partial(self):
         archive = zip_bundle()
         with UpdateFixture(descriptor(archive), archive) as fixture:
@@ -316,6 +339,51 @@ class UpdateServiceTests(unittest.TestCase):
             self.assertEqual(service.status()["state"], "needs_authorization")
             self.assertEqual(service.partial_path.read_bytes(), b"old")
 
+    def test_wrong_content_range_restarts_from_zero(self):
+        archive = zip_bundle()
+        with UpdateFixture(descriptor(archive), archive) as fixture:
+            fixture.wrong_range = True
+            service = self.service(fixture)
+            service.check(force=True)
+            service.partial_path.parent.mkdir(parents=True, exist_ok=True)
+            service.partial_path.write_bytes(archive[:7])
+            service.start_download(GRANT)
+            service.wait_for_download()
+
+            self.assertEqual(service.status()["state"], "ready")
+            self.assertEqual(len(fixture.asset_requests), 2)
+            self.assertEqual(fixture.asset_requests[0]["Range"], "bytes=7-")
+            self.assertNotIn("Range", fixture.asset_requests[1])
+
+    def test_unsatisfiable_resume_restarts_from_zero(self):
+        archive = zip_bundle()
+        with UpdateFixture(descriptor(archive), archive) as fixture:
+            fixture.reject_range = True
+            service = self.service(fixture)
+            service.check(force=True)
+            service.partial_path.parent.mkdir(parents=True, exist_ok=True)
+            service.partial_path.write_bytes(archive[:7])
+            service.start_download(GRANT)
+            service.wait_for_download()
+
+            self.assertEqual(service.status()["state"], "ready")
+            self.assertEqual(len(fixture.asset_requests), 2)
+            self.assertEqual(fixture.asset_requests[0]["Range"], "bytes=7-")
+            self.assertNotIn("Range", fixture.asset_requests[1])
+
+    def test_download_is_single_flight(self):
+        archive = zip_bundle({"Backchannel/payload.bin": os.urandom(2_000_000)})
+        with UpdateFixture(descriptor(archive), archive) as fixture:
+            fixture.slow_asset = True
+            service = self.service(fixture)
+            service.check(force=True)
+            self.assertEqual(service.start_download(GRANT)["state"], "downloading")
+            self.assertEqual(service.start_download(GRANT)["state"], "downloading")
+            service.wait_for_download()
+
+            self.assertEqual(service.status()["state"], "ready")
+            self.assertEqual(len(fixture.asset_requests), 1)
+
     def test_hash_size_and_archive_validation_fail_closed(self):
         archive = zip_bundle()
         with UpdateFixture(descriptor(archive), archive + b"extra") as fixture:
@@ -325,6 +393,15 @@ class UpdateServiceTests(unittest.TestCase):
             service.wait_for_download()
             self.assertEqual(service.status()["state"], "error")
             self.assertFalse(service.partial_path.exists())
+
+        for body in (archive[:-1], b"x" * len(archive)):
+            with UpdateFixture(descriptor(archive), body) as fixture:
+                service = self.service(fixture, data_root=self.data_root / str(len(body)))
+                service.check(force=True)
+                service.start_download(GRANT)
+                service.wait_for_download()
+                self.assertEqual(service.status()["state"], "error")
+                self.assertFalse(service.partial_path.exists())
 
         unsafe = zip_bundle({"../outside": b"bad"})
         with UpdateFixture(descriptor(unsafe), unsafe) as fixture:

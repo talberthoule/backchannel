@@ -420,7 +420,30 @@ class LauncherHelperTests(unittest.TestCase):
                 data_dir / "updates" / "bin" / "v0.4.0" / helper.name,
             )
             self.assertEqual(copied.read_bytes(), b"helper")
-            popen.assert_called_once_with([str(copied), str(marker)])
+            popen.assert_called_once_with(
+                [str(copied), str(marker)],
+                cwd=str(copied.parent),
+            )
+
+    def test_tray_update_label_is_resolved_when_the_menu_opens(self):
+        pystray = Mock()
+        pystray.Menu.side_effect = lambda *items: items
+        pystray.MenuItem.side_effect = lambda label, action: (label, action)
+        with (
+            patch.dict(launcher.sys.modules, {"pystray": pystray}),
+            patch.object(launcher, "_tray_image"),
+            patch.object(
+                launcher,
+                "_update_menu_label",
+                return_value="Update v0.4.0: Safer updates",
+            ) as label,
+        ):
+            launcher._run_tray(8474, Path("data"), "instance-secret")
+            menu = pystray.Icon.call_args.kwargs["menu"]
+            resolved = menu[2][0](None)
+        self.assertTrue(callable(menu[2][0]))
+        self.assertEqual(resolved, "Update v0.4.0: Safer updates")
+        label.assert_called_once_with(8474)
 
     def test_stale_lock_file_means_no_instance(self):
         with tempfile.TemporaryDirectory() as tmp:

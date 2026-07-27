@@ -1540,20 +1540,38 @@ async function handleDownloadRequest(request, env, dependencies) {
   return routeValue[1](request, env, dependencies);
 }
 
-async function handlePublicUpdate(request, env) {
+async function handlePublicUpdate(request, env, dependencies = {}) {
   if (request.method !== 'GET') {
     return downloadJson(405, { ok: false, error: 'Method not allowed.' }, { allow: 'GET' });
   }
   const match = /^\/api\/update\/latest\/(windows-x64|macos-arm64|linux-x64)$/
     .exec(new URL(request.url).pathname);
   if (!match || !env.RELEASES) return releaseNotFound();
+  const cache = dependencies.cache ?? globalThis.caches?.default;
+  const cacheKey = new Request(request.url);
+  if (cache) {
+    try {
+      const cached = await cache.match(cacheKey);
+      if (cached) return cached;
+    } catch {
+      // Cache failure must not hide a published update.
+    }
+  }
   try {
     const catalog = await loadReleaseCatalog(env.RELEASES);
     const manifest = catalog.manifests.get(catalog.latestVersion);
     const descriptor = publicUpdateDescriptor(manifest, match[1]);
-    return descriptor
+    const response = descriptor
       ? downloadJson(200, descriptor, { 'cache-control': 'public, max-age=300' })
       : releaseNotFound();
+    if (descriptor && cache) {
+      try {
+        await cache.put(cacheKey, response.clone());
+      } catch {
+        // The uncached response remains valid.
+      }
+    }
+    return response;
   } catch {
     return releaseNotFound();
   }
@@ -1654,7 +1672,7 @@ async function dispatch(url, request, env, verify, dependencies) {
     const assetPath = DOWNLOAD_ASSETS.get(url.pathname);
     if (assetPath) return handleDownloadAsset(request, env, assetPath);
     if (url.pathname.startsWith('/api/update/latest/')) {
-      return handlePublicUpdate(request, env);
+      return handlePublicUpdate(request, env, dependencies);
     }
     if (url.pathname.startsWith('/api/update/assets/')) {
       if (request.method !== 'GET') {

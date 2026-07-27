@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import updater
 from updater import (
     INSTANCE_HEADER,
     PlanError,
@@ -148,6 +149,20 @@ class UpdaterTests(unittest.TestCase):
             cwd=str(self.install),
         )
         health.assert_called_once_with(self.app_data)
+
+    def test_main_leaves_the_install_tree_before_applying(self):
+        previous = Path.cwd()
+        try:
+            os.chdir(self.install)
+            with (
+                patch.object(updater.sys, "argv", ["updater", str(self.plan_path)]),
+                patch.object(updater, "apply_update", return_value=0) as apply,
+            ):
+                self.assertEqual(updater.main(), 0)
+            self.assertEqual(Path.cwd(), self.plan_path.parent)
+            apply.assert_called_once_with(self.plan_path)
+        finally:
+            os.chdir(previous)
 
     def test_exited_new_process_rolls_back_immediately_and_relaunches_old(self):
         failed_process = Mock()

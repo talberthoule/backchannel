@@ -331,7 +331,10 @@ def _launch_update_helper(data_dir: Path, helper_source: Path) -> Path:
     temporary = destination.with_suffix(".tmp")
     shutil.copy2(source, temporary)
     os.replace(temporary, destination)
-    subprocess.Popen([str(destination), str(marker)])
+    subprocess.Popen(
+        [str(destination), str(marker)],
+        cwd=str(destination.parent),
+    )
     return destination
 
 
@@ -373,7 +376,11 @@ def _run_tray(port: int, data_dir: Path, instance_token: str | None = None) -> b
                 lambda _icon, _item: _open_data_folder(data_dir),
             ),
             pystray.MenuItem(
-                _update_menu_label(port) if instance_token else "Check for updates",
+                (
+                    lambda _item: _update_menu_label(port)
+                    if instance_token
+                    else "Check for updates"
+                ),
                 lambda _icon, _item: _check_for_updates(port, instance_token or ""),
             ),
             pystray.MenuItem("Quit", lambda _icon, _item: icon.stop()),

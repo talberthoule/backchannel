@@ -45,6 +45,15 @@ class RuntimeActivityTests(unittest.TestCase):
 
         asyncio.run(exercise())
 
+    def test_artifact_stream_stays_tracked_until_its_body_is_consumed(self):
+        from app.routers.artifacts import _stream_bytes
+
+        stream = _stream_bytes(b"export")
+        self.assertEqual(next(stream), b"export")
+        self.assertEqual(runtime_activity.busy_reason(), "artifact export")
+        stream.close()
+        self.assertEqual(runtime_activity.busy_reason(), "")
+
     def test_long_running_http_routes_use_the_shared_tracker(self):
         from app.main import app
 

@@ -436,7 +436,9 @@ def main() -> int:
     if len(sys.argv) != 2:
         return 2
     try:
-        return apply_update(Path(sys.argv[1]))
+        plan_path = Path(sys.argv[1]).resolve(strict=True)
+        os.chdir(plan_path.parent)
+        return apply_update(plan_path)
     except Exception:
         return 2
 
