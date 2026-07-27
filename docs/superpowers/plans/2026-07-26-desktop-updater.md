@@ -264,24 +264,33 @@ Expected: `publicUpdateDescriptor` is not exported and update paths return
 
 - [ ] **Step 3: Extend strict progressive parsing**
 
-Accept either no `update` field or exactly:
+Keep unsigned historical progressive manifests valid with their existing exact
+`version`, `commit`, and `asset` shape. A signed manifest instead requires
+exactly `version`, `commit`, `published_at`, `release_notes`, `asset`, and
+`update`; rejects notes above 8 KiB; and cross-checks `published_at` against the
+release identity just as it already cross-checks version and commit. Accept
+`update` only as:
 
 ```js
 function parseUpdate(value) {
   return value
-    && exactKeys(value, ['key_id', 'signature'])
+    && exactKeys(value, ['key_id', 'schema', 'signature'])
     && /^[a-z0-9-]{1,40}$/.test(value.key_id)
+    && value.schema === 1
     && /^[A-Za-z0-9_-]{86}$/.test(value.signature)
     ? value
     : null;
 }
 ```
 
-Unsigned historical manifests remain catalog-valid. Signed progressive assets
-enter the in-memory catalog as `{ ...platform.asset, update }`; the sibling
-metadata must not be dropped when `loadReleaseCatalog` synthesizes its asset
-list. `releaseSummary()` continues selecting the same six recipient fields and
-therefore redacts `update` by construction.
+Pass the release identity into `parsePlatformManifest`. Signed progressive
+assets enter the in-memory catalog as `{ ...platform.asset, update }`, while
+the synthesized catalog manifest keeps `published_at` and the common
+`release_notes` at top level. Require byte-identical notes across every signed
+platform present for a version; reject that catalog version on a mismatch.
+`publicUpdateDescriptor` reads those two top-level fields plus the selected
+asset's `update`. `releaseSummary()` continues selecting the same six recipient
+fields and therefore redacts `update` and `release_notes` by construction.
 
 - [ ] **Step 4: Add the public Latest descriptor route**
 
@@ -470,14 +479,14 @@ git commit -m "feat: authorize desktop update downloads"
 - Produces: `UpdateService.request_apply() -> dict`
 - Produces: `runtime_activity.track(name: str)`,
   `runtime_activity.busy_reason() -> str`,
-  `runtime_activity.reserve_shutdown() -> bool`, and
+  `runtime_activity.reserve_shutdown(timeout_seconds: int = 60) -> bool`, and
   `runtime_activity.release_shutdown()`.
 - Produces routes: `GET /api/updates`, `POST /api/updates/check`,
   `POST /api/updates/grant`, `DELETE /api/updates/download`,
   `POST /api/updates/apply`.
 - Consumes: Task 1 verifier and Task 3 descriptor/download endpoints.
 
-- [ ] **Step 1: Write failing service behavior tests**
+- [ ] **Step 1: Write failing service and runtime-activity behavior tests**
 
 Use a real temporary directory and local `http.server.ThreadingHTTPServer`
 fixtures. Assert:
@@ -511,7 +520,9 @@ fixtures. Assert:
 - desktop TrustedHost accepts only loopback hosts and rejects an arbitrary
   rebinding Host;
 - shutdown reservation atomically rejects new tracked work and new call
-  WebSockets, and a failed apply precheck releases that reservation.
+  WebSockets, a failed apply precheck releases that reservation, and an
+  accepted reservation expires after 60 seconds if the tray watcher never
+  performs the controlled shutdown.
 
 Example observable behavior:
 
@@ -532,12 +543,37 @@ Run:
 
 ```powershell
 $env:PYTHONPATH="$PWD\backend"
-python -m unittest backend.tests.test_update_service
+python -m unittest backend.tests.test_update_service backend.tests.test_runtime_activity
 ```
 
-Expected: import failure for `app.services.update_service`.
+Expected: import failures for `app.services.update_service` and
+`app.services.runtime_activity`.
 
-- [ ] **Step 3: Implement the minimum persisted state and descriptor check**
+- [ ] **Step 3: Implement and commit the runtime activity gate**
+
+Use one thread-safe reference count keyed by operation name. Wrap transcript
+and audio import, every artifact export until its response body is materialized,
+post-import analysis, destructive retranscription, on-demand synthesis, and
+the first-use `onnx_asr.load_model` call. Mark startup schema patching from
+lifespan entry through completion; the API is not served yet, and the explicit
+marker keeps the invariant testable. New tracked operations and new audio
+WebSockets reject while shutdown is reserved.
+
+Store a `time.monotonic()` deadline with the shutdown reservation. `track`,
+`busy_reason`, and `reserve_shutdown` clear an expired reservation under the
+same lock, so a missed tray-watcher event returns the process to ready after
+60 seconds without a timer thread.
+
+Run:
+
+```powershell
+$env:PYTHONPATH="$PWD\backend"
+python -m unittest backend.tests.test_runtime_activity
+git add backend/app/services/runtime_activity.py backend/tests/test_runtime_activity.py backend/app/main.py backend/app/routers/analyze.py backend/app/routers/artifacts.py backend/app/routers/imports.py backend/app/routers/retranscribe.py backend/app/routers/synthesis.py backend/app/services/local_transcriber.py backend/app/ws/audio_handler.py
+git commit -m "feat: gate shutdown around active work"
+```
+
+- [ ] **Step 4: Implement the minimum persisted state and descriptor check**
 
 Keep one `threading.Lock`, one download thread, and one cancellation event.
 Use `urllib.request`, a maximum 64 KiB descriptor body, five-second timeout,
@@ -568,7 +604,7 @@ Persist by writing adjacent `.tmp`, flushing, then `os.replace`.
 Normalize the bare installed `APP_VERSION` to a leading-`v` value only at the
 service boundary.
 
-- [ ] **Step 4: Implement bounded resume, verification, and extraction**
+- [ ] **Step 5: Implement bounded resume, verification, and extraction**
 
 Stream 1 MiB chunks to `.partial`, update SHA-256 in the same pass, compare
 expected size/hash, re-run descriptor verification, and extract only after all
@@ -588,7 +624,7 @@ Sum declared expanded regular-file sizes and require free bytes for the
 archive, expanded stage, current install backup, and 10 percent margin. Stage
 under the installation parent so the final swap stays on one filesystem.
 
-- [ ] **Step 5: Add token-gated FastAPI routes and startup check**
+- [ ] **Step 6: Add token-gated FastAPI routes and startup check**
 
 Read the same-origin health response token in the frontend later; for now the
 router dependency compares the header-only `X-Backchannel-Instance` with
@@ -618,19 +654,14 @@ finally:
         runtime_activity.release_shutdown()
 ```
 
-Use one thread-safe reference count keyed by operation name. Wrap transcript
-and audio import, every artifact export until its response body is materialized,
-post-import analysis, destructive retranscription, on-demand synthesis, and
-the first-use `onnx_asr.load_model` call. Mark startup schema patching from
-lifespan entry through completion; the API is not served yet, and the explicit
-marker keeps the invariant testable. New tracked operations and new audio
-WebSockets reject while shutdown is reserved, closing the race after the apply
-precheck; any failed final check releases the reservation.
+The reservation closes the race after the apply precheck; any failed final
+check releases it, while an accepted reservation self-expires after 60 seconds
+if the tray watcher never performs the controlled shutdown.
 
 Register the router and schedule `service.check()` with `asyncio.to_thread`
 only when `BACKCHANNEL_DESKTOP=1`; do not await it on startup.
 
-- [ ] **Step 6: Set launcher desktop environment**
+- [ ] **Step 7: Set launcher desktop environment**
 
 Before importing `app.main`, set `BACKCHANNEL_DESKTOP`,
 `BACKCHANNEL_INSTANCE_TOKEN`, `BACKCHANNEL_INSTALL_DIR`,
@@ -639,7 +670,7 @@ launcher-owned paths using the per-platform table above. In headless mode set
 `BACKCHANNEL_UPDATE_APPLY_DISABLED=1`; status remains testable, but apply
 returns conflict because no tray watcher can perform the controlled restart.
 
-- [ ] **Step 7: Run GREEN and focused router checks**
+- [ ] **Step 8: Run GREEN and focused router checks**
 
 Run:
 
@@ -650,10 +681,10 @@ python -m unittest backend.tests.test_update_signing backend.tests.test_update_s
 
 Expected: all focused backend tests pass.
 
-- [ ] **Step 8: Commit Task 4**
+- [ ] **Step 9: Commit the updater service and routes**
 
 ```powershell
-git add backend/app/services/update_service.py backend/app/services/runtime_activity.py backend/app/routers/updates.py backend/tests/test_update_service.py backend/tests/test_runtime_activity.py backend/requirements.txt backend/app/main.py backend/app/routers/analyze.py backend/app/routers/artifacts.py backend/app/routers/imports.py backend/app/routers/retranscribe.py backend/app/routers/synthesis.py backend/app/services/local_transcriber.py backend/app/ws/audio_handler.py desktop/launcher.py
+git add backend/app/services/update_service.py backend/app/routers/updates.py backend/tests/test_update_service.py backend/requirements.txt backend/app/main.py desktop/launcher.py
 git commit -m "feat: download and stage desktop updates"
 ```
 
