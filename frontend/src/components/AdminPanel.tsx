@@ -367,6 +367,19 @@ function AgentCard({
   // agent keeps running, and with a cloud one it sits out even though a local
   // option was available. An assigned model missing from the list (a removed
   // endpoint) cannot be shown to stay on this network, so it counts as blocked.
+  // A per-model budget (written by the Transcription & Audio fit test) beats
+  // interval_seconds whenever the agent runs that model, so the plain field is
+  // not what the call will use. Surface the effective value or the applied
+  // budget looks like it silently failed.
+  const modelInterval = (() => {
+    try {
+      const parsed = JSON.parse(agent.model_intervals || "{}");
+      const value = parsed?.[agent.model_id];
+      return typeof value === "number" && value > 0 ? value : null;
+    } catch {
+      return null;
+    }
+  })();
   const selectedModel = modelOptions.find((m) => m.id === agent.model_id);
   const blockedByPrivacy = localOnly && !(selectedModel && runsLocally(selectedModel));
   const hasLocalAlternative = modelOptions.some(runsLocally);
@@ -494,6 +507,15 @@ function AgentCard({
                 ? "How often this agent analyzes new transcript (5-300s)"
                 : "Minimum time between runs; triggered by new insights (5-300s)"}
             </p>
+            {modelInterval !== null && (
+              <p className="mt-1.5 rounded border border-brand-teal/30 bg-brand-teal/5 px-2 py-1.5 font-body text-[10px] leading-relaxed text-brand-dark-gray">
+                <span className="font-medium">Running at {modelInterval}s</span> on the
+                selected model. The local-model fit test set this budget for{" "}
+                {selectedModel?.name ?? agent.model_id}; it overrides the value above
+                whenever this agent uses that model. Re-run the fit test in
+                Transcription &amp; Audio to change it.
+              </p>
+            )}
           </div>
         )}
       </div>

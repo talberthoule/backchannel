@@ -105,7 +105,14 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
   const loadSummary = useCallback(async () => {
     setLoading(true);
     try {
-      setSummary(await api.getLocalFitSummary());
+      const next = await api.getLocalFitSummary();
+      setSummary(next);
+      // Restore the last run: the test costs real time on a local model, so a
+      // reload must not silently throw the results away.
+      if (next.last_result) {
+        setReport(next.last_result);
+        setContention(next.last_result.contention || DEFAULT_CONTENTION);
+      }
       setError(null);
     } catch (err) {
       console.error("Failed to load local fit summary", err);

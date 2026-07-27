@@ -56,6 +56,10 @@ export interface AgentConfig {
   sub_types: string;
   lenses: string; // JSON array of AnalystLens
   interval_seconds: number | null;
+  // JSON {model_id: seconds}. A budget the local-model fit test wrote for a
+  // specific model; when the agent runs that model this wins over
+  // interval_seconds, so it is what actually determines cadence.
+  model_intervals: string;
   knowledge_source_ids: string;
   display_order: number;
   created_at: string;
@@ -425,6 +429,9 @@ export interface LocalFitSummary {
   roles: LocalFitRoleCatalogEntry[];
   // Present on current backends; optional so an older backend still parses.
   capabilities?: LocalCapabilities;
+  // The last run, persisted server-side so returning to the tab does not
+  // discard a benchmark the user waited on. Null when none has been run.
+  last_result?: LocalFitReport | null;
 }
 
 export interface LocalFitReport extends LocalFitSummary {
