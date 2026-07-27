@@ -1,6 +1,9 @@
 """Runtime selection helpers for speaker diarization backends."""
 
+import math
 from typing import Final
+
+from app.services.diarization_diagnostics import SORTFORMER_RTF_THRESHOLD
 
 DIARIZER_LIGHTWEIGHT: Final = "lightweight"
 DIARIZER_SORTFORMER: Final = "sortformer"
@@ -16,19 +19,31 @@ def normalize_diarizer_mode(value: str | None) -> str:
 def sortformer_is_selectable(
     benchmark_status: str | None,
     sortformer_available: bool,
+    benchmark_real_time_factor: float | None,
 ) -> bool:
-    return sortformer_available and benchmark_status == "passed"
+    return (
+        sortformer_available
+        and benchmark_status == "passed"
+        and benchmark_real_time_factor is not None
+        and math.isfinite(benchmark_real_time_factor)
+        and 0 < benchmark_real_time_factor <= SORTFORMER_RTF_THRESHOLD
+    )
 
 
 def resolve_effective_diarizer_mode(
     selected_mode: str | None,
     benchmark_status: str | None,
     sortformer_available: bool,
+    benchmark_real_time_factor: float | None,
 ) -> str:
     normalized = normalize_diarizer_mode(selected_mode)
     if normalized != DIARIZER_SORTFORMER:
         return DIARIZER_LIGHTWEIGHT
-    if sortformer_is_selectable(benchmark_status, sortformer_available):
+    if sortformer_is_selectable(
+        benchmark_status,
+        sortformer_available,
+        benchmark_real_time_factor,
+    ):
         return DIARIZER_SORTFORMER
     return DIARIZER_LIGHTWEIGHT
 

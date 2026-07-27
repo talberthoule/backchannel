@@ -15,8 +15,21 @@ class DiarizerSelectionTests(unittest.TestCase):
             sortformer_is_selectable(
                 benchmark_status="passed",
                 sortformer_available=True,
+                benchmark_real_time_factor=0.2,
             )
         )
+
+    def test_old_pass_is_not_selectable_when_rtf_misses_current_requirement(self):
+        self.assertFalse(
+            sortformer_is_selectable(
+                benchmark_status="passed",
+                sortformer_available=True,
+                benchmark_real_time_factor=0.60,
+            )
+        )
+
+    def test_zero_duration_measurement_does_not_unlock_sortformer(self):
+        self.assertFalse(sortformer_is_selectable("passed", True, 0.0))
 
     def test_sortformer_selection_falls_back_without_passed_benchmark(self):
         self.assertEqual(
@@ -25,6 +38,7 @@ class DiarizerSelectionTests(unittest.TestCase):
                 selected_mode=DIARIZER_SORTFORMER,
                 benchmark_status="failed",
                 sortformer_available=True,
+                benchmark_real_time_factor=0.60,
             ),
         )
 
@@ -35,6 +49,7 @@ class DiarizerSelectionTests(unittest.TestCase):
                 selected_mode=DIARIZER_SORTFORMER,
                 benchmark_status="passed",
                 sortformer_available=True,
+                benchmark_real_time_factor=0.20,
             ),
         )
 
@@ -45,6 +60,7 @@ class DiarizerSelectionTests(unittest.TestCase):
                 selected_mode="unknown",
                 benchmark_status="passed",
                 sortformer_available=True,
+                benchmark_real_time_factor=0.20,
             ),
         )
 

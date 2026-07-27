@@ -330,6 +330,8 @@ export interface DiarizationDiagnostics {
   sortformer_selectable: boolean;
   benchmark_status: "passed" | "failed" | "unavailable" | "";
   benchmark_real_time_factor: number | null;
+  benchmark_contention_adjusted_real_time_factor: number | null;
+  benchmark_peak_memory_mb: number | null;
   speaker_similarity_threshold: number;
   selection_reason: string;
 }
@@ -338,6 +340,8 @@ export interface DiarizationBenchmarkResult {
   status: "passed" | "failed" | "unavailable";
   recommended_live_diarizer: "lightweight" | "sortformer";
   real_time_factor: number | null;
+  contention_adjusted_real_time_factor: number | null;
+  peak_memory_mb: number | null;
   audio_seconds: number;
   processing_seconds: number;
   device: string;
