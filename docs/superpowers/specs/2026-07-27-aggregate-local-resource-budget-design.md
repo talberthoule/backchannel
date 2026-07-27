@@ -432,3 +432,24 @@ implementation-shaped rather than product-shaped:
    high-value guard, since it converts a mid-briefing truncation into an
    up-front refusal? Memory projection (from ALP-155) and the full CPU-throughput
    term to follow. Sequencing to be set with the lane owners.
+
+## Implementation status (2026-07-27)
+
+The pure planning core is landed as `backend/app/services/capacity_planner.py`
+with `backend/tests/test_capacity_planner.py` (15 tests, passing) on branch
+agent/alp-156-aggregate-resource-budget. Per the sequencing agreed with thoule,
+this first slice is pure logic only: it imports nothing from the live audio path,
+takes measured demands as inputs, and returns the headroom verdict, the per-role
+context and latency fit, and the applicable degradation plan. It embodies the
+ratified degradation order and the refuse-with-override contract - an
+over_budget verdict still admits via override, and every shortfall is stated
+measurably (per role for text). It consumes the settled ALP-155 fields as the
+diarization term (the contention-adjusted per-track RTF and the per-instance peak
+memory).
+
+Deferred until ALP-154 and ALP-155 merge and the shared checkout is quiet,
+because both touch the bind-mounted runtime and need integration testing: the
+wiring that gathers the real measurements (the ALP-155 diarization fields, the
+local-fit ASR/caption/text numbers, the machine budget, and per-role prompt
+sizes) at call start, and the runtime controller that acts on the degradation
+plan.
