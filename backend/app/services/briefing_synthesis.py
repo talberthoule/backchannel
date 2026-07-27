@@ -151,14 +151,21 @@ async def run_session_synthesis(
     _validate_synthesis_mode(mode)
     if mode != "post_call":
         raise ValueError("Live synthesis is owned by the strategic_signals agent")
-    from app.services.privacy import LocalOnlyModeError, is_local_only
+    from app.services.privacy import LocalOnlyModeError, allows_local_only, is_local_only
 
-    if await is_local_only():
-        raise LocalOnlyModeError("call briefing synthesis")
     agent_configs = agent_configs or await load_agent_configs(session_id)
     if not agent_config_enabled(agent_configs, BRIEF_ARBITER_SLUG):
         logger.info("Briefing synthesis skipped: arbiter agent is disabled or missing")
         return None
+
+    # Privacy First judges the arbiter's assigned model, not the mode itself: a
+    # self-hosted model on this machine or LAN can settle the briefing without
+    # an outside API call. The arbiter is the gate because it produces the
+    # final view; a lens on a refused model is caught per-lens below and leaves
+    # a partial briefing rather than failing the whole run.
+    arbiter_model = agent_configs[BRIEF_ARBITER_SLUG].model_id
+    if await is_local_only() and not await allows_local_only(arbiter_model):
+        raise LocalOnlyModeError("call briefing synthesis", arbiter_model, BRIEF_ARBITER_SLUG)
 
     context = await _build_context(
         session_id,

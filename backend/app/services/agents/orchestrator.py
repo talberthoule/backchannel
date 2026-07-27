@@ -132,6 +132,7 @@ class AgentOrchestrator:
         meeting_type: str = "general",
         meeting_context: str = "",
         local_only: bool = False,
+        admitted_models: set[str] | None = None,
     ):
         self.session_id = session_id
         self.websocket = websocket
@@ -141,6 +142,12 @@ class AgentOrchestrator:
         self.speakers = speakers
         self._agent_configs = agent_configs or {}
         self.local_only = local_only
+        # Model ids Privacy First admits, resolved by the caller because the
+        # verdict needs a database read (see privacy.admitted_model_ids) and
+        # this constructor is synchronous. None means "not resolved": fall back
+        # to the bundled-local check so a caller that predates this stays safe.
+        self.admitted_models = admitted_models
+        self.privacy_blocked_agents: list[dict] = []
         self.meeting_type = normalize_meeting_type(meeting_type)
         self.meeting_context = meeting_context
         self._derive_meeting_context()
@@ -149,15 +156,34 @@ class AgentOrchestrator:
             cfg = self._agent_configs.get(slug)
             return cfg.model_id if cfg else fallback
 
+        def _privacy_admits(model_id: str) -> bool:
+            """Whether Privacy First lets this model run.
+
+            Membership in the caller-resolved set, because admission is about
+            where the model is served, not what its provider is called: a qwen
+            on an endpoint at localhost qualifies while the same model behind a
+            public URL does not. Only when the set was never resolved do we fall
+            back to the bundled-ONNX check, which is conservative by design.
+            """
+            if self.admitted_models is not None:
+                return model_id in self.admitted_models
+            return provider_for(model_id) == "local"
+
         # Helper to check if an agent is enabled (DB config with fallback).
-        # In Privacy First (local-only) mode an agent also needs a local model;
-        # today none of the agents have one, so all of them sit out.
+        # In Privacy First mode an enabled agent also needs a model that stays
+        # on this machine or its network; one that does not is recorded so the
+        # call can say so instead of the agent silently never running.
         def _is_enabled(slug: str, fallback: bool = True) -> bool:
             cfg = self._agent_configs.get(slug)
             enabled = cfg.enabled if cfg else fallback
-            if enabled and self.local_only:
-                return provider_for(_get_model(slug)) == "local"
-            return enabled
+            if not enabled or not self.local_only:
+                return enabled
+            model_id = _get_model(slug)
+            if _privacy_admits(model_id):
+                return True
+            if not any(b["agent"] == slug for b in self.privacy_blocked_agents):
+                self.privacy_blocked_agents.append({"agent": slug, "model_id": model_id})
+            return False
 
         def _get_prompt(slug: str) -> str:
             cfg = self._agent_configs.get(slug)
@@ -189,6 +215,7 @@ class AgentOrchestrator:
             return ids
 
         self._is_enabled = _is_enabled
+        self._privacy_admits = _privacy_admits
         self._get_model = _get_model
         self._get_prompt = _get_prompt
         self._get_interval = _get_interval
@@ -270,8 +297,14 @@ class AgentOrchestrator:
         self._recent_insights: dict[str, float] = {}
 
     def briefing_enabled(self) -> bool:
-        # Briefing lenses/arbiter call Gemini directly, so local-only mode skips them.
-        return not self.local_only and agent_config_enabled(self._agent_configs, BRIEF_ARBITER_SLUG)
+        # The arbiter settles the briefing, so its model decides whether the
+        # stage can run at all; a lens on a refused model degrades to a partial
+        # briefing rather than cancelling it (see briefing_synthesis).
+        if not agent_config_enabled(self._agent_configs, BRIEF_ARBITER_SLUG):
+            return False
+        if not self.local_only:
+            return True
+        return self._privacy_admits(self._get_model(BRIEF_ARBITER_SLUG))
 
     def drain_stages(self, mode: str = DRAIN_MODE_FULL) -> list[str]:
         """Ordered analysis stages graceful_drain runs for a drain mode.
