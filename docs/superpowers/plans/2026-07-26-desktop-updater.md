@@ -72,6 +72,7 @@ blocking safety or scope issue.
 - Modify: `desktop/tests/test_platform_release_manifest.py`
 - Modify: `scripts/publish_release_platform.ps1`
 - Modify: `desktop/backchannel.spec`
+- Modify: `.github/workflows/desktop-release.yml`
 
 **Interfaces:**
 - Produces: `canonical_update_bytes(descriptor: dict) -> bytes`
@@ -85,9 +86,10 @@ blocking safety or scope issue.
 
 Add literal fixtures using the deterministic raw private key
 `bytes(range(1, 33))`. Assert exact canonical bytes, a successful round trip,
-wrong-key rejection, tampered size/hash/version rejection, unknown-key
-rejection, wrong-platform/filename rejection, leading-zero version rejection,
-anti-downgrade rejection, and unsigned descriptor rejection:
+wrong-key rejection, tampered schema/timestamp/notes/size/hash/version
+rejection, unknown-key rejection, wrong-platform/filename rejection,
+leading-zero version rejection, anti-downgrade rejection, and unsigned
+descriptor rejection:
 
 ```python
 class UpdateSigningTests(unittest.TestCase):
@@ -98,7 +100,9 @@ class UpdateSigningTests(unittest.TestCase):
             b'"id":"windows-x64","platform":"Windows x64",'
             b'"sha256":"' + b"a" * 64 + b'","size":7},'
             b'"commit":"' + b"b" * 40 + b'","key_id":"test-key",'
-            b'"version":"v1.2.3"}',
+            b'"published_at":"2026-07-26T18:00:00Z",'
+            b'"release_notes":"Security and reliability fixes.",'
+            b'"schema":1,"version":"v1.2.3"}',
         )
 
     def test_signed_descriptor_rejects_tampering(self):
@@ -113,7 +117,8 @@ class UpdateSigningTests(unittest.TestCase):
 
 Extend the platform CLI test to pass a temporary keys file and
 `BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY`, then assert `update` contains exactly
-`key_id` and `signature`.
+`key_id`, `schema`, and `signature`, while `published_at` and the bounded
+release-note Markdown are signed top-level fields.
 
 - [ ] **Step 2: Run the focused tests and confirm RED**
 
@@ -149,7 +154,9 @@ def canonical_update_bytes(descriptor: dict) -> bytes:
 ```
 
 `verify_update_descriptor` returns a copied, normalized public descriptor only
-after all schema, platform, version, key, and signature checks succeed.
+after schema `1`, strict UTC publication time, at-most-8-KiB release notes,
+platform, version, key, and signature checks succeed. Normalize installed bare
+versions once, while all signed versions remain canonical `vX.Y.Z`.
 
 - [ ] **Step 4: Generate and protect the production key outside the repo**
 
@@ -171,11 +178,15 @@ derives from the protected private file.
 
 - [ ] **Step 5: Require signing in the platform publisher and bundle trust data**
 
-Make `build_platform_manifest.py` load the active public key file and
-`BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY`, add the `update` object, verify it,
+Make `build_platform_manifest.py` load the active public key file, immutable
+release timestamp, `.github/release-notes/<version>.md`, and
+`BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY`; add the signed fields, verify them,
 then write metadata. Make `publish_release_platform.ps1` fail before upload
-when the secret is absent. Add `release_signing_keys.json` to the PyInstaller
-data list.
+when the secret or release-note file is absent. Map the GitHub secret only into
+the protected macOS publish step and document that the later CI phase may not
+run until the secret is provisioned. Add `release_signing_keys.json` to the
+PyInstaller data list. Verification passes only the file's `keys` object, not
+its `active` selector.
 
 - [ ] **Step 6: Run GREEN and release contract checks**
 
@@ -192,7 +203,7 @@ captured output.
 - [ ] **Step 7: Commit Task 1**
 
 ```powershell
-git add backend/app/services/update_signing.py backend/tests/test_update_signing.py desktop/release_signing_keys.json desktop/scripts/build_platform_manifest.py desktop/tests/test_platform_release_manifest.py scripts/publish_release_platform.ps1 desktop/backchannel.spec
+git add backend/app/services/update_signing.py backend/tests/test_update_signing.py desktop/release_signing_keys.json desktop/scripts/build_platform_manifest.py desktop/tests/test_platform_release_manifest.py scripts/publish_release_platform.ps1 desktop/backchannel.spec .github/workflows/desktop-release.yml
 git commit -m "feat: sign desktop release manifests"
 ```
 
@@ -220,6 +231,8 @@ still redact `key`, `content_type`, and `update`, and the public descriptor is:
 {
   version: 'v1.2.3',
   commit: 'b'.repeat(40),
+  published_at: '2026-07-26T18:00:00Z',
+  release_notes: 'Security and reliability fixes.',
   asset: {
     id: 'windows-x64',
     platform: 'Windows x64',
@@ -228,6 +241,7 @@ still redact `key`, `content_type`, and `update`, and the public descriptor is:
     sha256: 'a'.repeat(64),
   },
   key_id: 'test-key',
+  schema: 1,
   signature: 'A'.repeat(86),
 }
 ```
@@ -264,16 +278,20 @@ function parseUpdate(value) {
 ```
 
 Unsigned historical manifests remain catalog-valid. Signed progressive assets
-carry their parsed update metadata only in the in-memory catalog.
-`releaseSummary()` continues selecting the same six recipient fields.
+enter the in-memory catalog as `{ ...platform.asset, update }`; the sibling
+metadata must not be dropped when `loadReleaseCatalog` synthesizes its asset
+list. `releaseSummary()` continues selecting the same six recipient fields and
+therefore redacts `update` by construction.
 
 - [ ] **Step 4: Add the public Latest descriptor route**
 
 Parse only `/api/update/latest/(windows-x64|macos-arm64|linux-x64)`, load the
 trusted catalog, select `catalog.latestVersion`, and return
-`publicUpdateDescriptor`. Use `cache-control: public, max-age=300` for `200`
-responses and the existing no-store generic response for failures. Never
-return an internal asset key or account information.
+`publicUpdateDescriptor`. Deliberately override `DOWNLOAD_HEADERS` with
+`cache-control: public, max-age=300` for `200` responses and use the existing
+no-store generic response for failures. Never return an internal asset key or
+account information. Tests record unauthenticated release identity, size, hash,
+timestamp, and notes as an accepted disclosure rather than an accidental leak.
 
 - [ ] **Step 5: Run GREEN**
 
@@ -401,10 +419,10 @@ window.opener.postMessage({
 window.close();
 ```
 
-Validate `origin` as `http://localhost:<1-65535>` before showing the panel.
-Use safe text nodes, keep the grant out of storage/URLs/logs, disable duplicate
-submission, and retain the regular release list when update parameters are
-absent.
+Validate `origin` as loopback HTTP on `localhost` or `127.0.0.1` with an exact
+port from 1 through 65535 before showing the panel. Use safe text nodes, keep
+the grant out of storage/URLs/logs, disable duplicate submission, and retain
+the regular release list when update parameters are absent.
 
 - [ ] **Step 6: Run GREEN and the complete docs-site gate**
 
@@ -429,9 +447,19 @@ git commit -m "feat: authorize desktop update downloads"
 
 **Files:**
 - Create: `backend/app/services/update_service.py`
+- Create: `backend/app/services/runtime_activity.py`
 - Create: `backend/app/routers/updates.py`
 - Create: `backend/tests/test_update_service.py`
+- Create: `backend/tests/test_runtime_activity.py`
+- Modify: `backend/requirements.txt`
 - Modify: `backend/app/main.py`
+- Modify: `backend/app/routers/analyze.py`
+- Modify: `backend/app/routers/artifacts.py`
+- Modify: `backend/app/routers/imports.py`
+- Modify: `backend/app/routers/retranscribe.py`
+- Modify: `backend/app/routers/synthesis.py`
+- Modify: `backend/app/services/local_transcriber.py`
+- Modify: `backend/app/ws/audio_handler.py`
 - Modify: `desktop/launcher.py`
 
 **Interfaces:**
@@ -440,6 +468,10 @@ git commit -m "feat: authorize desktop update downloads"
 - Produces: `UpdateService.start_download(grant: str) -> dict`
 - Produces: `UpdateService.cancel_download() -> dict`
 - Produces: `UpdateService.request_apply() -> dict`
+- Produces: `runtime_activity.track(name: str)`,
+  `runtime_activity.busy_reason() -> str`,
+  `runtime_activity.reserve_shutdown() -> bool`, and
+  `runtime_activity.release_shutdown()`.
 - Produces routes: `GET /api/updates`, `POST /api/updates/check`,
   `POST /api/updates/grant`, `DELETE /api/updates/download`,
   `POST /api/updates/apply`.
@@ -452,20 +484,34 @@ fixtures. Assert:
 
 - disabled source deployments return `{"enabled": False, "state": "idle"}`;
 - a forced check accepts one valid newer descriptor, rejects unsigned/tampered,
-  wrong-platform, downgrade, malformed JSON, oversized JSON, and timeout;
+  wrong-schema, invalid timestamp, wrong-platform, downgrade, replay below the
+  greatest previously observed signed version/timestamp, malformed JSON,
+  oversized JSON, and timeout;
 - a fresh successful check is reused for 24 hours without a second request;
 - two concurrent checks produce one network request;
 - downloads use 1 MiB-or-smaller reads, persist byte progress, and hash while
   streaming;
 - a valid partial sends `Range`, accepts exact `206 Content-Range`, and appends;
-- `200`, wrong range, excess bytes, short bytes, hash mismatch, cancellation,
-  and expired grant leave no `ready` state;
-- zip/tar extraction rejects absolute paths, `..`, symlinks/hardlinks, extra
-  roots, wrong root name, and output beyond expected size;
-- valid Windows/Linux/macOS fixtures stage exactly one expected bundle root;
+- `200`, wrong range, excess bytes, short bytes, hash mismatch, and cancellation
+  leave no `ready` state;
+- an expired grant preserves the partial and enters `needs_authorization`;
+- archives reject absolute paths, `..`, device entries, escaping links, extra
+  roots, wrong root name, and output beyond expected expanded size;
+- Windows zip and Linux tar preserve the exact expected root and safe internal
+  links; on macOS, a real `ditto -c -k --keepParent` `.app` fixture round-trips
+  through `/usr/bin/ditto -x -k` with executable bits and safe symlinks intact;
+- free-space preflight accounts for archive, declared expanded bytes, installed
+  backup, and 10 percent margin on the install filesystem;
 - state JSON survives a service restart and is written by temporary-file
   replacement;
-- grant and error strings never appear in persisted state or logs.
+- grant and error strings never appear in persisted state or logs;
+- TLS requests use an explicit `ssl` context built from `certifi.where()`;
+- `/api/health` contains no instance token in its body and exposes no custom
+  response header cross-origin; and
+- desktop TrustedHost accepts only loopback hosts and rejects an arbitrary
+  rebinding Host;
+- shutdown reservation atomically rejects new tracked work and new call
+  WebSockets, and a failed apply precheck releases that reservation.
 
 Example observable behavior:
 
@@ -495,14 +541,19 @@ Expected: import failure for `app.services.update_service`.
 
 Keep one `threading.Lock`, one download thread, and one cancellation event.
 Use `urllib.request`, a maximum 64 KiB descriptor body, five-second timeout,
-and `datetime.now(timezone.utc)`. State contains only:
+`datetime.now(timezone.utc)`, and an explicit CA context from the now-direct
+`certifi` requirement. State contains only:
 
 ```python
 {
     "enabled": True,
     "state": "available",
-    "current_version": "0.3.8",
+    "current_version": "v0.3.8",
     "available_version": "v0.4.0",
+    "available_notes": "Security and reliability fixes.",
+    "published_at": "2026-07-26T18:00:00Z",
+    "highest_seen_version": "v0.4.0",
+    "highest_seen_published_at": "2026-07-26T18:00:00Z",
     "platform_id": "windows-x64",
     "filename": "Backchannel-windows-x64.zip",
     "size": 123,
@@ -514,33 +565,67 @@ and `datetime.now(timezone.utc)`. State contains only:
 ```
 
 Persist by writing adjacent `.tmp`, flushing, then `os.replace`.
+Normalize the bare installed `APP_VERSION` to a leading-`v` value only at the
+service boundary.
 
 - [ ] **Step 4: Implement bounded resume, verification, and extraction**
 
 Stream 1 MiB chunks to `.partial`, update SHA-256 in the same pass, compare
 expected size/hash, re-run descriptor verification, and extract only after all
-checks pass. Zip paths use resolved-prefix checks; tar uses Python 3.12's data
-filter plus explicit rejection of links. Limit extracted regular-file bytes to
-the signed archive size multiplied by four. Stage under the installation
-parent so the final swap stays on one filesystem.
+checks pass. Windows uses `zipfile`; Linux uses the Python 3.12 tar data filter
+and permits only relative links resolving inside `Backchannel/`; macOS validates
+every entry and link target before invoking `/usr/bin/ditto -x -k`.
+
+Derive roots exactly:
+
+| Platform | Archive/install root | Launcher |
+| --- | --- | --- |
+| Windows x64 | `Backchannel/`; `Path(sys.executable).parent` | `Backchannel.exe` |
+| Linux x64 | `Backchannel/`; `Path(sys.executable).parent` | `Backchannel` |
+| macOS arm64 | `Backchannel.app/`; `Path(sys.executable).parents[2]` | `Contents/MacOS/Backchannel` |
+
+Sum declared expanded regular-file sizes and require free bytes for the
+archive, expanded stage, current install backup, and 10 percent margin. Stage
+under the installation parent so the final swap stays on one filesystem.
 
 - [ ] **Step 5: Add token-gated FastAPI routes and startup check**
 
 Read the same-origin health response token in the frontend later; for now the
-router dependency compares `X-Backchannel-Instance` with
-`BACKCHANNEL_INSTANCE_TOKEN` using `hmac.compare_digest`. `GET /api/updates`
-is read-only; all other routes require the token.
+router dependency compares the header-only `X-Backchannel-Instance` with
+`BACKCHANNEL_INSTANCE_TOKEN` using `hmac.compare_digest`. The token must never
+enter `/api/health` JSON or `access-control-expose-headers`. Add
+`TrustedHostMiddleware` in desktop mode for `localhost`, `127.0.0.1`, and the
+bound loopback host. `GET /api/updates` is read-only; all other routes require
+the token.
 
 `POST /api/updates/apply` executes:
 
 ```python
-active = await db.scalar(
-    select(func.count()).select_from(Session).where(Session.state == "active")
-)
-if active:
-    raise HTTPException(409, "Finish the active call before installing.")
-return service.request_apply()
+if not runtime_activity.reserve_shutdown():
+    raise HTTPException(409, f"Finish {runtime_activity.busy_reason()} before installing.")
+accepted = False
+try:
+    active = await db.scalar(
+        select(func.count()).select_from(Session).where(Session.state == "active")
+    )
+    if active:
+        raise HTTPException(409, "Finish the active call before installing.")
+    result = service.request_apply()
+    accepted = True
+    return result
+finally:
+    if not accepted:
+        runtime_activity.release_shutdown()
 ```
+
+Use one thread-safe reference count keyed by operation name. Wrap transcript
+and audio import, every artifact export until its response body is materialized,
+post-import analysis, destructive retranscription, on-demand synthesis, and
+the first-use `onnx_asr.load_model` call. Mark startup schema patching from
+lifespan entry through completion; the API is not served yet, and the explicit
+marker keeps the invariant testable. New tracked operations and new audio
+WebSockets reject while shutdown is reserved, closing the race after the apply
+precheck; any failed final check releases the reservation.
 
 Register the router and schedule `service.check()` with `asyncio.to_thread`
 only when `BACKCHANNEL_DESKTOP=1`; do not await it on startup.
@@ -550,7 +635,9 @@ only when `BACKCHANNEL_DESKTOP=1`; do not await it on startup.
 Before importing `app.main`, set `BACKCHANNEL_DESKTOP`,
 `BACKCHANNEL_INSTANCE_TOKEN`, `BACKCHANNEL_INSTALL_DIR`,
 `BACKCHANNEL_UPDATE_KEYS`, and `BACKCHANNEL_UPDATE_HELPER` from validated
-launcher-owned paths.
+launcher-owned paths using the per-platform table above. In headless mode set
+`BACKCHANNEL_UPDATE_APPLY_DISABLED=1`; status remains testable, but apply
+returns conflict because no tray watcher can perform the controlled restart.
 
 - [ ] **Step 7: Run GREEN and focused router checks**
 
@@ -558,7 +645,7 @@ Run:
 
 ```powershell
 $env:PYTHONPATH="$PWD\backend;$PWD\desktop"
-python -m unittest backend.tests.test_update_signing backend.tests.test_update_service backend.tests.test_meta
+python -m unittest backend.tests.test_update_signing backend.tests.test_update_service backend.tests.test_runtime_activity backend.tests.test_meta
 ```
 
 Expected: all focused backend tests pass.
@@ -566,7 +653,7 @@ Expected: all focused backend tests pass.
 - [ ] **Step 8: Commit Task 4**
 
 ```powershell
-git add backend/app/services/update_service.py backend/app/routers/updates.py backend/tests/test_update_service.py backend/app/main.py desktop/launcher.py
+git add backend/app/services/update_service.py backend/app/services/runtime_activity.py backend/app/routers/updates.py backend/tests/test_update_service.py backend/tests/test_runtime_activity.py backend/requirements.txt backend/app/main.py backend/app/routers/analyze.py backend/app/routers/artifacts.py backend/app/routers/imports.py backend/app/routers/retranscribe.py backend/app/routers/synthesis.py backend/app/services/local_transcriber.py backend/app/ws/audio_handler.py desktop/launcher.py
 git commit -m "feat: download and stage desktop updates"
 ```
 
@@ -593,19 +680,26 @@ With real temporary sibling directories, assert:
 - plan validation rejects extra/missing keys, relative paths, roots outside the
   declared parents, symlink paths, mismatched launcher names, pre-existing
   backup, cross-filesystem device IDs, and non-ready state;
-- success waits for the old PID, renames install to backup and stage to install,
-  starts the exact launcher, accepts only matching `launcher.json` token/health,
-  then removes backup and plan;
+- success waits for the old PID and launcher lock file to disappear, renames
+  install to backup and stage to install, starts the exact per-platform
+  launcher, accepts only matching `launcher.json` token/health, then removes
+  backup and plan;
 - failed start, timeout, missing lock, wrong health token, and nonzero child
   exit move the failed bundle aside, restore backup, and relaunch old;
+- a still-running child gets up to 300 seconds for PostgreSQL/schema startup,
+  while an exited child rolls back immediately;
 - rollback failure preserves both recoverable directories and writes the local
   recovery result;
 - launcher watcher notices only the exact restart marker, stops the tray, runs
   normal cleanup, copies the helper outside install, and starts it only after
   cleanup;
 - tray Check for updates sends the instance token and opens the app;
-- PyInstaller collects `BackchannelUpdater` and the public key on all platform
-  branches.
+- an available update changes the tray label to include version and signed
+  release-note title and opens About;
+- headless apply returns conflict and starts no watcher; and
+- PyInstaller produces a self-contained one-file `BackchannelUpdater`, collects
+  it and the public key on Windows/Linux, and places both inside the macOS
+  `.app` so the launcher can copy the updater out before renaming the bundle.
 
 Example swap assertion:
 
@@ -633,8 +727,10 @@ Expected: import failure for `desktop.updater`.
 Use a frozen dataclass for exact plan fields, `Path.resolve(strict=True)` for
 existing roots, strict resolution of each absent target's existing parent,
 `os.stat(...).st_dev`, `os.replace`, `subprocess.Popen`, `urllib.request`, and
-bounded polling. The helper accepts one CLI argument: the absolute plan path.
-It never accepts install or staging paths directly from command-line flags.
+bounded polling. Wait for both the old PID and its exact launcher lock file to
+disappear before the first rename. The helper accepts one CLI argument: the
+absolute plan path. It never accepts install or staging paths directly from
+command-line flags.
 
 On rollback, move the failed new bundle to the plan's `failed_dir` only if that
 path is absent, restore backup, and relaunch the prior launcher. Cleanup never
@@ -646,16 +742,20 @@ Run one one-second watcher beside the tray. When the exact marker exists,
 `icon.stop()` lets the existing `finally` close uvicorn, listener, PostgreSQL,
 and lock file. After cleanup, copy the bundled updater to
 `<app-data>/updates/bin`, launch it with the validated plan, and exit.
+Headless mode never starts this watcher and the backend rejects apply.
 
 Add a tray `Check for updates` item that POSTs `/api/updates/check` with the
-current instance header, then opens Backchannel. Do not add a second tray
-process or IPC service.
+current instance header, then opens Backchannel. When status is available, the
+same item names the version and first release-note title. Do not add a second
+tray process or IPC service.
 
 - [ ] **Step 5: Build the second PyInstaller executable**
 
-Add a separate stdlib `Analysis`/`PYZ`/`EXE` for `desktop/updater.py` and collect
-it beside `Backchannel`. Keep the updater console disabled and give the Windows
-binary the existing icon.
+Add a separate stdlib `Analysis`/`PYZ`/one-file `EXE` for
+`desktop/updater.py`; do not set `exclude_binaries=True` or make it depend on
+the main `_internal` directory. Collect the completed standalone binary beside
+`Backchannel` on Windows/Linux and into the macOS `BUNDLE`. Keep its console
+disabled and give the Windows binary the existing icon.
 
 - [ ] **Step 6: Run GREEN and desktop suite**
 
@@ -702,18 +802,22 @@ static markup. Assert:
 
 - unsupported/source mode renders no update controls;
 - idle/checking has Check again with `aria-live="polite"`;
-- available shows signed version and human size plus Download update;
+- available shows signed version, human size, and signed release notes plus
+  Download update;
+- `needs_authorization` preserves progress and shows Resume download;
 - downloading shows text byte progress, native progress semantics, and Cancel;
 - ready shows Restart and install, disabled with the exact busy reason;
 - error shows bounded text and Retry;
 - banner appears only for available/downloading/ready and its open action is
   keyboard-accessible;
-- `authorize()` accepts a message only when `event.origin`, `event.source`,
-  `type`, nonce, version, and asset ID all match; all other messages are ignored
-  and the popup is closed on cleanup.
+- the exported pure `isUpdateGrantMessage(...)` predicate accepts only when
+  `event.origin`, `event.source`, `type`, nonce, version, and asset ID all
+  match; literal mismatches return false.
 
 Use literal status objects rather than deriving expectations from production
-helpers.
+helpers. Static rendering proves markup; pure-function tests prove the message
+predicate. Focus, keyboard operation, and real popup behavior remain in the
+ui-craft browser gate because `renderToStaticMarkup` cannot exercise them.
 
 - [ ] **Step 2: Run frontend tests and confirm RED**
 
@@ -733,28 +837,37 @@ Add `DesktopUpdateStatus` with exact state union:
 ```ts
 type DesktopUpdateState =
   | "idle" | "checking" | "available" | "authorizing"
-  | "downloading" | "ready" | "applying" | "error";
+  | "downloading" | "needs_authorization"
+  | "ready" | "applying" | "error";
 ```
 
 The API helper reads `X-Backchannel-Instance` from same-origin `/api/health`
-once, then includes it on mutation calls. The hook polls local status every
-five seconds, increasing to one second only while downloading/applying.
+at mount, verifies the body contains no token, and includes the header on
+mutation calls. It never reads an exposed JSON token. The hook polls local
+status every five seconds, increasing to one second only while
+downloading/applying.
 
-`authorize()` generates a nonce with `crypto.getRandomValues`, opens:
+`authorize()` generates a nonce with `crypto.getRandomValues` and calls
+`window.open` synchronously before its first `await`, so Chromium retains the
+click gesture. It opens:
 
 ```text
 https://downloads.backchannel.page/?update_version=<version>&asset_id=<id>&origin=<loopback-origin>&nonce=<nonce>
 ```
 
-and installs one bounded message listener. It posts only the grant to the local
-backend and clears the local variable/listener in `finally`.
+and installs one bounded message listener using the pure predicate. It accepts
+loopback origins on `localhost` or `127.0.0.1`, posts only the grant to the
+local backend, and clears the grant variable/listener and closes the popup in
+`finally`. Expired-grant download responses enter `needs_authorization`; only a
+fresh Resume download click opens the portal again.
 
 - [ ] **Step 4: Build the two accessible views**
 
 `DesktopUpdateCard` goes directly after the Backchannel version card in About.
-Use existing surface/ring/teal classes, a native `<progress>`, `tabular-nums`,
-44px controls, visible status text, and no animation beyond existing color
-transitions.
+Render bounded signed release-note Markdown with the existing safe
+`ReactMarkdown` path. Use existing surface/ring/teal classes, a native
+`<progress>`, `tabular-nums`, 44px controls, visible status text, and no
+animation beyond existing color transitions.
 
 `DesktopUpdateBanner` reuses the existing bottom-right banner placement and
 does not compete with the post-update What's new notice. Available and ready
@@ -792,6 +905,11 @@ git commit -m "feat: add desktop update experience"
 
 **Files:**
 - Create: `desktop/tests/test_update_acceptance.py`
+- Create: `desktop/scripts/smoke_update_archive.py`
+- Modify: `desktop/tests/test_release_contract.py`
+- Modify: `scripts/release_desktop.ps1`
+- Modify: `desktop/Dockerfile.release-linux`
+- Modify: `.github/workflows/desktop-release.yml`
 - Modify: `docs/releasing.md`
 - Modify: `AGENTS.md`
 - Modify: `CLAUDE.md`
@@ -805,7 +923,7 @@ git commit -m "feat: add desktop update experience"
 - [ ] **Step 1: Write the Windows acceptance test before its harness**
 
 Create a temporary old install, signed full update zip, local descriptor/grant
-server, and real updater plan. The test must:
+server, and real updater plan. The Windows test must:
 
 1. detect the newer signed version;
 2. interrupt after a partial download and resume with exact Range;
@@ -818,6 +936,20 @@ The test records check wall time, peak traced Python memory during download,
 and archive bytes. Fail if check startup work is awaited by launcher setup or
 peak incremental memory exceeds 8 MiB over the 1 MiB transfer fixture.
 
+Add a native packaged-archive smoke runner that takes one real platform archive
+and:
+
+1. verifies and extracts it through the production platform path;
+2. asserts the exact root, launcher, executable mode, and contained links;
+3. swaps it into a temporary install and observes real launcher health;
+4. repeats with forced failed health and proves the prior temp install returns.
+
+Contract tests require that Windows calls this runner after
+`Compress-Archive`, Linux calls it inside `Dockerfile.release-linux` after
+creating the tarball, and the credential-free macOS build calls it after
+`ditto -c -k --keepParent` and before cache handoff. The macOS job must use the
+real `.app` archive, not a synthetic zip.
+
 - [ ] **Step 2: Run the acceptance test and confirm RED**
 
 Run:
@@ -828,7 +960,8 @@ python -m unittest desktop.tests.test_update_acceptance
 ```
 
 Expected: failure at the first missing integrated behavior, before adding any
-acceptance-only production path.
+acceptance-only production path, and release-contract failure because the three
+native packaging paths do not yet invoke the smoke runner.
 
 - [ ] **Step 3: Make only integration corrections**
 
@@ -844,9 +977,14 @@ Document:
 - signed manifest schema and canonical payload;
 - protected local private-key path and later CI secret name;
 - public key rotation by adding a new key while retaining old accepted keys;
+- accepted offline key-revocation limitation;
 - update-grant migration and routes;
+- direct `certifi` TLS trust and platform install-root/free-space rules;
 - local fake-server acceptance command;
-- real Windows update and forced rollback smoke sequence; and
+- real Windows/Linux update and forced rollback smoke sequence;
+- macOS native archive smoke command reserved for the later CI phase;
+- blocking setup of `BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY` in the protected
+  GitHub environment before any macOS publication; and
 - the explicit boundary that no push/publication/CI run occurs in this phase.
 
 Change the design status footer to record implementation verification date,
@@ -882,7 +1020,10 @@ git diff --check
 
 Expected: every command exits zero except the two documented generated
 lockfile `sentrux check` exceptions allowed by `.sentrux/rules.toml`; `sentrux
-gate` introduces no new structural regression.
+gate` introduces no new structural regression. Also run the Windows native
+archive smoke and the Linux release-container archive smoke locally. The
+macOS workflow modification and contract test must be clean, but its native
+execution remains explicitly pending the later approved CI/secret phase.
 
 - [ ] **Step 6: Freeze and send `claude-2` the review SHA**
 
