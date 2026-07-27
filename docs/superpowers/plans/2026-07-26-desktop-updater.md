@@ -329,6 +329,7 @@ git commit -m "feat: expose signed update descriptors"
 - Modify: `docs-site/migration.test.js`
 - Modify: `docs-site/release-access.js`
 - Modify: `docs-site/worker.js`
+- Modify: `docs-site/worker.test.js`
 - Modify: `docs-site/download.test.js`
 - Modify: `site/downloads/downloads.js`
 - Modify: `site/downloads/index.html`
@@ -340,7 +341,7 @@ git commit -m "feat: expose signed update descriptors"
 - Produces: popup handoff message `{type, nonce, version, asset_id, grant}`.
 - Consumes later: Task 4 posts `grant` only to the loopback service.
 
-- [ ] **Step 1: Write failing migration and Worker grant tests**
+- [x] **Step 1: Write failing migration and Worker grant tests**
 
 The migration test must create the full migration chain in SQLite and prove:
 
@@ -368,7 +369,7 @@ Worker tests must assert:
 - full, conditional, and ranged responses reuse the existing R2 streaming
   headers and never expose the R2 key.
 
-- [ ] **Step 2: Run the focused docs tests and confirm RED**
+- [x] **Step 2: Run the focused docs tests and confirm RED**
 
 Run:
 
@@ -379,7 +380,7 @@ node --test migration.test.js download.test.js
 
 Expected: migration `0004` and update-grant routes are missing.
 
-- [ ] **Step 3: Add the narrow D1 table and token helper**
+- [x] **Step 3: Add the narrow D1 table and token helper**
 
 Use:
 
@@ -402,7 +403,7 @@ CREATE INDEX idx_release_update_grants_expires
 Reuse `createSessionToken` for 32 random bytes and SHA-256; do not introduce a
 second random-token implementation.
 
-- [ ] **Step 4: Implement grant creation and bearer download**
+- [x] **Step 4: Implement grant creation and bearer download**
 
 Grant creation calls the existing `releaseSession`, `entitledCatalog`, and
 signed-asset lookup before inserting a 15-minute record. It opportunistically
@@ -414,7 +415,7 @@ calls the existing object streaming path with the grant email only for the
 existing safe audit event. Factor the shared R2 response code once so cookie
 and grant downloads cannot drift.
 
-- [ ] **Step 5: Add the portal confirmation handoff**
+- [x] **Step 5: Add the portal confirmation handoff**
 
 When URL parameters contain exact `update_version`, `asset_id`, `origin`, and
 `nonce`, render one confirmation panel after normal login/password change.
@@ -436,7 +437,7 @@ port from 1 through 65535 before showing the panel. Use safe text nodes, keep
 the grant out of storage/URLs/logs, disable duplicate submission, and retain
 the regular release list when update parameters are absent.
 
-- [ ] **Step 6: Run GREEN and the complete docs-site gate**
+- [x] **Step 6: Run GREEN and the complete docs-site gate**
 
 Run:
 
@@ -448,10 +449,10 @@ npm run build
 
 Expected: all docs-site tests and build pass.
 
-- [ ] **Step 7: Commit Task 3**
+- [x] **Step 7: Commit Task 3**
 
 ```powershell
-git add docs-site/migrations/0004_release_update_grants.sql docs-site/migration.test.js docs-site/release-access.js docs-site/worker.js docs-site/download.test.js site/downloads/downloads.js site/downloads/index.html site/downloads/downloads.css
+git add docs-site/migrations/0004_release_update_grants.sql docs-site/migration.test.js docs-site/worker.js docs-site/worker.test.js docs-site/download.test.js site/downloads/downloads.js site/downloads/index.html site/downloads/downloads.css
 git commit -m "feat: authorize desktop update downloads"
 ```
 

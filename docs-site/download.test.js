@@ -57,6 +57,7 @@ test('recipient page exposes labelled controls and accessible feedback in every 
     ['login-panel', 'login-alert'],
     ['change-panel', 'change-alert'],
     ['releases-panel', 'releases-alert'],
+    ['update-panel', 'update-alert'],
   ]) {
     const source = panel(panelId);
     assert.match(source, /hidden/);
@@ -65,13 +66,15 @@ test('recipient page exposes labelled controls and accessible feedback in every 
   }
   assert.match(script, /setAlert\(['"]#login-alert['"]/);
   assert.match(script, /setAlert\(['"]#change-alert['"]/);
-  assert.match(script, /['"]#change-alert['"]\s*:\s*['"]#releases-alert['"]/);
+  assert.match(script, /['"]#update-alert['"]/);
   assert.match(script, /setAlert\(alertId,/);
   assert.match(html, /releases will load/i);
-  assert.equal((html.match(/role="alert"/g) || []).length, 3);
+  assert.equal((html.match(/role="alert"/g) || []).length, 4);
   assert.match(html, /type="submit"[^>]*>\s*Sign in/i);
   assert.match(html, /type="submit"[^>]*>\s*Change password/i);
-  assert.ok((html.match(/>\s*Log out\s*</gi) || []).length >= 2);
+  assert.match(html, /id="update-confirm"[^>]*>\s*Authorize update/i);
+  assert.match(html, /id="update-status"[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.ok((html.match(/>\s*Log out\s*</gi) || []).length >= 3);
 });
 
 test('recipient requests have exact methods, bodies, and same-origin credentials', () => {
@@ -79,10 +82,11 @@ test('recipient requests have exact methods, bodies, and same-origin credentials
   const login = fetchOptions('login');
   const passwordChange = fetchOptions('password');
   const logout = fetchOptions('logout');
+  const updateGrant = fetchOptions('update-grants');
 
   assert.match(session, /credentials:\s*['"]same-origin['"]/);
   assert.doesNotMatch(session, /method:|body:/);
-  for (const options of [login, passwordChange, logout]) {
+  for (const options of [login, passwordChange, logout, updateGrant]) {
     assert.match(options, /method:\s*['"]POST['"]/);
     assert.match(options, /credentials:\s*['"]same-origin['"]/);
     assert.match(options, /headers:\s*\{\s*['"]content-type['"]:\s*['"]application\/json['"]\s*\}/);
@@ -90,6 +94,59 @@ test('recipient requests have exact methods, bodies, and same-origin credentials
   assert.match(login, /body:\s*JSON\.stringify\(\{\s*email:\s*email\.value,\s*password:\s*password\.value,\s*turnstile_token:\s*token\s*\}\)/s);
   assert.match(passwordChange, /body:\s*JSON\.stringify\(\{\s*password\s*\}\)/);
   assert.match(logout, /body:\s*JSON\.stringify\(\{\s*\}\)/);
+  assert.match(updateGrant, /body:\s*JSON\.stringify\(\{\s*nonce:\s*updateRequest\.nonce,\s*version:\s*updateRequest\.version,\s*asset_id:\s*updateRequest\.assetId\s*\}\)/s);
+});
+
+test('desktop update handoff validates exact loopback parameters and sends the grant once', () => {
+  for (const name of ['update_version', 'asset_id', 'origin', 'nonce']) {
+    assert.match(script, new RegExp(`parameters\\.get\\(['"]${name}['"]\\)`));
+  }
+  assert.match(script, /const updateOrigin = \/\^http:\\\/\\\/\(localhost\|127\\\.0\\\.0\\\.1\):/);
+  assert.match(script, /port\s*>=\s*1[\s\S]*port\s*<=\s*65535/);
+  assert.match(script, /globalThis\.opener/);
+  assert.match(script, /globalThis\.opener\.postMessage\(\{/);
+  for (const field of [
+    "type: 'backchannel-update-grant'",
+    'nonce: updateRequest.nonce',
+    'version: result.version',
+    'asset_id: result.asset_id',
+    'grant: result.grant',
+  ]) assert.ok(script.includes(field), field);
+  assert.match(script, /\},\s*updateRequest\.origin\)/);
+  assert.match(script, /globalThis\.close\(\)/);
+  assert.match(script, /updateConfirm\.disabled\s*=\s*true/);
+  assert.match(script, /if\s*\(updateConfirm\.disabled\)\s*return/);
+  assert.doesNotMatch(script, /(?:localStorage|sessionStorage|document\.cookie|console\.|[?&]grant=|searchParams\.set\([^)]*grant)/);
+  assert.doesNotMatch(html, /name="grant"|id="grant"/);
+
+  const parser = script.slice(
+    script.indexOf('const releaseVersion'),
+    script.indexOf('const updateRequest'),
+  );
+  const parse = (query) => {
+    const context = { URLSearchParams, query, result: null };
+    vm.runInNewContext(
+      `${parser}\nresult = parseUpdateRequest(new URLSearchParams(query));`,
+      context,
+    );
+    return context.result && JSON.parse(JSON.stringify(context.result));
+  };
+  assert.deepEqual(parse(
+    `update_version=v1.2.3&asset_id=windows-x64&origin=${encodeURIComponent('http://127.0.0.1:49152')}&nonce=${'a'.repeat(32)}`,
+  ), {
+    version: 'v1.2.3',
+    assetId: 'windows-x64',
+    origin: 'http://127.0.0.1:49152',
+    nonce: 'a'.repeat(32),
+  });
+  for (const query of [
+    `update_version=v1.2.3&asset_id=windows-x64&origin=${encodeURIComponent('https://localhost:49152')}&nonce=${'a'.repeat(32)}`,
+    `update_version=v1.2.3&asset_id=windows-x64&origin=${encodeURIComponent('http://localhost.attacker:49152')}&nonce=${'a'.repeat(32)}`,
+    `update_version=v1.2.3&asset_id=windows-x64&origin=${encodeURIComponent('http://localhost:65536')}&nonce=${'a'.repeat(32)}`,
+    `update_version=v01.2.3&asset_id=windows-x64&origin=${encodeURIComponent('http://localhost:49152')}&nonce=${'a'.repeat(32)}`,
+    `update_version=v1.2.3&asset_id=unknown&origin=${encodeURIComponent('http://localhost:49152')}&nonce=${'a'.repeat(32)}`,
+    `update_version=v1.2.3&asset_id=windows-x64&origin=${encodeURIComponent('http://localhost:49152')}&nonce=short`,
+  ]) assert.equal(parse(query), null);
 });
 
 test('recipient script resets Turnstile in login finally and uses safe browser APIs', () => {

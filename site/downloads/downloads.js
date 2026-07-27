@@ -11,6 +11,12 @@ const releasesPanel = document.querySelector('#releases-panel');
 const releasesHeading = document.querySelector('#releases-heading');
 const releasesIntro = releasesPanel.querySelector('.intro');
 const releasesAlert = document.querySelector('#releases-alert');
+const updatePanel = document.querySelector('#update-panel');
+const updateHeading = document.querySelector('#update-heading');
+const updateSummary = document.querySelector('#update-summary');
+const updateStatus = document.querySelector('#update-status');
+const updateConfirm = document.querySelector('#update-confirm');
+const updateReleases = document.querySelector('#update-releases');
 const releasesList = document.createElement('div');
 releasesIntro.setAttribute('role', 'status');
 releasesIntro.setAttribute('aria-live', 'polite');
@@ -19,7 +25,31 @@ releasesList.setAttribute('aria-live', 'polite');
 releasesPanel.insertBefore(releasesList, releasesAlert);
 const genericError = "We couldn't complete this request. Please try again.";
 const releaseVersion = /^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
+const updateOrigin = /^http:\/\/(localhost|127\.0\.0\.1):([1-9][0-9]{0,4})$/;
+const updatePlatforms = new Map([
+  ['windows-x64', 'Windows x64'],
+  ['macos-arm64', 'macOS arm64'],
+  ['linux-x64', 'Linux x64'],
+]);
 let turnstileToken = '';
+
+function parseUpdateRequest(parameters) {
+  const version = parameters.get('update_version') || '';
+  const assetId = parameters.get('asset_id') || '';
+  const origin = parameters.get('origin') || '';
+  const nonce = parameters.get('nonce') || '';
+  const originMatch = updateOrigin.exec(origin);
+  const port = Number(originMatch?.[2] || 0);
+  const validPort = port >= 1 && port <= 65535;
+  if (!releaseVersion.test(version)
+    || !updatePlatforms.has(assetId)
+    || !originMatch
+    || !validPort
+    || !/^[0-9a-f]{32}$/.test(nonce)) return null;
+  return { version, assetId, origin, nonce };
+}
+
+const updateRequest = parseUpdateRequest(new URLSearchParams(location.search));
 
 globalThis.onTurnstileVerified = (token) => { turnstileToken = token; };
 globalThis.onTurnstileError = () => {
@@ -126,6 +156,14 @@ function showReleases() {
   loadReleases();
 }
 
+function showAuthenticated() {
+  if (!updateRequest || !globalThis.opener || !updatePanel) return showReleases();
+  updateSummary.textContent = `Allow Backchannel ${updateRequest.version} for ${updatePlatforms.get(updateRequest.assetId)}.`;
+  updateStatus.textContent = '';
+  setAlert('#update-alert', '');
+  show(updatePanel, updateHeading);
+}
+
 async function loadSession() {
   try {
     const response = await fetch('/api/download/session', { credentials: 'same-origin' });
@@ -133,7 +171,7 @@ async function loadSession() {
     const session = await response.json();
     if (!session.authenticated) return show(document.querySelector('#login-panel'), email);
     if (session.must_change_password) return show(document.querySelector('#change-panel'), newPassword);
-    showReleases();
+    showAuthenticated();
   } catch {
     password.value = '';
     setAlert('#login-alert', genericError);
@@ -157,7 +195,7 @@ loginForm.addEventListener('submit', async (event) => {
     const result = await response.json();
     password.value = '';
     if (result.must_change_password) show(document.querySelector('#change-panel'), newPassword);
-    else showReleases();
+    else showAuthenticated();
   } catch {
     password.value = '';
     setAlert('#login-alert', genericError);
@@ -183,7 +221,7 @@ changeForm.addEventListener('submit', async (event) => {
     });
     if (!response.ok) throw new Error();
     newPassword.value = '';
-    showReleases();
+    showAuthenticated();
   } catch {
     newPassword.value = '';
     setAlert('#change-alert', genericError);
@@ -193,11 +231,51 @@ changeForm.addEventListener('submit', async (event) => {
   }
 });
 
+updateConfirm?.addEventListener('click', async () => {
+  if (updateConfirm.disabled) return;
+  updateConfirm.disabled = true;
+  updateStatus.textContent = 'Authorizing update...';
+  setAlert('#update-alert', '');
+  try {
+    const response = await fetch('/api/download/update-grants', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nonce: updateRequest.nonce, version: updateRequest.version, asset_id: updateRequest.assetId }),
+    });
+    if (!response.ok) throw new Error();
+    const result = await response.json();
+    if (result.nonce !== updateRequest.nonce
+      || result.version !== updateRequest.version
+      || result.asset_id !== updateRequest.assetId
+      || !/^[A-Za-z0-9_-]{43}$/.test(result.grant || '')) throw new Error();
+    updateStatus.textContent = 'Authorization sent. Returning to Backchannel...';
+    globalThis.opener.postMessage({
+      type: 'backchannel-update-grant',
+      nonce: updateRequest.nonce,
+      version: result.version,
+      asset_id: result.asset_id,
+      grant: result.grant,
+    }, updateRequest.origin);
+    globalThis.close();
+  } catch {
+    updateStatus.textContent = '';
+    setAlert('#update-alert', genericError);
+    updateConfirm.focus();
+  } finally {
+    updateConfirm.disabled = false;
+  }
+});
+
+updateReleases?.addEventListener('click', showReleases);
+
 for (const button of document.querySelectorAll('.logout')) {
   button.addEventListener('click', async () => {
     if (button.disabled) return;
     button.disabled = true;
-    const alertId = button.closest('#change-panel') ? '#change-alert' : '#releases-alert';
+    const alertId = button.closest('#change-panel')
+      ? '#change-alert'
+      : button.closest('#update-panel') ? '#update-alert' : '#releases-alert';
     setAlert(alertId, '');
     try {
       const response = await fetch('/api/download/logout', {

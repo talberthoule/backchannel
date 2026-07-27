@@ -9,6 +9,10 @@ const migration3 = readFileSync(
   new URL('./migrations/0003_release_access_policies.sql', import.meta.url),
   'utf8',
 );
+const migration4 = readFileSync(
+  new URL('./migrations/0004_release_update_grants.sql', import.meta.url),
+  'utf8',
+);
 
 function databaseThrough2() {
   const db = new DatabaseSync(':memory:');
@@ -21,6 +25,7 @@ function databaseThrough2() {
 function database() {
   const db = databaseThrough2();
   db.exec(migration3);
+  db.exec(migration4);
   return db;
 }
 
@@ -246,6 +251,76 @@ test('migration creates the required lookup indexes and leaves SQLite healthy', 
     assert.ok(Object.values(columns).some((value) => value.join(',') === 'version'));
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
+  } finally {
+    db.close();
+  }
+});
+
+test('update grants bind one opaque token to an account, version, asset, and expiry', () => {
+  const db = database();
+  try {
+    insertInterest(db, 'recipient@example.com');
+    insertAccount(db, 'recipient@example.com');
+    db.exec(`
+      INSERT INTO release_update_grants
+        (token_hash, email, version, asset_id, expires_at)
+      VALUES ('hash', 'recipient@example.com', 'v1.2.3', 'windows-x64',
+              '2026-07-26T23:15:00.000Z')
+    `);
+    assert.deepEqual(
+      { ...db.prepare(`
+        SELECT token_hash, email, version, asset_id, expires_at
+        FROM release_update_grants
+      `).get() },
+      {
+        token_hash: 'hash',
+        email: 'recipient@example.com',
+        version: 'v1.2.3',
+        asset_id: 'windows-x64',
+        expires_at: '2026-07-26T23:15:00.000Z',
+      },
+    );
+    assert.throws(
+      () => db.exec(`
+        INSERT INTO release_update_grants
+          (token_hash, email, version, asset_id, expires_at)
+        VALUES ('orphan', 'missing@example.com', 'v1.2.3', 'windows-x64', 'later')
+      `),
+      /FOREIGN KEY constraint failed/,
+    );
+    for (const [token, version, asset] of [
+      ['bad-version', '1.2.3', 'windows-x64'],
+      ['bad-asset', 'v1.2.3', 'Windows-x64'],
+      ['bad-id', 'v1.2.3', 'unknown'],
+    ]) {
+      assert.throws(
+        () => db.prepare(`
+          INSERT INTO release_update_grants
+            (token_hash, email, version, asset_id, expires_at)
+          VALUES (?, 'recipient@example.com', ?, ?, 'later')
+        `).run(token, version, asset),
+        /CHECK constraint failed/,
+      );
+    }
+    assert.throws(
+      () => db.exec(`
+        INSERT INTO release_update_grants
+          (token_hash, email, version, asset_id, expires_at)
+        VALUES ('hash', 'recipient@example.com', 'v1.2.4', 'linux-x64', 'later')
+      `),
+      /UNIQUE constraint failed/,
+    );
+    const expiryIndex = db.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type = 'index' AND tbl_name = 'release_update_grants'
+    `).all().find(({ name }) => (
+      db.prepare(`PRAGMA index_info(${name})`).all().map(({ name: column }) => column)
+        .join(',') === 'expires_at'
+    ));
+    assert.ok(expiryIndex);
+    db.exec(`DELETE FROM release_accounts WHERE email = 'recipient@example.com'`);
+    assert.equal(db.prepare('SELECT count(*) AS count FROM release_update_grants').get().count, 0);
+    assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
   } finally {
     db.close();
   }
