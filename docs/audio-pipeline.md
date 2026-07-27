@@ -82,8 +82,10 @@ which live diarizer runs and how strictly speakers are matched:
   for mic plus system audio with a 1.5 load reserve for transcription.
   The result reports raw and contention-adjusted per-track real-time factors,
   measured headroom, and the per-instance peak resident-memory increase.
-  These measurements persist across restarts for the aggregate capacity
-  planner. The benchmark accepts an uploaded file or a fresh mic recording.
+  The highest observed peak is retained so a warm rerun cannot erase a cold
+  load measurement. These values persist across restarts for the aggregate
+  capacity planner. The benchmark accepts an uploaded file or a fresh mic
+  recording.
 
 The speaker matching slider on the same card adjusts
 `SPEAKER_SIMILARITY_THRESHOLD` at runtime: lower values merge more (fewer,

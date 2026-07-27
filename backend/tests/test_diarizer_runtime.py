@@ -131,6 +131,31 @@ class DiarizerRuntimeTests(unittest.TestCase):
         self.assertIn("3.0x required", runtime.selection_reason)
         self.assertIn("thin", runtime.selection_reason.lower())
 
+    def test_runtime_explains_when_a_saved_pass_no_longer_meets_the_requirement(self):
+        db = FakeDb({
+            SETTING_SELECTED_DIARIZER: AppSetting(
+                key=SETTING_SELECTED_DIARIZER,
+                value="sortformer",
+            ),
+            SETTING_SORTFORMER_BENCHMARK_STATUS: AppSetting(
+                key=SETTING_SORTFORMER_BENCHMARK_STATUS,
+                value="passed",
+            ),
+            SETTING_SORTFORMER_BENCHMARK_RTF: AppSetting(
+                key=SETTING_SORTFORMER_BENCHMARK_RTF,
+                value="0.60",
+            ),
+        })
+
+        runtime = asyncio.run(
+            get_diarizer_runtime_config(db, environment=_environment())
+        )
+
+        self.assertEqual("lightweight", runtime.effective_live_diarizer)
+        self.assertIn("no longer meets", runtime.selection_reason)
+        self.assertIn("1.67x realtime", runtime.selection_reason)
+        self.assertIn("3.0x required", runtime.selection_reason)
+
     def test_set_speaker_similarity_threshold_persists_valid_value(self):
         db = FakeDb()
 
@@ -185,6 +210,27 @@ class DiarizerRuntimeTests(unittest.TestCase):
                 "diarization.sortformer.contention_adjusted_real_time_factor"
             ].value,
         )
+        self.assertEqual(
+            "942.4",
+            db.settings["diarization.sortformer.peak_memory_mb"].value,
+        )
+
+    def test_record_benchmark_retains_higher_peak_memory_from_a_cold_run(self):
+        db = FakeDb({
+            "diarization.sortformer.peak_memory_mb": AppSetting(
+                key="diarization.sortformer.peak_memory_mb",
+                value="942.4",
+            )
+        })
+        result = SimpleNamespace(
+            status="passed",
+            real_time_factor=0.20,
+            contention_adjusted_real_time_factor=0.30,
+            peak_memory_mb=100.0,
+        )
+
+        asyncio.run(record_sortformer_benchmark(db, result))
+
         self.assertEqual(
             "942.4",
             db.settings["diarization.sortformer.peak_memory_mb"].value,

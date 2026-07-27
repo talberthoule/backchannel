@@ -21,8 +21,10 @@ The result keeps the raw per-track RTF and also emits the per-track
 contention-adjusted RTF (`raw * 1.5`) for ALP-156's aggregate planner. During
 model preparation and each sustained run, the benchmark samples resident
 memory and reports the largest increase over its pre-load baseline as the
-per-instance peak footprint in MB. That planner can multiply the footprint by track
-count and add the ASR/caption footprints without double-counting them here.
+per-instance peak footprint in MB. The runtime retains the highest observed
+footprint so a warm rerun cannot erase a cold-load measurement. That planner
+can multiply the footprint by track count and add the ASR/caption footprints
+without double-counting them here.
 
 The result reason states measured throughput, required throughput, and margin.
 A passing result with less than 25% margin explicitly warns that lightweight

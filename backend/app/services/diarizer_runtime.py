@@ -167,7 +167,15 @@ async def record_sortformer_benchmark(db: AsyncSession, result: BenchmarkResult)
         SETTING_SORTFORMER_BENCHMARK_CONTENTION_RTF,
         str(contention_rtf) if math.isfinite(contention_rtf) else "",
     )
-    peak_memory_mb = result.peak_memory_mb
+    previous_peak_memory_mb = _parse_float(
+        await get_app_setting(db, SETTING_SORTFORMER_BENCHMARK_PEAK_MEMORY_MB, "")
+    )
+    peak_candidates = [
+        value
+        for value in (previous_peak_memory_mb, result.peak_memory_mb)
+        if value is not None and math.isfinite(value)
+    ]
+    peak_memory_mb = max(peak_candidates) if peak_candidates else None
     await set_app_setting(
         db,
         SETTING_SORTFORMER_BENCHMARK_PEAK_MEMORY_MB,
@@ -221,6 +229,12 @@ def _selection_reason(
             f"{benchmark_reason}"
         )
     if selected == DIARIZER_SORTFORMER and not selectable:
+        if benchmark_real_time_factor is not None:
+            return (
+                "Enhanced Sortformer is selected, but the saved benchmark no longer "
+                "meets the dual-track requirement. Lightweight diarization is active. "
+                f"{describe_benchmark_headroom(benchmark_real_time_factor, passed=False)}"
+            )
         return "Sortformer is selected, but the runtime is using the lightweight fallback until a benchmark passes."
     return environment_reason or "Lightweight diarization is active."
 

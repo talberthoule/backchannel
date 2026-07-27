@@ -178,6 +178,44 @@ class DiarizationDiagnosticsTests(unittest.TestCase):
     def test_memory_footprint_is_unknown_when_rss_does_not_advance(self):
         self.assertIsNone(_peak_memory_delta_mb([100, 100, 100]))
 
+    def test_benchmark_reports_failure_when_memory_sampler_cannot_start(self):
+        environment = SortformerEnvironment(
+            torch_available=True,
+            sortformer_available=True,
+            cuda_available=True,
+            device="cuda",
+            gpu_name="test-gpu",
+            gpu_memory_gb=16.0,
+            model_id="test-model",
+            status="ready",
+            recommended_live_diarizer="lightweight",
+            reason="ready",
+        )
+        sampler = Mock()
+        sampler.start.side_effect = RuntimeError("can't start new thread")
+        sampler.join.side_effect = RuntimeError("can't join thread before it is started")
+        sampler.is_alive.return_value = False
+
+        with (
+            patch(
+                "app.services.diarization_diagnostics._audio_duration_seconds",
+                return_value=15.0,
+            ),
+            patch(
+                "app.services.diarization_diagnostics.probe_sortformer_environment",
+                return_value=environment,
+            ),
+            patch(
+                "app.services.diarization_diagnostics.threading.Thread",
+                return_value=sampler,
+            ),
+        ):
+            result = benchmark_sortformer_audio("sample.wav")
+
+        self.assertEqual("failed", result.status)
+        self.assertIn("can't start new thread", result.reason)
+        sampler.join.assert_not_called()
+
     def test_memory_sampler_records_resident_memory_until_stopped(self):
         stop = Mock()
         stop.wait.side_effect = [False, False, True]

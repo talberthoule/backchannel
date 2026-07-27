@@ -431,7 +431,7 @@ export default function DiarizationCapabilityCard() {
         <p className="font-body text-xs text-brand-gray">
           {loadingDiagnostics
             ? "Checking diarization capability..."
-            : diarization?.selection_reason ?? benchmark?.reason ?? diarization?.reason ?? "Diagnostics have not been loaded."}
+            : benchmark?.reason ?? diarization?.selection_reason ?? diarization?.reason ?? "Diagnostics have not been loaded."}
         </p>
         {diarization?.gpu_memory_gb != null && (
           <p className="mt-1 font-body text-[10px] text-brand-mid-gray">GPU memory: {diarization.gpu_memory_gb} GB</p>

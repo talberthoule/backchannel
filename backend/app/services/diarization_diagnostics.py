@@ -240,9 +240,10 @@ def benchmark_sortformer_audio(
             reason=environment.reason,
         )
 
+    memory_stop = threading.Event()
+    memory_sampler: threading.Thread | None = None
     try:
         memory_samples = [_resident_memory_bytes()]
-        memory_stop = threading.Event()
         memory_sampler = threading.Thread(
             target=_sample_resident_memory,
             args=(memory_stop, memory_samples),
@@ -272,7 +273,8 @@ def benchmark_sortformer_audio(
         )
     finally:
         memory_stop.set()
-        memory_sampler.join()
+        if memory_sampler is not None and memory_sampler.is_alive():
+            memory_sampler.join()
 
     measurement = BenchmarkMeasurement(
         audio_seconds=audio_seconds * SORTFORMER_BENCHMARK_WINDOWS,
