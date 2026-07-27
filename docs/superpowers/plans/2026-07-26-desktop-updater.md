@@ -490,7 +490,7 @@ git commit -m "feat: authorize desktop update downloads"
   `POST /api/updates/apply`.
 - Consumes: Task 1 verifier and Task 3 descriptor/download endpoints.
 
-- [ ] **Step 1: Write failing service and runtime-activity behavior tests**
+- [x] **Step 1: Write failing service and runtime-activity behavior tests**
 
 Use a real temporary directory and local `http.server.ThreadingHTTPServer`
 fixtures. Assert:
@@ -541,7 +541,7 @@ def test_range_mismatch_restarts_from_zero(self):
     self.assertEqual(service.status()["state"], "ready")
 ```
 
-- [ ] **Step 2: Run service tests and confirm RED**
+- [x] **Step 2: Run service tests and confirm RED**
 
 Run:
 
@@ -578,7 +578,7 @@ git add backend/app/services/runtime_activity.py backend/tests/test_runtime_acti
 git commit -m "feat: gate shutdown around active work"
 ```
 
-- [ ] **Step 4: Implement the minimum persisted state and descriptor check**
+- [x] **Step 4: Implement the minimum persisted state and descriptor check**
 
 Keep one `threading.Lock`, one download thread, and one cancellation event.
 Use `urllib.request`, a maximum 64 KiB descriptor body, five-second timeout,
@@ -609,7 +609,7 @@ Persist by writing adjacent `.tmp`, flushing, then `os.replace`.
 Normalize the bare installed `APP_VERSION` to a leading-`v` value only at the
 service boundary.
 
-- [ ] **Step 5: Implement bounded resume, verification, and extraction**
+- [x] **Step 5: Implement bounded resume, verification, and extraction**
 
 Stream 1 MiB chunks to `.partial`, update SHA-256 in the same pass, compare
 expected size/hash, re-run descriptor verification, and extract only after all
@@ -629,7 +629,7 @@ Sum declared expanded regular-file sizes and require free bytes for the
 archive, expanded stage, current install backup, and 10 percent margin. Stage
 under the installation parent so the final swap stays on one filesystem.
 
-- [ ] **Step 6: Add token-gated FastAPI routes and startup check**
+- [x] **Step 6: Add token-gated FastAPI routes and startup check**
 
 Read the same-origin health response token in the frontend later; for now the
 router dependency compares the header-only `X-Backchannel-Instance` with
@@ -666,7 +666,7 @@ if the tray watcher never performs the controlled shutdown.
 Register the router and schedule `service.check()` with `asyncio.to_thread`
 only when `BACKCHANNEL_DESKTOP=1`; do not await it on startup.
 
-- [ ] **Step 7: Set launcher desktop environment**
+- [x] **Step 7: Set launcher desktop environment**
 
 Before importing `app.main`, set `BACKCHANNEL_DESKTOP`,
 `BACKCHANNEL_INSTANCE_TOKEN`, `BACKCHANNEL_INSTALL_DIR`,
@@ -675,7 +675,7 @@ launcher-owned paths using the per-platform table above. In headless mode set
 `BACKCHANNEL_UPDATE_APPLY_DISABLED=1`; status remains testable, but apply
 returns conflict because no tray watcher can perform the controlled restart.
 
-- [ ] **Step 8: Run GREEN and focused router checks**
+- [x] **Step 8: Run GREEN and focused router checks**
 
 Run:
 
@@ -686,7 +686,7 @@ python -m unittest backend.tests.test_update_signing backend.tests.test_update_s
 
 Expected: all focused backend tests pass.
 
-- [ ] **Step 9: Commit the updater service and routes**
+- [x] **Step 9: Commit the updater service and routes**
 
 ```powershell
 git add backend/app/services/update_service.py backend/app/routers/updates.py backend/tests/test_update_service.py backend/requirements.txt backend/app/main.py desktop/launcher.py

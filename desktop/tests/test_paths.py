@@ -28,6 +28,7 @@ class PathsTests(unittest.TestCase):
         self.assertTrue(str(resource("models")).endswith("models"))
         self.assertTrue(str(resource("pgsql")).endswith("pgsql"))
         self.assertTrue(str(resource("assets")).endswith("assets"))
+        self.assertTrue(str(resource("release_signing_keys.json")).endswith("release_signing_keys.json"))
 
     def test_brand_icons_are_committed(self):
         for name in ("icon.png", "icon.ico", "icon.icns"):

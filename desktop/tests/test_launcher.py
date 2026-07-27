@@ -291,6 +291,24 @@ class LauncherHelperTests(unittest.TestCase):
             ws_max_queue=2048,
             ws_max_size=65_536,
         )
+        self.assertEqual(launcher.os.environ["BACKCHANNEL_DESKTOP"], "1")
+        self.assertEqual(launcher.os.environ["BACKCHANNEL_INSTANCE_TOKEN"], "ours")
+        self.assertEqual(
+            launcher.os.environ["BACKCHANNEL_INSTALL_DIR"],
+            str(launcher.install_root()),
+        )
+        self.assertEqual(
+            launcher.os.environ["BACKCHANNEL_UPDATE_KEYS"],
+            str(Path(tmp)),
+        )
+        self.assertEqual(
+            launcher.os.environ["BACKCHANNEL_UPDATE_HELPER"],
+            str(launcher.updater_path(launcher.install_root())),
+        )
+        self.assertEqual(
+            launcher.os.environ["BACKCHANNEL_UPDATE_APPLY_DISABLED"],
+            "0",
+        )
 
     def test_tray_open_action_uses_browser_opener(self):
         self._browser_opener()

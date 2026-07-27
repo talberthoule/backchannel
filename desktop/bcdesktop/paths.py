@@ -16,6 +16,7 @@ _DEV_RESOURCES = {
     "pgsql": _REPO_ROOT / "desktop" / "pgsql",
     "assets": _REPO_ROOT / "desktop" / "assets",
     "ffmpeg": _REPO_ROOT / "desktop" / "ffmpeg",
+    "release_signing_keys.json": _REPO_ROOT / "desktop" / "release_signing_keys.json",
 }
 
 

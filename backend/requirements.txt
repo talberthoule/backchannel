@@ -15,5 +15,6 @@ kaldi-native-fbank>=1.20.0
 numpy>=1.26.0
 soundfile>=0.12.1
 cryptography>=41.0.0
+certifi>=2024.2.2
 onnx-asr>=0.11.0
 huggingface-hub>=0.26.0

@@ -33,6 +33,11 @@ WINDOWS_BROWSERS = ("msedge.exe", "chrome.exe")
 MACOS_BROWSERS = ("Microsoft Edge", "Google Chrome")
 LINUX_BROWSERS = ("microsoft-edge", "google-chrome", "chromium")
 INSTANCE_HEADER = "X-Backchannel-Instance"
+UPDATER_NAMES = {
+    "win32": "BackchannelUpdater.exe",
+    "darwin": "Contents/MacOS/BackchannelUpdater",
+    "linux": "BackchannelUpdater",
+}
 
 
 def app_url(port: int) -> str:
@@ -41,6 +46,16 @@ def app_url(port: int) -> str:
 
 def health_url(port: int) -> str:
     return f"http://{LOOPBACK_HOST}:{port}/api/health"
+
+
+def install_root() -> Path:
+    executable = Path(sys.executable).resolve()
+    return executable.parents[2] if sys.platform == "darwin" else executable.parent
+
+
+def updater_path(root: Path) -> Path:
+    platform_key = "linux" if sys.platform.startswith("linux") else sys.platform
+    return root / UPDATER_NAMES[platform_key]
 
 
 def bind_app_socket() -> socket.socket:
@@ -308,6 +323,14 @@ def run(headless: bool = False) -> int:
     os.environ["DATABASE_URL"] = pg.database_url(pg_port)
     os.environ["DATA_DIR"] = str(data_dir / "data")
     os.environ["FRONTEND_DIST"] = str(resource("frontend"))
+    root = install_root()
+    os.environ["BACKCHANNEL_DESKTOP"] = "1"
+    os.environ["BACKCHANNEL_INSTANCE_TOKEN"] = instance_token
+    os.environ["BACKCHANNEL_INSTALL_DIR"] = str(root)
+    os.environ["BACKCHANNEL_UPDATE_KEYS"] = str(resource("release_signing_keys.json"))
+    os.environ["BACKCHANNEL_UPDATE_HELPER"] = str(updater_path(root))
+    os.environ["BACKCHANNEL_UPDATE_APPLY_DISABLED"] = "1" if headless else "0"
+    os.environ["BACKCHANNEL_BOUND_HOST"] = LOOPBACK_HOST
     ffmpeg = resource("ffmpeg") / (
         "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
     )

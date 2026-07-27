@@ -1,15 +1,17 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import settings
 from app.database import engine
 from app.models import Base
 from app.release_notes import APP_VERSION
-from app.routers import agents, analyze, artifacts, chat, credentials, retranscribe, diagnostics, directives, documents, endpoints, groups, imports, knowledge, meta, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts
+from app.routers import agents, analyze, artifacts, chat, credentials, retranscribe, diagnostics, directives, documents, endpoints, groups, imports, knowledge, meta, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts, updates
 from app.services.privacy import LocalOnlyModeError
 from app.services.audio_store import cleanup_orphan_track_audio
 from app.services import runtime_activity
@@ -254,9 +256,16 @@ async def lifespan(app: FastAPI):
 
     from app.services.provider_health import verify_untested_provider_keys
     verify_task = asyncio.create_task(verify_untested_provider_keys())
+    update_task = None
+    if os.environ.get("BACKCHANNEL_DESKTOP") == "1":
+        from app.services.update_service import get_update_service
+
+        update_task = asyncio.create_task(asyncio.to_thread(get_update_service().check))
 
     yield
     verify_task.cancel()
+    if update_task:
+        update_task.cancel()
     await engine.dispose()
 
 
@@ -269,6 +278,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+if os.environ.get("BACKCHANNEL_DESKTOP") == "1":
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=[
+            "localhost",
+            "127.0.0.1",
+            os.environ.get("BACKCHANNEL_BOUND_HOST", "127.0.0.1"),
+        ],
+    )
 
 app.include_router(sessions.router)
 app.include_router(agents.router)
@@ -292,6 +310,7 @@ app.include_router(retranscribe.router)
 app.include_router(chat.router)
 app.include_router(diagnostics.router)
 app.include_router(privacy.router)
+app.include_router(updates.router)
 app.include_router(audio_handler.router)
 
 
