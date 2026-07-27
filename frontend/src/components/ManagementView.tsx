@@ -1,3 +1,4 @@
+import type { DesktopUpdateController } from "../types";
 import AdminPanel, { type AdminTab } from "./AdminPanel";
 import KnowledgeManager from "./KnowledgeManager";
 import OfferingsManager from "./OfferingsManager";
@@ -11,6 +12,7 @@ interface Props {
   adminTab: AdminTab;
   adminOnboarding: boolean;
   highlightSince: string | null;
+  desktopUpdate: DesktopUpdateController;
   onCloseAdmin: () => void;
   onCloseKnowledge: () => void;
   onCloseOfferings: () => void;
@@ -24,6 +26,7 @@ export default function ManagementView({
   adminTab,
   adminOnboarding,
   highlightSince,
+  desktopUpdate,
   onCloseAdmin,
   onCloseKnowledge,
   onCloseOfferings,
@@ -33,6 +36,7 @@ export default function ManagementView({
     return (
       <AdminPanel
         onBack={onCloseAdmin}
+        desktopUpdate={desktopUpdate}
         initialTab={adminTab}
         highlightSince={highlightSince}
         onboarding={adminOnboarding}

@@ -1543,7 +1543,7 @@ function downloadBindings({ first = async () => undefined, run, batch } = {}) {
               return prepared;
             },
             async first(...values) {
-              const record = await first(...values);
+              const record = await first(call, ...values);
               return record && 'password_change_only' in record && !('release_decision' in record)
                 ? { ...record, release_decision: 'approved' }
                 : record;
@@ -2123,7 +2123,7 @@ function releaseBucket({
   };
 }
 
-function progressiveReleaseBucket() {
+function progressiveReleaseBucket({ signed = false, schema = 1 } = {}) {
   const calls = [];
   const version = 'v2.0.0';
   const commit = 'a'.repeat(40);
@@ -2137,7 +2137,20 @@ function progressiveReleaseBucket() {
     [`releases/${version}/release.json`, {
       version, published_at: '2026-07-12T18:00:00Z', commit,
     }],
-    [`releases/${version}/platforms/windows-x64.json`, { version, commit, asset }],
+    [`releases/${version}/platforms/windows-x64.json`, {
+      version,
+      commit,
+      asset,
+      ...(signed ? {
+        published_at: '2026-07-12T18:00:00Z',
+        release_notes: 'Security and reliability fixes.',
+        update: {
+          key_id: 'test-key',
+          schema,
+          signature: 'A'.repeat(86),
+        },
+      } : {}),
+    }],
     ['releases/latest.json', { version }],
   ]);
   return {
@@ -2167,6 +2180,243 @@ function progressiveReleaseBucket() {
     },
   };
 }
+
+test('recipient host exposes only a strict signed Latest update descriptor', async () => {
+  const signed = releaseBindings(progressiveReleaseBucket({ signed: true }));
+  const response = await workerModule.route(downloadRequest(
+    '/api/update/latest/windows-x64', undefined, { method: 'GET' },
+  ), signed.env);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'public, max-age=300');
+  assert.deepEqual(await response.json(), {
+    version: 'v2.0.0',
+    commit: 'a'.repeat(40),
+    published_at: '2026-07-12T18:00:00Z',
+    release_notes: 'Security and reliability fixes.',
+    asset: {
+      id: 'windows-x64',
+      platform: 'Windows x64',
+      filename: 'Backchannel-windows-x64.zip',
+      size: 100,
+      sha256: 'b'.repeat(64),
+    },
+    key_id: 'test-key',
+    schema: 1,
+    signature: 'A'.repeat(86),
+  });
+  assert.equal(signed.calls.length, 0, 'public update checks must not query recipient identity');
+
+  const unsigned = releaseBindings(progressiveReleaseBucket());
+  const malformed = releaseBindings(progressiveReleaseBucket({ signed: true, schema: 2 }));
+  const admin = adminBindings();
+  const cases = [
+    [downloadRequest('/api/update/latest/windows-x64', undefined, { method: 'GET' }), unsigned.env, undefined, 404],
+    [downloadRequest('/api/update/latest/windows-x64', undefined, { method: 'GET' }), malformed.env, undefined, 404],
+    [downloadRequest('/api/update/latest/unknown', undefined, { method: 'GET' }), signed.env, undefined, 404],
+    [downloadRequest('/api/update/latest/windows-x64', {}, { method: 'POST' }), signed.env, undefined, 405],
+    [new Request('https://backchannel.page/api/update/latest/windows-x64'), signed.env, undefined, 404],
+    [adminRequest('/api/update/latest/windows-x64'), admin.env, allowOwner, 404],
+  ];
+  for (const [requestValue, env, verify, status] of cases) {
+    const result = await workerModule.route(requestValue, env, verify);
+    assert.equal(result.status, status);
+    assert.match(result.headers.get('cache-control'), /no-store/);
+  }
+});
+
+test('public Latest descriptor is served from edge cache after the first catalog read', async () => {
+  const bucket = progressiveReleaseBucket({ signed: true });
+  const bindingsValue = releaseBindings(bucket);
+  const stored = new Map();
+  const cache = {
+    async match(requestValue) {
+      return stored.get(requestValue.url)?.clone();
+    },
+    async put(requestValue, response) {
+      stored.set(requestValue.url, response.clone());
+    },
+  };
+  const requestValue = () => downloadRequest(
+    '/api/update/latest/windows-x64', undefined, { method: 'GET' },
+  );
+
+  const first = await workerModule.route(
+    requestValue(), bindingsValue.env, undefined, { cache },
+  );
+  assert.equal(first.status, 200);
+  const catalogReads = bucket.calls.length;
+  assert.ok(catalogReads > 0);
+
+  const second = await workerModule.route(
+    requestValue(), bindingsValue.env, undefined, { cache },
+  );
+  assert.equal(second.status, 200);
+  assert.equal(bucket.calls.length, catalogReads);
+  assert.deepEqual(await second.json(), await first.json());
+});
+
+const updateNonce = '0123456789abcdef0123456789abcdef';
+const updateGrantToken = await createSessionToken(
+  (length) => new Uint8Array(length).fill(21),
+);
+
+function updateGrantRequest(body, init = {}) {
+  return downloadRequest('/api/download/update-grants', body, {
+    ...init,
+    headers: {
+      cookie: `__Host-backchannel_release=${releaseToken.token}`,
+      ...init.headers,
+    },
+  });
+}
+
+function updateAssetRequest(path = '/api/update/assets/v2.0.0/windows-x64', headers = {}) {
+  return downloadRequest(path, undefined, {
+    method: 'GET',
+    headers: {
+      authorization: `Bearer ${updateGrantToken.token}`,
+      ...headers,
+    },
+  });
+}
+
+function grantRecord(overrides = {}) {
+  return {
+    email: releaseSession.email,
+    version: 'v2.0.0',
+    asset_id: 'windows-x64',
+    expires_at: '2026-07-12T12:15:00.000Z',
+    state: 'active',
+    release_decision: 'approved',
+    ...overrides,
+  };
+}
+
+function updateGrantBindings({ bucket = progressiveReleaseBucket({ signed: true }),
+  session = releaseSession, grant = grantRecord() } = {}) {
+  const result = downloadBindings({
+    first: async (call) => (
+      call.sql.includes('release_update_grants') ? grant : session
+    ),
+  });
+  result.env.RELEASES = bucket;
+  return { ...result, bucket };
+}
+
+test('normal recipient session mints one exact short-lived update grant', async () => {
+  const bindings = updateGrantBindings();
+  const response = await workerModule.route(updateGrantRequest({
+    nonce: updateNonce,
+    version: 'v2.0.0',
+    asset_id: 'windows-x64',
+  }), bindings.env, undefined, downloadDependencies({
+    createSessionToken: async () => updateGrantToken,
+  }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    nonce: updateNonce,
+    version: 'v2.0.0',
+    asset_id: 'windows-x64',
+    grant: updateGrantToken.token,
+    expires_at: '2026-07-12T12:15:00.000Z',
+  });
+  const insert = bindings.calls.find(({ sql }) => /INSERT INTO release_update_grants/i.test(sql));
+  assert.ok(insert);
+  assert.deepEqual(insert.values.slice(0, 5), [
+    updateGrantToken.tokenHash,
+    releaseSession.email,
+    'v2.0.0',
+    'windows-x64',
+    '2026-07-12T12:15:00.000Z',
+  ]);
+  assert.ok(bindings.calls.some(({ sql }) => /DELETE FROM release_update_grants/i.test(sql)));
+  assert.equal(JSON.stringify(bindings.calls).includes(updateGrantToken.token), false);
+  assert.equal(bindings.batchCalls.length, 1);
+});
+
+test('update grant creation fails closed across request, session, entitlement, and signature gates', async () => {
+  const valid = { nonce: updateNonce, version: 'v2.0.0', asset_id: 'windows-x64' };
+  const cases = [
+    [updateGrantRequest(valid), updateGrantBindings({ session: null }), 404],
+    [updateGrantRequest(valid), updateGrantBindings({
+      session: { ...releaseSession, password_change_only: 1 },
+    }), 404],
+    [updateGrantRequest(valid, { headers: { origin: 'https://attacker.example' } }),
+      updateGrantBindings(), 403],
+    [updateGrantRequest('not-json', {
+      headers: { 'content-type': 'text/plain', origin: DOWNLOAD_ORIGIN },
+    }), updateGrantBindings(), 415],
+    [updateGrantRequest({ ...valid, nonce: 'short' }), updateGrantBindings(), 400],
+    [updateGrantRequest({ ...valid, version: 'v02.0.0' }), updateGrantBindings(), 400],
+    [updateGrantRequest({ ...valid, asset_id: 'unknown' }), updateGrantBindings(), 400],
+    [updateGrantRequest({ ...valid, extra: true }), updateGrantBindings(), 400],
+    [updateGrantRequest(valid), updateGrantBindings({
+      bucket: progressiveReleaseBucket(),
+    }), 404],
+    [updateGrantRequest(valid), updateGrantBindings({
+      session: { ...releaseSession, include_latest: 0, versions: '[]' },
+    }), 404],
+  ];
+  for (const [requestValue, bindings, expected] of cases) {
+    const response = await workerModule.route(
+      requestValue,
+      bindings.env,
+      undefined,
+      downloadDependencies({ createSessionToken: async () => updateGrantToken }),
+    );
+    assert.equal(response.status, expected);
+    assert.equal(bindings.calls.some(({ sql }) => /INSERT INTO release_update_grants/i.test(sql)), false);
+  }
+});
+
+test('bearer update downloads recheck the grant and reuse full, ranged, and conditional streaming', async () => {
+  for (const [headers, expectedStatus, expectedLength] of [
+    [{}, 200, '100'],
+    [{ range: 'bytes=10-19' }, 206, '10'],
+    [{ 'if-none-match': '"progressive-etag"' }, 304, null],
+  ]) {
+    const bindings = updateGrantBindings();
+    const response = await workerModule.route(
+      updateAssetRequest(undefined, headers),
+      bindings.env,
+      undefined,
+      downloadDependencies(),
+    );
+    assert.equal(response.status, expectedStatus);
+    assert.equal(response.headers.get('content-length'), expectedLength);
+    if (expectedStatus === 206) {
+      assert.equal(response.headers.get('content-range'), 'bytes 10-19/100');
+    }
+    const lookup = bindings.calls.find(({ sql }) => /FROM release_update_grants/i.test(sql));
+    assert.equal(lookup.values[0], updateGrantToken.tokenHash);
+    assert.doesNotMatch(JSON.stringify([...response.headers]), /releases\/v2\.0\.0/);
+  }
+});
+
+test('bearer update failures are indistinguishable private 404 responses', async () => {
+  const cases = [
+    [updateAssetRequest(), updateGrantBindings({ grant: null })],
+    [updateAssetRequest(), updateGrantBindings({
+      grant: grantRecord({ expires_at: '2026-07-12T11:59:59.000Z' }),
+    })],
+    [updateAssetRequest(), updateGrantBindings({
+      grant: grantRecord({ state: 'revoked' }),
+    })],
+    [updateAssetRequest('/api/update/assets/v2.0.0/linux-x64'), updateGrantBindings()],
+    [updateAssetRequest(undefined, { authorization: 'Bearer malformed' }), updateGrantBindings()],
+    [updateAssetRequest(), updateGrantBindings({
+      session: { ...releaseSession, include_latest: 0, versions: '[]' },
+    })],
+  ];
+  for (const [requestValue, bindings] of cases) {
+    const response = await workerModule.route(
+      requestValue, bindings.env, undefined, downloadDependencies(),
+    );
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get('cache-control'), 'private, no-store');
+    assert.deepEqual(await response.json(), { ok: false, error: 'Not found.' });
+  }
+});
 
 function releaseGet(path, headers = {}) {
   return downloadRequest(path, undefined, {

@@ -4,6 +4,7 @@ import socket
 import tempfile
 import threading
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock, call, patch
 
@@ -251,6 +252,7 @@ class LauncherHelperTests(unittest.TestCase):
             patch.object(postgres, "pgdata", Path(tmp) / "pgdata"),
             patch.object(postgres, "database_url", return_value="postgresql://db"),
             patch.object(launcher, "resource", return_value=Path(tmp)),
+            patch.object(launcher.sys, "frozen", True, create=True),
             patch.object(launcher, "free_port", return_value=15432),
             patch.object(launcher, "bind_app_socket", return_value=listener),
             patch.object(launcher, "secrets", secrets, create=True),
@@ -258,7 +260,7 @@ class LauncherHelperTests(unittest.TestCase):
             patch.object(launcher.threading, "Thread") as thread_factory,
             patch.object(launcher, "wait_healthy", side_effect=confirm_health),
             patch.object(launcher, "browser_opener") as opener,
-            patch.object(launcher, "_run_tray"),
+            patch.object(launcher, "_run_tray", return_value=False),
             patch.object(launcher.logging, "basicConfig"),
         ):
             self.assertEqual(launcher.run(), 0)
@@ -291,6 +293,24 @@ class LauncherHelperTests(unittest.TestCase):
             ws_max_queue=2048,
             ws_max_size=65_536,
         )
+        self.assertEqual(launcher.os.environ["BACKCHANNEL_DESKTOP"], "1")
+        self.assertEqual(launcher.os.environ["BACKCHANNEL_INSTANCE_TOKEN"], "ours")
+        self.assertEqual(
+            launcher.os.environ["BACKCHANNEL_INSTALL_DIR"],
+            str(launcher.install_root()),
+        )
+        self.assertEqual(
+            launcher.os.environ["BACKCHANNEL_UPDATE_KEYS"],
+            str(Path(tmp)),
+        )
+        self.assertEqual(
+            launcher.os.environ["BACKCHANNEL_UPDATE_HELPER"],
+            str(launcher.updater_path(launcher.install_root())),
+        )
+        self.assertEqual(
+            launcher.os.environ["BACKCHANNEL_UPDATE_APPLY_DISABLED"],
+            "0",
+        )
 
     def test_tray_open_action_uses_browser_opener(self):
         self._browser_opener()
@@ -309,6 +329,121 @@ class LauncherHelperTests(unittest.TestCase):
 
         opener.assert_called_once_with("http://localhost:8474")
         icon.run.assert_called_once_with()
+
+    def test_update_watcher_notices_only_a_fresh_valid_apply_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            updates = data_dir / "updates"
+            updates.mkdir()
+            state = updates / "state.json"
+            state.write_text(json.dumps({"state": "applying"}))
+            marker = updates / "apply.json"
+            marker.write_text(json.dumps({
+                "requested_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }))
+            with patch.object(launcher, "validate_plan") as validate:
+                self.assertTrue(launcher._claim_update_marker(data_dir))
+            validate.assert_called_once()
+
+            marker.unlink()
+            (updates / "other.json").write_text("{}")
+            self.assertFalse(launcher._claim_update_marker(data_dir))
+
+            marker.write_text(json.dumps({
+                "requested_at": (
+                    datetime.now(timezone.utc) - timedelta(seconds=61)
+                ).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }))
+            self.assertFalse(launcher._claim_update_marker(data_dir))
+            self.assertFalse(marker.exists())
+            self.assertEqual(json.loads(state.read_text())["state"], "ready")
+
+    def test_update_watcher_stops_the_tray_for_an_exact_marker(self):
+        icon = Mock()
+        requested = threading.Event()
+        stopped = threading.Event()
+        with patch.object(launcher, "_claim_update_marker", return_value=True):
+            launcher._watch_for_update(icon, Path("data"), requested, stopped)
+        self.assertTrue(requested.is_set())
+        icon.stop.assert_called_once_with()
+
+    def test_tray_check_posts_instance_token_then_opens_about(self):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        with (
+            patch("launcher.urllib.request.urlopen", return_value=response) as urlopen,
+            patch.object(launcher, "browser_opener") as opener,
+        ):
+            launcher._check_for_updates(8474, "instance-secret")
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.method, "POST")
+        self.assertEqual(
+            {key.lower(): value for key, value in request.header_items()}.get(
+                launcher.INSTANCE_HEADER.lower()
+            ),
+            "instance-secret",
+        )
+        opener.assert_called_once_with("http://localhost:8474/?view=about")
+
+    def test_available_tray_label_includes_version_and_signed_note_title(self):
+        with patch.object(launcher, "_update_status", return_value={
+            "state": "available",
+            "available_version": "v0.4.0",
+            "available_notes": "# Safer updates\nMore detail.",
+        }):
+            self.assertEqual(
+                launcher._update_menu_label(8474),
+                "Update v0.4.0: Safer updates",
+            )
+
+    def test_helper_is_copied_outside_install_and_started_with_only_the_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            marker = data_dir / "updates" / "apply.json"
+            marker.parent.mkdir()
+            marker.write_text(json.dumps({"version": "v0.4.0"}))
+            helper = data_dir / "installed" / "BackchannelUpdater.exe"
+            helper.parent.mkdir()
+            helper.write_bytes(b"helper")
+            with (
+                patch.object(
+                    launcher,
+                    "validate_plan",
+                    return_value=Mock(version="v0.4.0"),
+                ),
+                patch("launcher.subprocess.Popen") as popen,
+            ):
+                copied = launcher._launch_update_helper(data_dir, helper)
+            self.assertEqual(
+                copied,
+                data_dir / "updates" / "bin" / "v0.4.0" / helper.name,
+            )
+            self.assertEqual(copied.read_bytes(), b"helper")
+            popen.assert_called_once_with(
+                [str(copied), str(marker)],
+                cwd=str(copied.parent),
+            )
+
+    def test_tray_update_label_is_resolved_when_the_menu_opens(self):
+        pystray = Mock()
+        pystray.Menu.side_effect = lambda *items: items
+        pystray.MenuItem.side_effect = lambda label, action: (label, action)
+        with (
+            patch.dict(launcher.sys.modules, {"pystray": pystray}),
+            patch.object(launcher, "_tray_image"),
+            patch.object(
+                launcher,
+                "_update_menu_label",
+                return_value="Update v0.4.0: Safer updates",
+            ) as label,
+        ):
+            launcher._run_tray(8474, Path("data"), "instance-secret")
+            menu = pystray.Icon.call_args.kwargs["menu"]
+            resolved = menu[2][0](None)
+        self.assertTrue(callable(menu[2][0]))
+        self.assertEqual(resolved, "Update v0.4.0: Safer updates")
+        label.assert_called_once_with(8474)
 
     def test_stale_lock_file_means_no_instance(self):
         with tempfile.TemporaryDirectory() as tmp:

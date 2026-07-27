@@ -110,6 +110,16 @@ input {
   font-size: 14px;
 }
 
+.actions {
+  display: grid;
+  gap: 12px;
+}
+
+#update-status {
+  min-height: 24px;
+  color: var(--muted);
+}
+
 #releases-list {
   display: grid;
   gap: 28px;

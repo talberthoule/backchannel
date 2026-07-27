@@ -28,6 +28,7 @@ datas = [
     (str(repo / "backend" / "models"), "models"),
     (str(repo / "desktop" / "pgsql"), "pgsql"),
     (str(repo / "desktop" / "assets"), "assets"),
+    (str(repo / "desktop" / "release_signing_keys.json"), "."),
 ]
 # Present only after desktop/scripts/download_ffmpeg.py runs (Windows/Linux
 # releases); macOS bundles stay ffmpeg-free.
@@ -54,7 +55,31 @@ exe = EXE(
     else None,
 )
 
-coll = COLLECT(exe, a.binaries, a.datas, name="Backchannel")
+updater_a = Analysis(
+    [str(repo / "desktop" / "updater.py")],
+    pathex=[str(repo / "desktop")],
+)
+updater_pyz = PYZ(updater_a.pure)
+updater_exe = EXE(
+    updater_pyz,
+    updater_a.scripts,
+    updater_a.binaries,
+    updater_a.datas,
+    [],
+    name="BackchannelUpdater",
+    console=False,
+    icon=str(repo / "desktop" / "assets" / "icon.ico")
+    if sys.platform == "win32"
+    else None,
+)
+
+coll = COLLECT(
+    exe,
+    updater_exe,
+    a.binaries,
+    a.datas,
+    name="Backchannel",
+)
 
 if sys.platform == "darwin":
     app = BUNDLE(

@@ -11,6 +11,8 @@ import {
   listTranscripts,
 } from "../services/api";
 
+export { reconcileRefusedSession } from "../lib/callRefusal";
+
 export function useSession(sessionId: string | null) {
   const [session, setSession] = useState<Session | null>(null);
   const [directives, setDirectives] = useState<Directive[]>([]);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Layout from "./components/Layout";
-import NewSessionModal from "./components/NewSessionModal";
+import AppOverlays from "./components/AppOverlays";
 import ManagementView, { type AdminTab } from "./components/ManagementView";
 import WelcomeView from "./components/WelcomeView";
 import PreCallView from "./components/PreCall/PreCallView";
@@ -8,10 +8,9 @@ import ActiveCallView from "./components/ActiveCall/ActiveCallView";
 import PostCallView from "./components/PostCall/PostCallView";
 import { startSingleFlight, useAudioCapture } from "./hooks/useAudioCapture";
 import { useWebSocket } from "./hooks/useWebSocket";
-import { reconcileRefusedSession } from "./lib/callRefusal";
-import { useSession } from "./hooks/useSession";
+import { reconcileRefusedSession, useSession } from "./hooks/useSession";
 import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
-import { useWhatsNew } from "./hooks/useWhatsNew";
+import { useAppUpdates } from "./hooks/useAppUpdates";
 import { useConfirm } from "./components/ConfirmProvider";
 import * as api from "./services/api";
 import type { PostProcessingProgress, Question, Session, SessionGroup, SessionSynthesis, StopDrainMode, TranscriptEntry, WSStatusData } from "./types";
@@ -166,7 +165,12 @@ export default function App() {
   // key" action; gates the contextual first-run setup card on the keys tab.
   const [adminOnboarding, setAdminOnboarding] = useState(false);
   const [showNewSession, setShowNewSession] = useState(false);
-  const { whatsNew, bannerOpen, acknowledge: acknowledgeWhatsNew } = useWhatsNew();
+  const {
+    whatsNew,
+    bannerOpen,
+    acknowledge: acknowledgeWhatsNew,
+    desktopUpdate,
+  } = useAppUpdates();
   const { confirm, notice } = useConfirm();
 
   const {
@@ -834,6 +838,7 @@ export default function App() {
           adminTab={adminTab}
           adminOnboarding={adminOnboarding}
           highlightSince={whatsNew?.since ?? null}
+          desktopUpdate={desktopUpdate}
           onCloseAdmin={() => setShowAdmin(false)}
           onCloseOfferings={() => setShowOfferings(false)}
           onCloseKnowledge={() => setShowKnowledge(false)}
@@ -954,38 +959,16 @@ export default function App() {
       onRefreshSessions={refreshSessions}
     >
       {renderContent()}
-      <NewSessionModal
-        open={showNewSession}
-        onClose={() => setShowNewSession(false)}
-        onCreate={handleCreateSession}
+      <AppOverlays
+        update={desktopUpdate}
+        newSessionOpen={showNewSession}
+        onCloseNewSession={() => setShowNewSession(false)}
+        onCreateSession={handleCreateSession}
+        suppressDesktopUpdate={(showAdmin && adminTab === "about") || !!liveSessionId}
+        whatsNew={bannerOpen ? whatsNew : null}
+        onOpenUpdate={() => openAdmin("about")}
+        onAcknowledgeUpdate={acknowledgeWhatsNew}
       />
-      {bannerOpen && whatsNew && (
-        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-xl bg-surface px-4 py-3 shadow-lg ring-1 ring-brand-light-gray-1">
-          <p className="font-body text-sm text-brand-dark-gray">
-            Backchannel was updated to <span className="font-mono font-semibold">v{whatsNew.current}</span>
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              acknowledgeWhatsNew();
-              openAdmin("about");
-            }}
-            className="rounded-lg bg-brand-teal px-3 py-1.5 font-body text-xs font-semibold text-white transition-colors hover:bg-brand-teal/90"
-          >
-            See what&apos;s new
-          </button>
-          <button
-            type="button"
-            onClick={acknowledgeWhatsNew}
-            title="Dismiss"
-            className="rounded p-1 text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      )}
     </Layout>
   );
 }

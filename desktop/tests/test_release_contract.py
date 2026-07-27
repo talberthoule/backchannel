@@ -14,6 +14,7 @@ PLATFORM_PUBLISHER = (
 )
 LINUX_DOCKERFILE = (ROOT / "desktop" / "Dockerfile.release-linux").read_text()
 COORDINATOR = (ROOT / "scripts" / "release_desktop.ps1").read_text()
+UPDATE_SMOKE = ROOT / "desktop" / "scripts" / "smoke_update_archive.py"
 
 
 class ReleaseContractTests(unittest.TestCase):
@@ -81,6 +82,7 @@ class ReleaseContractTests(unittest.TestCase):
             "CLOUDFLARE_ACCOUNT_ID",
             "R2_ACCESS_KEY_ID",
             "R2_SECRET_ACCESS_KEY",
+            "BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY",
         ):
             with self.subTest(name=name):
                 self.assertNotIn(name, build)
@@ -92,6 +94,8 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertIn("group: backchannel-r2-publish", publish)
         self.assertIn("cancel-in-progress: false", publish)
         self.assertIn("publish_release_platform.ps1", publish)
+        self.assertIn("pip install \"cryptography>=41.0.0\"", publish)
+        self.assertIn("ref: ${{ inputs.release_ref }}", publish)
         self.assertLess(
             WORKFLOW.index("publish_release_platform.ps1"),
             WORKFLOW.index("--method DELETE"),
@@ -102,7 +106,7 @@ class ReleaseContractTests(unittest.TestCase):
             r"uses:\s+actions/(?:checkout|setup-node|setup-python|cache(?:/(?:save|restore))?)@([^\s#]+)",
             WORKFLOW,
         )
-        self.assertEqual(len(refs), 9)
+        self.assertEqual(len(refs), 10)
         self.assertTrue(all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in refs))
 
     def test_macos_cleanup_is_separate_from_production_credentials(self):
@@ -117,6 +121,7 @@ class ReleaseContractTests(unittest.TestCase):
             "CLOUDFLARE_ACCOUNT_ID",
             "R2_ACCESS_KEY_ID",
             "R2_SECRET_ACCESS_KEY",
+            "BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY",
         ):
             self.assertNotIn(name, cleanup)
         self.assertIn("needs: [build-macos, publish-macos]", cleanup)
@@ -247,6 +252,9 @@ class ReleaseContractTests(unittest.TestCase):
             "platforms/$PlatformId.json",
             "--if-match",
             "Updating Latest",
+            "BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY",
+            "--keys-file",
+            "--release-notes-file",
         ):
             with self.subTest(value=value):
                 self.assertIn(value, PLATFORM_PUBLISHER)
@@ -269,6 +277,46 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertIn('"assets"', SPEC)
         self.assertIn("icon.ico", SPEC)
         self.assertIn("icon.icns", SPEC)
+        self.assertIn("release_signing_keys.json", SPEC)
+
+    def test_spec_builds_and_collects_a_standalone_onefile_updater(self):
+        self.assertIn('repo / "desktop" / "updater.py"', SPEC)
+        self.assertIn('name="BackchannelUpdater"', SPEC)
+        self.assertRegex(SPEC, r"updater_exe\s*=\s*EXE\(")
+        updater_block = SPEC[SPEC.index("updater_exe = EXE("):SPEC.index("coll = COLLECT")]
+        self.assertNotIn("exclude_binaries=True", updater_block)
+        self.assertRegex(SPEC, r"COLLECT\(\s*exe,\s*updater_exe,")
+        self.assertIn('release_signing_keys.json"), "."', SPEC)
+
+    def test_every_native_archive_runs_the_production_update_smoke(self):
+        self.assertTrue(UPDATE_SMOKE.is_file())
+        windows_zip = COORDINATOR.index("Compress-Archive")
+        windows_smoke = COORDINATOR.index("smoke_update_archive.py")
+        self.assertLess(windows_zip, windows_smoke)
+        self.assertIn("--platform windows-x64 --archive $AssetPath", COORDINATOR)
+
+        linux_archive = LINUX_DOCKERFILE.index(
+            'tar -C dist -czf "/out/Backchannel-linux-x64.tar.gz" Backchannel'
+        )
+        linux_smoke = LINUX_DOCKERFILE.index("smoke_update_archive.py")
+        self.assertLess(linux_archive, linux_smoke)
+        self.assertIn("--platform linux-x64", LINUX_DOCKERFILE)
+        self.assertIn(
+            "--archive /out/Backchannel-linux-x64.tar.gz",
+            LINUX_DOCKERFILE,
+        )
+
+        build = WORKFLOW.split("  publish-macos:", 1)[0]
+        mac_archive = build.index("ditto -c -k --keepParent")
+        mac_smoke = build.index("smoke_update_archive.py")
+        cache_handoff = build.index("Prepare macOS cache handoff")
+        self.assertLess(mac_archive, mac_smoke)
+        self.assertLess(mac_smoke, cache_handoff)
+        self.assertIn("--platform macos-arm64", build)
+        self.assertIn(
+            "--archive ../controller/release-assets/Backchannel-macos-arm64.zip",
+            build,
+        )
 
 
 if __name__ == "__main__":

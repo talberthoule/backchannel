@@ -26,6 +26,10 @@ USER nobody
 RUN python /tmp/backchannel-smoke-test.py
 USER root
 RUN mkdir /out && tar -C dist -czf "/out/Backchannel-linux-x64.tar.gz" Backchannel
+USER nobody
+RUN python desktop/scripts/smoke_update_archive.py \
+    --platform linux-x64 --archive /out/Backchannel-linux-x64.tar.gz
+USER root
 
 FROM scratch AS export
 COPY --from=bundle /out/Backchannel-linux-x64.tar.gz /

@@ -1,0 +1,11 @@
+.git/
+.release-venv/
+**/__pycache__/
+**/*.pyc
+backend/models/
+desktop/build/
+desktop/dist/
+desktop/ffmpeg/
+desktop/pgsql/
+frontend/dist/
+frontend/node_modules/

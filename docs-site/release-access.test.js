@@ -15,6 +15,7 @@ import {
   parsePlatformManifest,
   parseReleaseIdentity,
   parseSingleRange,
+  publicUpdateDescriptor,
   releaseSummary,
   resolveEntitlements,
   verifyPassword,
@@ -47,6 +48,17 @@ const platformManifest = {
   version: 'v1.2.3',
   commit: releaseIdentity.commit,
   asset: baseAsset,
+};
+const signedUpdate = {
+  key_id: 'test-key',
+  schema: 1,
+  signature: 'A'.repeat(86),
+};
+const signedPlatformManifest = {
+  ...platformManifest,
+  published_at: releaseIdentity.published_at,
+  release_notes: 'Security and reliability fixes.',
+  update: signedUpdate,
 };
 
 const trustedAssets = [
@@ -99,7 +111,13 @@ function manifestFor(version, overrides = {}) {
   };
 }
 
-function progressiveBucket({ platformIds, invalidId, includeLegacy = false }) {
+function progressiveBucket({
+  platformIds,
+  invalidId,
+  includeLegacy = false,
+  signed = false,
+  notesById = {},
+}) {
   const objects = new Map([
     [`releases/${releaseIdentity.version}/release.json`, jsonObject(releaseIdentity)],
     ...platformIds.map((platformId) => {
@@ -108,6 +126,11 @@ function progressiveBucket({ platformIds, invalidId, includeLegacy = false }) {
         version: releaseIdentity.version,
         commit: platformId === invalidId ? 'c'.repeat(40) : releaseIdentity.commit,
         asset,
+        ...(signed ? {
+          published_at: releaseIdentity.published_at,
+          release_notes: notesById[platformId] || signedPlatformManifest.release_notes,
+          update: signedUpdate,
+        } : {}),
       };
       return [`releases/${releaseIdentity.version}/platforms/${platformId}.json`, jsonObject(value)];
     }),
@@ -245,19 +268,33 @@ test('manifest validation accepts every trusted release asset tuple', () => {
 test('progressive metadata is exact and commit-pinned', () => {
   assert.deepEqual(parseReleaseIdentity(releaseIdentity, 'v1.2.3'), releaseIdentity);
   assert.deepEqual(
-    parsePlatformManifest(platformManifest, 'v1.2.3', releaseIdentity.commit, 'windows-x64'),
+    parsePlatformManifest(platformManifest, releaseIdentity, 'windows-x64'),
     platformManifest,
+  );
+  assert.deepEqual(
+    parsePlatformManifest(signedPlatformManifest, releaseIdentity, 'windows-x64'),
+    signedPlatformManifest,
   );
   assert.equal(parseReleaseIdentity({ ...releaseIdentity, extra: true }), null);
   assert.equal(parseReleaseIdentity({ ...releaseIdentity, version: 'v01.2.3' }), null);
   assert.equal(parsePlatformManifest(
     { ...platformManifest, commit: 'c'.repeat(40) },
-    'v1.2.3', releaseIdentity.commit, 'windows-x64',
+    releaseIdentity, 'windows-x64',
   ), null);
   assert.equal(parsePlatformManifest(
     { ...platformManifest, asset: { ...baseAsset, id: 'linux-x64' } },
-    'v1.2.3', releaseIdentity.commit, 'windows-x64',
+    releaseIdentity, 'windows-x64',
   ), null);
+  for (const value of [
+    { ...signedPlatformManifest, published_at: '2026-07-16T18:00:00Z' },
+    { ...signedPlatformManifest, release_notes: 'x'.repeat(8193) },
+    { ...signedPlatformManifest, release_notes: 'é'.repeat(4097) },
+    { ...signedPlatformManifest, update: { ...signedUpdate, schema: true } },
+    { ...signedPlatformManifest, update: { ...signedUpdate, extra: true } },
+    { ...signedPlatformManifest, extra: true },
+  ]) {
+    assert.equal(parsePlatformManifest(value, releaseIdentity, 'windows-x64'), null);
+  }
 });
 
 test('manifest validation rejects malformed or untrusted content', () => {
@@ -389,6 +426,44 @@ test('progressive catalog exposes one, two, or three completed platforms', async
       [...platformIds].sort(),
     );
   }
+});
+
+test('signed progressive catalog retains public update data and redacts recipient summaries', async () => {
+  const catalog = await loadReleaseCatalog(progressiveBucket({
+    platformIds: ['windows-x64', 'linux-x64'],
+    signed: true,
+  }));
+  const manifest = catalog.manifests.get('v1.2.3');
+  assert.equal(manifest.release_notes, signedPlatformManifest.release_notes);
+  assert.deepEqual(manifest.assets[0].update, signedUpdate);
+  assert.deepEqual(publicUpdateDescriptor(manifest, 'windows-x64'), {
+    version: releaseIdentity.version,
+    commit: releaseIdentity.commit,
+    published_at: releaseIdentity.published_at,
+    release_notes: signedPlatformManifest.release_notes,
+    asset: {
+      id: baseAsset.id,
+      platform: baseAsset.platform,
+      filename: baseAsset.filename,
+      size: baseAsset.size,
+      sha256: baseAsset.sha256,
+    },
+    key_id: signedUpdate.key_id,
+    schema: signedUpdate.schema,
+    signature: signedUpdate.signature,
+  });
+  const summary = releaseSummary(manifest);
+  assert.doesNotMatch(JSON.stringify(summary), /update|release_notes|signature|content_type|releases\//);
+});
+
+test('signed progressive catalog rejects cross-platform release-note conflicts', async () => {
+  const catalog = await loadReleaseCatalog(progressiveBucket({
+    platformIds: ['windows-x64', 'linux-x64'],
+    signed: true,
+    notesById: { 'linux-x64': 'Different notes.' },
+  }));
+  assert.equal(catalog.manifests.has('v1.2.3'), false);
+  assert.ok(catalog.diagnostics.includes('release-notes-conflict'));
 });
 
 test('anchor alone is hidden and invalid sibling does not hide valid assets', async () => {

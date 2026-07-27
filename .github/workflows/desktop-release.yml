@@ -110,6 +110,10 @@ jobs:
           mkdir -p ../controller/release-assets
           ditto -c -k --keepParent dist/Backchannel.app ../controller/release-assets/Backchannel-macos-arm64.zip
 
+      - name: Smoke test macOS update archive
+        working-directory: source
+        run: python desktop/scripts/smoke_update_archive.py --platform macos-arm64 --archive ../controller/release-assets/Backchannel-macos-arm64.zip
+
       - name: Prepare macOS cache handoff
         id: handoff
         working-directory: controller
@@ -144,6 +148,12 @@ jobs:
         with:
           path: controller
 
+      - name: Checkout release source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.release_ref }}
+          path: source
+
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -151,6 +161,9 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
+
+      - name: Install signing dependency
+        run: pip install "cryptography>=41.0.0"
 
       - name: Restore exact macOS handoff
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -167,17 +180,18 @@ jobs:
         run: echo "$BUNDLE_SHA256  release-assets/Backchannel-macos-arm64.zip" | shasum -a 256 -c -
 
       - name: Publish verified macOS platform
-        working-directory: controller
+        working-directory: source
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_RELEASES_BUCKET: ${{ vars.R2_RELEASES_BUCKET }}
+          BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY }}
           RELEASE_REF: ${{ inputs.release_ref }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           PUBLISHED_AT: ${{ needs.build-macos.outputs.published_at }}
         shell: pwsh
-        run: ./scripts/publish_release_platform.ps1 -Version $env:RELEASE_REF -Commit $env:EXPECTED_COMMIT -PublishedAt $env:PUBLISHED_AT -PlatformId macos-arm64 -AssetPath release-assets/Backchannel-macos-arm64.zip -Confirm:$false
+        run: ./scripts/publish_release_platform.ps1 -Version $env:RELEASE_REF -Commit $env:EXPECTED_COMMIT -PublishedAt $env:PUBLISHED_AT -PlatformId macos-arm64 -AssetPath ../controller/release-assets/Backchannel-macos-arm64.zip -Confirm:$false
 
   cleanup-macos:
     needs: [build-macos, publish-macos]

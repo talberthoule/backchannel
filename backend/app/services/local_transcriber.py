@@ -17,6 +17,7 @@ from app.services.batch_transcriber import (
     filter_transcript_text,
 )
 from app.services.secrets import data_dir
+from app.services.runtime_activity import track
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,8 @@ def _load_model(model_id: str):
             if path.is_dir() and not any(path.iterdir()):
                 path.rmdir()
             logger.info(f"Loading local ASR model {name} (downloads on first use)")
-            _loaded[model_id] = onnx_asr.load_model(name, path)
+            with track("ASR model download"):
+                _loaded[model_id] = onnx_asr.load_model(name, path)
         return _loaded[model_id]
 
 
