@@ -10,6 +10,7 @@ import {
   hashPassword,
   loadReleaseCatalog,
   parseSingleRange,
+  publicUpdateDescriptor,
   releaseSummary,
   resolveEntitlements,
   verifyPassword,
@@ -1411,6 +1412,25 @@ async function handleDownloadRequest(request, env, dependencies) {
   return routeValue[1](request, env, dependencies);
 }
 
+async function handlePublicUpdate(request, env) {
+  if (request.method !== 'GET') {
+    return downloadJson(405, { ok: false, error: 'Method not allowed.' }, { allow: 'GET' });
+  }
+  const match = /^\/api\/update\/latest\/(windows-x64|macos-arm64|linux-x64)$/
+    .exec(new URL(request.url).pathname);
+  if (!match || !env.RELEASES) return releaseNotFound();
+  try {
+    const catalog = await loadReleaseCatalog(env.RELEASES);
+    const manifest = catalog.manifests.get(catalog.latestVersion);
+    const descriptor = publicUpdateDescriptor(manifest, match[1]);
+    return descriptor
+      ? downloadJson(200, descriptor, { 'cache-control': 'public, max-age=300' })
+      : releaseNotFound();
+  } catch {
+    return releaseNotFound();
+  }
+}
+
 export async function handleInterest(request, env, fetcher = fetch) {
   if (request.method !== 'POST') {
     return json(405, { ok: false, message: 'Method not allowed.' }, { allow: 'POST' });
@@ -1505,6 +1525,9 @@ async function dispatch(url, request, env, verify, dependencies) {
   if (url.hostname === DOWNLOAD_HOST) {
     const assetPath = DOWNLOAD_ASSETS.get(url.pathname);
     if (assetPath) return handleDownloadAsset(request, env, assetPath);
+    if (url.pathname.startsWith('/api/update/latest/')) {
+      return handlePublicUpdate(request, env);
+    }
     return handleDownloadRequest(request, env, dependencies);
   }
   if (url.hostname === ADMIN_HOST) {

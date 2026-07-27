@@ -214,6 +214,7 @@ git commit -m "feat: sign desktop release manifests"
 - Modify: `docs-site/release-access.js`
 - Modify: `docs-site/release-access.test.js`
 - Modify: `docs-site/worker.js`
+- Modify: `docs-site/worker.test.js`
 - Modify: `docs-site/download.test.js`
 
 **Interfaces:**
@@ -222,7 +223,7 @@ git commit -m "feat: sign desktop release manifests"
 - Produces: `GET /api/update/latest/{platform_id}` on the recipient host.
 - Consumes later: Task 4 uses the route without portal credentials.
 
-- [ ] **Step 1: Write failing parser and route tests**
+- [x] **Step 1: Write failing parser and route tests**
 
 Add signed and unsigned progressive fixtures. Assert that signed platform
 metadata remains strict, catalog assets retain `update`, release summaries
@@ -252,19 +253,19 @@ Route tests must prove the exact recipient host and path return this JSON while
 unknown platform, unsigned Latest, malformed metadata, wrong method, public
 host, and admin host return bounded `404`/`405` responses without R2 keys.
 
-- [ ] **Step 2: Run the docs tests and confirm RED**
+- [x] **Step 2: Run the docs tests and confirm RED**
 
 Run:
 
 ```powershell
 Set-Location docs-site
-node --test release-access.test.js download.test.js
+node --test release-access.test.js worker.test.js download.test.js
 ```
 
 Expected: `publicUpdateDescriptor` is not exported and update paths return
 `404`.
 
-- [ ] **Step 3: Extend strict progressive parsing**
+- [x] **Step 3: Extend strict progressive parsing**
 
 Keep unsigned historical progressive manifests valid with their existing exact
 `version`, `commit`, and `asset` shape. A signed manifest instead requires
@@ -294,7 +295,7 @@ platform present for a version; reject that catalog version on a mismatch.
 asset's `update`. `releaseSummary()` continues selecting the same six recipient
 fields and therefore redacts `update` and `release_notes` by construction.
 
-- [ ] **Step 4: Add the public Latest descriptor route**
+- [x] **Step 4: Add the public Latest descriptor route**
 
 Parse only `/api/update/latest/(windows-x64|macos-arm64|linux-x64)`, load the
 trusted catalog, select `catalog.latestVersion`, and return
@@ -304,7 +305,7 @@ no-store generic response for failures. Never return an internal asset key or
 account information. Tests record unauthenticated release identity, size, hash,
 timestamp, and notes as an accepted disclosure rather than an accidental leak.
 
-- [ ] **Step 5: Run GREEN**
+- [x] **Step 5: Run GREEN**
 
 Run:
 
@@ -314,10 +315,10 @@ node --test release-access.test.js download.test.js worker.test.js
 
 Expected: all focused docs-site tests pass.
 
-- [ ] **Step 6: Commit Task 2**
+- [x] **Step 6: Commit Task 2**
 
 ```powershell
-git add docs-site/release-access.js docs-site/release-access.test.js docs-site/worker.js docs-site/download.test.js
+git add docs-site/release-access.js docs-site/release-access.test.js docs-site/worker.js docs-site/worker.test.js docs-site/download.test.js
 git commit -m "feat: expose signed update descriptors"
 ```
 

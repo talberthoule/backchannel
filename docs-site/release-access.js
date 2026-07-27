@@ -209,11 +209,34 @@ export function parseReleaseIdentity(value, expectedVersion) {
   return value;
 }
 
-export function parsePlatformManifest(value, version, commit, platformId) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)
-    || !exactKeys(value, ['version', 'commit', 'asset'])
-    || value.version !== version || value.commit !== commit) return null;
-  const asset = parseAsset(value.asset, version);
+function parseUpdate(value) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    && exactKeys(value, ['key_id', 'schema', 'signature'])
+    && /^[a-z0-9-]{1,40}$/.test(value.key_id)
+    && value.schema === 1
+    && /^[A-Za-z0-9_-]{86}$/.test(value.signature)
+    ? value
+    : null;
+}
+
+function validReleaseNotes(value) {
+  return typeof value === 'string' && value.length > 0
+    && new TextEncoder().encode(value).byteLength <= 8192;
+}
+
+export function parsePlatformManifest(value, identity, platformId) {
+  if (!parseReleaseIdentity(identity)
+    || !value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const unsigned = exactKeys(value, ['version', 'commit', 'asset']);
+  const signed = exactKeys(
+    value,
+    ['version', 'commit', 'published_at', 'release_notes', 'asset', 'update'],
+  );
+  if ((!unsigned && !signed)
+    || value.version !== identity.version || value.commit !== identity.commit
+    || (signed && (value.published_at !== identity.published_at
+      || !validReleaseNotes(value.release_notes) || !parseUpdate(value.update)))) return null;
+  const asset = parseAsset(value.asset, identity.version);
   return asset?.id === platformId ? value : null;
 }
 
@@ -294,20 +317,38 @@ export async function loadReleaseCatalog(bucket) {
     if (!identity) continue;
 
     const assets = [];
+    let releaseNotes;
+    let notesConflict = false;
     for (const platformId of ASSET_TUPLES.keys()) {
       const key = platformKeys.get(version)?.get(platformId);
       if (!key) continue;
       try {
         const platform = parsePlatformManifest(
-          await readJson(bucket, key), version, identity.commit, platformId,
+          await readJson(bucket, key), identity, platformId,
         );
-        if (platform) assets.push(platform.asset);
+        if (platform) {
+          if (platform.update) {
+            if (releaseNotes === undefined) releaseNotes = platform.release_notes;
+            else if (releaseNotes !== platform.release_notes) notesConflict = true;
+          }
+          assets.push(platform.update
+            ? { ...platform.asset, update: platform.update }
+            : platform.asset);
+        }
         else diagnostics.push('platform-invalid');
       } catch {
         diagnostics.push('platform-unavailable');
       }
     }
-    if (assets.length > 0) manifests.set(version, { ...identity, assets });
+    if (notesConflict) {
+      diagnostics.push('release-notes-conflict');
+      continue;
+    }
+    if (assets.length > 0) manifests.set(version, {
+      ...identity,
+      ...(releaseNotes === undefined ? {} : { release_notes: releaseNotes }),
+      assets,
+    });
   }
 
   let latestVersion = null;
@@ -358,6 +399,46 @@ export function releaseSummary(manifest) {
     assets: manifest.assets.map(({ id, platform, filename, size, sha256 }) => ({
       id, platform, filename, size, sha256,
     })),
+  };
+}
+
+export function publicUpdateDescriptor(manifest, assetId) {
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)
+    || !parseReleaseIdentity({
+      version: manifest.version,
+      published_at: manifest.published_at,
+      commit: manifest.commit,
+    })
+    || !validReleaseNotes(manifest.release_notes)
+    || !Array.isArray(manifest.assets)) return null;
+  const asset = manifest.assets.find((value) => value?.id === assetId);
+  const update = parseUpdate(asset?.update);
+  if (!asset || !update) return null;
+  const privateAsset = {
+    id: asset.id,
+    platform: asset.platform,
+    filename: asset.filename,
+    key: asset.key,
+    size: asset.size,
+    sha256: asset.sha256,
+    content_type: asset.content_type,
+  };
+  if (!parseAsset(privateAsset, manifest.version)) return null;
+  return {
+    version: manifest.version,
+    commit: manifest.commit,
+    published_at: manifest.published_at,
+    release_notes: manifest.release_notes,
+    asset: {
+      id: asset.id,
+      platform: asset.platform,
+      filename: asset.filename,
+      size: asset.size,
+      sha256: asset.sha256,
+    },
+    key_id: update.key_id,
+    schema: update.schema,
+    signature: update.signature,
   };
 }
 

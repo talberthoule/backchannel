@@ -2123,7 +2123,7 @@ function releaseBucket({
   };
 }
 
-function progressiveReleaseBucket() {
+function progressiveReleaseBucket({ signed = false, schema = 1 } = {}) {
   const calls = [];
   const version = 'v2.0.0';
   const commit = 'a'.repeat(40);
@@ -2137,7 +2137,20 @@ function progressiveReleaseBucket() {
     [`releases/${version}/release.json`, {
       version, published_at: '2026-07-12T18:00:00Z', commit,
     }],
-    [`releases/${version}/platforms/windows-x64.json`, { version, commit, asset }],
+    [`releases/${version}/platforms/windows-x64.json`, {
+      version,
+      commit,
+      asset,
+      ...(signed ? {
+        published_at: '2026-07-12T18:00:00Z',
+        release_notes: 'Security and reliability fixes.',
+        update: {
+          key_id: 'test-key',
+          schema,
+          signature: 'A'.repeat(86),
+        },
+      } : {}),
+    }],
     ['releases/latest.json', { version }],
   ]);
   return {
@@ -2167,6 +2180,49 @@ function progressiveReleaseBucket() {
     },
   };
 }
+
+test('recipient host exposes only a strict signed Latest update descriptor', async () => {
+  const signed = releaseBindings(progressiveReleaseBucket({ signed: true }));
+  const response = await workerModule.route(downloadRequest(
+    '/api/update/latest/windows-x64', undefined, { method: 'GET' },
+  ), signed.env);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'public, max-age=300');
+  assert.deepEqual(await response.json(), {
+    version: 'v2.0.0',
+    commit: 'a'.repeat(40),
+    published_at: '2026-07-12T18:00:00Z',
+    release_notes: 'Security and reliability fixes.',
+    asset: {
+      id: 'windows-x64',
+      platform: 'Windows x64',
+      filename: 'Backchannel-windows-x64.zip',
+      size: 100,
+      sha256: 'b'.repeat(64),
+    },
+    key_id: 'test-key',
+    schema: 1,
+    signature: 'A'.repeat(86),
+  });
+  assert.equal(signed.calls.length, 0, 'public update checks must not query recipient identity');
+
+  const unsigned = releaseBindings(progressiveReleaseBucket());
+  const malformed = releaseBindings(progressiveReleaseBucket({ signed: true, schema: 2 }));
+  const admin = adminBindings();
+  const cases = [
+    [downloadRequest('/api/update/latest/windows-x64', undefined, { method: 'GET' }), unsigned.env, undefined, 404],
+    [downloadRequest('/api/update/latest/windows-x64', undefined, { method: 'GET' }), malformed.env, undefined, 404],
+    [downloadRequest('/api/update/latest/unknown', undefined, { method: 'GET' }), signed.env, undefined, 404],
+    [downloadRequest('/api/update/latest/windows-x64', {}, { method: 'POST' }), signed.env, undefined, 405],
+    [new Request('https://backchannel.page/api/update/latest/windows-x64'), signed.env, undefined, 404],
+    [adminRequest('/api/update/latest/windows-x64'), admin.env, allowOwner, 404],
+  ];
+  for (const [requestValue, env, verify, status] of cases) {
+    const result = await workerModule.route(requestValue, env, verify);
+    assert.equal(result.status, status);
+    assert.match(result.headers.get('cache-control'), /no-store/);
+  }
+});
 
 function releaseGet(path, headers = {}) {
   return downloadRequest(path, undefined, {
