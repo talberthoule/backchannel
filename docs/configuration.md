@@ -51,7 +51,10 @@ audio or transcript text leaves the machine:
 - Batch transcription is coerced to a local ONNX model
   (`local-whisper-base` by default) for live segments, audio imports, and
   re-transcription; selecting a cloud transcriber is rejected.
-- The audio gateway (interim captions) is skipped: it has no local option.
+- The audio gateway (interim captions) is skipped unless it is set to the
+  on-device captioner (`local-parakeet-live`), which transcribes short chunks
+  with local Parakeet ONNX and needs no cloud call. The cloud gateways
+  (Gemini Live, OpenAI Realtime) are always skipped.
 - Analysis agents are skipped **unless** they are pointed at a model served by
   a self-hosted endpoint on your own machine or network (see below). The gate
   is `allows_local_only()` in `backend/app/services/privacy.py`: it admits the
@@ -67,8 +70,11 @@ audio or transcript text leaves the machine:
 - Startup provider key verification is skipped.
 
 With an on-prem text endpoint configured, Privacy First and the analysis
-agents are no longer mutually exclusive: everything but interim captions keeps
-working, and no call data leaves your perimeter.
+agents are no longer mutually exclusive: the agents keep working and no call
+data leaves your perimeter. An agent left on a cloud model while the mode is
+on does not run; the Admin panel badges it and names the fix, and the live
+call status says which agents are paused, so a quiet call is never the first
+sign of it.
 
 ## Self-hosted endpoints
 

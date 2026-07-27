@@ -102,6 +102,10 @@ class ProviderRoutingTestCase(unittest.IsolatedAsyncioTestCase):
         self.enterContext(patch.object(llm, "is_local_only", AsyncMock(return_value=False)))
         self.enterContext(patch.object(llm, "_resolve_key", AsyncMock(return_value="k")))
         self.enterContext(patch.object(llm, "record_token_usage", AsyncMock()))
+        # The negotiated response_format is cached per base URL for the process,
+        # so clear it or an earlier test's outcome decides this one's payload.
+        llm._json_mode_by_base_url.clear()
+        self.addCleanup(llm._json_mode_by_base_url.clear)
 
     def _patch_openai(self, fake_httpx):
         genai_client = MagicMock()
@@ -129,8 +133,61 @@ class LLMGenerateJsonDispatchTests(ProviderRoutingTestCase):
         post = fake.posts[0]
         self.assertIn("/chat/completions", post["url"])
         self.assertEqual(OPENAI_MODEL, post["json"]["model"])
-        self.assertEqual({"type": "json_object"}, post["json"]["response_format"])
+        # Structured outputs are preferred; json_object is the fallback for
+        # servers that reject a schema (see the negotiation tests below).
+        response_format = post["json"]["response_format"]
+        self.assertEqual("json_schema", response_format["type"])
+        self.assertEqual("BriefLensOutput", response_format["json_schema"]["name"])
         self.assertIn("Required JSON Contract", post["json"]["messages"][0]["content"])
+
+    async def test_falls_back_when_the_server_rejects_a_schema(self):
+        # LM Studio answers json_schema-or-text and rejects json_object; other
+        # builds do the reverse. Whichever it refuses, the call must still land.
+        rejection = httpx.Response(
+            400,
+            request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"),
+            json={"error": "'response_format.type' must be 'json_object'"},
+        )
+        fake = FakeHTTPX([rejection, _chat_response('{"notes": "ok"}')])
+        self._patch_openai(fake)
+
+        parsed = await llm.generate_json(OPENAI_MODEL, "Prompt", BriefLensOutput)
+
+        self.assertEqual("ok", parsed.notes)
+        self.assertEqual(2, len(fake.posts))
+        self.assertEqual("json_schema", fake.posts[0]["json"]["response_format"]["type"])
+        self.assertEqual({"type": "json_object"}, fake.posts[1]["json"]["response_format"])
+
+    async def test_a_rejected_shape_is_not_retried_on_the_next_call(self):
+        rejection = httpx.Response(
+            400,
+            request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"),
+            json={"error": "'response_format.type' must be 'json_object'"},
+        )
+        fake = FakeHTTPX(
+            [rejection, _chat_response('{"notes": "a"}'), _chat_response('{"notes": "b"}')]
+        )
+        self._patch_openai(fake)
+
+        await llm.generate_json(OPENAI_MODEL, "Prompt", BriefLensOutput)
+        await llm.generate_json(OPENAI_MODEL, "Prompt", BriefLensOutput)
+
+        # Three posts, not four: the second call starts at the learned shape.
+        self.assertEqual(3, len(fake.posts))
+        self.assertEqual({"type": "json_object"}, fake.posts[2]["json"]["response_format"])
+
+    async def test_an_unrelated_400_is_not_swallowed_by_negotiation(self):
+        broken = httpx.Response(
+            400,
+            request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"),
+            json={"error": {"message": "context length exceeded"}},
+        )
+        fake = FakeHTTPX([broken])
+        self._patch_openai(fake)
+
+        with self.assertRaises(httpx.HTTPStatusError):
+            await llm.generate_json(OPENAI_MODEL, "Prompt", BriefLensOutput)
+        self.assertEqual(1, len(fake.posts))
 
     async def test_google_model_dispatches_to_native_response_schema(self):
         client = FakeGoogleJSONClient()
@@ -190,7 +247,7 @@ class BriefingProviderRoutingTests(ProviderRoutingTestCase):
         for post in fake.posts:
             self.assertIn("/chat/completions", post["url"])
             self.assertEqual(OPENAI_MODEL, post["json"]["model"])
-            self.assertEqual({"type": "json_object"}, post["json"]["response_format"])
+            self.assertEqual("json_schema", post["json"]["response_format"]["type"])
         persist.assert_awaited_once()
         kwargs = persist.await_args.kwargs
         self.assertEqual("completed", kwargs["status"])

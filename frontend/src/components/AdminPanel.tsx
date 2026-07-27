@@ -362,10 +362,14 @@ function AgentCard({
   const intervalDriven = agent.agent_type === "text" || agent.slug === "strategic_signals";
   const modelOptions = models.filter((m) => (agent.agent_type === "audio" ? m.supports_live_audio : m.supports_text));
   const hasLockedModels = modelOptions.some((m) => m.key_available === false);
-  // Privacy First mode sidelines any agent that has no local model to run on.
-  // A self-hosted text model counts, which is how the analysis agents keep
-  // working with the mode on.
-  const blockedByPrivacy = localOnly && !modelOptions.some(runsLocally);
+  // Privacy First judges the model this agent is actually assigned, not whether
+  // a local one merely exists in the list: with a self-hosted model selected the
+  // agent keeps running, and with a cloud one it sits out even though a local
+  // option was available. An assigned model missing from the list (a removed
+  // endpoint) cannot be shown to stay on this network, so it counts as blocked.
+  const selectedModel = modelOptions.find((m) => m.id === agent.model_id);
+  const blockedByPrivacy = localOnly && !(selectedModel && runsLocally(selectedModel));
+  const hasLocalAlternative = modelOptions.some(runsLocally);
 
   return (
     <div className={`rounded-xl bg-surface shadow-sm ring-1 ring-brand-light-gray-1/60 transition-opacity ${isSaving ? "opacity-70" : ""} ${agent.enabled && !blockedByPrivacy ? "" : "opacity-80"}`}>
@@ -405,8 +409,20 @@ function AgentCard({
           )}
           {blockedByPrivacy && (
             <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 font-body text-[11px] leading-relaxed text-amber-900">
-              Privacy First mode is on and this agent has no local model, so it will not run.
-              Its settings are kept and it resumes when Privacy First is turned off.
+              {hasLocalAlternative ? (
+                <>
+                  Privacy First mode is on and this agent is set to a model that would send
+                  data off your network, so it will not run. Pick a self-hosted model below
+                  to switch it back on &mdash; those run on this machine or your LAN.
+                </>
+              ) : (
+                <>
+                  Privacy First mode is on and no self-hosted model is available for this
+                  agent, so it will not run. Add an OpenAI-compatible server on this machine
+                  or your LAN in the Connections tab, or turn off Privacy First. Its settings
+                  are kept either way.
+                </>
+              )}
             </p>
           )}
         </div>

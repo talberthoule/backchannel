@@ -11,11 +11,12 @@ transcription-only, and `backend/app/services/llm.py` routes every text call
 to Google, OpenAI, or any OpenAI-compatible endpoint you point them at
 (Ollama, LM Studio, vLLM). Pairing a local endpoint with local ONNX
 transcription makes a deployment local end to end, with no cloud key
-anywhere. Note that the Privacy First toggle is a separate mechanism and
-still switches the agents off; it recognizes only the local ONNX
-transcription models. See
-[Privacy First mode](configuration.md#privacy-first-local-only-mode) for what
-turning the agents off actually buys.
+anywhere. The Privacy First toggle enforces exactly that boundary: it judges a
+model by where it runs, so agents pointed at an endpoint on your machine or
+LAN keep working while anything that would send data off your network is
+refused. See
+[Privacy First mode](configuration.md#privacy-first-local-only-mode) for the
+admission rule and what the mode covers.
 
 ![Architecture diagram](../architecture.svg)
 
