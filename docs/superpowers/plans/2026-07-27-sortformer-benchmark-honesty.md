@@ -4,7 +4,7 @@
 
 **Goal:** Unlock Sortformer only when it sustains a dual-track call with load reserve, while reporting measured throughput and residual risk.
 
-**Architecture:** Keep the existing upload endpoint and model adapter. Replay one live-size sample three times through one loaded model, classify aggregate RTF against a 3x realtime requirement, and make every selection check validate the stored RTF against the current threshold so old false passes are revoked. Reuse the existing diagnostics card's `selection_reason` surface instead of adding UI state.
+**Architecture:** Keep the existing upload endpoint and model adapter. Replay one live-size sample three times through one loaded model, classify aggregate RTF against a 3x realtime requirement, and make every selection check validate the stored RTF against the current threshold so old false passes are revoked. Persist raw and contention-adjusted per-track RTF plus the per-instance peak resident-memory increase for ALP-156, and reuse the existing diagnostics card's `selection_reason` surface instead of adding UI state.
 
 **Tech Stack:** Python 3, stdlib `unittest`, FastAPI service layer, React/TypeScript existing diagnostics card.
 
@@ -14,6 +14,7 @@
 - Do not modify `backend/app/services/llm.py` or the shared checkout.
 - Use three benchmark windows, two live tracks, and a 1.5 contention reserve.
 - Add no dependency, migration, background load generator, or new frontend state.
+- ALP-155 measures one diarizer instance; ALP-156 multiplies memory by track count and adds other consumers.
 
 ---
 
@@ -87,7 +88,7 @@ Expected: the 0.60 RTF still passes, the reason lacks measured headroom, and the
 
 **Interfaces:**
 - Consumes: stored benchmark status and RTF, one uploaded live-size audio sample
-- Produces: `SORTFORMER_RTF_THRESHOLD`, `SORTFORMER_BENCHMARK_WINDOWS`, `describe_benchmark_headroom()`, and RTF-aware selection
+- Produces: `SORTFORMER_RTF_THRESHOLD`, `SORTFORMER_BENCHMARK_WINDOWS`, `describe_benchmark_headroom()`, raw and contention-adjusted per-track RTF, per-instance peak memory, and RTF-aware selection
 
 - [ ] **Step 1: Add the requirement constants and margin description**
 
@@ -111,7 +112,19 @@ After loading and preparing the model, call `_run_diarization` exactly three tim
 
 Add a test that patches `_audio_duration_seconds`, environment probing, model loading, preparation, `_run_diarization`, and `time.perf_counter`; assert three runs and aggregate audio/processing seconds.
 
-- [ ] **Step 3: Make selection validate current RTF**
+- [ ] **Step 3: Measure and persist the ALP-156 inputs**
+
+Sample process resident memory before model loading, after preparation, and
+after each sustained run. Store the largest non-negative increase as
+`peak_memory_mb`; use `/proc/self/statm`, the Windows process counters, or
+`resource.getrusage` through one stdlib helper. Also expose and persist
+`contention_adjusted_real_time_factor = real_time_factor * 1.5`.
+
+Add a test with literal memory samples `[100, 130, 160, 150, 140]` MiB and assert a
+60.0 MB peak footprint, then assert runtime diagnostics read both persisted
+values.
+
+- [ ] **Step 4: Make selection validate current RTF**
 
 Change:
 
@@ -127,7 +140,7 @@ to require a finite RTF at or below `SORTFORMER_RTF_THRESHOLD`. Thread the RTF t
 
 Add a runtime test with stored `status="passed"` and `rtf="0.32"` that asserts `selection_reason` includes measured throughput, the 3.0x requirement, and the thin-margin warning.
 
-- [ ] **Step 4: Verify GREEN**
+- [ ] **Step 5: Verify GREEN**
 
 Run:
 
@@ -137,7 +150,7 @@ python -m unittest tests.test_diarization_diagnostics tests.test_diarizer_select
 
 Expected: all focused tests pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```powershell
 git add backend/app/services/diarization_diagnostics.py backend/app/services/diarizer_selection.py backend/app/services/diarizer_runtime.py backend/tests/test_diarization_diagnostics.py backend/tests/test_diarizer_selection.py backend/tests/test_diarizer_runtime.py

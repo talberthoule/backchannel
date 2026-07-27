@@ -1,6 +1,7 @@
 import asyncio
 import math
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.models import AppSetting
@@ -109,6 +110,27 @@ class DiarizerRuntimeTests(unittest.TestCase):
 
         self.assertAlmostEqual(0.68, runtime.speaker_similarity_threshold)
 
+    def test_runtime_surfaces_thin_benchmark_headroom(self):
+        db = FakeDb({
+            SETTING_SORTFORMER_BENCHMARK_STATUS: AppSetting(
+                key=SETTING_SORTFORMER_BENCHMARK_STATUS,
+                value="passed",
+            ),
+            SETTING_SORTFORMER_BENCHMARK_RTF: AppSetting(
+                key=SETTING_SORTFORMER_BENCHMARK_RTF,
+                value="0.32",
+            ),
+        })
+
+        runtime = asyncio.run(
+            get_diarizer_runtime_config(db, environment=_environment())
+        )
+
+        self.assertTrue(runtime.sortformer_selectable)
+        self.assertIn("3.12x realtime", runtime.selection_reason)
+        self.assertIn("3.0x required", runtime.selection_reason)
+        self.assertIn("thin", runtime.selection_reason.lower())
+
     def test_set_speaker_similarity_threshold_persists_valid_value(self):
         db = FakeDb()
 
@@ -146,6 +168,28 @@ class DiarizerRuntimeTests(unittest.TestCase):
         self.assertEqual("unavailable", db.settings[SETTING_SORTFORMER_BENCHMARK_STATUS].value)
         self.assertEqual("", db.settings[SETTING_SORTFORMER_BENCHMARK_RTF].value)
 
+    def test_record_benchmark_persists_capacity_planner_measurements(self):
+        db = FakeDb()
+        result = SimpleNamespace(
+            status="passed",
+            real_time_factor=0.20,
+            contention_adjusted_real_time_factor=0.30,
+            peak_memory_mb=942.4,
+        )
+
+        asyncio.run(record_sortformer_benchmark(db, result))
+
+        self.assertEqual(
+            "0.3",
+            db.settings[
+                "diarization.sortformer.contention_adjusted_real_time_factor"
+            ].value,
+        )
+        self.assertEqual(
+            "942.4",
+            db.settings["diarization.sortformer.peak_memory_mb"].value,
+        )
+
     def test_runtime_config_treats_stored_non_finite_rtf_as_absent(self):
         db = FakeDb({
             SETTING_SORTFORMER_BENCHMARK_RTF: AppSetting(
@@ -157,6 +201,25 @@ class DiarizerRuntimeTests(unittest.TestCase):
         runtime = asyncio.run(get_diarizer_runtime_config(db, environment=_environment()))
 
         self.assertIsNone(runtime.benchmark_real_time_factor)
+
+    def test_runtime_config_reads_capacity_planner_measurements(self):
+        db = FakeDb({
+            "diarization.sortformer.contention_adjusted_real_time_factor": AppSetting(
+                key="diarization.sortformer.contention_adjusted_real_time_factor",
+                value="0.30",
+            ),
+            "diarization.sortformer.peak_memory_mb": AppSetting(
+                key="diarization.sortformer.peak_memory_mb",
+                value="942.4",
+            ),
+        })
+
+        runtime = asyncio.run(
+            get_diarizer_runtime_config(db, environment=_environment())
+        )
+
+        self.assertEqual(0.30, runtime.benchmark_contention_adjusted_real_time_factor)
+        self.assertEqual(942.4, runtime.benchmark_peak_memory_mb)
 
 
 if __name__ == "__main__":

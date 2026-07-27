@@ -470,7 +470,7 @@ export default function DiarizationCapabilityCard() {
         </button>
         {benchmark ? (
           <span className="font-body text-xs text-brand-mid-gray">
-            {benchmark.audio_seconds.toFixed(1)}s audio in {benchmark.processing_seconds.toFixed(1)}s processing
+            {benchmark.audio_seconds.toFixed(1)}s benchmarked in {benchmark.processing_seconds.toFixed(1)}s processing
           </span>
         ) : benchmarkFile && (
           <span className="font-body text-[10px] text-brand-mid-gray">

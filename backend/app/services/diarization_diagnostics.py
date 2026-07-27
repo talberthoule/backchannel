@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import importlib
 import math
+import os
+import sys
+import threading
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -11,7 +14,13 @@ from typing import Any, Callable
 
 
 SORTFORMER_MODEL_ID = "nvidia/diar_streaming_sortformer_4spk-v2"
-SORTFORMER_RTF_THRESHOLD = 0.7
+SORTFORMER_LIVE_TRACKS = 2
+SORTFORMER_CONTENTION_RESERVE = 1.5
+SORTFORMER_BENCHMARK_WINDOWS = 3
+SORTFORMER_RTF_THRESHOLD = 1 / (
+    SORTFORMER_LIVE_TRACKS * SORTFORMER_CONTENTION_RESERVE
+)
+SORTFORMER_THIN_MARGIN = 0.25
 
 
 @dataclass(frozen=True)
@@ -53,11 +62,15 @@ class BenchmarkResult:
     model_id: str
     threshold: float
     reason: str
+    contention_adjusted_real_time_factor: float = math.inf
+    peak_memory_mb: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         if math.isinf(self.real_time_factor):
             data["real_time_factor"] = None
+        if math.isinf(self.contention_adjusted_real_time_factor):
+            data["contention_adjusted_real_time_factor"] = None
         return data
 
 
@@ -151,6 +164,7 @@ def probe_sortformer_environment(
 def classify_benchmark(
     measurement: BenchmarkMeasurement,
     threshold: float = SORTFORMER_RTF_THRESHOLD,
+    peak_memory_mb: float | None = None,
 ) -> BenchmarkResult:
     if measurement.audio_seconds <= 0:
         real_time_factor = math.inf
@@ -167,12 +181,43 @@ def classify_benchmark(
         device=measurement.device,
         model_id=measurement.model_id,
         threshold=threshold,
-        reason=(
-            "Sortformer processed the sample fast enough for live use."
-            if passed
-            else "Sortformer did not process the sample fast enough for live use."
+        reason=describe_benchmark_headroom(
+            real_time_factor,
+            threshold=threshold,
+            passed=passed,
         ),
+        contention_adjusted_real_time_factor=(
+            real_time_factor * SORTFORMER_CONTENTION_RESERVE
+        ),
+        peak_memory_mb=peak_memory_mb,
     )
+
+
+def describe_benchmark_headroom(
+    real_time_factor: float,
+    *,
+    threshold: float = SORTFORMER_RTF_THRESHOLD,
+    passed: bool,
+) -> str:
+    measured = (
+        1 / real_time_factor
+        if math.isfinite(real_time_factor) and real_time_factor > 0
+        else 0.0
+    )
+    required = 1 / threshold if math.isfinite(threshold) and threshold > 0 else math.inf
+    margin = (measured / required) - 1 if math.isfinite(required) else -1.0
+    comparison = (
+        f"Sortformer sustained {measured:.2f}x realtime against "
+        f"{required:.1f}x required for two live tracks with load reserve"
+    )
+    if not passed:
+        return f"{comparison} ({abs(min(margin, 0)):.0%} short). Enhanced stays locked."
+    if margin < SORTFORMER_THIN_MARGIN:
+        return (
+            f"{comparison} ({max(margin, 0):.0%} headroom). Margin is thin; "
+            "lightweight diarization remains safer under heavier load."
+        )
+    return f"{comparison} ({margin:.0%} headroom)."
 
 
 def benchmark_sortformer_audio(
@@ -196,11 +241,23 @@ def benchmark_sortformer_audio(
         )
 
     try:
+        memory_samples = [_resident_memory_bytes()]
+        memory_stop = threading.Event()
+        memory_sampler = threading.Thread(
+            target=_sample_resident_memory,
+            args=(memory_stop, memory_samples),
+            daemon=True,
+        )
+        memory_sampler.start()
         model = _load_sortformer_model(model_id)
         _prepare_model(model, environment.device)
-        started = time.perf_counter()
-        _run_diarization(model, audio_path)
-        processing_seconds = time.perf_counter() - started
+        memory_samples.append(_resident_memory_bytes())
+        processing_seconds = 0.0
+        for _ in range(SORTFORMER_BENCHMARK_WINDOWS):
+            started = time.perf_counter()
+            _run_diarization(model, audio_path)
+            processing_seconds += time.perf_counter() - started
+            memory_samples.append(_resident_memory_bytes())
     except Exception as exc:
         return BenchmarkResult(
             status="failed",
@@ -213,14 +270,92 @@ def benchmark_sortformer_audio(
             threshold=threshold,
             reason=f"Sortformer benchmark failed: {exc}",
         )
+    finally:
+        memory_stop.set()
+        memory_sampler.join()
 
     measurement = BenchmarkMeasurement(
-        audio_seconds=audio_seconds,
+        audio_seconds=audio_seconds * SORTFORMER_BENCHMARK_WINDOWS,
         processing_seconds=processing_seconds,
         device=environment.device,
         model_id=model_id,
     )
-    return classify_benchmark(measurement, threshold=threshold)
+    return classify_benchmark(
+        measurement,
+        threshold=threshold,
+        peak_memory_mb=_peak_memory_delta_mb(memory_samples),
+    )
+
+
+def _peak_memory_delta_mb(samples: list[int | None]) -> float | None:
+    baseline = samples[0] if samples else None
+    observed = [value for value in samples if value is not None]
+    if baseline is None or not observed:
+        return None
+    peak = max(observed)
+    return round((peak - baseline) / (1024 ** 2), 1) if peak > baseline else None
+
+
+def _sample_resident_memory(
+    stop: threading.Event,
+    samples: list[int | None],
+) -> None:
+    while not stop.wait(0.05):
+        samples.append(_resident_memory_bytes())
+
+
+def _resident_memory_bytes() -> int | None:
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            class ProcessMemoryCounters(ctypes.Structure):
+                _fields_ = [
+                    ("cb", ctypes.c_ulong),
+                    ("PageFaultCount", ctypes.c_ulong),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
+                ]
+
+            counters = ProcessMemoryCounters()
+            counters.cb = ctypes.sizeof(counters)
+            kernel32 = ctypes.windll.kernel32
+            kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+            get_memory = kernel32.K32GetProcessMemoryInfo
+            get_memory.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(ProcessMemoryCounters),
+                ctypes.c_ulong,
+            ]
+            get_memory.restype = ctypes.c_int
+            if get_memory(
+                kernel32.GetCurrentProcess(),
+                ctypes.byref(counters),
+                counters.cb,
+            ):
+                return int(counters.WorkingSetSize)
+        except Exception:
+            return None
+
+    try:
+        resident_pages = int(Path("/proc/self/statm").read_text().split()[1])
+        return resident_pages * int(os.sysconf("SC_PAGE_SIZE"))
+    except Exception:
+        pass
+
+    try:
+        import resource
+
+        peak = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        return peak if sys.platform == "darwin" else peak * 1024
+    except Exception:
+        return None
 
 
 def _gpu_backend(torch: Any, cuda_available: bool) -> str:

@@ -1,6 +1,6 @@
 import io
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import numpy as np
 from fastapi import HTTPException, UploadFile
@@ -18,6 +18,10 @@ from app.routers.diagnostics import (
 )
 from app.services.diarization_diagnostics import (
     BenchmarkMeasurement,
+    SortformerEnvironment,
+    _peak_memory_delta_mb,
+    _sample_resident_memory,
+    benchmark_sortformer_audio,
     classify_benchmark,
     probe_sortformer_environment,
 )
@@ -60,7 +64,7 @@ class DiarizationDiagnosticsTests(unittest.TestCase):
     def test_classify_benchmark_passes_fast_cuda_measurement(self):
         measurement = BenchmarkMeasurement(
             audio_seconds=60.0,
-            processing_seconds=24.0,
+            processing_seconds=12.0,
             device="cuda",
             model_id="nvidia/diar_streaming_sortformer_4spk-v2",
         )
@@ -69,7 +73,35 @@ class DiarizationDiagnosticsTests(unittest.TestCase):
 
         self.assertEqual(result.status, "passed")
         self.assertEqual(result.recommended_live_diarizer, "sortformer")
-        self.assertAlmostEqual(result.real_time_factor, 0.4)
+        self.assertAlmostEqual(result.real_time_factor, 0.2)
+
+    def test_classify_benchmark_rejects_old_single_track_false_pass(self):
+        measurement = BenchmarkMeasurement(
+            audio_seconds=60.0,
+            processing_seconds=36.0,
+            device="cpu",
+            model_id="nvidia/diar_streaming_sortformer_4spk-v2",
+        )
+
+        result = classify_benchmark(measurement)
+
+        self.assertEqual("failed", result.status)
+        self.assertAlmostEqual(0.9, result.contention_adjusted_real_time_factor)
+        self.assertIn("1.67x realtime", result.reason)
+        self.assertIn("3.0x required", result.reason)
+
+    def test_classify_benchmark_warns_when_passing_margin_is_thin(self):
+        measurement = BenchmarkMeasurement(
+            audio_seconds=60.0,
+            processing_seconds=19.0,
+            device="cuda",
+            model_id="nvidia/diar_streaming_sortformer_4spk-v2",
+        )
+
+        result = classify_benchmark(measurement)
+
+        self.assertEqual("passed", result.status)
+        self.assertIn("thin", result.reason.lower())
 
     def test_classify_benchmark_falls_back_for_slow_measurement(self):
         measurement = BenchmarkMeasurement(
@@ -83,6 +115,81 @@ class DiarizationDiagnosticsTests(unittest.TestCase):
 
         self.assertEqual(result.status, "failed")
         self.assertEqual(result.recommended_live_diarizer, "lightweight")
+
+    def test_benchmark_replays_three_live_windows_with_one_model(self):
+        environment = SortformerEnvironment(
+            torch_available=True,
+            sortformer_available=True,
+            cuda_available=True,
+            device="cuda",
+            gpu_name="test-gpu",
+            gpu_memory_gb=16.0,
+            model_id="test-model",
+            status="ready",
+            recommended_live_diarizer="lightweight",
+            reason="ready",
+        )
+        model = object()
+
+        with (
+            patch(
+                "app.services.diarization_diagnostics._audio_duration_seconds",
+                return_value=15.0,
+            ),
+            patch(
+                "app.services.diarization_diagnostics.probe_sortformer_environment",
+                return_value=environment,
+            ),
+            patch(
+                "app.services.diarization_diagnostics._load_sortformer_model",
+                return_value=model,
+            ),
+            patch("app.services.diarization_diagnostics._prepare_model") as prepare,
+            patch("app.services.diarization_diagnostics._run_diarization") as run,
+            patch(
+                "app.services.diarization_diagnostics.time.perf_counter",
+                side_effect=[0.0, 2.0, 2.0, 4.0, 4.0, 6.0],
+            ),
+            patch(
+                "app.services.diarization_diagnostics._resident_memory_bytes",
+                side_effect=[
+                    100 * 1024 ** 2,
+                    130 * 1024 ** 2,
+                    160 * 1024 ** 2,
+                    150 * 1024 ** 2,
+                    140 * 1024 ** 2,
+                ],
+                create=True,
+            ) as memory_probe,
+            patch(
+                "app.services.diarization_diagnostics._sample_resident_memory",
+                side_effect=lambda _stop, samples: samples.append(160 * 1024 ** 2),
+            ),
+        ):
+            result = benchmark_sortformer_audio("sample.wav")
+
+        prepare.assert_called_once_with(model, "cuda")
+        self.assertEqual(3, run.call_count)
+        self.assertEqual(45.0, result.audio_seconds)
+        self.assertEqual(6.0, result.processing_seconds)
+        self.assertEqual(60.0, result.peak_memory_mb)
+        self.assertEqual(5, memory_probe.call_count)
+
+    def test_memory_footprint_is_unknown_when_rss_does_not_advance(self):
+        self.assertIsNone(_peak_memory_delta_mb([100, 100, 100]))
+
+    def test_memory_sampler_records_resident_memory_until_stopped(self):
+        stop = Mock()
+        stop.wait.side_effect = [False, False, True]
+        samples = []
+
+        with patch(
+            "app.services.diarization_diagnostics._resident_memory_bytes",
+            side_effect=[120, 140],
+        ):
+            _sample_resident_memory(stop, samples)
+
+        self.assertEqual([120, 140], samples)
 
 
 class VoiceProfileEndpointTests(unittest.IsolatedAsyncioTestCase):

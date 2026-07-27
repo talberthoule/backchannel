@@ -77,12 +77,13 @@ which live diarizer runs and how strictly speakers are matched:
 - **Fallback** is the lightweight VAD+embedding pipeline described above.
   It runs on CPU everywhere and is the default.
 - **Enhanced** runs NVIDIA NeMo Sortformer. It stays locked until the
-  machine passes a benchmark proving it can process one full live window
-  (15 seconds, `SORTFORMER_WINDOW_MS`) faster than real time. Benchmark
-  audio must therefore be at least 15 seconds long; only the first 20
-  seconds are measured. The benchmark accepts an uploaded file or a fresh
-  mic recording, and its result (device, GPU backend, real-time factor)
-  persists across restarts.
+  machine passes a sustained benchmark. One 15-20 second input is replayed
+  for three live windows, and passing requires 3x measured throughput: 2x
+  for mic plus system audio with a 1.5 load reserve for transcription.
+  The result reports raw and contention-adjusted per-track real-time factors,
+  measured headroom, and the per-instance peak resident-memory increase.
+  These measurements persist across restarts for the aggregate capacity
+  planner. The benchmark accepts an uploaded file or a fresh mic recording.
 
 The speaker matching slider on the same card adjusts
 `SPEAKER_SIMILARITY_THRESHOLD` at runtime: lower values merge more (fewer,
