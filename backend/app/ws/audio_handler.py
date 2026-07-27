@@ -20,6 +20,7 @@ from app.services.speaker_assignment import (
 )
 from app.services.speaker_ghost_filter import should_defer_new_speaker_segment
 from app.services.ordered_transcription import OrderedTranscriptionQueue
+from app.services import runtime_activity
 from app.ws.audio_persistence import (
     _append_audio_frames,
     _close_audio_writers,
@@ -450,8 +451,7 @@ async def _finalize_call(
     )
 
 
-@router.websocket("/ws/{session_id}")
-async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
+async def _audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
     await websocket.accept()
 
     async with async_session() as db:
@@ -657,3 +657,12 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         _start_call_segment,
         _finalize_call,
     )
+
+
+@router.websocket("/ws/{session_id}")
+async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
+    try:
+        with runtime_activity.track("active call"):
+            await _audio_websocket(websocket, session_id)
+    except runtime_activity.ShutdownReserved as exc:
+        await websocket.close(code=1013, reason=str(exc))

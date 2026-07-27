@@ -12,6 +12,7 @@ from app.release_notes import APP_VERSION
 from app.routers import agents, analyze, artifacts, chat, credentials, retranscribe, diagnostics, directives, documents, endpoints, groups, imports, knowledge, meta, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts
 from app.services.privacy import LocalOnlyModeError
 from app.services.audio_store import cleanup_orphan_track_audio
+from app.services import runtime_activity
 from app.ws import audio_handler
 
 logging.basicConfig(level=logging.INFO)
@@ -229,10 +230,11 @@ async def _cleanup_orphan_audio(conn):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await _add_missing_columns(conn)
-        await _cleanup_orphan_audio(conn)
+    with runtime_activity.track("startup schema"):
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            await _add_missing_columns(conn)
+            await _cleanup_orphan_audio(conn)
 
     # Seed agent configs and knowledge sources
     from app.database import async_session
@@ -295,6 +297,11 @@ app.include_router(audio_handler.router)
 
 @app.exception_handler(LocalOnlyModeError)
 async def local_only_mode_handler(request: Request, exc: LocalOnlyModeError):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(runtime_activity.ShutdownReserved)
+async def shutdown_reserved_handler(request: Request, exc: runtime_activity.ShutdownReserved):
     return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 

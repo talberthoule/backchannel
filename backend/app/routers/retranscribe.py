@@ -14,6 +14,7 @@ from app.services.llm import registry_entry
 from app.services.privacy import get_local_only, is_local_model
 from app.services.secrets import data_dir
 from app.services.speaker_diarizer import SpeakerRegistry
+from app.services.runtime_activity import request_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ async def _transcribe_stored_segments(
     return total
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(request_tracker("retranscription"))])
 async def retranscribe_session(session_id: uuid.UUID, body: RetranscribeIn, db: AsyncSession = Depends(get_db)):
     """Replay stored segment audio through diarization + the chosen transcriber.
 

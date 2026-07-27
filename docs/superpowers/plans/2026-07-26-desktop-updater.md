@@ -553,7 +553,7 @@ python -m unittest backend.tests.test_update_service backend.tests.test_runtime_
 Expected: import failures for `app.services.update_service` and
 `app.services.runtime_activity`.
 
-- [ ] **Step 3: Implement and commit the runtime activity gate**
+- [x] **Step 3: Implement and commit the runtime activity gate**
 
 Use one thread-safe reference count keyed by operation name. Wrap transcript
 and audio import, every artifact export until its response body is materialized,
