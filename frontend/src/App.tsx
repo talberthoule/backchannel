@@ -12,7 +12,9 @@ import { reconcileRefusedSession } from "./lib/callRefusal";
 import { useSession } from "./hooks/useSession";
 import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
 import { useWhatsNew } from "./hooks/useWhatsNew";
+import { useDesktopUpdate } from "./hooks/useDesktopUpdate";
 import { useConfirm } from "./components/ConfirmProvider";
+import { DesktopUpdateBanner } from "./components/DesktopUpdate";
 import * as api from "./services/api";
 import type { PostProcessingProgress, Question, Session, SessionGroup, SessionSynthesis, StopDrainMode, TranscriptEntry, WSStatusData } from "./types";
 
@@ -167,6 +169,7 @@ export default function App() {
   const [adminOnboarding, setAdminOnboarding] = useState(false);
   const [showNewSession, setShowNewSession] = useState(false);
   const { whatsNew, bannerOpen, acknowledge: acknowledgeWhatsNew } = useWhatsNew();
+  const desktopUpdate = useDesktopUpdate();
   const { confirm, notice } = useConfirm();
 
   const {
@@ -501,6 +504,19 @@ export default function App() {
 
   const handleOpenApiKeys = useCallback(() => openAdmin("keys", true), [openAdmin]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("view") !== "about") return;
+    openAdmin("about");
+    params.delete("view");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+    );
+  }, [openAdmin]);
+
   // "Continue to first session" from the onboarding setup card: leave Admin
   // and drop straight into the new-session flow.
   const handleOnboardingContinue = useCallback(() => {
@@ -834,6 +850,7 @@ export default function App() {
           adminTab={adminTab}
           adminOnboarding={adminOnboarding}
           highlightSince={whatsNew?.since ?? null}
+          desktopUpdate={desktopUpdate}
           onCloseAdmin={() => setShowAdmin(false)}
           onCloseOfferings={() => setShowOfferings(false)}
           onCloseKnowledge={() => setShowKnowledge(false)}
@@ -936,6 +953,12 @@ export default function App() {
     }
   };
 
+  const desktopUpdateBannerOpen = (
+    ["available", "downloading", "ready"].includes(desktopUpdate.status.state)
+    && !(showAdmin && adminTab === "about")
+    && !liveSessionId
+  );
+
   return (
     <Layout
       sessions={sessions}
@@ -959,31 +982,45 @@ export default function App() {
         onClose={() => setShowNewSession(false)}
         onCreate={handleCreateSession}
       />
-      {bannerOpen && whatsNew && (
-        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-xl bg-surface px-4 py-3 shadow-lg ring-1 ring-brand-light-gray-1">
-          <p className="font-body text-sm text-brand-dark-gray">
-            Backchannel was updated to <span className="font-mono font-semibold">v{whatsNew.current}</span>
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              acknowledgeWhatsNew();
-              openAdmin("about");
-            }}
-            className="rounded-lg bg-brand-teal px-3 py-1.5 font-body text-xs font-semibold text-white transition-colors hover:bg-brand-teal/90"
-          >
-            See what&apos;s new
-          </button>
-          <button
-            type="button"
-            onClick={acknowledgeWhatsNew}
-            title="Dismiss"
-            className="rounded p-1 text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+      {(
+        desktopUpdateBannerOpen
+        || (bannerOpen && whatsNew)
+      ) && (
+        <div className="fixed bottom-4 right-4 z-50 w-[min(28rem,calc(100vw-2rem))] space-y-3">
+          {desktopUpdateBannerOpen && (
+            <DesktopUpdateBanner
+              status={desktopUpdate.status}
+              onOpen={() => openAdmin("about")}
+            />
+          )}
+          {bannerOpen && whatsNew && (
+            <div className="flex items-center gap-3 rounded-xl bg-surface px-4 py-3 shadow-lg ring-1 ring-brand-light-gray-1">
+              <p className="min-w-0 flex-1 font-body text-sm text-brand-dark-gray">
+                Backchannel was updated to <span className="font-mono font-semibold">v{whatsNew.current}</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  acknowledgeWhatsNew();
+                  openAdmin("about");
+                }}
+                className="min-h-11 shrink-0 rounded-lg bg-brand-teal px-3 py-2 font-body text-xs font-semibold text-white transition-colors motion-reduce:transition-none hover:bg-brand-teal-dark focus:outline-none focus:ring-2 focus:ring-brand-teal-light focus:ring-offset-2"
+              >
+                See what&apos;s new
+              </button>
+              <button
+                type="button"
+                onClick={acknowledgeWhatsNew}
+                aria-label="Dismiss update notice"
+                title="Dismiss"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-brand-mid-gray transition-colors motion-reduce:transition-none hover:bg-brand-light-gray-2 hover:text-brand-dark-gray focus:outline-none focus:ring-2 focus:ring-brand-teal-light"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </Layout>

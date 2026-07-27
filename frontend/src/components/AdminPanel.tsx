@@ -11,6 +11,7 @@ import EndpointsCard from "./EndpointsCard";
 import PrivacyModeCard from "./PrivacyModeCard";
 import ProviderOnboardingCard from "./ProviderOnboardingCard";
 import AboutCard from "./AboutCard";
+import type { DesktopUpdateController } from "../hooks/useDesktopUpdate";
 
 const TYPE_BADGES: Record<string, { label: string; color: string }> = {
   audio: { label: "Audio", color: "#0d9488" },
@@ -63,6 +64,7 @@ const TABS: { id: AdminTab; label: string; hint: string }[] = [
 
 interface AdminPanelProps {
   onBack: () => void;
+  desktopUpdate: DesktopUpdateController;
   initialTab?: AdminTab;
   // Version this browser last ran before an upgrade; forwarded to the About
   // tab so releases since then are badged, with an unread dot on the tab.
@@ -559,7 +561,7 @@ function AgentCard({
   );
 }
 
-export default function AdminPanel({ onBack, initialTab, highlightSince, onboarding, onOnboardingContinue }: AdminPanelProps) {
+export default function AdminPanel({ onBack, desktopUpdate, initialTab, highlightSince, onboarding, onOnboardingContinue }: AdminPanelProps) {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>([]);
@@ -647,8 +649,8 @@ export default function AdminPanel({ onBack, initialTab, highlightSince, onboard
   const activeTabInfo = TABS.find((t) => t.id === activeTab) || TABS[0];
 
   return (
-    <div className="flex h-full flex-col bg-brand-light-gray-2">
-      <header className="border-b border-brand-light-gray-1 bg-surface px-6 pt-3">
+    <div className="flex h-full min-w-0 flex-col overflow-x-hidden bg-brand-light-gray-2">
+      <header className="border-b border-brand-light-gray-1 bg-surface px-4 pt-3 sm:px-6">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="rounded p-1 text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray" title="Back">
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -669,7 +671,7 @@ export default function AdminPanel({ onBack, initialTab, highlightSince, onboard
         </div>
 
         {/* Tab bar */}
-        <nav className="mt-3 flex gap-1" aria-label="Administration sections">
+        <nav className="mt-3 flex flex-wrap gap-1" aria-label="Administration sections">
           {TABS.map((tab) => {
             const active = tab.id === activeTab;
             return (
@@ -678,7 +680,7 @@ export default function AdminPanel({ onBack, initialTab, highlightSince, onboard
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 aria-current={active ? "page" : undefined}
-                className={`-mb-px border-b-2 px-4 py-2 font-body text-sm font-medium transition-colors ${
+                className={`-mb-px shrink-0 border-b-2 px-2 py-2 font-body text-sm font-medium transition-colors sm:px-4 ${
                   active
                     ? "border-brand-teal text-brand-teal"
                     : "border-transparent text-brand-gray hover:border-brand-light-gray-1 hover:text-brand-dark-gray"
@@ -699,7 +701,7 @@ export default function AdminPanel({ onBack, initialTab, highlightSince, onboard
         </nav>
       </header>
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-4 sm:p-6">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <span className="font-body text-sm text-brand-mid-gray">Loading configuration...</span>
@@ -798,7 +800,7 @@ export default function AdminPanel({ onBack, initialTab, highlightSince, onboard
             </div>
 
             <div className={activeTab === "about" ? "" : "hidden"}>
-              <AboutCard version={version} highlightSince={highlightSince} />
+              <AboutCard version={version} desktopUpdate={desktopUpdate} highlightSince={highlightSince} />
             </div>
           </div>
         )}

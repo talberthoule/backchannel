@@ -217,6 +217,33 @@ export interface ReleaseNote {
   body: string;
 }
 
+export type DesktopUpdateState =
+  | "idle"
+  | "checking"
+  | "available"
+  | "authorizing"
+  | "downloading"
+  | "needs_authorization"
+  | "ready"
+  | "applying"
+  | "error";
+
+export interface DesktopUpdateStatus {
+  enabled: boolean;
+  state: DesktopUpdateState;
+  current_version?: string;
+  available_version?: string;
+  available_notes?: string;
+  published_at?: string;
+  platform_id?: string;
+  filename?: string;
+  size?: number;
+  downloaded?: number;
+  checked_at?: string;
+  error?: string;
+  blocked_reason?: string;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;

@@ -29,7 +29,10 @@ def require_instance_token(
 
 @router.get("")
 def update_status(service: UpdateService = Depends(get_update_service)):
-    return service.status()
+    status = service.status()
+    if status.get("state") == "ready":
+        status["blocked_reason"] = runtime_activity.busy_reason()
+    return status
 
 
 @router.post("/check", dependencies=[Depends(require_instance_token)])

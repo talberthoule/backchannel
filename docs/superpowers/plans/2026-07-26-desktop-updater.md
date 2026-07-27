@@ -825,6 +825,8 @@ git commit -m "feat: apply desktop updates with rollback"
 - Modify: `frontend/src/services/api.ts`
 - Modify: `frontend/src/types/index.ts`
 - Modify: `frontend/src/components/AboutCard.tsx`
+- Modify: `frontend/src/components/AdminPanel.tsx`
+- Modify: `frontend/src/components/ManagementView.tsx`
 - Modify: `frontend/src/App.tsx`
 - Modify: `frontend/package.json`
 
@@ -834,7 +836,7 @@ git commit -m "feat: apply desktop updates with rollback"
 - Produces: `DesktopUpdateCard` for About and `DesktopUpdateBanner` for App.
 - Consumes: Task 4 routes and Task 3 exact popup message.
 
-- [ ] **Step 1: Write failing UI behavior tests**
+- [x] **Step 1: Write failing UI behavior tests**
 
 Bundle the real TSX with the existing esbuild test pattern and render states to
 static markup. Assert:
@@ -858,7 +860,7 @@ helpers. Static rendering proves markup; pure-function tests prove the message
 predicate. Focus, keyboard operation, and real popup behavior remain in the
 ui-craft browser gate because `renderToStaticMarkup` cannot exercise them.
 
-- [ ] **Step 2: Run frontend tests and confirm RED**
+- [x] **Step 2: Run frontend tests and confirm RED**
 
 Run:
 
@@ -869,7 +871,7 @@ npm test
 
 Expected: `DesktopUpdate.tsx` and `useDesktopUpdate.ts` are missing.
 
-- [ ] **Step 3: Add typed API operations and the hook**
+- [x] **Step 3: Add typed API operations and the hook**
 
 Add `DesktopUpdateStatus` with exact state union:
 
@@ -900,7 +902,7 @@ local backend, and clears the grant variable/listener and closes the popup in
 `finally`. Expired-grant download responses enter `needs_authorization`; only a
 fresh Resume download click opens the portal again.
 
-- [ ] **Step 4: Build the two accessible views**
+- [x] **Step 4: Build the two accessible views**
 
 `DesktopUpdateCard` goes directly after the Backchannel version card in About.
 Render bounded signed release-note Markdown with the existing safe
@@ -912,7 +914,7 @@ animation beyond existing color transitions.
 does not compete with the post-update What's new notice. Available and ready
 copy are concise; downloading exposes progress but no modal.
 
-- [ ] **Step 5: Run GREEN, typecheck, and build**
+- [x] **Step 5: Run GREEN, typecheck, and build**
 
 Run:
 
@@ -924,7 +926,7 @@ npm run build
 Expected: all frontend tests and the production build pass with no TypeScript
 errors.
 
-- [ ] **Step 6: Perform the ui-craft visual gate**
+- [x] **Step 6: Perform the ui-craft visual gate**
 
 Run the desktop frontend with fixture status states and inspect at 320px,
 768px, and desktop widths in light/dark and reduced-motion modes. Verify no
@@ -933,10 +935,10 @@ screen-reader status, no layout shift during progress, and no obstruction of
 active-call controls. Capture only temporary review screenshots outside the
 repository.
 
-- [ ] **Step 7: Commit Task 6**
+- [x] **Step 7: Commit Task 6**
 
 ```powershell
-git add frontend/src/hooks/useDesktopUpdate.ts frontend/src/components/DesktopUpdate.tsx frontend/src/components/DesktopUpdate.test.mjs frontend/src/services/api.ts frontend/src/types/index.ts frontend/src/components/AboutCard.tsx frontend/src/App.tsx frontend/package.json
+git add backend/app/routers/updates.py backend/tests/test_update_service.py frontend/src/hooks/useDesktopUpdate.ts frontend/src/components/DesktopUpdate.tsx frontend/src/components/DesktopUpdate.test.mjs frontend/src/services/api.ts frontend/src/types/index.ts frontend/src/components/AboutCard.tsx frontend/src/components/AdminPanel.tsx frontend/src/components/ManagementView.tsx frontend/src/App.tsx frontend/package.json docs/superpowers/plans/2026-07-26-desktop-updater.md
 git commit -m "feat: add desktop update experience"
 ```
 

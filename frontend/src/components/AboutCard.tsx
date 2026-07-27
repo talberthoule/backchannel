@@ -4,9 +4,12 @@ import remarkGfm from "remark-gfm";
 import type { ModelInfo, ModelPricingResponse, ReleaseNote } from "../types";
 import * as api from "../services/api";
 import { formatRate } from "../lib/modelPricing";
+import { DesktopUpdateCard } from "./DesktopUpdate";
+import type { DesktopUpdateController } from "../hooks/useDesktopUpdate";
 
 interface AboutCardProps {
   version: string | null;
+  desktopUpdate: DesktopUpdateController;
   // Version last seen by this browser before an upgrade; releases newer than
   // it get a "New" badge. Null when there is nothing unread.
   highlightSince?: string | null;
@@ -35,7 +38,7 @@ function isNewerVersion(a: string, b: string): boolean {
 
 // Admin -> About tab: current version plus the in-app release-notes history
 // served by /api/meta/release-notes (newest first, newest expanded).
-export default function AboutCard({ version, highlightSince }: AboutCardProps) {
+export default function AboutCard({ version, desktopUpdate, highlightSince }: AboutCardProps) {
   const [notes, setNotes] = useState<ReleaseNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -86,6 +89,8 @@ export default function AboutCard({ version, highlightSince }: AboutCardProps) {
           </span>
         </div>
       </div>
+
+      <DesktopUpdateCard update={desktopUpdate} />
 
       <section>
         <div className="mb-3">

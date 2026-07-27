@@ -622,6 +622,15 @@ class UpdateRouterTests(unittest.TestCase):
             "available",
         )
 
+    def test_ready_status_reports_the_active_runtime_blocker(self):
+        with runtime_activity.track("audio import"):
+            status = self.client.get("/api/updates").json()
+        self.assertEqual(status["blocked_reason"], "audio import")
+        self.assertEqual(
+            self.client.get("/api/updates").json()["blocked_reason"],
+            "",
+        )
+
     def test_apply_reserves_shutdown_and_releases_every_failed_precheck(self):
         self.database.active = 1
         response = self.mutation("POST", "/api/updates/apply")
