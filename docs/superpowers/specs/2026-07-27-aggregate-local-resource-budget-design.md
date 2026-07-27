@@ -2,11 +2,31 @@
 
 **Date:** 2026-07-27
 
-**Status:** Draft (design-first; agreement required before implementation)
+**Status:** Agreed on shape and both product decisions (thoule + w2:pJ, 2026-07-27); updated with a per-role context-window admission dimension. Ready for implementation planning.
 
 **Issue:** ALP-156
 
 **Author:** Fable/Opus lane (pane w2:pB)
+
+## Decisions (ratified 2026-07-27)
+
+Both product-owner questions are settled, and w2:pJ (the filer and ALP-154
+owner) agreed on the shape:
+
+- **Degradation order: accepted.** Captions -> text-agent cadence -> diarization
+  detail -> protect the batch transcript -> never the call. Ratified by thoule
+  (delegated to this recommendation) and independently agreed by w2:pJ.
+- **Negative-margin handling: refuse-with-override, not hard-block.** A machine
+  the app may be mis-measuring should not hard-block a capability the user
+  deliberately enabled after a passing benchmark; a stated, accepted risk is
+  better than a false wall. The override is honest only if it states the
+  **measured shortfall per affected role** (for example "needs about 2.3x this
+  machine," or "the briefing needs about 12k tokens against an 8k context"), not
+  a generic caution. Ratified by thoule and w2:pJ.
+
+Folded in from w2:pJ's live evidence (ALP-154, commit df9fc5c): text-agent
+admission must model the served model's **context window per agent role**, not
+only latency. See the text-agent fit section.
 
 ## Goal
 
@@ -150,7 +170,9 @@ Per-component demand:
   `sum_over_agents(tokens_per_call / tokens_per_sec) / interval_seconds` but no
   backend-process thread-pool time. For a LAN or remote endpoint the compute is
   off-box entirely (zero local CPU, but a latency term - below). For a cloud
-  model, zero.
+  model, zero. CPU is only one of three text-agent constraints; latency and
+  context-window fit are the other two, and for a small local model the context
+  window is the one that fails first (see the text-agent fit section).
 
 Admission compares the sum of demands to the budget and reports the margin:
 `headroom = budget - sum(demands)`. A configuration is comfortable when headroom
@@ -173,19 +195,49 @@ endpoint's model memory lives in *its* process, not the backend's, and counts
 against the machine reserve but not the container limit. This dimension is what
 actually killed the call and is projected independently of throughput.
 
-### The latency term for remote endpoints
+### Text-agent fit: latency and context window
 
 A LAN or remote text endpoint costs no local CPU but can still make a
-configuration unworkable, as ALP-154 showed: a 4B model that could not answer a
-briefing within the request budget. ALP-154 has already raised the ceilings
-in-tree - `LLM_SELF_HOSTED_TIMEOUT_SECONDS = 900` and
-`LLM_SELF_HOSTED_MAX_TOKENS = 8192` (`config.py:22-27`), applied per
-self-hosted call (`llm.py:67-83`), with truncation surfaced as `LLMReplyTruncated`
-(`llm.py:86-88,360-363`) - so the planner's latency term consumes those exact
-per-endpoint limits: expected tokens-per-second against the largest contracted
-output (the briefing arbiter) versus the endpoint's timeout, warning when a
-single call would exceed it. This keeps the throughput budget about the machine
-and the latency budget about the slow-model case without conflating them.
+configuration unworkable in two distinct ways.
+
+**Latency.** A 4B model can be too slow to answer a briefing within the request
+budget. ALP-154 has already raised the ceilings in-tree (commit df9fc5c) -
+`LLM_SELF_HOSTED_TIMEOUT_SECONDS = 900` and `LLM_SELF_HOSTED_MAX_TOKENS = 8192`
+(`config.py:22-27`), applied per self-hosted call (`llm.py:67-83`), with
+truncation surfaced as `LLMReplyTruncated` (`llm.py:86-88,360-363`) - so the
+planner's latency term consumes those exact per-endpoint limits: expected
+tokens-per-second against the largest contracted output (the briefing arbiter)
+versus the endpoint's timeout, warning when a single call would exceed it.
+
+**Context window (a hard fit constraint, not a degradation).** The harder wall
+is the model's context length: if a role's prompt plus its reserved output
+exceeds the context the model is served with, the request is refused outright
+and the role cannot run on that model at all. This is exactly what ALP-154
+(df9fc5c) found against a real LM Studio endpoint - qwen3.5-4b loaded at roughly
+8k context could not hold the briefing prompt plus the `BriefArbiterOutput`
+contract (about a 12k-token request), a server-configuration limit that
+request-shaping cannot fix. Two consequences for the planner:
+
+- **Model size does not predict fit.** Two 4B models can differ entirely by
+  their loaded context window, so the planner must take the endpoint's actual
+  context length as an input rather than infer capability from parameter count.
+- **Headroom is per agent role, not per model.** The briefing arbiter's prompt
+  is far larger than a single briefing lens or the objection handler's ~90s
+  window, so a model can comfortably fit every live agent and still be unable to
+  run the arbiter. The planner projects
+  `prompt_tokens(role) + reserved_output(role)` against the endpoint's context
+  length for each role and reports the tightest.
+
+When a role does not fit, the ordered relief is: trim the arbiter's output
+contract toward reconciliation-plus-references (tracked as remaining ALP-154
+work) and reduce the input context (fewer lens outputs, a shorter transcript
+window) before declaring the role unrunnable on that model; if it still will not
+fit, that is a refuse-with-override at admission or a substitution to a
+larger-context model, never a silent run that fails mid-briefing.
+
+Keeping the throughput budget about the machine, the latency budget about the
+slow-model case, and the context budget about the fit case - reported per
+role - avoids conflating three failure modes that need three different answers.
 
 ## Where the decision lives
 
@@ -279,10 +331,15 @@ supported/not-supported changes to show measured margin:
   diarizer; turn off live captions; move the text model to a LAN GPU box). This
   is a new surface; today `App.tsx:635-640` only blocks on the boolean
   transcription-readiness check.
-- **Proceed-anyway is allowed with an honest warning** rather than blocked,
-  naming what will degrade first (per the order above) so the choice is informed.
-  A thin-margin start says what the controller will do; a negative-margin start
-  says the call will run degraded from the outset.
+- **Proceed-anyway is allowed with an honest warning** rather than blocked
+  (the ratified refuse-with-override decision), naming what will degrade first
+  (per the order above) so the choice is informed. The warning must **state the
+  measured shortfall** - the projected load multiple, or the per-role token
+  shortfall against the model's context ("the briefing needs ~12k tokens; this
+  model is served at 8k") - not a generic caution; an override is honest only if
+  it quantifies what the user is accepting. A thin-margin start says what the
+  controller will do; a negative-margin start says the call will run degraded
+  from the outset.
 - **Privacy First stays a hard, separate gate.** Privacy is binary and about
   destination; capacity is a measured, independent axis shown alongside it. A
   configuration can be private and over budget; the user sees both facts, not one
@@ -300,6 +357,10 @@ verdict - "this configuration needs about 2.3x your machine" - with ranked
 reductions. Had the user proceeded anyway, the runtime controller would have
 dropped live captions and widened agent intervals before touching diarization,
 and ALP-153's floor would have kept the call alive rather than letting it OOM.
+It would separately have flagged the briefing as a context-fit failure - the
+arbiter's ~12k-token request against the 4B model's ~8k context - and offered to
+trim the arbiter contract or route the briefing to a larger-context model,
+rather than letting it time out and truncate as it did (ALP-154).
 
 ## Relationship to the in-flight lanes
 
@@ -314,10 +375,13 @@ the frame they sit inside, and each remains independently useful.
   and a memory footprint under representative load, not a boolean unlock at RTF
   0.70. This design consumes those numbers; the benchmark's honesty is a
   precondition for the planner's numbers to mean anything.
-- **ALP-154 (llm.py limits, claude w2:pJ; largely landed in-tree).** Provides
-  the per-endpoint timeout (900s) and explicit max_tokens (8192) the latency
-  term consumes, and its arbiter-trimming idea directly shrinks the text-agent
-  cost term. Complementary and upstream of the planner's text-model inputs.
+- **ALP-154 (llm.py limits, claude w2:pJ; committed df9fc5c on master).**
+  Provides the per-endpoint timeout (900s) and explicit max_tokens (8192) the
+  latency term consumes, and it surfaced the context-window wall the planner now
+  models per role. Its remaining arbiter-trimming work is what the planner's
+  context-fit relief (trim the arbiter contract before declaring a role
+  unrunnable) depends on. Complementary and upstream of the planner's text-model
+  inputs.
 - **ALP-129 (cloud quota -> local fallback, claude-2 w2:pG).** The planner's
   headroom function is exactly the "does local have capacity to accept this work"
   query ALP-129 must ask before failing a cloud batch over to a local model.
@@ -350,18 +414,21 @@ now-local `local-parakeet-live` path. Not part of this design, but worth fixing
 alongside the capacity work since the fit card is where captioner capacity will
 be shown.
 
-## Open questions for agreement
+## Remaining open questions
 
-1. Is the degradation order (captions -> agent cadence -> diarization detail ->
-   protect transcript -> never the call) the right product ranking? This is the
-   one genuinely subjective call in the design.
-2. Should a negative-margin configuration be refusable-with-override (proposed)
-   or hard-blocked? The proposal favors an informed override.
-3. Where should the planner physically live - a new service invoked at call start
-   by the WebSocket handler, versus folding it into session start-up? (Deferred
-   until the model is agreed.)
-4. Is a first increment that only (a) sums the existing fit-card measurements plus
-   track count into one call-start headroom verdict and (b) coordinates the three
-   existing runtime valves under the priority order acceptable, with memory
-   projection and per-endpoint latency to follow? Sequencing to be set with the
-   lane owners.
+The two product-owner questions (degradation order; refuse-with-override vs
+hard-block) are resolved in the Decisions section above. Still open, and
+implementation-shaped rather than product-shaped:
+
+1. Where should the planner physically live - a new service invoked at call
+   start by the WebSocket handler, versus folding it into session start-up? And
+   where does the per-role context-fit check run for the briefing, which is
+   produced at call end or on demand rather than at call start (so its arbiter
+   prompt size is not fully known until then)?
+2. Is a first increment acceptable that (a) sums the existing fit-card
+   measurements plus track count into one call-start headroom verdict, (b)
+   coordinates the three existing runtime valves under the ratified order, and
+   (c) adds the per-role context-window fit check for text agents - the cheapest
+   high-value guard, since it converts a mid-briefing truncation into an
+   up-front refusal? Memory projection (from ALP-155) and the full CPU-throughput
+   term to follow. Sequencing to be set with the lane owners.
