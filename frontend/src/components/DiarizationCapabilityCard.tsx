@@ -234,6 +234,7 @@ export default function DiarizationCapabilityCard() {
     try {
       const updated = await api.updateDiarizationConfig({ selected_live_diarizer: mode });
       setDiarization(updated);
+      setBenchmark(null);
     } catch (err) {
       console.error("Diarization selection failed", err);
       setDiagnosticError(err instanceof Error ? err.message : "Unable to update diarization mode.");
