@@ -84,18 +84,16 @@ def _container_memory_limit_mb() -> float | None:
     return None
 
 
-def detect_machine_budget(
-    memory_limit_mb: float | None = None,
-    cpu_reserve_cores: float = CPU_RESERVE_CORES,
-) -> MachineBudget:
+def detect_machine_budget(memory_limit_mb: float | None = None) -> MachineBudget:
     """Detect the machine's usable budget for the audio and model stack.
 
-    Cores come from `os.cpu_count()` minus a reserve; the memory limit comes from
-    the cgroup limit, falling back to a modest default when none is readable.
+    Cores come from `os.cpu_count()` minus CPU_RESERVE_CORES; the memory limit
+    comes from the cgroup limit, falling back to a modest default when none is
+    readable.
     """
 
     total_cores = os.cpu_count() or 1
-    usable_cores = max(1.0, float(total_cores) - max(0.0, cpu_reserve_cores))
+    usable_cores = max(1.0, float(total_cores) - CPU_RESERVE_CORES)
     if memory_limit_mb is None:
         memory_limit_mb = _container_memory_limit_mb()
     if memory_limit_mb is None or memory_limit_mb <= 0:
