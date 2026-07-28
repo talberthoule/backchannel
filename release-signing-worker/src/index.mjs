@@ -176,6 +176,7 @@ function validDescriptor(value, signingKeyId) {
       validTimestamp(value.published_at) &&
       typeof value.release_notes === "string" &&
       value.release_notes.length > 0 &&
+      value.release_notes.isWellFormed() &&
       encoder.encode(value.release_notes).byteLength <= MAX_NOTES_BYTES &&
       typeof value.key_id === "string" &&
       KEY_ID.test(value.key_id) &&

@@ -366,6 +366,34 @@ test("strict UTF-8 and canonical byte equality are required before secret access
   }
 });
 
+test("unpaired release-note surrogates are rejected before secret access", async () => {
+  for (const notes of ["\ud800", "\udc00"]) {
+    const value = descriptor();
+    value.release_notes = notes;
+    const state = testEnv(SECRET_FIXTURE);
+    const response = await handleRequest(
+      request(canonical(value)),
+      state.env,
+      allow,
+    );
+    assert.equal(response.status, 400);
+    assert.equal(state.reads(), 0);
+  }
+});
+
+test("valid Unicode release notes including surrogate pairs are accepted", async () => {
+  const value = descriptor();
+  value.release_notes = "Café \ud83d\ude80";
+  const state = testEnv("invalid");
+  const response = await handleRequest(
+    request(canonical(value)),
+    state.env,
+    allow,
+  );
+  assert.equal(response.status, 503);
+  assert.equal(state.reads(), 1);
+});
+
 test("descriptor validation exactly matches the public update contract", async () => {
   const cases = [
     ["top-level extra field", (d) => { d.extra = true; }],
