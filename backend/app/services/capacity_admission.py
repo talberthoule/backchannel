@@ -296,6 +296,9 @@ async def assess_call_capacity(
         else:
             batch_asr = BatchAsrDemand(real_time_factor=measured_rtf)
             modelled.append(f"batch_asr:{batch_model_id}")
+            not_modelled.append(
+                f"batch_asr:{batch_model_id}: memory demand is not measured"
+            )
 
     gateway = agents.get(transcription_runtime.AUDIO_GATEWAY_SLUG)
     live_model_id = runtime.live_preview_model_id
@@ -318,6 +321,9 @@ async def assess_call_capacity(
         else:
             captioner = CaptionerDemand(real_time_factor=measured_rtf)
             modelled.append(f"live_captioner:{live_model_id}")
+            not_modelled.append(
+                f"live_captioner:{live_model_id}: memory demand is not measured"
+            )
 
     output_budget = settings.LLM_SELF_HOSTED_MAX_TOKENS
     for row in agent_rows:

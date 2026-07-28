@@ -239,7 +239,12 @@ class AssessCallCapacityTests(unittest.IsolatedAsyncioTestCase):
         # 0.2 measured RTF * 1.5 contention * 0.6 speech fraction.
         self.assertAlmostEqual(0.18, assessment.verdict.cpu_demand_cores)
         self.assertIn("batch_asr:local-parakeet-tdt-0.6b", assessment.modelled)
-        self.assertFalse(any(note.startswith("batch_asr:") for note in assessment.not_modelled))
+        self.assertFalse(
+            any(
+                note.startswith("batch_asr:") and "local fit" in note
+                for note in assessment.not_modelled
+            )
+        )
 
     async def test_local_captioner_uses_the_stored_short_window_rtf(self):
         assessment = await self._assess(
@@ -265,8 +270,39 @@ class AssessCallCapacityTests(unittest.IsolatedAsyncioTestCase):
         self.assertAlmostEqual(0.15, assessment.verdict.cpu_demand_cores)
         self.assertIn("live_captioner:local-parakeet-live", assessment.modelled)
         self.assertFalse(
-            any(note.startswith("live_captioner:") for note in assessment.not_modelled)
+            any(
+                note.startswith("live_captioner:") and "local fit" in note
+                for note in assessment.not_modelled
+            )
         )
+
+    async def test_local_asr_and_captioner_report_unmeasured_memory(self):
+        assessment = await self._assess(
+            fit_result=_fit_result(
+                asr_models=[
+                    {
+                        "model_id": "local-parakeet-tdt-0.6b",
+                        "status": "ok",
+                        "real_time_factor": 0.2,
+                        "short_real_time_factor": 0.1,
+                        "live_feasibility": "feasible",
+                    }
+                ]
+            ),
+            rows=[_agent("audio_gateway", "local-parakeet-live")],
+            live_model_id="local-parakeet-live",
+            diarizer=_diarizer(contention_rtf=0.3, peak_memory_mb=300.0),
+        )
+
+        memory_notes = [
+            note for note in assessment.not_modelled if "memory" in note
+        ]
+        self.assertEqual(2, len(memory_notes))
+        self.assertTrue(any(note.startswith("batch_asr:") for note in memory_notes))
+        self.assertTrue(
+            any(note.startswith("live_captioner:") for note in memory_notes)
+        )
+        self.assertTrue(assessment.partial)
 
     async def test_text_agent_uses_measured_latency_and_model_specific_interval(self):
         model_id = "endpoint:lm-studio:qwen"

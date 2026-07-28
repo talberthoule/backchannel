@@ -366,7 +366,7 @@ def plan_capacity(
         if shortfall is None:
             continue
         reasons.append(shortfall)
-        if not fit.context_fits:
+        if fit.context_fits is False:
             over_budget = True  # a role that cannot fit is a hard admission failure
         else:
             thin = True  # a latency overrun is a warning, not a hard block
