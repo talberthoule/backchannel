@@ -59,6 +59,7 @@ function EndpointForm({
   onCancel: () => void;
   onSaved: () => void;
 }) {
+  const { confirm } = useConfirm();
   const [form, setForm] = useState<FormState>(initial);
   const [served, setServed] = useState<string[] | null>(null);
   const [manual, setManual] = useState("");
@@ -125,8 +126,25 @@ function EndpointForm({
     };
     if (form.keyTouched) payload.api_key = form.apiKey;
     try {
-      if (editing) await api.updateEndpoint(editing.id, payload);
-      else await api.createEndpoint(payload);
+      if (editing) {
+        try {
+          await api.updateEndpoint(editing.id, payload);
+        } catch (err) {
+          if (!(err instanceof Error) || !err.message.includes("confirm_off_prem=true")) {
+            throw err;
+          }
+          const approved = await confirm({
+            title: "Move endpoint off-prem?",
+            message: `Change ${editing.name} from ${editing.base_url} to ${payload.base_url}? Calls using this endpoint can leave your machine or network.`,
+            confirmLabel: "Move endpoint",
+            tone: "danger",
+          });
+          if (!approved) return;
+          await api.updateEndpoint(editing.id, { ...payload, confirm_off_prem: true });
+        }
+      } else {
+        await api.createEndpoint(payload);
+      }
       onSaved();
     } catch (err) {
       setMessage({ ok: false, text: err instanceof Error ? err.message : "Save failed" });
@@ -488,6 +506,9 @@ export default function EndpointsCard({ onChanged }: EndpointsCardProps) {
               </div>
               <p className="mt-1.5 truncate font-mono text-[11px] text-brand-mid-gray" title={endpoint.base_url}>
                 {endpoint.base_url}
+              </p>
+              <p className="mt-1 font-body text-[10px] text-brand-mid-gray">
+                Identifier: <code className="font-mono">{endpoint.id}</code>
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {endpoint.models.map((model) => (

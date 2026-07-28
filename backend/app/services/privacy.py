@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import MODEL_REGISTRY
 from app.services.app_settings import get_app_setting, set_app_setting
-from app.services.custom_endpoints import is_endpoint_model, resolve_target_standalone
+from app.services.custom_endpoints import EndpointError, is_endpoint_model, resolve_target_standalone
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,10 @@ async def allows_local_only(model_id: str) -> bool:
         return True
     if not is_endpoint_model(model_id):
         return False
-    target = await resolve_target_standalone(model_id)
+    try:
+        target = await resolve_target_standalone(model_id)
+    except EndpointError:
+        return False
     return bool(target and target.on_prem)
 
 

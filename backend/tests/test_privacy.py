@@ -2,7 +2,7 @@ import unittest
 from unittest import mock
 
 from app.services import privacy as privacy_mod
-from app.services.custom_endpoints import EndpointTarget
+from app.services.custom_endpoints import EndpointError, EndpointTarget
 from app.services.privacy import (
     DEFAULT_LOCAL_BATCH_MODEL,
     allows_local_only,
@@ -107,6 +107,16 @@ class TestPrivacyAllowsSelfHostedModels(unittest.IsolatedAsyncioTestCase):
 
     async def test_a_missing_endpoint_is_not_allowed(self):
         self._patch_target(None)
+        self.assertFalse(await allows_local_only("endpoint:gone:antares-1b"))
+
+    async def test_a_deleted_endpoint_is_not_allowed(self):
+        patcher = mock.patch.object(
+            privacy_mod,
+            "resolve_target_standalone",
+            mock.AsyncMock(side_effect=EndpointError("endpoint was deleted")),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.assertFalse(await allows_local_only("endpoint:gone:antares-1b"))
 
 
