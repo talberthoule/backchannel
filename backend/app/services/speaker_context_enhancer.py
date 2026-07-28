@@ -16,6 +16,7 @@ from app.services.agents.speaker_context import (
     format_transcript_segment,
     speaker_display_name,
 )
+from app.services.briefing_synthesis import agent_model_id
 from app.services.insight_refiner import _apply_operations_in_db
 from app.services.meeting_context import build_meeting_context_text
 from app.services.speaker_name_rewriter import (
@@ -158,8 +159,16 @@ async def run_speaker_context_batch(
             build_meeting_context_text(session),
         )
 
+    # The synthesizer owns this kind of work: both reconcile and enrich saved
+    # insights through the same operation vocabulary, so this pass runs
+    # whatever model that agent is set to rather than pinning its own.
+    # ponytail: re-read once per batch, not once per run. A nine-row table
+    # behind four heavier queries; hoist into speaker_revalidation._run_batch's
+    # caller if a run ever grows enough batches for it to matter.
+    model_id = await agent_model_id("synthesizer", settings.REFINEMENT_MODEL)
+
     raw = await generate_text(
-        settings.REFINEMENT_MODEL,
+        model_id,
         prompt,
         session_id=session_id,
         source="speaker_context_enhancer",

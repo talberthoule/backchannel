@@ -10,6 +10,7 @@ from app.config import settings
 from app.services.llm import generate_text
 from app.database import get_db
 from app.models import Directive, Question, Session, TranscriptEntry
+from app.services.briefing_synthesis import agent_model_id
 from app.services.meeting_context import build_meeting_context_text
 
 router = APIRouter(prefix="/api/sessions/{session_id}/analyze", tags=["analyze"])
@@ -86,8 +87,14 @@ Rules:
 
 Output the JSON array:"""
 
+    # Analyze is the post-import form of what the Consolidated Analyst does
+    # live: same transcript in, same four item types out. It runs whatever
+    # model that agent is set to, so Privacy First judges it by destination and
+    # the choice is visible in Admin -> Agents instead of being implicit.
+    model_id = await agent_model_id("consolidated_analyst", settings.REFINEMENT_MODEL)
+
     raw = await generate_text(
-        settings.REFINEMENT_MODEL, prompt, session_id=session_id, source="analyze"
+        model_id, prompt, session_id=session_id, source="analyze"
     )
 
 

@@ -138,7 +138,7 @@ features that stop working before the mode is applied
 | --- | --- | --- |
 | `GEMINI_MODEL` | `gemini-3.1-flash-live-preview` | Seeded default for the live audio gateway |
 | `BATCH_TRANSCRIBER_MODEL` | `gemini-3.5-flash-lite` | Fallback batch transcription model; the persisted `transcription.batch.model_id` app setting takes precedence |
-| `REFINEMENT_MODEL` | `gemini-3.5-flash` | Model for refinement passes |
+| `REFINEMENT_MODEL` | `gemini-3.5-flash` | Fallback text model, used only when the owning agent row has no model set. Post-import Analyze takes its model from the Consolidated Analyst row and Enhance Insights takes its from the Principal Agent row, so on a seeded install this default is not reached |
 | `REFINEMENT_INTERVAL_SECONDS` | 45 | Refinement cadence |
 
 ### Agent timing

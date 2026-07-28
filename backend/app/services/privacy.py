@@ -140,6 +140,12 @@ def privacy_impact(on_prem_text_models: list[dict] | None = None) -> dict:
     services/custom_endpoints.py): configuring one moves the analysis agents
     from the disabled list to the available list, because a self-hosted model
     can do that work without an outside API call.
+
+    A feature only moves when a self-hosted model can actually carry it. That
+    covers everything routed through services/llm.py, including the two
+    features that borrow an agent row's model (post-import Analyze and speaker
+    context enhancement). Document summarization never moves: it calls the
+    Gemini Files API directly rather than choosing a text model.
     """
     local_batch = local_models("supports_batch_audio")
     local_text = local_models("supports_text") + list(on_prem_text_models or [])
@@ -172,7 +178,10 @@ def privacy_impact(on_prem_text_models: list[dict] | None = None) -> dict:
 
     if local_text:
         available.append({
-            "feature": "AI analysis agents, transcript analysis, and meeting chat",
+            "feature": (
+                "AI analysis agents, transcript analysis, insight enhancement, "
+                "and meeting chat"
+            ),
             "detail": (
                 "Point them at a self-hosted model: "
                 + ", ".join(m["name"] for m in local_text)
@@ -196,6 +205,17 @@ def privacy_impact(on_prem_text_models: list[dict] | None = None) -> dict:
             "feature": "Live interim captions (audio gateway)",
             "detail": "Streams call audio to Gemini Live or OpenAI Realtime; no local option.",
         })
+    # Unconditional: this one is not a text-model choice. It calls the Gemini
+    # Files API itself, so no self-hosted model can stand in for it and the
+    # entry must not disappear the moment an on-prem text model is configured.
+    disabled.append({
+        "feature": "Document upload & summarization",
+        "detail": (
+            "Session documents are uploaded to the Gemini Files API, which has "
+            "no self-hosted equivalent. Configuring a local text model does not "
+            "enable it."
+        ),
+    })
     if not local_text:
         disabled.extend([
             {
@@ -212,10 +232,6 @@ def privacy_impact(on_prem_text_models: list[dict] | None = None) -> dict:
             {
                 "feature": "Meeting chat",
                 "detail": "Chat over past transcripts routes through a cloud text model.",
-            },
-            {
-                "feature": "Document upload & summarization",
-                "detail": "Session documents are uploaded to the Gemini Files API.",
             },
             {
                 "feature": "Insight enhancement",

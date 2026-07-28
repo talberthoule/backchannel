@@ -110,6 +110,25 @@ async def load_agent_configs(session_id: uuid.UUID | None = None) -> dict[str, A
         return configs
 
 
+async def agent_model_id(slug: str, default: str) -> str:
+    """The model an agent row is set to, for a feature that borrows it.
+
+    Some user-initiated features are the on-demand form of work an agent
+    already owns, so they run whatever model that agent is set to instead of
+    pinning their own. Only model_id is borrowed, never enabled: these are
+    buttons, and turning an interval agent off should not silently break one.
+
+    Deliberately session-agnostic. Per-session overrides only flip enabled,
+    which is the one field this ignores, so there is no session to take into
+    account and no query worth spending on one.
+
+    Falls back to default when the row is missing or blank, which keeps an
+    install that has never seeded behaving as it did before.
+    """
+    cfg = (await load_agent_configs()).get(slug)
+    return (cfg.model_id if cfg else "") or default
+
+
 def _agent_config_snapshot(agent: AgentConfig):
     return SimpleNamespace(
         slug=agent.slug,

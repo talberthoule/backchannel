@@ -180,6 +180,10 @@ class SpeakerContextEnhancerFailureTests(unittest.IsolatedAsyncioTestCase):
                 return_value=_AsyncContext(load_db),
             ),
             patch(
+                "app.services.speaker_context_enhancer.agent_model_id",
+                new=AsyncMock(return_value="endpoint:lm-studio:antares-1b"),
+            ),
+            patch(
                 "app.services.speaker_context_enhancer.generate_text",
                 new=AsyncMock(return_value="[]"),
             ) as generate,
@@ -195,6 +199,7 @@ class SpeakerContextEnhancerFailureTests(unittest.IsolatedAsyncioTestCase):
                 apply_db,
             )
 
+        self.assertEqual("endpoint:lm-studio:antares-1b", generate.await_args.args[0])
         self.assertIn("Assigned insight", generate.await_args.args[1])
         apply.assert_awaited_once()
         self.assertIs(apply.await_args.args[0], apply_db)

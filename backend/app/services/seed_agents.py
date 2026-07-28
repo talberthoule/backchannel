@@ -103,7 +103,7 @@ SEED_CONFIGS = [
     {
         "slug": "consolidated_analyst",
         "name": "Consolidated Analyst",
-        "description": "Analyzes transcript through configurable lenses in a single call. Default lenses: strategic follow-up questions, observations, product & service opportunities, and action items.",
+        "description": "Analyzes transcript through configurable lenses in a single call. Default lenses: strategic follow-up questions, observations, product & service opportunities, and action items. The model set here is also used by the post-import Analyze action.",
         "agent_type": "text",
         "model_id": "gemini-3.6-flash",
         "prompt": CONSOLIDATED_ANALYST_BASE_PROMPT,
@@ -128,7 +128,7 @@ SEED_CONFIGS = [
     {
         "slug": "synthesizer",
         "name": "Principal Agent",
-        "description": "Strategic oversight meta-agent that performs quality control on insights while also synthesizing the bigger picture — connecting disparate findings to reveal strategic objectives, initiatives, and cross-domain patterns.",
+        "description": "Strategic oversight meta-agent that performs quality control on insights while also synthesizing the bigger picture — connecting disparate findings to reveal strategic objectives, initiatives, and cross-domain patterns. The model set here is also used by Enhance Insights after a speaker correction.",
         "agent_type": "meta",
         "model_id": "gemini-3.1-pro-preview",
         "prompt": PRINCIPAL_AGENT_PROMPT,
