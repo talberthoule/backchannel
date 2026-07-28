@@ -582,7 +582,9 @@ export interface WSStatusData {
 
 export interface PostProcessingProgress {
   active: boolean;
-  state: "idle" | "running" | "completed" | "timeout" | "error";
+  // "background": the socket went quiet without closing, so the drain is very
+  // likely still running server-side and the view polls for completion.
+  state: "idle" | "running" | "completed" | "background" | "timeout" | "error";
   stage: string;
   message: string;
   currentStep: number;

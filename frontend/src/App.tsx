@@ -13,6 +13,7 @@ import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
 import { useAppUpdates } from "./hooks/useAppUpdates";
 import { useConfirm } from "./components/ConfirmProvider";
 import * as api from "./services/api";
+import { parseSavedDrainSummary } from "./lib/postProcessingSummary";
 import type { AgentActivitySnapshot, PostProcessingProgress, Question, Session, SessionGroup, SessionSynthesis, StopDrainMode, TranscriptEntry, WSStatusData } from "./types";
 
 function idlePostProcessing(): PostProcessingProgress {
@@ -80,6 +81,28 @@ function completePostProcessing(
     details: details ?? prev.details,
   };
 }
+
+function backgroundPostProcessing(prev: PostProcessingProgress): PostProcessingProgress {
+  // The backend went quiet but never hung up, so the call is most likely still
+  // finishing. Say that, rather than implying the recording was lost and
+  // offering to resume a call the user just ended (ALP-171).
+  return {
+    ...prev,
+    active: false,
+    state: "background",
+    message:
+      "Still finishing post-processing in the background. You can leave this page; "
+      + "the call will appear complete once it finishes.",
+    progress: Math.max(prev.progress, 90),
+    completedAt: null,
+    confirmed: false,
+  };
+}
+
+// A drain that outlived the client's patience is still bounded work, so poll
+// briefly rather than forever, and stop the moment it lands.
+const BACKGROUND_POLL_INTERVAL_MS = 5000;
+const BACKGROUND_POLL_ATTEMPTS = 60;
 
 function unconfirmedPostProcessing(prev: PostProcessingProgress): PostProcessingProgress {
   return {
@@ -746,6 +769,31 @@ export default function App() {
     await beginCall();
   }, [activeSessionId, refreshQuestions, beginCall]);
 
+  const pollSessionCompletion = useCallback(async (sessionId: string) => {
+    for (let attempt = 0; attempt < BACKGROUND_POLL_ATTEMPTS; attempt++) {
+      await new Promise((r) => setTimeout(r, BACKGROUND_POLL_INTERVAL_MS));
+      try {
+        const latest = await api.getSession(sessionId);
+        if (latest.state === "completed" && latest.ended_at) {
+          setPostProcessing((prev) =>
+            completePostProcessing(
+              prev,
+              "Post-processing complete",
+              parseSavedDrainSummary(latest.drain_summary) ?? prev.details,
+            ),
+          );
+          await refreshSession();
+          await refreshQuestions();
+          await refreshSynthesis();
+          await refreshSessions();
+          return;
+        }
+      } catch (err) {
+        console.error("Background post-processing poll failed", err);
+      }
+    }
+  }, [refreshSession, refreshQuestions, refreshSynthesis, refreshSessions]);
+
   const handleEndCall = useCallback(async (drain: StopDrainMode = "full") => {
     setPostProcessing(startPostProcessing());
     beginCallGenerationRef.current += 1;
@@ -756,14 +804,14 @@ export default function App() {
     setAudioStarting(false);
     stopCapture();
     stopListening();
-    const backendCompleted = await sendStop(drain);
+    const stopOutcome = await sendStop(drain);
     disconnect();
     liveSessionIdRef.current = null;
     setLiveSessionId(null);
     setInterimText("");
 
     if (activeSessionId) {
-      let completionConfirmed = backendCompleted;
+      let completionConfirmed = stopOutcome === "completed";
       if (!completionConfirmed) {
         try {
           const latestSession = await api.getSession(activeSessionId);
@@ -775,6 +823,11 @@ export default function App() {
 
       if (completionConfirmed) {
         setPostProcessing((prev) => completePostProcessing(prev));
+      } else if (stopOutcome === "still_processing") {
+        // Silence is not failure. Hand off to the post-call view and let it
+        // poll; a drain this long is usually still running.
+        setPostProcessing((prev) => backgroundPostProcessing(prev));
+        void pollSessionCompletion(activeSessionId);
       } else {
         setPostProcessing((prev) => unconfirmedPostProcessing(prev));
       }
@@ -786,7 +839,7 @@ export default function App() {
       await refreshSynthesis();
       await refreshSessions();
     }
-  }, [activeSessionId, sendStop, stopCapture, stopListening, disconnect, refreshSession, refreshQuestions, refreshSegments, refreshSpeakers, refreshTranscripts, refreshSynthesis, refreshSessions]);
+  }, [activeSessionId, sendStop, stopCapture, stopListening, disconnect, refreshSession, refreshQuestions, refreshSegments, refreshSpeakers, refreshTranscripts, refreshSynthesis, refreshSessions, pollSessionCompletion]);
 
   const handleStarQuestion = useCallback(
     async (questionId: string, starred: boolean) => {

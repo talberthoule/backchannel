@@ -5,6 +5,20 @@ import type { AudioTrack } from "./useAudioCapture";
 export type WSStatus = "disconnected" | "connecting" | "connected" | "error";
 
 /**
+ * How a stop wait ended.
+ *
+ * "still_processing" is the honest middle case the old boolean could not say:
+ * the backend never answered, but it never hung up either, so the call is very
+ * likely finishing without us. Reporting that as failure is what produced a
+ * connection-lost banner and a resume prompt on a call the user just ended.
+ */
+export type StopOutcome = "completed" | "still_processing" | "disconnected";
+
+// How long the client waits for ANY traffic before assuming silence. Rearmed by
+// every message, so this bounds a gap between messages, not the whole drain.
+export const STOP_SILENCE_TIMEOUT_MS = 180000;
+
+/**
  * Manages a WebSocket connection to the backend for a single call session.
  * Handles binary frames (audio) and JSON messages (questions, transcripts, status).
  */
@@ -19,7 +33,7 @@ export function useWebSocket() {
   });
   const wsRef = useRef<WebSocket | null>(null);
   const connectionTokenRef = useRef(0);
-  const stopCompletionRef = useRef<((completed: boolean) => void) | null>(null);
+  const stopCompletionRef = useRef<((outcome: StopOutcome) => void) | null>(null);
   const stopTimeoutRef = useRef<number | null>(null);
   const audioStatsRef = useRef<AudioSendStats>({
     chunksSent: 0,
@@ -48,14 +62,27 @@ export function useWebSocket() {
     setAudioStats({ ...audioStatsRef.current });
   }, []);
 
-  const resolveStop = useCallback((completed: boolean) => {
+  const resolveStop = useCallback((outcome: StopOutcome) => {
     if (stopTimeoutRef.current !== null) {
       window.clearTimeout(stopTimeoutRef.current);
       stopTimeoutRef.current = null;
     }
-    stopCompletionRef.current?.(completed);
+    stopCompletionRef.current?.(outcome);
     stopCompletionRef.current = null;
   }, []);
+
+  // Silence, not duration, is what says the backend is gone. The deadline is
+  // rearmed by every message, so a drain that legitimately runs for minutes
+  // keeps its wait alive as long as progress or heartbeats are arriving
+  // (ALP-171: a fixed 180s timer abandoned a drain that took four twenty).
+  const armStopDeadline = useCallback(() => {
+    if (stopCompletionRef.current === null) return;
+    if (stopTimeoutRef.current !== null) window.clearTimeout(stopTimeoutRef.current);
+    stopTimeoutRef.current = window.setTimeout(
+      () => resolveStop("still_processing"),
+      STOP_SILENCE_TIMEOUT_MS,
+    );
+  }, [resolveStop]);
 
   const connect = useCallback((sessionId: string) => {
     connectionTokenRef.current += 1;
@@ -90,8 +117,10 @@ export function useWebSocket() {
       try {
         const msg = JSON.parse(event.data as string) as WSMessage;
         setMessages((prev) => [...prev, msg]);
+        // Any traffic proves the backend is alive and working.
+        armStopDeadline();
         if (msg.type === "status" && msg.data.state === "completed") {
-          resolveStop(true);
+          resolveStop("completed");
         }
       } catch {
         console.warn("Unparseable WS message", event.data);
@@ -105,7 +134,7 @@ export function useWebSocket() {
 
     ws.onclose = () => {
       if (connectionTokenRef.current !== token) return;
-      resolveStop(false);
+      resolveStop("disconnected");
       setStatus("disconnected");
       wsRef.current = null;
     };
@@ -113,7 +142,7 @@ export function useWebSocket() {
 
   const disconnect = useCallback(() => {
     connectionTokenRef.current += 1;
-    resolveStop(false);
+    resolveStop("disconnected");
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -158,19 +187,19 @@ export function useWebSocket() {
 
   const sendStop = useCallback((drain: StopDrainMode = "full") => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) {
-      return Promise.resolve(false);
+      return Promise.resolve<StopOutcome>("disconnected");
     }
 
-    return new Promise<boolean>((resolve) => {
-      resolveStop(false);
+    return new Promise<StopOutcome>((resolve) => {
+      resolveStop("disconnected");
       stopCompletionRef.current = resolve;
-      stopTimeoutRef.current = window.setTimeout(() => resolveStop(false), 180000);
+      armStopDeadline();
       // A bare stop keeps the backend's full drain; only send the drain field
       // when requesting the shorter pipeline (backward compatible).
       const payload = drain === "full" ? { type: "stop" } : { type: "stop", drain };
       wsRef.current?.send(JSON.stringify(payload));
     });
-  }, [resolveStop]);
+  }, [resolveStop, armStopDeadline]);
 
   return { connect, disconnect, sendAudio, sendDirective, sendTrackState, sendStop, status, messages, audioStats };
 }
