@@ -29,7 +29,7 @@ together with `not_modelled`: unmeasured components can only push demand up.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -179,16 +179,22 @@ async def assess_call_capacity(
     modelled: list[str] = ["machine_budget"]
     not_modelled = list(_NOT_MODELLED_BASE)
 
-    if (
-        diarizer.effective_live_diarizer == DIARIZER_SORTFORMER
-        and diarizer.benchmark_contention_adjusted_real_time_factor is not None
-    ):
-        diarization = DiarizationDemand(
-            track_count=track_count,
-            per_track_rtf=diarizer.benchmark_contention_adjusted_real_time_factor,
-            per_instance_memory_mb=diarizer.benchmark_peak_memory_mb,
-        )
-        modelled.append("diarization_sortformer")
+    if diarizer.effective_live_diarizer == DIARIZER_SORTFORMER:
+        if (
+            diarizer.benchmark_contention_adjusted_real_time_factor is not None
+            and diarizer.benchmark_peak_memory_mb is not None
+        ):
+            diarization = DiarizationDemand(
+                track_count=track_count,
+                per_track_rtf=diarizer.benchmark_contention_adjusted_real_time_factor,
+                per_instance_memory_mb=diarizer.benchmark_peak_memory_mb,
+            )
+            modelled.append("diarization_sortformer")
+        else:
+            not_modelled.append(
+                "diarization: the Sortformer benchmark is stale; re-run it to "
+                "capture contention and memory"
+            )
     else:
         not_modelled.append(
             "diarization: the lightweight diarizer is not separately benchmarked"

@@ -108,6 +108,29 @@ class AssessCallCapacityTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertNotIn("diarization_sortformer", assessment.modelled)
 
+    async def test_stale_sortformer_benchmark_requests_a_rerun(self):
+        expected = (
+            "diarization: the Sortformer benchmark is stale; re-run it to "
+            "capture contention and memory"
+        )
+        for missing_field, diarizer in (
+            (
+                "contention_adjusted_real_time_factor",
+                _diarizer(contention_rtf=None),
+            ),
+            ("peak_memory_mb", _diarizer(peak_memory_mb=None)),
+        ):
+            with self.subTest(missing_field=missing_field), mock.patch(
+                "app.services.capacity_admission.get_diarizer_runtime_config",
+                new=mock.AsyncMock(return_value=diarizer),
+            ):
+                assessment = await assess_call_capacity(
+                    db=None,
+                    budget=MachineBudget(usable_cores=8, memory_limit_mb=8192),
+                )
+            self.assertIn(expected, assessment.not_modelled)
+            self.assertNotIn("diarization_sortformer", assessment.modelled)
+
     async def test_to_dict_exposes_status_coverage_and_headroom(self):
         with mock.patch(
             "app.services.capacity_admission.get_diarizer_runtime_config",
