@@ -6,12 +6,14 @@ respond is still open. Each finding pairs an immediate suggested reply
 (micro) with the underlying concern and strategic angle (macro).
 """
 
+import json
 import logging
 import uuid
 from collections import deque
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
+from app.services.agents.activity import classify_error
 from app.services.agents.prompts import OBJECTION_HANDLER_PROMPT
 from app.services.agents.speaker_context import format_speakers_list
 from app.services.llm import generate_json
@@ -86,6 +88,7 @@ class ObjectionHandlerAgent:
         self._recent_objections: deque[str] = deque(maxlen=_MAX_RECENT_OBJECTIONS)
         self._last_window = ""
         self._session_id = session_id
+        self.last_outcome: dict | None = None
 
     def update_meeting_context(self, meeting_context_text: str):
         self.meeting_context_text = meeting_context_text
@@ -101,6 +104,11 @@ class ObjectionHandlerAgent:
         """Execute one fast scan. Returns list of objection insight dicts."""
         # No new speech since the last scan — skip the LLM call entirely.
         if transcript_window == self._last_window:
+            self.last_outcome = {
+                "kind": "skipped_unchanged",
+                "detail": "No new speech since the last check.",
+                "items": 0,
+            }
             return []
         self._last_window = transcript_window
 
@@ -131,16 +139,45 @@ class ObjectionHandlerAgent:
             )
         except Exception as e:
             logger.error(f"[objection_handler] API call failed: {e}")
+            if isinstance(e, (json.JSONDecodeError, ValidationError)):
+                self.last_outcome = {
+                    "kind": "parse_failed",
+                    "detail": f"The structured reply was not usable: {e}",
+                    "items": 0,
+                }
+            else:
+                self.last_outcome = {
+                    "kind": "error",
+                    "error": classify_error(e, self._model),
+                }
             return []
 
-        items = self._parse_response(
-            [item.model_dump(exclude_unset=True) for item in output.items],
-            valid_speaker_ids,
-        )
+        raw_items = [item.model_dump(exclude_unset=True) for item in output.items]
+        items = self._parse_response(raw_items, valid_speaker_ids)
         for item in items:
             self._recent_objections.append(item["question"])
         if items:
             logger.info(f"[objection_handler] flagged {len(items)} objection(s)")
+            self.last_outcome = {
+                "kind": "insights",
+                "detail": f"{len(items)} objection{'s' if len(items) != 1 else ''} surfaced",
+                "items": len(items),
+            }
+        elif not raw_items:
+            self.last_outcome = {
+                "kind": "no_findings",
+                "detail": "No new objection was found.",
+                "items": 0,
+            }
+        else:
+            self.last_outcome = {
+                "kind": "all_filtered",
+                "detail": (
+                    f"{len(raw_items)} structured item"
+                    f"{'s' if len(raw_items) != 1 else ''} yielded 0 usable items"
+                ),
+                "items": 0,
+            }
         return items
 
     def _parse_response(

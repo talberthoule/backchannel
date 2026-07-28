@@ -9,6 +9,7 @@ from typing import Any
 
 from fastapi import WebSocket
 
+from app.services.agents.activity import ActivityRegistry
 from app.services.agents.orchestrator import AgentOrchestrator
 from app.services.audio_store import SegmentAudioWriter
 from app.services.ordered_transcription import OrderedTranscriptionQueue
@@ -54,6 +55,7 @@ async def _maintain_audio_gateway(
     orchestrator: AgentOrchestrator,
     state: _AudioPipelineState,
 ) -> None:
+    activity = getattr(orchestrator, "activity", None)
     task = state.gateway_reconnect_task
     if task and task.done():
         try:
@@ -63,9 +65,42 @@ async def _maintain_audio_gateway(
             state.gateway_available = False
         state.gateway_reconnect_task = None
         state.gateway_retry_at = monotonic() + _GATEWAY_RETRY_SECONDS
+        if isinstance(activity, ActivityRegistry):
+            if state.gateway_available:
+                await activity.set_agent_state("audio_gateway", "running")
+            else:
+                await activity.cycle_error(
+                    "audio_gateway",
+                    {
+                        "kind": "api_error",
+                        "detail": "The live transcription gateway reconnect failed.",
+                        "remedy": "Check the provider connection, then use Resume Audio.",
+                    },
+                )
+            await activity.update_call(
+                gateway={
+                    "state": "ok" if state.gateway_available else "reconnecting",
+                    "detail": "" if state.gateway_available else "Reconnect failed.",
+                }
+            )
 
     if state.gateway_available and not await orchestrator.check_health():
         state.gateway_available = False
+        if isinstance(activity, ActivityRegistry):
+            await activity.cycle_error(
+                "audio_gateway",
+                {
+                    "kind": "api_error",
+                    "detail": "The live transcription gateway stopped responding.",
+                    "remedy": "Use Resume Audio to reconnect.",
+                },
+            )
+            await activity.update_call(
+                gateway={
+                    "state": "reconnecting",
+                    "detail": "The live transcription gateway stopped responding.",
+                }
+            )
 
     if (
         not state.gateway_available
@@ -75,6 +110,13 @@ async def _maintain_audio_gateway(
         state.gateway_reconnect_task = asyncio.create_task(
             _reconnect_audio_gateway(websocket, orchestrator)
         )
+        if isinstance(activity, ActivityRegistry):
+            await activity.update_call(
+                gateway={
+                    "state": "reconnecting",
+                    "detail": "Reconnecting to the live transcription gateway.",
+                }
+            )
 
 
 async def _cancel_gateway_reconnect(state: _AudioPipelineState) -> None:
@@ -87,15 +129,14 @@ async def _cancel_gateway_reconnect(state: _AudioPipelineState) -> None:
 def _transcription_failure_handler(
     websocket: WebSocket,
     batch_model_is_local: bool,
+    activity=None,
 ):
     last_status_at = 0.0
 
     async def _on_failure(failed_count: int, kind: str):
         nonlocal last_status_at
         now = monotonic()
-        if failed_count > 1 and now - last_status_at < 10:
-            return
-        last_status_at = now
+        status_throttled = failed_count > 1 and now - last_status_at < 10
         plural = "s" if failed_count != 1 else ""
         if kind == "emit":
             message = (
@@ -113,6 +154,16 @@ def _transcription_failure_handler(
                 "this call; transcript text may be missing. Check the provider "
                 "API key in Admin -> Connections."
             )
+        if activity:
+            await activity.update_call(
+                transcription={
+                    "failed": failed_count,
+                    "last_error": message,
+                }
+            )
+        if status_throttled:
+            return
+        last_status_at = now
         await _send_status(
             websocket,
             "transcription_error",
@@ -171,6 +222,10 @@ async def _run_audio_pipeline(
             ),
             segment.pcm_bytes,
         )
+        if isinstance(getattr(orchestrator, "activity", None), ActivityRegistry):
+            await orchestrator.activity.update_call(
+                transcription=transcription_queue.stats
+            )
 
     async def _on_diarization_error(
         item: _QueuedAudioFrame,
@@ -189,6 +244,15 @@ async def _run_audio_pipeline(
         state.diarization_backlog_bytes = max(
             0, state.diarization_backlog_bytes - len(item.pcm_bytes)
         )
+        if isinstance(getattr(orchestrator, "activity", None), ActivityRegistry):
+            asyncio.create_task(
+                orchestrator.activity.update_call(
+                    diarization={
+                        "queued": max(0, len(pending_enqueued_at)),
+                        "shed": state.diarization_frames_dropped,
+                    }
+                )
+            )
 
     diarization_worker = asyncio.create_task(
         _run_diarization_worker(

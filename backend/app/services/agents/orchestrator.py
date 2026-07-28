@@ -22,6 +22,11 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import async_session
 from app.models import Directive, Question
+from app.services.agents.activity import (
+    ActivityRegistry,
+    classify_error,
+    saved_outcome,
+)
 from app.services.agents.base import TranscriptBuffer
 from app.services.agents.consolidated_analyst import ConsolidatedAnalystAgent
 from app.services.agents.event_bus import CooldownSubscriber, EventBus
@@ -69,6 +74,42 @@ ProgressCallback = Callable[[dict[str, object]], Awaitable[None]]
 DRAIN_MODE_FULL = "full"
 DRAIN_MODE_SKIP_ANALYSIS = "skip_analysis"
 DRAIN_MODE_MINIMAL = "minimal"
+
+_ACTIVITY_AGENTS = (
+    ("audio_gateway", "Audio Bridge", "stream", None, True),
+    (
+        "consolidated_analyst",
+        "Consolidated Analyst",
+        "interval",
+        settings.TEXT_AGENT_INTERVAL_SECONDS,
+        True,
+    ),
+    (
+        "objection_handler",
+        "Objection Handler",
+        "interval",
+        settings.OBJECTION_HANDLER_INTERVAL_SECONDS,
+        True,
+    ),
+    (
+        "synthesizer",
+        "Principal Agent",
+        "event",
+        settings.SYNTHESIZER_COOLDOWN_SECONDS,
+        True,
+    ),
+    (
+        "opportunity_specialist",
+        "Opportunity Specialist",
+        "event",
+        settings.OPPORTUNITY_SPECIALIST_COOLDOWN_SECONDS,
+        True,
+    ),
+    ("strategic_signals", "Strategic Signals", "interval", 45, False),
+    ("brief_meeting_lens", "Briefing Meeting Lens", "post_call", None, True),
+    ("brief_discovery_lens", "Briefing Discovery Lens", "post_call", None, True),
+    ("brief_arbiter", "Briefing Arbiter", "post_call", None, True),
+)
 
 
 def drain_progress_percent(current_step: int, total_steps: int) -> int:
@@ -221,6 +262,74 @@ class AgentOrchestrator:
         self._get_interval = _get_interval
         self._get_knowledge_source_ids = _get_knowledge_source_ids
 
+        activity_agents = []
+        for slug, fallback_name, trigger, fallback_interval, fallback_enabled in _ACTIVITY_AGENTS:
+            cfg = self._agent_configs.get(slug)
+            configured_enabled = cfg.enabled if cfg else fallback_enabled
+            admitted = (
+                _is_enabled(slug, fallback_enabled)
+                if cfg is not None
+                else configured_enabled
+                and (not self.local_only or _privacy_admits(_get_model(slug)))
+            )
+            session_override = getattr(cfg, "_session_override", None) if cfg else None
+            interval = (
+                _get_interval(slug, fallback_interval)
+                if fallback_interval is not None
+                else None
+            )
+            if interval is not None and (
+                not isinstance(interval, (int, float))
+                or isinstance(interval, bool)
+            ):
+                interval = fallback_interval
+            if not configured_enabled:
+                state = "off"
+                blocked_reason = (
+                    "session_override" if session_override is False else "disabled"
+                )
+                remedy = (
+                    "Enabled globally but turned off for this session in pre-call agent selection."
+                    if blocked_reason == "session_override"
+                    else "Enable it in Admin -> Agents."
+                )
+            elif not admitted:
+                state = "blocked"
+                blocked_reason = "privacy_first"
+                remedy = (
+                    "Assign a local model to this agent (Admin -> Agents) or "
+                    "turn off Privacy First (Admin -> Connections)."
+                )
+            elif slug == "opportunity_specialist" and not self._offering_matching_enabled:
+                state = "blocked"
+                blocked_reason = "meeting_type"
+                remedy = (
+                    "Runs for client/sales and customer delivery conversations; "
+                    "change the conversation type to enable it."
+                )
+            else:
+                state = "waiting"
+                blocked_reason = ""
+                remedy = ""
+            activity_agents.append(
+                {
+                    "slug": slug,
+                    "name": getattr(cfg, "name", "") or fallback_name,
+                    "trigger": trigger,
+                    "state": state,
+                    "enabled": configured_enabled,
+                    "blocked_reason": blocked_reason,
+                    "remedy": remedy,
+                    "interval_seconds": interval,
+                }
+            )
+        self.activity = ActivityRegistry(
+            session_id,
+            websocket,
+            activity_agents,
+            privacy_first=local_only,
+        )
+
         # Audio Gateway: a cloud streaming session (Gemini Live / OpenAI Realtime)
         # or the on-device local captioner, chosen by the gateway agent's model.
         gw_model = _get_model("audio_gateway", settings.GEMINI_MODEL)
@@ -332,8 +441,23 @@ class AgentOrchestrator:
             try:
                 await self.audio_gateway.connect()
                 self._gateway_task = asyncio.create_task(self._handle_gateway_responses())
+                await self.activity.set_agent_state("audio_gateway", "running")
+                await self.activity.update_call(
+                    gateway={"state": "ok", "detail": ""}
+                )
             except Exception as e:
                 logger.error(f"Audio gateway unavailable, continuing without interim transcription: {e}")
+                await self.activity.cycle_error(
+                    "audio_gateway",
+                    classify_error(e, self._get_model("audio_gateway")),
+                )
+                await self.activity.update_call(
+                    gateway={"state": "reconnecting", "detail": str(e)}
+                )
+        else:
+            await self.activity.update_call(
+                gateway={"state": "off", "detail": ""}
+            )
 
         # --- Consolidated Analyst ---
         if self._is_enabled("consolidated_analyst") and self.consolidated_agent.enabled_types:
@@ -406,6 +530,26 @@ class AgentOrchestrator:
         self.objection_agent.update_meeting_context(self.meeting_context_text)
         # If the type change turned offering matching on, the specialist may not be wired yet.
         self._wire_opportunity_specialist()
+        if self._is_enabled("opportunity_specialist"):
+            if self._offering_matching_enabled:
+                asyncio.create_task(
+                    self.activity.set_agent_state(
+                        "opportunity_specialist",
+                        "waiting",
+                    )
+                )
+            else:
+                asyncio.create_task(
+                    self.activity.set_agent_state(
+                        "opportunity_specialist",
+                        "blocked",
+                        blocked_reason="meeting_type",
+                        remedy=(
+                            "Runs for client/sales and customer delivery conversations; "
+                            "change the conversation type to enable it."
+                        ),
+                    )
+                )
         logger.info(
             f"[orchestrator] meeting context updated mid-call: type={self.meeting_type} "
             f"offering_matching={self._offering_matching_enabled}"
@@ -481,6 +625,7 @@ class AgentOrchestrator:
                     pass
 
         await self.audio_gateway.close()
+        await self.activity.close()
         logger.info("Orchestrator shut down")
 
     async def graceful_drain(
@@ -559,6 +704,7 @@ class AgentOrchestrator:
                 drain_total_steps,
                 drain_progress_percent(_stage_step("final_insights"), drain_total_steps),
             )
+            await self.activity.cycle_started("consolidated_analyst")
             try:
                 insights = await self.consolidated_agent.run_cycle(
                     transcript_window=transcript_window,
@@ -576,8 +722,27 @@ class AgentOrchestrator:
 
                 if insights:
                     logger.info(f"[consolidated_analyst] final drain produced {len(insights)} insights")
+                last_outcome = self.consolidated_agent.last_outcome or {}
+                if last_outcome.get("kind") == "error":
+                    await self.activity.cycle_error(
+                        "consolidated_analyst",
+                        last_outcome["error"],
+                    )
+                else:
+                    await self.activity.cycle_finished(
+                        "consolidated_analyst",
+                        saved_outcome(
+                            last_outcome,
+                            produced=len(insights),
+                            saved=int(result["insights_saved"]),
+                        ),
+                    )
             except Exception as e:
                 logger.error(f"Final consolidated analyst drain error: {e}")
+                await self.activity.cycle_error(
+                    "consolidated_analyst",
+                    classify_error(e, self._get_model("consolidated_analyst")),
+                )
 
         if "insight_reconciliation" in stages and self._is_enabled("synthesizer"):
             await _emit_progress(
@@ -588,6 +753,7 @@ class AgentOrchestrator:
                 drain_total_steps,
                 drain_progress_percent(_stage_step("insight_reconciliation"), drain_total_steps),
             )
+            await self.activity.cycle_started("synthesizer")
             try:
                 applied_ops = await run_synthesizer_cycle(
                     self.session_id,
@@ -596,8 +762,24 @@ class AgentOrchestrator:
                 )
                 result["synthesizer_ops"] = len(applied_ops)
                 await self._broadcast_operation_results(applied_ops)
+                await self.activity.cycle_finished(
+                    "synthesizer",
+                    {
+                        "kind": "insights" if applied_ops else "no_findings",
+                        "detail": (
+                            f"{len(applied_ops)} insight operations applied"
+                            if applied_ops
+                            else "No saved insight needed reconciliation."
+                        ),
+                        "items": len(applied_ops),
+                    },
+                )
             except Exception as e:
                 logger.error(f"Final synthesizer drain error: {e}")
+                await self.activity.cycle_error(
+                    "synthesizer",
+                    classify_error(e, self._get_model("synthesizer")),
+                )
 
         if (
             "opportunity_matching" in stages
@@ -612,6 +794,7 @@ class AgentOrchestrator:
                 drain_total_steps,
                 drain_progress_percent(_stage_step("opportunity_matching"), drain_total_steps),
             )
+            await self.activity.cycle_started("opportunity_specialist")
             try:
                 applied_ops = await run_opportunity_specialist_cycle(
                     self.session_id,
@@ -620,8 +803,24 @@ class AgentOrchestrator:
                 )
                 result["opportunity_ops"] = len(applied_ops)
                 await self._broadcast_operation_results(applied_ops)
+                await self.activity.cycle_finished(
+                    "opportunity_specialist",
+                    {
+                        "kind": "insights" if applied_ops else "no_findings",
+                        "detail": (
+                            f"{len(applied_ops)} opportunity matches applied"
+                            if applied_ops
+                            else "No offering match was found."
+                        ),
+                        "items": len(applied_ops),
+                    },
+                )
             except Exception as e:
                 logger.error(f"Final opportunity specialist drain error: {e}")
+                await self.activity.cycle_error(
+                    "opportunity_specialist",
+                    classify_error(e, self._get_model("opportunity_specialist")),
+                )
 
         if "call_briefing" in stages:
             await _emit_progress(
@@ -632,6 +831,14 @@ class AgentOrchestrator:
                 drain_total_steps,
                 drain_progress_percent(_stage_step("call_briefing"), drain_total_steps),
             )
+            briefing_slugs = [
+                record["slug"]
+                for record in self.activity.snapshot()["agents"]
+                if record["trigger"] == "post_call"
+                and record["state"] not in {"off", "blocked"}
+            ]
+            for slug in briefing_slugs:
+                await self.activity.cycle_started(slug)
             try:
                 synthesis = await run_session_synthesis(
                     self.session_id,
@@ -641,8 +848,26 @@ class AgentOrchestrator:
                 result["synthesis_generated"] = synthesis is not None
                 if synthesis:
                     await self._send_synthesis_update(synthesis)
+                for slug in briefing_slugs:
+                    await self.activity.cycle_finished(
+                        slug,
+                        {
+                            "kind": "insights" if synthesis else "no_findings",
+                            "detail": (
+                                "Call briefing generated."
+                                if synthesis
+                                else "No call briefing was generated."
+                            ),
+                            "items": 1 if synthesis else 0,
+                        },
+                    )
             except Exception as e:
                 logger.error(f"Final briefing synthesis error: {e}")
+                for slug in briefing_slugs:
+                    await self.activity.cycle_error(
+                        slug,
+                        classify_error(e, self._get_model(slug)),
+                    )
 
         logger.info(
             "Graceful drain complete: "
@@ -765,10 +990,19 @@ class AgentOrchestrator:
         await asyncio.sleep(interval)
 
         while not self._stopped:
+            await self.activity.cycle_started("consolidated_analyst")
             try:
                 transcript_window = await self.transcript_buffer.get_window()
                 if transcript_window == "(No recent transcript)":
                     logger.debug("[consolidated_analyst] No transcript yet, skipping cycle")
+                    await self.activity.cycle_finished(
+                        "consolidated_analyst",
+                        {
+                            "kind": "skipped_no_transcript",
+                            "detail": "Nothing to analyze yet.",
+                            "items": 0,
+                        },
+                    )
                     await asyncio.sleep(interval)
                     continue
 
@@ -781,10 +1015,12 @@ class AgentOrchestrator:
                     active_questions=self.active_questions,
                 )
 
+                saved_count = 0
                 for insight in insights:
                     agent_source = insight.get("agent_source", "consolidated_analyst")
                     saved = await self._save_and_send_insight(insight, agent_source=agent_source)
                     if saved:
+                        saved_count += 1
                         item_type = insight.get("item_type", "")
                         self._event_bus.publish("new_insight", {
                             "item_type": item_type,
@@ -797,11 +1033,30 @@ class AgentOrchestrator:
 
                 if insights:
                     logger.info(f"[consolidated_analyst] produced {len(insights)} insights")
+                last_outcome = self.consolidated_agent.last_outcome or {}
+                if last_outcome.get("kind") == "error":
+                    await self.activity.cycle_error(
+                        "consolidated_analyst",
+                        last_outcome["error"],
+                    )
+                else:
+                    await self.activity.cycle_finished(
+                        "consolidated_analyst",
+                        saved_outcome(
+                            last_outcome,
+                            produced=len(insights),
+                            saved=saved_count,
+                        ),
+                    )
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Consolidated analyst loop error: {e}")
+                await self.activity.cycle_error(
+                    "consolidated_analyst",
+                    classify_error(e, self._get_model("consolidated_analyst")),
+                )
 
             await asyncio.sleep(interval)
 
@@ -811,6 +1066,7 @@ class AgentOrchestrator:
         await asyncio.sleep(interval)
 
         while not self._stopped:
+            await self.activity.cycle_started("objection_handler")
             try:
                 transcript_window = await self.transcript_buffer.get_window(
                     max_age_seconds=settings.OBJECTION_WINDOW_SECONDS
@@ -822,18 +1078,48 @@ class AgentOrchestrator:
                         speakers=self.speakers,
                     )
 
+                    saved_count = 0
                     for insight in insights:
                         saved = await self._save_and_send_insight(insight, agent_source="objection_handler")
                         if saved:
+                            saved_count += 1
                             self._event_bus.publish("new_insight", {
                                 "item_type": "objection",
                                 "agent_source": "objection_handler",
                             })
+                    last_outcome = self.objection_agent.last_outcome or {}
+                    if last_outcome.get("kind") == "error":
+                        await self.activity.cycle_error(
+                            "objection_handler",
+                            last_outcome["error"],
+                        )
+                    else:
+                        await self.activity.cycle_finished(
+                            "objection_handler",
+                            saved_outcome(
+                                last_outcome,
+                                produced=len(insights),
+                                saved=saved_count,
+                            ),
+                        )
+                else:
+                    await self.activity.cycle_finished(
+                        "objection_handler",
+                        {
+                            "kind": "skipped_no_transcript",
+                            "detail": "Nothing to scan yet.",
+                            "items": 0,
+                        },
+                    )
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Objection handler loop error: {e}")
+                await self.activity.cycle_error(
+                    "objection_handler",
+                    classify_error(e, self._get_model("objection_handler")),
+                )
 
             await asyncio.sleep(interval)
 
@@ -841,6 +1127,7 @@ class AgentOrchestrator:
         interval = self._get_interval(STRATEGIC_SIGNALS_SLUG, 45)
         await asyncio.sleep(interval)
         while not self._stopped:
+            await self.activity.cycle_started(STRATEGIC_SIGNALS_SLUG)
             try:
                 transcript_window = await self.transcript_buffer.get_window()
                 if transcript_window != "(No recent transcript)":
@@ -855,10 +1142,35 @@ class AgentOrchestrator:
                     )
                     if synthesis:
                         await self._send_synthesis_update(synthesis)
+                    await self.activity.cycle_finished(
+                        STRATEGIC_SIGNALS_SLUG,
+                        {
+                            "kind": "insights" if synthesis else "no_findings",
+                            "detail": (
+                                "Live strategic signals updated."
+                                if synthesis
+                                else "No strategic signal changed."
+                            ),
+                            "items": 1 if synthesis else 0,
+                        },
+                    )
+                else:
+                    await self.activity.cycle_finished(
+                        STRATEGIC_SIGNALS_SLUG,
+                        {
+                            "kind": "skipped_no_transcript",
+                            "detail": "Nothing to analyze yet.",
+                            "items": 0,
+                        },
+                    )
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Strategic signals loop error: {e}")
+                await self.activity.cycle_error(
+                    STRATEGIC_SIGNALS_SLUG,
+                    classify_error(e, self._get_model(STRATEGIC_SIGNALS_SLUG)),
+                )
             await asyncio.sleep(interval)
 
     async def _send_synthesis_update(self, synthesis):
@@ -874,6 +1186,7 @@ class AgentOrchestrator:
 
     async def _run_synthesizer(self, events: list[dict]):
         """Called by CooldownSubscriber when new_insight events arrive."""
+        await self.activity.cycle_started("synthesizer")
         try:
             logger.info(f"Running synthesizer (triggered by {len(events)} events)")
             applied_ops = await run_synthesizer_cycle(
@@ -886,14 +1199,32 @@ class AgentOrchestrator:
 
             if applied_ops:
                 logger.info(f"Synthesizer applied {len(applied_ops)} operations")
+            await self.activity.cycle_finished(
+                "synthesizer",
+                {
+                    "kind": "insights" if applied_ops else "no_findings",
+                    "detail": (
+                        f"{len(applied_ops)} insight operation"
+                        f"{'s' if len(applied_ops) != 1 else ''} applied"
+                        if applied_ops
+                        else "No saved insight needed reconciliation."
+                    ),
+                    "items": len(applied_ops),
+                },
+            )
 
         except Exception as e:
             logger.error(f"Synthesizer cycle error: {e}")
+            await self.activity.cycle_error(
+                "synthesizer",
+                classify_error(e, self._get_model("synthesizer")),
+            )
 
     # ── Event-driven: Opportunity Specialist ──────────────────────────────
 
     async def _run_opportunity_specialist(self, events: list[dict]):
         """Called by CooldownSubscriber when new_opportunity events arrive."""
+        await self.activity.cycle_started("opportunity_specialist")
         try:
             logger.info(f"Running opportunity specialist (triggered by {len(events)} events)")
             applied_ops = await run_opportunity_specialist_cycle(
@@ -903,9 +1234,26 @@ class AgentOrchestrator:
             )
 
             await self._broadcast_operation_results(applied_ops)
+            await self.activity.cycle_finished(
+                "opportunity_specialist",
+                {
+                    "kind": "insights" if applied_ops else "no_findings",
+                    "detail": (
+                        f"{len(applied_ops)} opportunity match"
+                        f"{'es' if len(applied_ops) != 1 else ''} applied"
+                        if applied_ops
+                        else "No offering match was found."
+                    ),
+                    "items": len(applied_ops),
+                },
+            )
 
         except Exception as e:
             logger.error(f"Opportunity specialist cycle error: {e}")
+            await self.activity.cycle_error(
+                "opportunity_specialist",
+                classify_error(e, self._get_model("opportunity_specialist")),
+            )
 
     async def _broadcast_operation_results(self, applied_ops: list[dict]):
         for op_result in applied_ops:

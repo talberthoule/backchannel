@@ -587,11 +587,72 @@ export interface AudioSendStats {
   lastSentAt: string | null;
 }
 
+export type AgentActivityState =
+  | "running"
+  | "waiting"
+  | "blocked"
+  | "off"
+  | "failing";
+
+export interface AgentActivityOutcome {
+  kind: string;
+  detail: string;
+  items: number;
+  at: string;
+  deduped?: number;
+}
+
+export interface AgentActivityError {
+  kind: "timeout" | "truncated" | "api_error" | "refusal";
+  detail: string;
+  remedy: string;
+  at: string;
+}
+
+export interface AgentActivityRecord {
+  slug: string;
+  name: string;
+  trigger: "interval" | "event" | "stream" | "post_call";
+  state: AgentActivityState;
+  enabled: boolean;
+  blocked_reason: string;
+  remedy: string;
+  interval_seconds: number | null;
+  last_run_started_at: string | null;
+  last_run_ms: number | null;
+  next_due_at: string | null;
+  last_outcome: AgentActivityOutcome | null;
+  last_error: AgentActivityError | null;
+  counts: {
+    runs: number;
+    insights: number;
+    deduped: number;
+    errors: number;
+  };
+}
+
+export interface CallHealth {
+  privacy_first: boolean;
+  degraded: boolean;
+  degraded_reasons: string[];
+  gateway: { state: "ok" | "reconnecting" | "off"; detail: string };
+  transcription: { jobs: number; failed: number; last_error: string };
+  diarization: { queued: number; shed: number };
+}
+
+export interface AgentActivitySnapshot {
+  session_id: string;
+  at: string;
+  agents: AgentActivityRecord[];
+  call: CallHealth;
+}
+
 export type WSMessage =
   | { type: "question"; data: Omit<Question, "session_id" | "starred" | "dismissed" | "created_at" | "answered" | "answer_summary" | "needs_followup" | "followup_question"> & { timestamp: string; is_followup?: boolean; item_type?: string } }
   | { type: "transcript"; data: TranscriptEntry }
   | { type: "interim_transcript"; data: { text: string } }
   | { type: "status"; data: WSStatusData }
+  | { type: "agent_activity"; data: AgentActivitySnapshot }
   | { type: "synthesis_updated"; data: SessionSynthesis }
   | { type: "question_answered"; data: { id: string; answer_summary: string; needs_followup: boolean; followup_question: string } }
   | { type: "insight_updated"; data: Record<string, any> }

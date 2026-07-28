@@ -6,13 +6,15 @@ Action Tracker) with one structured call for ~60% cost reduction
 and better cross-cutting insight quality.
 """
 
+import json
 import logging
 import re
 import uuid
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.config import settings
+from app.services.agents.activity import classify_error
 from app.services.agents.prompts import CONSOLIDATED_ANALYST_BASE_PROMPT, DEFAULT_ANALYST_LENSES
 from app.services.llm import generate_json
 from app.services.agents.speaker_context import format_speakers_list
@@ -171,6 +173,7 @@ class ConsolidatedAnalystAgent:
         self._prompt_template = prompt_template
         self.meeting_context_text = meeting_context_text or build_meeting_context_text()
         self._session_id = session_id
+        self.last_outcome: dict | None = None
 
     async def run_cycle(
         self,
@@ -211,12 +214,21 @@ class ConsolidatedAnalystAgent:
             )
         except Exception as e:
             logger.error(f"[consolidated_analyst] API call failed: {e}")
+            if isinstance(e, (json.JSONDecodeError, ValidationError)):
+                self.last_outcome = {
+                    "kind": "parse_failed",
+                    "detail": f"The structured reply was not usable: {e}",
+                    "items": 0,
+                }
+            else:
+                self.last_outcome = {
+                    "kind": "error",
+                    "error": classify_error(e, self._model),
+                }
             return []
 
-        items = self._parse_response(
-            [item.model_dump(exclude_unset=True) for item in output.items],
-            valid_speaker_ids,
-        )
+        raw_items = [item.model_dump(exclude_unset=True) for item in output.items]
+        items = self._parse_response(raw_items, valid_speaker_ids)
         logger.info(f"[consolidated_analyst] parsed {len(items)} items from response")
 
         # Filter to enabled types, tag with agent_source, and attach the
@@ -234,6 +246,39 @@ class ConsolidatedAnalystAgent:
             item["lens_label"] = self._resolve_lens_label(item.pop("lens", None), itype)
             results.append(item)
 
+        if results:
+            self.last_outcome = {
+                "kind": "insights",
+                "detail": f"{len(results)} usable insight{'s' if len(results) != 1 else ''}",
+                "items": len(results),
+            }
+        elif not raw_items:
+            self.last_outcome = {
+                "kind": "no_findings",
+                "detail": "The model found nothing to surface.",
+                "items": 0,
+            }
+        else:
+            invalid = len(raw_items) - len(items)
+            disabled = len(items)
+            drops = []
+            if invalid:
+                drops.append(
+                    f"{invalid} failed validation"
+                )
+            if disabled:
+                drops.append(
+                    f"{disabled} disabled type{'s' if disabled != 1 else ''}"
+                )
+            self.last_outcome = {
+                "kind": "all_filtered",
+                "detail": (
+                    f"{len(raw_items)} structured item"
+                    f"{'s' if len(raw_items) != 1 else ''} yielded 0 usable items: "
+                    + ", ".join(drops)
+                ),
+                "items": 0,
+            }
         return results
 
     def _resolve_lens_label(self, raw_lens: object, item_type: str) -> str:

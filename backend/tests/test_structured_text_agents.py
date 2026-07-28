@@ -1,3 +1,4 @@
+import json
 import unittest
 import uuid
 from types import SimpleNamespace
@@ -40,6 +41,42 @@ class ConsolidatedAnalystStructuredOutputTests(unittest.IsolatedAsyncioTestCase)
         self.assertIs(ConsolidatedAnalystOutput, generate.await_args.args[2])
         self.assertEqual("observer", items[0]["agent_source"])
         self.assertEqual("The rollout date is at risk", items[0]["question"])
+        self.assertEqual("insights", agent.last_outcome["kind"])
+        self.assertEqual(1, agent.last_outcome["items"])
+
+    async def test_cycle_classifies_empty_filtered_and_unparseable_replies(self):
+        agent = ConsolidatedAnalystAgent(
+            enabled_types={"observation"},
+            prompt_override="{transcript_window}",
+            meeting_context_text="",
+        )
+
+        with patch(
+            "app.services.agents.consolidated_analyst.generate_json",
+            new=AsyncMock(return_value=ConsolidatedAnalystOutput(items=[])),
+        ):
+            self.assertEqual([], await agent.run_cycle("Transcript", [], "", []))
+        self.assertEqual("no_findings", agent.last_outcome["kind"])
+
+        filtered = ConsolidatedAnalystOutput(
+            items=[{"item_type": "question", "question": "A question"}]
+        )
+        with patch(
+            "app.services.agents.consolidated_analyst.generate_json",
+            new=AsyncMock(return_value=filtered),
+        ):
+            self.assertEqual([], await agent.run_cycle("Transcript", [], "", []))
+        self.assertEqual("all_filtered", agent.last_outcome["kind"])
+        self.assertIn("1 disabled type", agent.last_outcome["detail"])
+
+        with patch(
+            "app.services.agents.consolidated_analyst.generate_json",
+            new=AsyncMock(
+                side_effect=json.JSONDecodeError("bad reply", "not-json", 0)
+            ),
+        ):
+            self.assertEqual([], await agent.run_cycle("Transcript", [], "", []))
+        self.assertEqual("parse_failed", agent.last_outcome["kind"])
 
     async def test_parser_reports_each_rejected_field(self):
         agent = ConsolidatedAnalystAgent(

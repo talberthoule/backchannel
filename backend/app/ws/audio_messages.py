@@ -11,6 +11,7 @@ from fastapi import WebSocket
 
 from app.database import async_session
 from app.models import Directive
+from app.services.agents.activity import ActivityRegistry
 from app.services.agents.orchestrator import AgentOrchestrator
 from app.services.audio_store import SegmentAudioWriter
 from app.ws.audio_persistence import _append_audio_frames
@@ -101,6 +102,13 @@ async def _handle_audio_frame(
                     ),
                     details={"frames_dropped": state.diarization_frames_dropped},
                 )
+        if isinstance(getattr(orchestrator, "activity", None), ActivityRegistry):
+            await orchestrator.activity.update_call(
+                diarization={
+                    "queued": max(0, len(pending_enqueued_at)),
+                    "shed": state.diarization_frames_dropped,
+                }
+            )
         if mixed_frames and state.gateway_available:
             state.gateway_available = await _send_gateway_audio(
                 orchestrator,

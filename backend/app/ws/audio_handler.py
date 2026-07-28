@@ -72,6 +72,7 @@ async def _load_agent_configs(db, session_id: uuid.UUID) -> dict[str, AgentConfi
     overrides = {override.agent_slug: override.enabled for override in result.scalars().all()}
     for slug, config in configs.items():
         if slug in overrides:
+            config._session_override = overrides[slug]
             config.enabled = overrides[slug]
     return configs
 
@@ -653,6 +654,7 @@ async def _audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         on_failure=_transcription_failure_handler(
             websocket,
             batch_model_is_local,
+            orchestrator.activity,
         ),
     )
     await _run_audio_pipeline(

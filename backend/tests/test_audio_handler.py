@@ -97,6 +97,7 @@ class AgentConfigLoadingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIs(config, result["analyst"])
         self.assertFalse(result["analyst"].enabled)
+        self.assertFalse(result["analyst"]._session_override)
 
 
 class DiarizationWorkerTests(unittest.IsolatedAsyncioTestCase):

@@ -193,6 +193,7 @@ Client sends:
 Server sends:
 
 - `{"type": "status", "data": {"state": "...", "message": "..."}}`
+- `{"type": "agent_activity", "data": {"session_id": "...", "at": "...", "agents": [...], "call": {...}}}`
 - `{"type": "interim_transcript", "data": {"text": "..."}}`
 - `{"type": "transcript", "data": {"text": "...", "timestamp": "...", "speaker_id": "..."}}`
 - `{"type": "question", "data": {...}}` for all insight item types

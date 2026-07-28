@@ -98,11 +98,17 @@ class UpdateMeetingContextTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(orchestrator._opp_specialist_subscriber)
 
         orchestrator.update_meeting_context(meeting_type="client_sales")
+        await asyncio.sleep(0)
 
         self.assertEqual(orchestrator.meeting_type, "client_sales")
         self.assertTrue(orchestrator._offering_matching_enabled)
         self.assertIsNotNone(orchestrator._opp_specialist_subscriber)
         self.assertIn("Client or prospect", orchestrator.meeting_context_text)
+        activity = {
+            record["slug"]: record
+            for record in orchestrator.activity.snapshot()["agents"]
+        }
+        self.assertEqual("waiting", activity["opportunity_specialist"]["state"])
         # Context not passed -> original context retained.
         self.assertIn("initial context", orchestrator.meeting_context_text)
 
