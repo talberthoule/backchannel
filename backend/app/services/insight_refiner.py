@@ -63,6 +63,7 @@ async def _apply_operations_in_db(
         if not isinstance(op, dict):
             continue
 
+        op = _without_nulls(op)
         op_type = op.get("op")
         handler = handlers.get(op_type)
         if handler is None or _touches_dismissed_question(op, q_map):
@@ -84,6 +85,24 @@ async def _apply_operations_in_db(
             logger.warning(f"Failed to apply refinement op {op_type}: {e}")
             continue
     return applied
+
+
+def _without_nulls(op: dict) -> dict:
+    """Drop keys an operation set to an explicit null.
+
+    Hosted models emit every field of the schema and write null where they have
+    nothing to say; self-hosted ones simply omit the key. Every handler below
+    reads through op.get(key, default), which returns the default for a missing
+    key but the null for a present one - so the hosted shape carried None into
+    the insert and overrode a not-null column's empty-string default, losing a
+    whole synthesizer cycle to an IntegrityError (ALP-171, the hosted-shape edge
+    ALP-164's acceptance four flagged).
+
+    Dropping the key makes the two shapes identical at this boundary, which is
+    cheaper and safer than teaching twenty call sites to coalesce. No handler
+    treats an explicit null as meaningful, so nothing is lost by it.
+    """
+    return {key: value for key, value in op.items() if value is not None}
 
 
 def _touches_dismissed_question(op: dict, q_map: dict[str, Question]) -> bool:

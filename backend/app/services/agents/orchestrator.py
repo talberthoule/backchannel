@@ -127,6 +127,34 @@ def get_live_orchestrator(session_id: uuid.UUID) -> "AgentOrchestrator | None":
     return _live_orchestrators.get(session_id)
 
 
+# Matches the cadence the client already sees during transcription drain, so a
+# quiet analysis stage is not mistaken for a stalled one.
+DRAIN_HEARTBEAT_SECONDS = 5.0
+
+
+async def _run_drain_heartbeat(
+    progress_callback: ProgressCallback,
+    latest: dict[str, dict],
+    interval: float = DRAIN_HEARTBEAT_SECONDS,
+) -> None:
+    """Re-announce the running stage until the drain moves on.
+
+    Repeats the last progress event rather than inventing one, so the client
+    sees the same stage and step it already knows, marked as a heartbeat. A send
+    failure ends the heartbeat quietly: the socket is gone, which the drain
+    itself does not care about.
+    """
+    while True:
+        await asyncio.sleep(interval)
+        event = latest.get("event")
+        if not event:
+            continue
+        try:
+            await progress_callback({**event, "heartbeat": True})
+        except Exception:
+            return
+
+
 async def _emit_progress(
     progress_callback: ProgressCallback | None,
     stage: str,
@@ -629,6 +657,38 @@ class AgentOrchestrator:
         logger.info("Orchestrator shut down")
 
     async def graceful_drain(
+        self,
+        progress_callback: ProgressCallback | None = None,
+        mode: str = DRAIN_MODE_FULL,
+    ) -> dict[str, int | bool]:
+        """Run the drain, keeping the client informed while a stage is slow.
+
+        A single agent stage can run for minutes - one Gemini call hung nearly
+        four on a malformed structured reply - and nothing crossed the socket
+        while it did, so the client could not tell a working drain from a dead
+        backend and gave up on it (ALP-171). Re-announcing the running stage on
+        an interval gives the client something to wait on.
+        """
+        if progress_callback is None:
+            return await self._run_drain_stages(None, mode)
+
+        latest: dict[str, dict] = {}
+
+        async def tracked(event: dict) -> None:
+            latest["event"] = event
+            await progress_callback(event)
+
+        heartbeat = asyncio.create_task(_run_drain_heartbeat(progress_callback, latest))
+        try:
+            return await self._run_drain_stages(tracked, mode)
+        finally:
+            heartbeat.cancel()
+            try:
+                await heartbeat
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    async def _run_drain_stages(
         self,
         progress_callback: ProgressCallback | None = None,
         mode: str = DRAIN_MODE_FULL,
