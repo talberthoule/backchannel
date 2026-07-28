@@ -127,8 +127,16 @@ async def run_speaker_context_batch(
     question_ids: list[uuid.UUID],
     mapping_revision_id: uuid.UUID,
     apply_db: AsyncSession,
+    model_id: str | None = None,
 ) -> dict:
-    """Revalidate one assigned insight batch in the caller's transaction."""
+    """Revalidate one assigned insight batch in the caller's transaction.
+
+    The model defaults to whatever the synthesizer agent row is set to, which is
+    what makes this pass visible and selectable in Admin (ALP-157). model_id
+    overrides that, which lets the revalidation runner retry a quota-blocked
+    batch on a self-hosted fallback model (ALP-129) without this function
+    needing to know anything about that policy.
+    """
     async with async_session() as db:
         session = await db.get(Session, session_id)
         if not session:
@@ -165,7 +173,10 @@ async def run_speaker_context_batch(
     # ponytail: re-read once per batch, not once per run. A nine-row table
     # behind four heavier queries; hoist into speaker_revalidation._run_batch's
     # caller if a run ever grows enough batches for it to matter.
-    model_id = await agent_model_id("synthesizer", settings.REFINEMENT_MODEL)
+    # An explicit override wins and skips the lookup entirely: the caller has
+    # already decided which model this attempt uses, and re-resolving would
+    # hand back the very model it is falling back from.
+    model_id = model_id or await agent_model_id("synthesizer", settings.REFINEMENT_MODEL)
 
     raw = await generate_text(
         model_id,
