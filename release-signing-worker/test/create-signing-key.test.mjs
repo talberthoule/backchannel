@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import {readFile} from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -9,7 +10,7 @@ import {
 const ACCOUNT_ID = "a".repeat(32);
 const STORE_ID = "b".repeat(32);
 const KEY_ID = "ed25519-2026-07b";
-const URL =
+const REQUEST_URL =
   `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}` +
   `/secrets_store/stores/${STORE_ID}/secrets`;
 
@@ -58,8 +59,12 @@ async function captureFailure(operation) {
 }
 
 test("posts the PKCS8 key over HTTPS and prints only the public key", async () => {
+  const actualStderr = [];
+  const actualStdout = [];
   const output = [];
   let captured;
+  let timeoutMs;
+  const timeoutSignal = {};
   const fixturePair = await crypto.subtle.generateKey(
     "Ed25519", true, ["sign", "verify"],
   );
@@ -76,32 +81,52 @@ test("posts the PKCS8 key over HTTPS and prints only the public key", async () =
   ).toString("base64url");
 
   try {
-    await runCeremony({
-      accountId: ACCOUNT_ID,
-      storeId: STORE_ID,
-      authToken: async () => ({type: "api_token", token: "fixture-token"}),
-      generateKeyPair: async () => fixturePair,
-      fetchImpl: async (url, init) => {
-        captured = {
-          url,
-          headers: init.headers,
-          method: init.method,
-          signal: init.signal,
-          body: JSON.parse(Buffer.from(init.body).toString()),
-          mutableBody: init.body,
-        };
-        return successResponse();
-      },
-      writeOutput: value => output.push(value),
-    });
+    const stderrWrite = process.stderr.write;
+    const stdoutWrite = process.stdout.write;
+    process.stderr.write = chunk => {
+      actualStderr.push(String(chunk));
+      return true;
+    };
+    process.stdout.write = chunk => {
+      actualStdout.push(String(chunk));
+      return true;
+    };
+    try {
+      await runCeremony({
+        accountId: ACCOUNT_ID,
+        storeId: STORE_ID,
+        authToken: async () => ({type: "api_token", token: "fixture-token"}),
+        createTimeoutSignal: milliseconds => {
+          timeoutMs = milliseconds;
+          return timeoutSignal;
+        },
+        generateKeyPair: async () => fixturePair,
+        fetchImpl: async (url, init) => {
+          captured = {
+            url,
+            headers: init.headers,
+            method: init.method,
+            signal: init.signal,
+            body: JSON.parse(Buffer.from(init.body).toString()),
+            mutableBody: init.body,
+          };
+          return successResponse();
+        },
+        writeOutput: value => output.push(value),
+      });
+    } finally {
+      process.stderr.write = stderrWrite;
+      process.stdout.write = stdoutWrite;
+    }
 
-    assert.equal(captured.url, URL);
+    assert.equal(captured.url, REQUEST_URL);
     assert.equal(captured.method, "POST");
     assert.deepEqual(captured.headers, {
       Authorization: "Bearer fixture-token",
       "Content-Type": "application/json",
     });
-    assert.ok(captured.signal instanceof AbortSignal);
+    assert.equal(timeoutMs, 30_000);
+    assert.equal(captured.signal, timeoutSignal);
     assert.equal(captured.body.length, 1);
     assert.deepEqual(Object.keys(captured.body[0]).sort(), [
       "name", "scopes", "value",
@@ -123,11 +148,30 @@ test("posts the PKCS8 key over HTTPS and prints only the public key", async () =
     assert.ok(!output[0].includes(fixturePrivate));
     assert.ok(!process.argv.join("\0").includes(fixturePrivate));
     assert.ok(!Object.values(process.env).join("\0").includes(fixturePrivate));
+    assert.ok(
+      actualStdout.every(value => !value.includes(fixturePrivate)),
+      "actual stdout leaked the fixture private value",
+    );
+    assert.ok(
+      actualStderr.every(value => !value.includes(fixturePrivate)),
+      "actual stderr leaked the fixture private value",
+    );
     assert.ok(captured.mutableBody.every(byte => byte === 0));
   } finally {
     fixturePrivateBytes.fill(0);
     if (captured?.body?.[0]) captured.body[0].value = "";
   }
+});
+
+test("ceremony source has no filesystem-write path", async () => {
+  const source = await readFile(
+    new URL("../scripts/create-signing-key.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(
+    source,
+    /\b(?:appendFile|appendFileSync|createWriteStream|writeFile|writeFileSync)\b|node:fs(?:\/promises)?/,
+  );
 });
 
 test("uses a Bearer header for Wrangler OAuth", async () => {

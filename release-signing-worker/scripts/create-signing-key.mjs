@@ -92,6 +92,7 @@ export async function runCeremony({
   storeId,
   apiUrl = API_URL,
   authToken = captureWranglerAuth,
+  createTimeoutSignal = milliseconds => AbortSignal.timeout(milliseconds),
   generateKeyPair = () =>
     crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"]),
   fetchImpl = fetch,
@@ -142,7 +143,7 @@ export async function runCeremony({
         method: "POST",
         headers: {...headers, "Content-Type": "application/json"},
         body: bodyBytes,
-        signal: AbortSignal.timeout(30_000),
+        signal: createTimeoutSignal(30_000),
       });
     } catch {
       throw ceremonyError("Cloudflare secret creation failed");
