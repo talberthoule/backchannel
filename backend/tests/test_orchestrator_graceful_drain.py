@@ -98,12 +98,84 @@ class AgentOrchestratorGracefulDrainTests(unittest.IsolatedAsyncioTestCase):
                 "insights_saved": 1,
                 "synthesizer_ops": 1,
                 "opportunity_ops": 1,
+                "stage_errors": [],
             },
         )
         orchestrator.consolidated_agent.run_cycle.assert_awaited_once()
         orchestrator._save_and_send_insight.assert_awaited_once()
         synth.assert_awaited_once()
         opp.assert_awaited_once()
+
+    async def test_a_failing_stage_degrades_and_is_named_in_the_result(self):
+        """The ALP-103 acceptance failure, pinned.
+
+        A synthesizer output-limit error must not stop the drain, and the
+        result must say the stage failed. Without that the client sees only
+        counts, so a failed briefing looks identical to a clean finish and a
+        slow drain looks like a stranded call.
+        """
+        websocket = AsyncMock()
+        consolidated_agent = MagicMock()
+        consolidated_agent.enabled_types = {"question"}
+        consolidated_agent.run_cycle = AsyncMock(return_value=[])
+
+        with (
+            patch("app.services.agents.orchestrator.GeminiLiveSession", return_value=AsyncMock()),
+            patch(
+                "app.services.agents.orchestrator.ConsolidatedAnalystAgent",
+                return_value=consolidated_agent,
+            ),
+        ):
+            orchestrator = AgentOrchestrator(
+                session_id=uuid4(),
+                websocket=websocket,
+                directives=[],
+                doc_summaries="",
+                active_questions=[],
+                speakers=[],
+                meeting_type="client_sales",
+                agent_configs={
+                    "consolidated_analyst": MagicMock(
+                        enabled=True,
+                        model_id="test-model",
+                        prompt="",
+                        interval_seconds=15,
+                        sub_types="question",
+                        lenses="",
+                    ),
+                    "synthesizer": MagicMock(enabled=True, model_id="synth-model", prompt=""),
+                    "opportunity_specialist": MagicMock(enabled=True, model_id="opp-model", prompt=""),
+                },
+            )
+        orchestrator.transcript_buffer.get_window = AsyncMock(return_value="Speaker 1: Hello.")
+        orchestrator._save_and_send_insight = AsyncMock(return_value=True)
+
+        output_limit = RuntimeError(
+            "synthesizer (endpoint:qwen:qwen/qwen3.5-9b) hit its output limit "
+            "before finishing the reply."
+        )
+        with (
+            patch(
+                "app.services.agents.orchestrator.run_synthesizer_cycle",
+                new=AsyncMock(side_effect=output_limit),
+            ),
+            patch(
+                "app.services.agents.orchestrator.run_opportunity_specialist_cycle",
+                new=AsyncMock(return_value=[{"op": "offering_match"}]),
+            ) as opp,
+        ):
+            result = await orchestrator.graceful_drain()
+
+        # The drain kept going and still returned a usable result.
+        opp.assert_awaited_once()
+        self.assertEqual(1, result["opportunity_ops"])
+        self.assertEqual(0, result["synthesizer_ops"])
+        # And it says which stage failed, and why.
+        self.assertEqual(
+            ["insight_reconciliation"],
+            [item["stage"] for item in result["stage_errors"]],
+        )
+        self.assertIn("output limit", result["stage_errors"][0]["detail"])
 
     async def test_graceful_drain_reports_progress_stages(self):
         websocket = AsyncMock()
@@ -317,6 +389,7 @@ class AgentOrchestratorGracefulDrainTests(unittest.IsolatedAsyncioTestCase):
                 "insights_saved": 1,
                 "synthesizer_ops": 1,
                 "opportunity_ops": 0,
+                "stage_errors": [],
             },
         )
         self.assertNotIn("synthesis_generated", result)

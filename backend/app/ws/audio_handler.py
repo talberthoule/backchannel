@@ -377,6 +377,17 @@ async def _finalize_call(
     except Exception as e:
         logger.warning(f"Failed to count session insights for the post-processing summary: {e}")
     completion_message = "Post-processing complete"
+    # Name the stages that degraded. The call finalizes either way, but silence
+    # here is what made a failed briefing read as a stranded call: the user saw
+    # the socket drop and a summary that mentioned nothing wrong.
+    stage_errors = drain_result.get("stage_errors") or []
+    if stage_errors:
+        stages = ", ".join(item["stage"].replace("_", " ") for item in stage_errors)
+        completion_message = (
+            f"Post-processing complete, but {len(stage_errors)} analysis "
+            f"stage{'s' if len(stage_errors) != 1 else ''} failed ({stages}); "
+            "the call was still saved"
+        )
     if tq_stats["failed"]:
         if tq_stats["emitted"] == 0:
             completion_message = (
