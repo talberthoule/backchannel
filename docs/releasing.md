@@ -192,9 +192,10 @@ and before creating its tag, complete stage three:
 5. Rerun the signing and release gates, commit the exact public-only trust-file
    change, complete stage-three review, and only then create the `v0.4.0` tag.
 
-Publish every `v0.4.0` platform through remote mode. No production release,
-including `v0.4.0`, uses `-SigningMode Local`. Deleting the never-used old
-laptop-held private-key file is a separate ALP-170 operator action.
+Publish every `v0.4.0` platform through remote mode. All normal and planned
+production publishing, including the current cutover, uses remote mode.
+Deleting the never-used old laptop-held private-key file is a separate ALP-170
+operator action.
 
 After `v0.4.0` establishes the installed trust root, future rotations require
 a two-release bridge. First add the new public key while keeping the old key
@@ -204,12 +205,13 @@ release through the new remote signer. Keep the prior public key for the
 documented compatibility window.
 
 `-SigningMode Local` is reserved for a future, explicitly approved emergency
-rotation. There is no stored local production key and no automatic fallback
-from remote mode. An emergency operator must supply newly generated matching
-key material explicitly, publish a new patch release, and communicate directly
-with affected users. An offline client cannot receive an emergency revocation;
-the persisted greatest-seen version/time only limits replay after a client has
-observed the replacement.
+rotation and is the sole possible exception to remote production publishing.
+Stage two exercises Local only in tests. There is no stored local production
+key and no automatic fallback from remote mode. An emergency operator must
+supply newly generated matching key material explicitly, publish a new patch
+release, and communicate directly with affected users. An offline client cannot
+receive an emergency revocation; the persisted greatest-seen version/time only
+limits replay after a client has observed the replacement.
 
 The checked-in `scripts/r2-object.mjs` client calls Cloudflare R2 directly and
 is the only release object transport. `AWS4-HMAC-SHA256` and `x-amz-*` are the

@@ -459,9 +459,11 @@ git commit -m "feat: publish releases through remote signer"
 - [ ] **Step 1: Update release operations**
 
 Document that `v0.4.0` ships only `ed25519-2026-07b`, stage three runs the
-ceremony before tagging, all production publishing is remote, the old private
-file deletion is tracked on ALP-170, and the local mode has no stored key and
-requires an approved emergency rotation.
+ceremony before tagging, all normal and planned production publishing is remote,
+the current cutover has no local exception, the old private file deletion is
+tracked on ALP-170, and explicit local mode has no stored key and is reserved
+for a future operator-approved emergency rotation as the sole possible
+production exception. Stage two exercises local mode only in tests.
 
 - [ ] **Step 2: Run the complete stage-two gates**
 

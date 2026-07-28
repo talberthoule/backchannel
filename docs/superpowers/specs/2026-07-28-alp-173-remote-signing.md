@@ -261,6 +261,10 @@ emergency mechanism, not stored escrow: using it requires an operator-approved
 rotation or separately controlled transient key source, followed by cleanup
 and an incident record.
 
+Stage two exercises local mode only in tests. All normal and planned production
+publishing uses remote mode; a future explicit operator-approved emergency
+rotation is the sole possible local production exception.
+
 `scripts/r2-object.mjs` remains the sole release object transport. The signing
 Worker cannot list, read, write, or publish R2 objects.
 
@@ -336,7 +340,8 @@ Stage three starts only after shepherd approval of stages one and two.
 9. Run the publisher smoke path and confirm a failed or malformed signing
    response makes zero R2 operations.
 10. After stage-three review and merge, create the `v0.4.0` tag and publish
-    every platform through remote mode. No production release uses local mode.
+    every platform through remote mode. The current cutover has no local-mode
+    exception.
 11. Remove the obsolete GitHub private-key secret. Machine one securely deletes
     its old laptop-held private file as a separately recorded ALP-170 operator
     action.
