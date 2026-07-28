@@ -150,7 +150,9 @@ analysis agents and meeting chat, and live interim captions have no local option
 (they need a cloud streaming model), which is why live preview is off under
 Privacy First. Document upload and summarization is the one AI service with no
 local option at all, because it calls the Gemini Files API rather than choosing
-a text model; configuring a self-hosted endpoint does not enable it.
+a text model; configuring a self-hosted endpoint does not enable it. The card
+also auto-retries its summary fetch so it recovers on its own if the backend
+was still starting or an endpoint was connected after the page loaded.
 
 Two features have no agent row of their own and borrow one instead. Post-import
 Analyze runs the model set on **Consolidated Analyst**, and Enhance Insights
@@ -158,9 +160,7 @@ Analyze runs the model set on **Consolidated Analyst**, and Enhance Insights
 **Principal Agent**. Only the model is borrowed, never the enabled toggle: both
 are buttons the user presses, so disabling either agent does not turn them off.
 That also means Privacy First judges them by destination like any other agent
-model, and `REFINEMENT_MODEL` is reached only when the row has no model set. The card also auto-retries its summary fetch so it recovers on
-its own if the backend was still starting or an endpoint was connected after
-the page loaded.
+model, and `REFINEMENT_MODEL` is reached only when the row has no model set.
 
 ## Insight lifecycle
 
