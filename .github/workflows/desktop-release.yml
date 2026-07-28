@@ -186,12 +186,14 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_RELEASES_BUCKET: ${{ vars.R2_RELEASES_BUCKET }}
-          BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY }}
+          BACKCHANNEL_RELEASE_SIGNING_URL: ${{ vars.BACKCHANNEL_RELEASE_SIGNING_URL }}
+          CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
+          CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
           RELEASE_REF: ${{ inputs.release_ref }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           PUBLISHED_AT: ${{ needs.build-macos.outputs.published_at }}
         shell: pwsh
-        run: ./scripts/publish_release_platform.ps1 -Version $env:RELEASE_REF -Commit $env:EXPECTED_COMMIT -PublishedAt $env:PUBLISHED_AT -PlatformId macos-arm64 -AssetPath ../controller/release-assets/Backchannel-macos-arm64.zip -Confirm:$false
+        run: ./scripts/publish_release_platform.ps1 -Version $env:RELEASE_REF -Commit $env:EXPECTED_COMMIT -PublishedAt $env:PUBLISHED_AT -PlatformId macos-arm64 -AssetPath ../controller/release-assets/Backchannel-macos-arm64.zip -SigningMode Remote -Confirm:$false
 
   cleanup-macos:
     needs: [build-macos, publish-macos]

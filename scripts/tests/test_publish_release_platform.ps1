@@ -31,6 +31,9 @@ Assert-True (Test-Path -LiteralPath $publisher -PathType Leaf) "Publisher script
 $Version = "v1.2.3"
 $Commit = "a" * 40
 $PublishedAt = "2026-07-15T18:00:00Z"
+$validSignature = "A" * 86
+$invalidSignature = "B" * 86
+$expectedSigningRequest = '{"asset":{"filename":"Backchannel-windows-x64.zip","id":"windows-x64","platform":"Windows x64","sha256":"1e6ed65d77d6364eeaed5a745ba5c4985ae2b700dd85d7cf7f027bdf294a33fc","size":6},"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","key_id":"ed25519-2026-07","published_at":"2026-07-15T18:00:00Z","release_notes":"test notes","schema":1,"version":"v1.2.3"}'
 
 $temporary = Join-Path ([IO.Path]::GetTempPath()) "backchannel-platform-publish-test-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Path $temporary | Out-Null
@@ -46,6 +49,9 @@ $oldFakeRaceKey = $env:R2_FAKE_RACE_KEY
 $oldFakeRaceDir = $env:R2_FAKE_RACE_DIR
 $oldFakeHeadSize = $env:R2_FAKE_HEAD_SIZE
 $oldSigningSecret = $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY
+$oldSigningUrl = $env:BACKCHANNEL_RELEASE_SIGNING_URL
+$oldAccessClientId = $env:CLOUDFLARE_ACCESS_CLIENT_ID
+$oldAccessClientSecret = $env:CLOUDFLARE_ACCESS_CLIENT_SECRET
 $credentialNames = @(
     "R2_ACCESS_KEY_ID",
     "R2_SECRET_ACCESS_KEY",
@@ -147,25 +153,214 @@ function Read-Log {
     }
 }
 
+function Start-TestSigner {
+    param(
+        [int]$StatusCode = 200,
+        [string]$ResponseBody,
+        [int]$DelayMilliseconds = 0
+    )
+    $capture = Join-Path $temporary "signer-capture-$([guid]::NewGuid()).json"
+    $ready = Join-Path $temporary "signer-ready-$([guid]::NewGuid()).txt"
+    $job = Start-Job -ArgumentList $capture, $ready, $StatusCode, $ResponseBody, $DelayMilliseconds -ScriptBlock {
+        param($CapturePath, $ReadyPath, $Status, $Body, $Delay)
+        $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+        try {
+            $listener.Start()
+            [IO.File]::WriteAllText(
+                $ReadyPath,
+                [string]$listener.LocalEndpoint.Port,
+                [Text.UTF8Encoding]::new($false)
+            )
+            $accept = $listener.AcceptTcpClientAsync()
+            if (-not $accept.Wait(10000)) {
+                return
+            }
+            $client = $accept.Result
+            try {
+                $stream = $client.GetStream()
+                $received = [Collections.Generic.List[byte]]::new()
+                $buffer = [byte[]]::new(4096)
+                $headerEnd = -1
+                $contentLength = 0
+                while ($true) {
+                    $count = $stream.Read($buffer, 0, $buffer.Length)
+                    if ($count -eq 0) {
+                        break
+                    }
+                    for ($index = 0; $index -lt $count; $index++) {
+                        $received.Add($buffer[$index])
+                    }
+                    $bytes = $received.ToArray()
+                    $text = [Text.Encoding]::ASCII.GetString($bytes)
+                    if ($headerEnd -lt 0) {
+                        $headerEnd = $text.IndexOf("`r`n`r`n", [StringComparison]::Ordinal)
+                        if ($headerEnd -ge 0 -and
+                            $text.Substring(0, $headerEnd) -match '(?im)^Content-Length:\s*(\d+)\s*$') {
+                            $contentLength = [int]$Matches[1]
+                        }
+                    }
+                    if ($headerEnd -ge 0 -and
+                        $received.Count -ge $headerEnd + 4 + $contentLength) {
+                        break
+                    }
+                }
+
+                $allBytes = $received.ToArray()
+                $headerText = [Text.Encoding]::ASCII.GetString($allBytes, 0, $headerEnd)
+                $headerLines = @($headerText -split "`r`n")
+                $headers = @()
+                foreach ($line in @($headerLines | Select-Object -Skip 1)) {
+                    $separator = $line.IndexOf(":")
+                    if ($separator -gt 0) {
+                        $headers += [ordered]@{
+                            name = $line.Substring(0, $separator)
+                            value = $line.Substring($separator + 1).Trim()
+                        }
+                    }
+                }
+                $bodyBytes = [byte[]]::new($contentLength)
+                if ($contentLength -gt 0) {
+                    [Array]::Copy(
+                        $allBytes, $headerEnd + 4, $bodyBytes, 0, $contentLength
+                    )
+                }
+                $captureValue = [ordered]@{
+                    request_line = $headerLines[0]
+                    headers = $headers
+                    body = [Text.Encoding]::UTF8.GetString($bodyBytes)
+                } | ConvertTo-Json -Compress -Depth 4
+                [IO.File]::WriteAllText(
+                    $CapturePath,
+                    $captureValue,
+                    [Text.UTF8Encoding]::new($false)
+                )
+
+                if ($Delay -gt 0) {
+                    Start-Sleep -Milliseconds $Delay
+                }
+                $reason = if ($Status -eq 200) { "OK" } elseif ($Status -eq 401) { "Unauthorized" } else { "Error" }
+                $responseBytes = [Text.Encoding]::UTF8.GetBytes($Body)
+                $responseHead = "HTTP/1.1 $Status $reason`r`nContent-Type: application/json`r`nX-Fixture-Response: fixture-response-body-value`r`nContent-Length: $($responseBytes.Length)`r`nConnection: close`r`n`r`n"
+                $headBytes = [Text.Encoding]::ASCII.GetBytes($responseHead)
+                $stream.Write($headBytes, 0, $headBytes.Length)
+                $stream.Write($responseBytes, 0, $responseBytes.Length)
+                $stream.Flush()
+            } finally {
+                $client.Dispose()
+            }
+        } finally {
+            $listener.Stop()
+        }
+    }
+    foreach ($attempt in 1..200) {
+        if (Test-Path -LiteralPath $ready -PathType Leaf) {
+            return [pscustomobject]@{
+                Capture = $capture
+                Job = $job
+                Url = "http://127.0.0.1:$((Get-Content -Raw -LiteralPath $ready).Trim())/sign"
+            }
+        }
+        if ($job.State -ne "Running") {
+            break
+        }
+        Start-Sleep -Milliseconds 25
+    }
+    Stop-Job -Job $job -ErrorAction SilentlyContinue
+    Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+    throw "Test signer did not start"
+}
+
+function Complete-TestSigner {
+    param($Signer)
+    $null = Wait-Job -Job $Signer.Job -Timeout 5
+    if ($Signer.Job.State -eq "Running") {
+        Stop-Job -Job $Signer.Job
+    }
+    $null = Receive-Job -Job $Signer.Job -ErrorAction SilentlyContinue
+    Remove-Job -Job $Signer.Job -Force
+}
+
 function Invoke-Publisher {
-    param([string]$PlatformId = "windows-x64", [string]$AssetPath = (New-Asset $PlatformId))
+    param(
+        [string]$PlatformId = "windows-x64",
+        [string]$AssetPath = (New-Asset $PlatformId),
+        [string]$SigningMode = "Local",
+        [int]$SigningTimeoutSeconds = 30,
+        [switch]$UseDefaultSigningMode
+    )
     $records = @()
     $failed = $false
+    $arguments = @{
+        Version = $Version
+        Commit = $Commit
+        PublishedAt = $PublishedAt
+        PlatformId = $PlatformId
+        AssetPath = $AssetPath
+        ReleaseNotesPath = $releaseNotes
+        SigningPrivateKeyPath = $privateKey
+        SigningTimeoutSeconds = $SigningTimeoutSeconds
+        Confirm = $false
+    }
+    if (-not $UseDefaultSigningMode) {
+        $arguments.SigningMode = $SigningMode
+    }
     try {
-        $records = @(& $publisher `
-            -Version $Version `
-            -Commit $Commit `
-            -PublishedAt $PublishedAt `
-            -PlatformId $PlatformId `
-            -AssetPath $AssetPath `
-            -ReleaseNotesPath $releaseNotes `
-            -SigningPrivateKeyPath $privateKey `
-            -Confirm:$false 2>&1)
+        $records = @(& $publisher @arguments 2>&1)
     } catch {
         $failed = $true
         $records += $_.Exception.Message
     }
     [pscustomobject]@{ Failed = $failed; Output = ($records -join [Environment]::NewLine) }
+}
+
+function Invoke-RemotePublisher {
+    param(
+        [int]$StatusCode,
+        [string]$ResponseBody,
+        [int]$DelayMilliseconds = 0,
+        [int]$TimeoutSeconds = 30,
+        [switch]$UseDefaultSigningMode
+    )
+    Reset-FakeR2
+    $signer = Start-TestSigner `
+        -StatusCode $StatusCode `
+        -ResponseBody $ResponseBody `
+        -DelayMilliseconds $DelayMilliseconds
+    $env:BACKCHANNEL_RELEASE_SIGNING_URL = $signer.Url
+    try {
+        $result = Invoke-Publisher `
+            -AssetPath (New-Asset) `
+            -SigningMode Remote `
+            -SigningTimeoutSeconds $TimeoutSeconds `
+            -UseDefaultSigningMode:$UseDefaultSigningMode
+    } finally {
+        Complete-TestSigner $signer
+    }
+    $capture = if (Test-Path -LiteralPath $signer.Capture -PathType Leaf) {
+        Get-Content -Raw -LiteralPath $signer.Capture | ConvertFrom-Json
+    } else {
+        $null
+    }
+    [pscustomobject]@{ Result = $result; Capture = $capture }
+}
+
+function Assert-NoFixtureLeak {
+    param([string]$Output, [string[]]$Additional = @())
+    foreach ($secret in @(
+        "fixture-client-id",
+        "fixture-client-secret",
+        "fixture-private-value",
+        "fixture-response-body-value"
+    ) + $Additional) {
+        Assert-True (-not $Output.Contains($secret)) "Publisher leaked a fixture secret"
+    }
+}
+
+function Get-CapturedHeader {
+    param($Capture, [string]$Name)
+    $matches = @($Capture.headers | Where-Object { $_.name -ceq $Name })
+    Assert-True ($matches.Count -eq 1) "Missing or duplicate captured header: $Name"
+    $matches[0].value
 }
 
 try {
@@ -176,7 +371,7 @@ try {
     $releaseNotes = Join-Path $temporary "release-notes.md"
     $privateKey = Join-Path $temporary "release-signing.private"
     Write-Utf8 $releaseNotes "test notes"
-    Write-Utf8 $privateKey "test-private"
+    Write-Utf8 $privateKey "fixture-private-value"
     $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $null
 
     Write-Utf8 $fakeNode "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%R2_FAKE_SCRIPT%`" %*`r`nexit /b %ERRORLEVEL%`r`n"
@@ -272,6 +467,13 @@ function WriteUtf8([string]$Path, [string]$Text) {
     }
     [IO.File]::WriteAllText($Path, $Text + "`n", [Text.UTF8Encoding]::new($false))
 }
+function WriteExactUtf8([string]$Path, [string]$Text) {
+    $parent = Split-Path -Parent $Path
+    if (-not (Test-Path -LiteralPath $parent)) {
+        New-Item -ItemType Directory -Path $parent | Out-Null
+    }
+    [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
+}
 $tag = $options["tag"]
 $commit = $options["commit"]
 $publishedAt = $options["published-at"]
@@ -280,7 +482,25 @@ $platformId = $options["platform-id"]
 $info = Info $platformId
 $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash.ToLowerInvariant()
 $size = (Get-Item -LiteralPath $asset).Length
-$signature = "A" * 86
+$request = '{{"asset":{{"filename":"{0}","id":"{1}","platform":"{2}","sha256":"{3}","size":{4}}},"commit":"{5}","key_id":"ed25519-2026-07","published_at":"{6}","release_notes":"test notes","schema":1,"version":"{7}"}}' -f $info[1], $platformId, $info[0], $sha, $size, $commit, $publishedAt, $tag
+if ($options.ContainsKey("signing-request-out")) {
+    WriteExactUtf8 $options["signing-request-out"] $request
+    exit 0
+}
+if ($options.ContainsKey("detached-key-id")) {
+    if ($options["detached-key-id"] -cne "ed25519-2026-07" -or
+        $options["detached-signature"] -cne ("A" * 86)) {
+        [Console]::Error.WriteLine("detached verification failed")
+        exit 2
+    }
+    $signature = $options["detached-signature"]
+} else {
+    if ($env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY -cne "fixture-private-value") {
+        [Console]::Error.WriteLine("local signing input rejected")
+        exit 2
+    }
+    $signature = "A" * 86
+}
 WriteUtf8 $options["release-out"] ('{{"commit":"{0}","published_at":"{1}","version":"{2}"}}' -f $commit, $publishedAt, $tag)
 WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename":"{1}","id":"{2}","key":"releases/{3}/{1}","platform":"{4}","sha256":"{5}","size":{6}}},"commit":"{7}","published_at":"{8}","release_notes":"test notes","update":{{"key_id":"ed25519-2026-07","schema":1,"signature":"{9}"}},"version":"{3}"}}' -f $info[2], $info[1], $platformId, $tag, $info[0], $sha, $size, $commit, $publishedAt, $signature)
 '@
@@ -290,17 +510,105 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
     $env:R2_FAKE_LOG = $log
     $env:PATH = "$temporary;$oldPath"
 
+    $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = "fixture-private-value"
+    $env:CLOUDFLARE_ACCESS_CLIENT_ID = "fixture-client-id"
+    $env:CLOUDFLARE_ACCESS_CLIENT_SECRET = "fixture-client-secret"
+    $validResponse = '{{"key_id":"ed25519-2026-07","signature":"{0}"}}' -f $validSignature
+    $remote = Invoke-RemotePublisher `
+        -StatusCode 200 `
+        -ResponseBody $validResponse `
+        -UseDefaultSigningMode
+    Assert-True (-not $remote.Result.Failed) "Remote publication failed: $($remote.Result.Output)"
+    Assert-True ($null -ne $remote.Capture) "Remote signer did not capture a request"
+    Assert-True ($remote.Capture.request_line -ceq "POST /sign HTTP/1.1") "Wrong signer request target"
+    Assert-True ($remote.Capture.body -ceq $expectedSigningRequest) "Wrong canonical signing request bytes"
+    Assert-True (
+        (Get-CapturedHeader $remote.Capture "CF-Access-Client-Id") -ceq "fixture-client-id"
+    ) "Wrong Access client ID"
+    Assert-True (
+        (Get-CapturedHeader $remote.Capture "CF-Access-Client-Secret") -ceq "fixture-client-secret"
+    ) "Wrong Access client secret"
+    Assert-True (
+        (Get-CapturedHeader $remote.Capture "Content-Type") -ceq "application/json"
+    ) "Wrong signer content type"
+    Assert-NoFixtureLeak $remote.Result.Output
+    Assert-True (@(Read-Log).Count -gt 0) "Remote publication did not reach R2"
+
+    $responseSecret = "fixture-response-body-value"
+    $failureCases = @(
+        @{
+            Label = "timeout"
+            Status = 200
+            Body = $validResponse
+            Delay = 1500
+            Timeout = 1
+        },
+        @{
+            Label = "401"
+            Status = 401
+            Body = $responseSecret
+            Delay = 0
+            Timeout = 30
+        },
+        @{
+            Label = "malformed response"
+            Status = 200
+            Body = "not-json-$responseSecret"
+            Delay = 0
+            Timeout = 30
+        },
+        @{
+            Label = "extra response field"
+            Status = 200
+            Body = ('{{"extra":"no","key_id":"ed25519-2026-07","signature":"{0}"}}' -f $validSignature)
+            Delay = 0
+            Timeout = 30
+        },
+        @{
+            Label = "wrong key ID"
+            Status = 200
+            Body = ('{{"key_id":"other-key","signature":"{0}"}}' -f $validSignature)
+            Delay = 0
+            Timeout = 30
+        },
+        @{
+            Label = "invalid signature"
+            Status = 200
+            Body = ('{{"key_id":"ed25519-2026-07","signature":"{0}"}}' -f $invalidSignature)
+            Delay = 0
+            Timeout = 30
+        }
+    )
+    foreach ($case in $failureCases) {
+        $remote = Invoke-RemotePublisher `
+            -StatusCode $case.Status `
+            -ResponseBody $case.Body `
+            -DelayMilliseconds $case.Delay `
+            -TimeoutSeconds $case.Timeout
+        Assert-True $remote.Result.Failed "$($case.Label) was accepted"
+        Assert-True (@(Read-Log).Count -eq 0) "$($case.Label) reached R2"
+        Assert-NoFixtureLeak $remote.Result.Output @($responseSecret)
+    }
+
+    Reset-FakeR2
+    $env:BACKCHANNEL_RELEASE_SIGNING_URL = "http://example.com/sign"
+    $result = Invoke-Publisher -SigningMode Remote -AssetPath (New-Asset)
+    Assert-True $result.Failed "Non-HTTPS remote signer was accepted"
+    Assert-True (@(Read-Log).Count -eq 0) "Non-HTTPS remote signer reached R2"
+
+    $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $null
     Remove-Item -LiteralPath $privateKey -Force
     Reset-FakeR2
     $result = Invoke-Publisher
     Assert-True $result.Failed "Missing signing key was accepted"
     Assert-True (@(Read-Log).Count -eq 0) "Missing signing key reached R2"
-    Write-Utf8 $privateKey "test-private"
+    Write-Utf8 $privateKey "fixture-private-value"
 
     Reset-FakeR2
     $asset = New-Asset
     $result = Invoke-Publisher -AssetPath $asset
     Assert-True (-not $result.Failed) "New Windows publication failed: $($result.Output)"
+    Assert-NoFixtureLeak $result.Output
     Assert-Sequence (Read-Log) @(
         "get releases/v1.2.3/release.json",
         "put releases/v1.2.3/release.json",
@@ -400,6 +708,9 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
     $env:R2_FAKE_RACE_DIR = $oldFakeRaceDir
     $env:R2_FAKE_HEAD_SIZE = $oldFakeHeadSize
     $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $oldSigningSecret
+    $env:BACKCHANNEL_RELEASE_SIGNING_URL = $oldSigningUrl
+    $env:CLOUDFLARE_ACCESS_CLIENT_ID = $oldAccessClientId
+    $env:CLOUDFLARE_ACCESS_CLIENT_SECRET = $oldAccessClientSecret
     foreach ($name in $credentialNames) {
         [Environment]::SetEnvironmentVariable($name, $oldCredentials[$name])
     }
