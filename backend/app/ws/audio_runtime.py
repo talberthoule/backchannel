@@ -89,6 +89,11 @@ class _QueuedAudioFrame:
     pcm_bytes: bytes
     split_track_established: bool
     enqueued_at: float
+    # A flush item carries no audio. It rides the same queue so it lands after
+    # every frame already queued for its track, which is what makes the flushed
+    # tail belong to the audio that preceded the stop rather than to whatever
+    # the queue happened to hold when the message arrived.
+    flush: bool = False
 
 
 async def _send_status(
@@ -259,11 +264,31 @@ async def _run_diarization_worker(
         if item is None:
             return system_diarizer
         try:
+            if item.flush and item.track == 1 and system_diarizer is None:
+                # Nothing ever captured on this track, so there is nothing to
+                # finalize. Do not build a diarizer just to empty it.
+                continue
             diarizer = mic_diarizer
             if item.track == 1:
                 if system_diarizer is None:
                     system_diarizer = create_system_diarizer()
                 diarizer = system_diarizer
+            if item.flush:
+                # Finalize what this track already captured, then clear it. The
+                # buffered tail is real audio from before the stop, so it is
+                # attributed now; anything under the minimum segment length is
+                # dropped by flush_segments rather than waiting to surface at
+                # End Call as a brand-new speaker minutes later (ALP-103).
+                segments = await asyncio.to_thread(diarizer.flush_segments)
+                for segment in segments:
+                    await on_segment(item, segment)
+                await asyncio.to_thread(diarizer.reset)
+                logger.info(
+                    "Flushed track %s at deactivation: %s segment(s) finalized",
+                    item.track,
+                    len(segments),
+                )
+                continue
             segments = await asyncio.to_thread(diarizer.feed_audio, item.pcm_bytes)
             for segment in segments:
                 await on_segment(item, segment)
