@@ -10,10 +10,55 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.3.8"
+APP_VERSION = "0.4.0"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.4.0",
+        "date": "2026-07-28",
+        "title": "Updates itself, and knows what your machine can run",
+        "body": """Backchannel now updates itself, measures whether your
+hardware can keep up before a call starts, and keeps working through the
+failures that used to end a call quietly.
+
+- Desktop builds update in place. The app checks for a new version, verifies
+  its signature before touching anything, applies it with a rollback path if
+  the swap fails, and waits for recording and post-processing to finish before
+  restarting.
+- Privacy First is a working mode, not a warning. With a self-hosted model
+  configured, the analysis agents, post-import Analyze, Enhance Insights, and
+  the call briefing all keep running with the switch on. When a model is
+  refused, the message now names the agent and the model to change instead of
+  only saying no.
+- Find out before the call whether your machine can keep up. The Local Model
+  Fit Test times each self-hosted model against the real agent prompts and
+  scores it per role, with per-model cycle budgets, an adjustable contention
+  slider, and coverage for transcription and the briefing. Call-start capacity
+  admission adds up diarization, transcription, captions, and agents against
+  the machine's actual headroom.
+- Measurements expire honestly. A benchmark taken on different hardware or
+  against an older standard is marked out of date rather than shown as
+  current, and a stale one is left out of the capacity verdict and named as
+  unmeasured instead of quietly counting as a pass.
+- Live interim captions can run on-device. Point the audio bridge at the local
+  captioner and captions work with no cloud call, including under Privacy
+  First. It is CPU-heavy, so check the fit test first.
+- Long calls survive slow models. A diarizer that falls behind sheds audio
+  instead of exhausting memory, self-hosted requests get room to finish
+  instead of timing out mid-briefing, and agent replies are validated against
+  a schema so a local model's output is no longer silently dropped. If a cloud
+  model hits its quota mid-run, insight revalidation continues on a
+  self-hosted one.
+- Ending a call tells the truth. Stopping the browser share stops the system
+  track at that moment rather than surfacing a stray speaker minutes later,
+  End Call names any analysis stage that failed instead of finishing silently,
+  the summary is saved with the call so a dropped connection cannot lose it,
+  and a long post-processing run no longer looks like a lost connection.
+- When nothing is happening, the app says why. A runtime diagnosis surface
+  reports what is running, what is blocked, and what to change, and editing a
+  self-hosted endpoint no longer silently orphans the agents pointing at it.""",
+    },
     {
         "version": "0.3.8",
         "date": "2026-07-25",
