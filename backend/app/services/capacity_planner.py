@@ -188,7 +188,7 @@ class TextAgentDemand:
     prompt_tokens: int
     reserved_output_tokens: int
     tokens_per_second: float
-    context_window: int
+    context_window: int | None
     interval_seconds: float = 0.0
     location: str = CONSUMER_LOCAL_OFF_PROCESS
     timeout_seconds: float = 900.0
@@ -213,7 +213,9 @@ class TextAgentDemand:
     def needed_context_tokens(self) -> int:
         return max(0, self.prompt_tokens) + max(0, self.reserved_output_tokens)
 
-    def context_fits(self) -> bool:
+    def context_fits(self) -> bool | None:
+        if self.context_window is None:
+            return None
         if self.context_window <= 0:
             return False
         return self.needed_context_tokens() <= self.context_window
@@ -231,14 +233,14 @@ class RoleFit:
 
     role: str
     needed_context_tokens: int
-    context_window: int
-    context_fits: bool
+    context_window: int | None
+    context_fits: bool | None
     projected_call_seconds: float
     timeout_seconds: float
     latency_fits: bool
 
     def shortfall(self) -> str | None:
-        if not self.context_fits:
+        if self.context_fits is False:
             return (
                 f"{self.role}: needs about {self.needed_context_tokens} tokens "
                 f"against a {self.context_window}-token context - it will not fit "
