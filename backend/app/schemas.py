@@ -35,6 +35,7 @@ class SessionOut(BaseModel):
     group_id: uuid.UUID | None = None
     speaker_context_dirty: bool = False
     speaker_context_enhanced_at: datetime | None = None
+    drain_summary: str = ""
 
     model_config = {"from_attributes": True}
 

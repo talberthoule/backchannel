@@ -160,6 +160,10 @@ async def _add_missing_columns(conn):
                 connection.execute(
                     text("ALTER TABLE sessions ADD COLUMN speaker_context_dirty BOOLEAN NOT NULL DEFAULT false")
                 )
+            if "drain_summary" not in columns:
+                connection.execute(
+                    text("ALTER TABLE sessions ADD COLUMN drain_summary TEXT NOT NULL DEFAULT ''")
+                )
             if "speaker_context_enhanced_at" not in columns:
                 connection.execute(
                     text("ALTER TABLE sessions ADD COLUMN speaker_context_enhanced_at TIMESTAMP WITH TIME ZONE")

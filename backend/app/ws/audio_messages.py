@@ -5,7 +5,7 @@ import uuid
 from collections import deque
 from collections.abc import Callable
 from time import monotonic
-from typing import Any
+from typing import Any, Awaitable
 
 from fastapi import WebSocket
 
@@ -166,12 +166,24 @@ async def _handle_text_message(
     orchestrator: AgentOrchestrator,
     state: Any,
     requested_drain_mode: Callable[[dict], str],
+    on_system_track_stopped: Callable[[], Awaitable[None]] | None = None,
 ) -> None:
     data = json.loads(raw_message)
     state.split_track_established = _split_track_established_after_message(
         data,
         state.split_track_established,
     )
+    if (
+        data.get("type") == "track_state"
+        and data.get("track") == 1
+        and data.get("active") is False
+        and on_system_track_stopped is not None
+    ):
+        # The share ended here, so this is where that track's buffered audio
+        # gets its answer. split_track_established deliberately stays set: it is
+        # a topology fact for the rest of the call (ALP-103), not a live-capture
+        # flag.
+        await on_system_track_stopped()
     if data.get("type") == "stop":
         state.stopped = True
         state.stop_drain_mode = requested_drain_mode(data)

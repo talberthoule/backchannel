@@ -59,3 +59,36 @@ test("stays silent with no details or nothing to report", async () => {
     null,
   );
 });
+
+test("a saved drain summary survives a mid-drain disconnect", async () => {
+  const { parseSavedDrainSummary, formatPostProcessingSummary } = await import(
+    "./postProcessingSummary.ts"
+  );
+
+  const saved = parseSavedDrainSummary(
+    JSON.stringify({
+      message: "Post-processing complete, but 1 analysis stage failed (call briefing)",
+      insights_saved: 3,
+      synthesizer_ops: 0,
+      opportunity_ops: 0,
+      stage_errors: [{ stage: "call_briefing", detail: "hit its output limit" }],
+    }),
+  );
+
+  assert.ok(saved);
+  assert.match(saved.message, /call briefing/);
+  assert.equal(saved.stage_errors.length, 1);
+  // And it still renders through the same formatter as the live details.
+  assert.ok(formatPostProcessingSummary(saved));
+});
+
+test("an unusable saved drain summary is ignored rather than thrown", async () => {
+  const { parseSavedDrainSummary } = await import("./postProcessingSummary.ts");
+
+  // Sessions predating the column, and anything malformed, must not break the view.
+  assert.equal(parseSavedDrainSummary(""), null);
+  assert.equal(parseSavedDrainSummary(undefined), null);
+  assert.equal(parseSavedDrainSummary("not json"), null);
+  assert.equal(parseSavedDrainSummary("[1,2]"), null);
+  assert.equal(parseSavedDrainSummary("null"), null);
+});

@@ -19,6 +19,8 @@ export interface Session {
   group_id: string | null;
   speaker_context_dirty: boolean;
   speaker_context_enhanced_at: string | null;
+  // JSON drain summary saved at finalize; "" for sessions that predate it.
+  drain_summary?: string;
 }
 
 export interface TokenUsageBreakdown {

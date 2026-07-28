@@ -44,3 +44,22 @@ export function formatPostProcessingSummary(details?: Record<string, unknown>): 
   if (total === null) return passText;
   return `${passText} - ${total} insight${total === 1 ? "" : "s"} total for this session`;
 }
+
+/**
+ * The drain summary the backend persisted on the session at finalize.
+ *
+ * Stored as JSON text so the shape stays additive. Returns null for anything
+ * unusable rather than throwing: an old session has an empty column, and a
+ * malformed one must not take the post-call view down with it.
+ */
+export function parseSavedDrainSummary(
+  raw?: string | null,
+): (Record<string, unknown> & { message?: string }) | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}

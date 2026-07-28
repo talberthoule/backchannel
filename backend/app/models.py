@@ -25,6 +25,10 @@ class Session(Base):
     speaker_context_dirty: Mapped[bool] = mapped_column(Boolean, default=False)
     speaker_context_enhanced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     speaker_context_version: Mapped[int] = mapped_column(Integer, default=0)
+    # JSON summary of the final drain: the counts plus any stage that failed.
+    # Persisted so a user who was disconnected mid-drain can still find out
+    # what degraded; the live completion message is lost with the socket.
+    drain_summary: Mapped[str] = mapped_column(Text, default="")
 
     documents = relationship("Document", back_populates="session", cascade="all, delete-orphan")
     directives = relationship("Directive", back_populates="session", cascade="all, delete-orphan")

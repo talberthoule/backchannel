@@ -254,6 +254,28 @@ async def _run_audio_pipeline(
                 )
             )
 
+    async def _flush_system_track_at_stop() -> None:
+        """Finalize track one where the share actually ended.
+
+        Queued rather than run inline so it lands behind the system frames
+        already waiting: the tail belongs to the audio before the stop. Without
+        this the buffer sat until End Call and surfaced there as a new remote
+        speaker minutes after sharing had ended (ALP-103).
+        """
+        queued_at = monotonic()
+        # Balance the backlog deque: the worker pops one entry per item, so a
+        # sentinel that skipped this would consume a real frame's entry.
+        pending_enqueued_at.append(queued_at)
+        diarization_queue.put_nowait(
+            _QueuedAudioFrame(
+                track=1,
+                pcm_bytes=b"",
+                split_track_established=True,
+                enqueued_at=queued_at,
+                flush=True,
+            )
+        )
+
     diarization_worker = asyncio.create_task(
         _run_diarization_worker(
             diarization_queue,
@@ -341,6 +363,7 @@ async def _run_audio_pipeline(
                     orchestrator,
                     state,
                     requested_drain_mode,
+                    on_system_track_stopped=_flush_system_track_at_stop,
                 )
                 if state.stopped:
                     break

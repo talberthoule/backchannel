@@ -1,3 +1,4 @@
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -449,6 +450,17 @@ async def _finalize_call(
         if session and session.state == "active" and newer_open_segment_id is None:
             session.state = "completed"
             session.ended_at = datetime.now(timezone.utc)
+            # Keep the drain outcome with the session. The completion message
+            # below only reaches a client that is still connected, and the run
+            # that motivated this had the browser drop three minutes before the
+            # briefing failed, so the record of what degraded was lost.
+            try:
+                session.drain_summary = json.dumps(
+                    {"message": completion_message, **drain_result},
+                    default=str,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record the drain summary: {e}")
         await db.commit()
 
     completed_extra: dict[str, Any] = {"details": drain_result}
