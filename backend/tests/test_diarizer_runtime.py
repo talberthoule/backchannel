@@ -134,6 +134,29 @@ class DiarizerRuntimeTests(unittest.TestCase):
 
         self.assertAlmostEqual(0.68, runtime.speaker_similarity_threshold)
 
+    def test_machine_without_a_benchmark_keeps_environment_diagnosis(self):
+        environment = SortformerEnvironment(
+            torch_available=False,
+            sortformer_available=False,
+            cuda_available=False,
+            device="cpu",
+            gpu_name=None,
+            gpu_memory_gb=None,
+            model_id="test-model",
+            status="unavailable",
+            recommended_live_diarizer="lightweight",
+            reason="Torch is unavailable on this machine.",
+        )
+
+        runtime = asyncio.run(
+            get_diarizer_runtime_config(FakeDb(), environment=environment)
+        )
+
+        self.assertEqual(
+            "Torch is unavailable on this machine.",
+            runtime.selection_reason,
+        )
+
     def test_runtime_surfaces_thin_benchmark_headroom(self):
         db = FakeDb({
             SETTING_SORTFORMER_LAST_RESULT: _stored_result(real_time_factor=0.32),

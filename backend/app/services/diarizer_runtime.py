@@ -159,6 +159,7 @@ async def get_diarizer_runtime_config(
             environment.reason,
             rtf,
             validity,
+            bool(record),
         ),
     )
 
@@ -264,8 +265,11 @@ def _selection_reason(
     environment_reason: str,
     benchmark_real_time_factor: float | None,
     validity: dict,
+    has_benchmark_record: bool,
 ) -> str:
-    if validity["status"] in ("incompatible", "superseded"):
+    if validity["status"] == "superseded" or (
+        validity["status"] == "incompatible" and has_benchmark_record
+    ):
         return validity["reason"]
     benchmark_reason = (
         describe_benchmark_headroom(

@@ -544,9 +544,7 @@ function RoleRow({
       <td className="py-1.5 pr-3 capitalize text-brand-gray">{role.prompt_profile}</td>
       <td className="py-1.5 pr-3 text-brand-gray" title={`${eff.toFixed(1)}s at ${contention.toFixed(1)}x load`}>{role.latency_seconds.toFixed(1)}s</td>
       <td className="py-1.5 pr-3 text-brand-gray">
-        {suppressRecommendation ? (
-          <span className="text-brand-mid-gray">-</span>
-        ) : role.post_call ? (
+        {role.post_call ? (
           <span className="text-brand-mid-gray">end-of-call</span>
         ) : role.editable ? (
           <input
@@ -568,7 +566,9 @@ function RoleRow({
         </span>
       </td>
       <td className="py-1.5 text-brand-gray">
-        {role.post_call ? (
+        {suppressRecommendation ? (
+          <span className="text-brand-mid-gray">-</span>
+        ) : role.post_call ? (
           <span className="text-brand-mid-gray">-</span>
         ) : changed ? (
           <span className="font-semibold text-brand-teal">{recommended}s</span>
