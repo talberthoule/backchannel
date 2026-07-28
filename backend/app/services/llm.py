@@ -128,15 +128,21 @@ class _CallTarget:
     endpoint: OpenAIEndpoint | None  # None for Google
 
 
-async def _prepare_call(model_id: str, feature: str) -> _CallTarget:
+async def _prepare_call(model_id: str, feature: str, source: str = "") -> _CallTarget:
     """Privacy gate, endpoint resolution, and key selection for one call.
 
     An endpoint model carries its own key (often empty, because local servers
     are unauthenticated), so it never consults the provider-wide credential.
+
+    source is the caller's own label (the same one token usage is recorded
+    under). Passing it through means a refusal names which feature and which
+    model were involved, so the user is told what to change instead of only
+    that something is off. Every caller of this module gets that for free,
+    which is why the naming lives here rather than at each call site.
     """
     provider = provider_for(model_id)
     if provider != "local" and await is_local_only() and not await allows_local_only(model_id):
-        raise LocalOnlyModeError(f"{feature} with {model_id}")
+        raise LocalOnlyModeError(feature, model_id, source)
     endpoint = await resolve_endpoint(provider, model_id) if is_openai_shaped(provider) else None
     key = endpoint.api_key if endpoint and endpoint.api_key is not None else await _resolve_key(provider)
     if not key and requires_api_key(provider):
@@ -188,7 +194,7 @@ async def generate_text(
     session_id: object | None = None,
     source: str = "",
 ) -> str:
-    target = await _prepare_call(model_id, "text generation")
+    target = await _prepare_call(model_id, "text generation", source)
     if target.endpoint is not None:
         text, usage = await _call_openai(
             model_id, target.endpoint, prompt, system, temperature, target.key
@@ -484,7 +490,7 @@ async def generate_json(
     validation. schema_hint overrides the auto-derived contract text. Token
     usage is recorded per provider call so the Tokens tab stays accurate.
     """
-    target = await _prepare_call(model_id, "structured generation")
+    target = await _prepare_call(model_id, "structured generation", source)
     hint = schema_hint or _default_schema_hint(response_schema)
     if target.endpoint is not None:
         return await _openai_json(
