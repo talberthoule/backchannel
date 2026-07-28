@@ -48,6 +48,7 @@ $oldFakeLog = $env:R2_FAKE_LOG
 $oldFakeRaceKey = $env:R2_FAKE_RACE_KEY
 $oldFakeRaceDir = $env:R2_FAKE_RACE_DIR
 $oldFakeHeadSize = $env:R2_FAKE_HEAD_SIZE
+$oldFakeSigningRequestFailure = $env:R2_FAKE_SIGNING_REQUEST_FAILURE
 $oldFakePowerShell = $env:R2_FAKE_POWERSHELL
 $oldSigningSecret = $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY
 $oldSigningUrl = $env:BACKCHANNEL_RELEASE_SIGNING_URL
@@ -260,7 +261,7 @@ function Start-TestSigner {
             return [pscustomobject]@{
                 Capture = $capture
                 Job = $job
-                Url = "http://127.0.0.1:$((Get-Content -Raw -LiteralPath $ready).Trim())/sign"
+                Url = "http://127.0.0.1:$((Get-Content -Raw -LiteralPath $ready).Trim())/v1/sign"
             }
         }
         if ($job.State -ne "Running") {
@@ -289,7 +290,8 @@ function Invoke-Publisher {
         [string]$AssetPath = (New-Asset $PlatformId),
         [string]$SigningMode = "Local",
         [int]$SigningTimeoutSeconds = 30,
-        [switch]$UseDefaultSigningMode
+        [switch]$UseDefaultSigningMode,
+        [switch]$AllowTestLoopbackSigningUrl
     )
     $records = @()
     $failed = $false
@@ -306,6 +308,9 @@ function Invoke-Publisher {
     }
     if (-not $UseDefaultSigningMode) {
         $arguments.SigningMode = $SigningMode
+    }
+    if ($AllowTestLoopbackSigningUrl) {
+        $arguments.AllowTestLoopbackSigningUrl = $true
     }
     try {
         $records = @(& $publisher @arguments 2>&1)
@@ -335,7 +340,8 @@ function Invoke-RemotePublisher {
             -AssetPath (New-Asset) `
             -SigningMode Remote `
             -SigningTimeoutSeconds $TimeoutSeconds `
-            -UseDefaultSigningMode:$UseDefaultSigningMode
+            -UseDefaultSigningMode:$UseDefaultSigningMode `
+            -AllowTestLoopbackSigningUrl
     } finally {
         Complete-TestSigner $signer
     }
@@ -488,6 +494,9 @@ $size = (Get-Item -LiteralPath $asset).Length
 $request = '{{"asset":{{"filename":"{0}","id":"{1}","platform":"{2}","sha256":"{3}","size":{4}}},"commit":"{5}","key_id":"ed25519-2026-07","published_at":"{6}","release_notes":"test notes","schema":1,"version":"{7}"}}' -f $info[1], $platformId, $info[0], $sha, $size, $commit, $publishedAt, $tag
 if ($options.ContainsKey("signing-request-out")) {
     WriteExactUtf8 $options["signing-request-out"] $request
+    if ($env:R2_FAKE_SIGNING_REQUEST_FAILURE) {
+        exit 2
+    }
     exit 0
 }
 if ($options.ContainsKey("detached-key-id")) {
@@ -512,6 +521,7 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
     $env:R2_FAKE_STORE = $store
     $env:R2_FAKE_LOG = $log
     $env:R2_FAKE_POWERSHELL = (Get-Process -Id $PID).Path
+    $env:R2_FAKE_SIGNING_REQUEST_FAILURE = $null
     $env:PATH = "$temporary;$oldPath"
 
     $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = "fixture-private-value"
@@ -524,7 +534,7 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
         -UseDefaultSigningMode
     Assert-True (-not $remote.Result.Failed) "Remote publication failed: $($remote.Result.Output)"
     Assert-True ($null -ne $remote.Capture) "Remote signer did not capture a request"
-    Assert-True ($remote.Capture.request_line -ceq "POST /sign HTTP/1.1") "Wrong signer request target"
+    Assert-True ($remote.Capture.request_line -ceq "POST /v1/sign HTTP/1.1") "Wrong signer request target"
     Assert-True ($remote.Capture.body -ceq $expectedSigningRequest) "Wrong canonical signing request bytes"
     Assert-True (
         (Get-CapturedHeader $remote.Capture "CF-Access-Client-Id") -ceq "fixture-client-id"
@@ -611,7 +621,8 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
     try {
         $result = Invoke-Publisher `
             -SigningMode Remote `
-            -AssetPath (New-Asset)
+            -AssetPath (New-Asset) `
+            -AllowTestLoopbackSigningUrl
     } finally {
         Complete-TestSigner $redirectSource
         Complete-TestSigner $redirectTarget
@@ -623,11 +634,52 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
     Assert-True (@(Read-Log).Count -eq 0) "Signer redirect reached R2"
     Assert-NoFixtureLeak $result.Output @($responseSecret)
 
-    Reset-FakeR2
-    $env:BACKCHANNEL_RELEASE_SIGNING_URL = "http://example.com/sign"
-    $result = Invoke-Publisher -SigningMode Remote -AssetPath (New-Asset)
-    Assert-True $result.Failed "Non-HTTPS remote signer was accepted"
-    Assert-True (@(Read-Log).Count -eq 0) "Non-HTTPS remote signer reached R2"
+    $env:R2_FAKE_SIGNING_REQUEST_FAILURE = "1"
+    try {
+        Reset-FakeR2
+        $env:BACKCHANNEL_RELEASE_SIGNING_URL = "https://signing.backchannel.page/v1/sign"
+        $result = Invoke-Publisher -SigningMode Remote -AssetPath (New-Asset)
+        Assert-True $result.Failed "Production signer validation did not reach the safe fixture stop"
+        Assert-True (
+            $result.Output.Contains("Platform metadata validation failed")
+        ) "Exact production signer authority was rejected"
+        Assert-True (@(Read-Log).Count -eq 0) "Signer validation reached R2"
+
+        $invalidSigningUrls = @(
+            @{ Label = "non-HTTPS URL"; Url = "http://example.com/v1/sign" },
+            @{ Label = "implicit loopback"; Url = "http://127.0.0.1:12345/v1/sign" },
+            @{ Label = "wrong host"; Url = "https://example.com/v1/sign" },
+            @{ Label = "wrong port"; Url = "https://signing.backchannel.page:444/v1/sign" },
+            @{ Label = "wrong path"; Url = "https://signing.backchannel.page/v1/other" },
+            @{ Label = "query"; Url = "https://signing.backchannel.page/v1/sign?next=other" },
+            @{ Label = "userinfo"; Url = "https://fixture-user@signing.backchannel.page/v1/sign" },
+            @{ Label = "fragment"; Url = "https://signing.backchannel.page/v1/sign#other" }
+        )
+        foreach ($case in $invalidSigningUrls) {
+            Reset-FakeR2
+            $env:BACKCHANNEL_RELEASE_SIGNING_URL = $case.Url
+            $result = Invoke-Publisher -SigningMode Remote -AssetPath (New-Asset)
+            Assert-True $result.Failed "$($case.Label) signer URL was accepted"
+            Assert-True (
+                $result.Output.Contains("Remote release signing configuration is invalid")
+            ) "$($case.Label) signer URL did not fail closed"
+            Assert-True (@(Read-Log).Count -eq 0) "$($case.Label) signer URL reached R2"
+        }
+
+        Reset-FakeR2
+        $env:BACKCHANNEL_RELEASE_SIGNING_URL = "http://example.com/v1/sign"
+        $result = Invoke-Publisher `
+            -SigningMode Remote `
+            -AssetPath (New-Asset) `
+            -AllowTestLoopbackSigningUrl
+        Assert-True $result.Failed "Test-only signer switch accepted a non-loopback authority"
+        Assert-True (
+            $result.Output.Contains("Remote release signing configuration is invalid")
+        ) "Test-only signer switch accepted a non-loopback authority"
+        Assert-True (@(Read-Log).Count -eq 0) "Test-only signer switch reached R2"
+    } finally {
+        $env:R2_FAKE_SIGNING_REQUEST_FAILURE = $null
+    }
 
     $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $null
     Remove-Item -LiteralPath $privateKey -Force
@@ -740,6 +792,7 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
     $env:R2_FAKE_RACE_KEY = $oldFakeRaceKey
     $env:R2_FAKE_RACE_DIR = $oldFakeRaceDir
     $env:R2_FAKE_HEAD_SIZE = $oldFakeHeadSize
+    $env:R2_FAKE_SIGNING_REQUEST_FAILURE = $oldFakeSigningRequestFailure
     $env:R2_FAKE_POWERSHELL = $oldFakePowerShell
     $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $oldSigningSecret
     $env:BACKCHANNEL_RELEASE_SIGNING_URL = $oldSigningUrl

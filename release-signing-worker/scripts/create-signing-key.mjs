@@ -141,6 +141,7 @@ export async function runCeremony({
     try {
       response = await fetchImpl(url, {
         method: "POST",
+        redirect: "error",
         headers: {...headers, "Content-Type": "application/json"},
         body: bodyBytes,
         signal: createTimeoutSignal(30_000),

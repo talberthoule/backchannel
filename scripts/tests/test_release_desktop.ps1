@@ -25,6 +25,7 @@ $requiredFunctions = @(
     "Get-AndClearR2Credentials",
     "Invoke-WithR2Credentials",
     "Test-ExactProperties",
+    "Read-ReleaseJson",
     "Resolve-ReleaseTag",
     "Get-ReleasePublicationState",
     "Invoke-GhJson",
@@ -94,7 +95,8 @@ Assert-True ($ghPages[0].PSObject.Properties.Name -contains "artifacts") `
 . ([scriptblock]::Create($definitions["Invoke-WithR2Credentials"]))
 $credentialNames = @(
     "CLOUDFLARE_ACCOUNT_ID", "R2_ACCESS_KEY_ID",
-    "R2_SECRET_ACCESS_KEY", "R2_RELEASES_BUCKET"
+    "R2_SECRET_ACCESS_KEY", "R2_RELEASES_BUCKET",
+    "CLOUDFLARE_ACCESS_CLIENT_ID", "CLOUDFLARE_ACCESS_CLIENT_SECRET"
 )
 $oldCredentials = @{}
 try {
@@ -109,13 +111,20 @@ try {
         )) "Credential was not cleared from the build environment: $name"
     }
     $childResult = & powershell -NoProfile -Command `
-        "if ([string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable('R2_SECRET_ACCESS_KEY'))) { 'absent' } else { 'present' }"
-    Assert-True ($childResult -eq "absent") "A build child inherited R2 credentials"
-    $inside = Invoke-WithR2Credentials -Credentials $credentials -Command {
+        "if ([string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable('R2_SECRET_ACCESS_KEY')) -and [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable('CLOUDFLARE_ACCESS_CLIENT_ID')) -and [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable('CLOUDFLARE_ACCESS_CLIENT_SECRET'))) { 'absent' } else { 'present' }"
+    Assert-True ($childResult -eq "absent") "A build child inherited release credentials"
+    $inside = @(Invoke-WithR2Credentials -Credentials $credentials -Command {
+        [Environment]::GetEnvironmentVariable("CLOUDFLARE_ACCOUNT_ID")
+        [Environment]::GetEnvironmentVariable("R2_ACCESS_KEY_ID")
         [Environment]::GetEnvironmentVariable("R2_SECRET_ACCESS_KEY")
+        [Environment]::GetEnvironmentVariable("R2_RELEASES_BUCKET")
+        [Environment]::GetEnvironmentVariable("CLOUDFLARE_ACCESS_CLIENT_ID")
+        [Environment]::GetEnvironmentVariable("CLOUDFLARE_ACCESS_CLIENT_SECRET")
+    })
+    for ($index = 0; $index -lt $credentialNames.Count; $index++) {
+        Assert-True ($inside[$index] -eq "test-$($credentialNames[$index])") `
+            "Publication did not receive scoped credential: $($credentialNames[$index])"
     }
-    Assert-True ($inside -eq "test-R2_SECRET_ACCESS_KEY") `
-        "R2 publication did not receive scoped credentials"
     $threw = $false
     try {
         Invoke-WithR2Credentials -Credentials $credentials -Command {
@@ -125,9 +134,11 @@ try {
         $threw = $_.Exception.Message.Contains("simulated publication failure")
     }
     Assert-True $threw "Scoped publication failure did not propagate"
-    Assert-True ([string]::IsNullOrEmpty(
-        [Environment]::GetEnvironmentVariable("R2_SECRET_ACCESS_KEY")
-    )) "Publication failure left R2 credentials in the environment"
+    foreach ($name in $credentialNames) {
+        Assert-True ([string]::IsNullOrEmpty(
+            [Environment]::GetEnvironmentVariable($name)
+        )) "Publication failure left a release credential in the environment: $name"
+    }
 } finally {
     foreach ($name in $credentialNames) {
         [Environment]::SetEnvironmentVariable($name, $oldCredentials[$name])
@@ -150,6 +161,8 @@ foreach ($value in @(
     "displayTitle",
     "desktop-release.yml",
     "publish_release_platform.ps1",
+    "CLOUDFLARE_ACCESS_CLIENT_ID",
+    "CLOUDFLARE_ACCESS_CLIENT_SECRET",
     "Backchannel-windows-x64.zip",
     "Backchannel-linux-x64.tar.gz",
     "run watch",
@@ -160,6 +173,15 @@ foreach ($value in @(
     Assert-True $source.Contains($value) "Coordinator is missing contract text: $value"
 }
 $main = $source.Substring($source.IndexOf('$localPending'))
+Assert-True $source.Contains(
+    '$state = Invoke-WithR2Credentials -Credentials $r2Credentials'
+) "Access credentials were exposed during R2 preflight"
+$publisherScopes = [regex]::Matches(
+    $source,
+    'Invoke-WithR2Credentials -Credentials \$releaseCredentials -Command \{\s+& \$publisher'
+)
+Assert-True ($publisherScopes.Count -eq 2) `
+    "Access credentials were not scoped to the two local publisher calls"
 Assert-True ($main.IndexOf("Build-WindowsRelease") -lt $main.IndexOf("Build-LinuxRelease")) `
     "Windows must be attempted before Linux"
 Assert-True ($main.IndexOf("Build-LinuxRelease") -lt $main.IndexOf("run watch")) `
@@ -232,6 +254,7 @@ try {
 Assert-True $failurePropagated "Artifact API failure did not block cleanup"
 
 . ([scriptblock]::Create($definitions["Test-ExactProperties"]))
+. ([scriptblock]::Create($definitions["Read-ReleaseJson"]))
 . ([scriptblock]::Create($definitions["Get-ReleasePublicationState"]))
 
 $script:R2Objects = @{}
@@ -266,7 +289,7 @@ $script:R2Objects["releases/$version/release.json"] = @"
 {"commit":"$commit","published_at":"$publishedAt","version":"$version"}
 "@
 $script:R2Objects["releases/$version/platforms/windows-x64.json"] = @"
-{"asset":{"content_type":"application/zip","filename":"Backchannel-windows-x64.zip","id":"windows-x64","key":"releases/$version/Backchannel-windows-x64.zip","platform":"Windows x64","sha256":"$("a" * 64)","size":10},"commit":"$commit","version":"$version"}
+{"asset":{"content_type":"application/zip","filename":"Backchannel-windows-x64.zip","id":"windows-x64","key":"releases/$version/Backchannel-windows-x64.zip","platform":"Windows x64","sha256":"$("a" * 64)","size":10},"commit":"$commit","published_at":"$publishedAt","release_notes":"test notes","update":{"key_id":"ed25519-2026-07","schema":1,"signature":"$("A" * 86)"},"version":"$version"}
 "@
 $state = Get-ReleasePublicationState `
     -Version $version -Commit $commit -PublishedAt $publishedAt `
@@ -274,8 +297,18 @@ $state = Get-ReleasePublicationState `
 Assert-True ($state["windows-x64"] -eq "Completed") "Valid Windows metadata was not completed"
 Assert-True ($state["linux-x64"] -eq "Pending") "Missing Linux metadata was not pending"
 
+$script:R2Objects["releases/$version/platforms/macos-arm64.json"] = @"
+{"asset":{"content_type":"application/zip","filename":"Backchannel-macos-arm64.zip","id":"macos-arm64","key":"releases/$version/Backchannel-macos-arm64.zip","platform":"macOS arm64","sha256":"$("c" * 64)","size":10},"commit":"$commit","published_at":"$publishedAt","release_notes":"test notes","update":{"extra":true,"key_id":"ed25519-2026-07","schema":1,"signature":"$("A" * 86)"},"version":"$version"}
+"@
+$state = Get-ReleasePublicationState `
+    -Version $version -Commit $commit -PublishedAt $publishedAt `
+    -Bucket "test-bucket" -Client "ignored.mjs"
+Assert-True ($state["macos-arm64"] -eq "Failed") `
+    "Non-canonical signed platform metadata was treated as completed"
+$script:R2Objects.Remove("releases/$version/platforms/macos-arm64.json")
+
 $script:R2Objects["releases/$version/platforms/linux-x64.json"] = @"
-{"asset":{"content_type":"application/gzip","filename":"wrong.tar.gz","id":"linux-x64","key":"releases/$version/Backchannel-linux-x64.tar.gz","platform":"Linux x64","sha256":"$("b" * 64)","size":10},"commit":"$commit","version":"$version"}
+{"asset":{"content_type":"application/gzip","filename":"wrong.tar.gz","id":"linux-x64","key":"releases/$version/Backchannel-linux-x64.tar.gz","platform":"Linux x64","sha256":"$("b" * 64)","size":10},"commit":"$commit","published_at":"$publishedAt","release_notes":"test notes","update":{"key_id":"ed25519-2026-07","schema":1,"signature":"$("A" * 86)"},"version":"$version"}
 "@
 $state = Get-ReleasePublicationState `
     -Version $version -Commit $commit -PublishedAt $publishedAt `

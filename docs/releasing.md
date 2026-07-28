@@ -148,7 +148,8 @@ no-store`.
 
 ## Publication credentials
 
-The production GitHub environment requires these repository secrets:
+The protected `production` GitHub environment requires these environment
+secrets:
 
 - `CLOUDFLARE_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
@@ -156,12 +157,13 @@ The production GitHub environment requires these repository secrets:
 - `CLOUDFLARE_ACCESS_CLIENT_ID`
 - `CLOUDFLARE_ACCESS_CLIENT_SECRET`
 
-It also requires repository variables `R2_RELEASES_BUCKET` with value
-`backchannel-desktop-releases` and `BACKCHANNEL_RELEASE_SIGNING_URL` with the
-HTTPS signing endpoint. Create a separate bucket-scoped Cloudflare R2 API token
-with Object Read & Write permission; Cloudflare exposes its S3-compatible
-writer credentials as access-key and secret fields. Do not reuse or expand the
-site deployment token.
+The protected environment also requires
+`BACKCHANNEL_RELEASE_SIGNING_URL=https://signing.backchannel.page/v1/sign`.
+`R2_RELEASES_BUCKET`, with value `backchannel-desktop-releases`, is the one
+repository-scoped release variable. Create a separate bucket-scoped Cloudflare
+R2 API token with Object Read & Write permission; Cloudflare exposes its
+S3-compatible writer credentials as access-key and secret fields. Do not reuse
+or expand the site deployment token.
 
 The publisher environment, whether local or the protected macOS publish job,
 must provide `BACKCHANNEL_RELEASE_SIGNING_URL`,
@@ -171,9 +173,14 @@ credential-free build or cleanup jobs.
 
 The local coordinator also requires `CLOUDFLARE_ACCOUNT_ID`,
 `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_RELEASES_BUCKET` as
-user-scoped environment variables. Never print their values. It also requires
-Python 3.12, Node 24 or newer, authenticated `gh`, a reachable Docker engine
-reporting `linux/x86_64`, and clean `master` synchronized with `origin/master`.
+user-scoped environment variables. Set the signer URL to the exact endpoint
+above and provide the Access client ID and secret in the same shell. The
+coordinator clears the four R2 values and both Access values before setup,
+build, and smoke subprocesses; it restores only the R2 values for publication
+preflight and all six values around each explicit platform publisher call.
+Never print their values. It also requires Python 3.12, Node 24 or newer,
+authenticated `gh`, a reachable Docker engine reporting `linux/x86_64`, and
+clean `master` synchronized with `origin/master`.
 
 ### Genesis key and stage-three cutover
 
@@ -182,8 +189,30 @@ and before creating its tag, complete stage three:
 
 1. Provision the dedicated Access application and service-token policy,
    Secrets Store, and `signing.backchannel.page` custom domain.
-2. Run `node release-signing-worker/scripts/create-signing-key.mjs` as the
-   no-disk ceremony. Capture only its public JSON output.
+2. From the repository root, preflight the required IDs and Wrangler
+   authentication, then run the no-disk ceremony:
+
+   ```powershell
+   foreach ($name in @("CLOUDFLARE_ACCOUNT_ID", "BACKCHANNEL_RELEASE_SIGNING_STORE_ID")) {
+       if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+           throw "Missing required environment variable: $name"
+       }
+   }
+   Push-Location release-signing-worker
+   try {
+       npm ci
+       if ($LASTEXITCODE -ne 0) { throw "Signing Worker install failed" }
+       npx --no-install wrangler auth token --json | Out-Null
+       if ($LASTEXITCODE -ne 0) { throw "Wrangler authentication preflight failed" }
+       node scripts/create-signing-key.mjs
+       if ($LASTEXITCODE -ne 0) { throw "Signing key ceremony failed" }
+   } finally {
+       Pop-Location
+   }
+   ```
+
+   Capture only the ceremony's public JSON output. Do not enable shell tracing
+   or save Wrangler authentication output.
 3. Replace `desktop/release_signing_keys.json` with
    `ed25519-2026-07b` as its only key and active entry, using the exact public
    key emitted by the ceremony. Do not use a placeholder.

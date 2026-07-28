@@ -172,6 +172,7 @@ test("posts the PKCS8 key over HTTPS and prints only the public key", async () =
             url,
             headers: init.headers,
             method: init.method,
+            redirect: init.redirect,
             signal: init.signal,
             body: JSON.parse(Buffer.from(init.body).toString()),
             mutableBody: init.body,
@@ -184,6 +185,7 @@ test("posts the PKCS8 key over HTTPS and prints only the public key", async () =
 
     assert.equal(captured.url, REQUEST_URL);
     assert.equal(captured.method, "POST");
+    assert.equal(captured.redirect, "error");
     assert.deepEqual(captured.headers, {
       Authorization: "Bearer fixture-token",
       "Content-Type": "application/json",

@@ -26,7 +26,9 @@ param(
     [string]$SigningMode = "Remote",
 
     [ValidateRange(1, 300)]
-    [int]$SigningTimeoutSeconds = 30
+    [int]$SigningTimeoutSeconds = 30,
+
+    [switch]$AllowTestLoopbackSigningUrl
 )
 
 . (Join-Path $PSScriptRoot "r2-release-common.ps1")
@@ -253,13 +255,22 @@ try {
             $env:BACKCHANNEL_RELEASE_SIGNING_URL,
             [UriKind]::Absolute,
             [ref]$signingUri
-        ) -or (
-            $signingUri.Scheme -cne [Uri]::UriSchemeHttps -and
-            -not (
-                $signingUri.Scheme -ceq [Uri]::UriSchemeHttp -and
-                $signingUri.IsLoopback
-            )
         )) {
+            throw "Remote release signing configuration is invalid"
+        }
+        $productionSigningUri = (
+            $signingUri.AbsoluteUri -ceq "https://signing.backchannel.page/v1/sign"
+        )
+        $testLoopbackSigningUri = (
+            $AllowTestLoopbackSigningUrl -and
+            $signingUri.Scheme -ceq [Uri]::UriSchemeHttp -and
+            $signingUri.IsLoopback -and
+            $signingUri.AbsolutePath -ceq "/v1/sign" -and
+            [string]::IsNullOrEmpty($signingUri.UserInfo) -and
+            [string]::IsNullOrEmpty($signingUri.Query) -and
+            [string]::IsNullOrEmpty($signingUri.Fragment)
+        )
+        if (-not ($productionSigningUri -or $testLoopbackSigningUri)) {
             throw "Remote release signing configuration is invalid"
         }
 
