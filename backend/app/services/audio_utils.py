@@ -61,7 +61,9 @@ def convert_to_pcm16(
 ) -> bytes:
     """Convert audio file bytes to PCM16 16kHz mono using soundfile/ffmpeg."""
     import io
+    import os
     import subprocess
+    import tempfile
 
     # Try soundfile first (handles WAV, FLAC, OGG)
     try:
@@ -97,18 +99,32 @@ def convert_to_pcm16(
 
     output_limit = int(max_seconds * 16000) + 1 if max_seconds is not None else None
     duration_args = ["-t", f"{output_limit / 16000:.8f}"] if output_limit is not None else []
+    input_path = None
     try:
+        input_arg = "pipe:0"
+        run_options = {"input": file_bytes}
+        normalized_format = source_format.lower().lstrip(".")
+        if normalized_format in {"m4a", "mp4", "mov"}:
+            with tempfile.NamedTemporaryFile(
+                suffix=f".{normalized_format}",
+                delete=False,
+            ) as temp_input:
+                input_path = temp_input.name
+                temp_input.write(file_bytes)
+            input_arg = input_path
+            run_options = {}
+
         result = subprocess.run(
             [
-                ffmpeg, "-y", "-i", "pipe:0",
+                ffmpeg, "-y", "-i", input_arg,
                 *duration_args,
                 "-ar", "16000", "-ac", "1", "-f", "s16le",
                 "pipe:1",
             ],
-            input=file_bytes,
             capture_output=True,
             check=True,
             timeout=60,
+            **run_options,
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(
@@ -117,7 +133,21 @@ def convert_to_pcm16(
     except subprocess.CalledProcessError as exc:
         lines = (exc.stderr or b"").decode(errors="replace").strip().splitlines()
         detail = lines[-1] if lines else "unknown ffmpeg error"
+        if input_path:
+            detail = detail.replace(input_path, "temporary input")
         raise RuntimeError(
             f"FFmpeg could not decode this {source_format} audio: {detail}"
         ) from exc
-    return result.stdout[: output_limit * 2 if output_limit is not None else None]
+    finally:
+        if input_path:
+            try:
+                os.unlink(input_path)
+            except FileNotFoundError:
+                pass
+
+    pcm_data = result.stdout[: output_limit * 2 if output_limit is not None else None]
+    if not pcm_data:
+        raise RuntimeError(
+            f"FFmpeg produced no audio while decoding this {source_format} file."
+        )
+    return pcm_data
