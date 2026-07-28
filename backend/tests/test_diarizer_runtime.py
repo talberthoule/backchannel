@@ -1,6 +1,8 @@
 import asyncio
+import json
 import math
 import unittest
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -10,11 +12,13 @@ from app.services.diarizer_runtime import (
     SETTING_SELECTED_DIARIZER,
     SETTING_SORTFORMER_BENCHMARK_RTF,
     SETTING_SORTFORMER_BENCHMARK_STATUS,
+    SETTING_SORTFORMER_LAST_RESULT,
     SETTING_SPEAKER_SIMILARITY_THRESHOLD,
     get_diarizer_runtime_config,
     record_sortformer_benchmark,
     set_speaker_similarity_threshold,
 )
+from app.services.fit_staleness import stamp_fit_record
 
 
 class FakeDb:
@@ -62,7 +66,27 @@ def _environment() -> SortformerEnvironment:
         status="ready",
         recommended_live_diarizer="lightweight",
         reason="ready",
+        gpu_backend="cuda",
     )
+
+
+def _stored_result(**overrides):
+    result = {
+        "real_time_factor": 0.20,
+        "contention_adjusted_real_time_factor": 0.30,
+        "peak_memory_mb": 942.4,
+        **stamp_fit_record(
+            {"model_id": "test-model", "endpoint_fingerprint": None},
+            {
+                "device": "cuda",
+                "gpu_name": "test-gpu",
+                "gpu_backend": "cuda",
+                "gpu_memory_gb": 16.0,
+            },
+        ),
+    }
+    result.update(overrides)
+    return AppSetting(key=SETTING_SORTFORMER_LAST_RESULT, value=json.dumps(result))
 
 
 class DiarizerRuntimeTests(unittest.TestCase):
@@ -110,16 +134,32 @@ class DiarizerRuntimeTests(unittest.TestCase):
 
         self.assertAlmostEqual(0.68, runtime.speaker_similarity_threshold)
 
+    def test_machine_without_a_benchmark_keeps_environment_diagnosis(self):
+        environment = SortformerEnvironment(
+            torch_available=False,
+            sortformer_available=False,
+            cuda_available=False,
+            device="cpu",
+            gpu_name=None,
+            gpu_memory_gb=None,
+            model_id="test-model",
+            status="unavailable",
+            recommended_live_diarizer="lightweight",
+            reason="Torch is unavailable on this machine.",
+        )
+
+        runtime = asyncio.run(
+            get_diarizer_runtime_config(FakeDb(), environment=environment)
+        )
+
+        self.assertEqual(
+            "Torch is unavailable on this machine.",
+            runtime.selection_reason,
+        )
+
     def test_runtime_surfaces_thin_benchmark_headroom(self):
         db = FakeDb({
-            SETTING_SORTFORMER_BENCHMARK_STATUS: AppSetting(
-                key=SETTING_SORTFORMER_BENCHMARK_STATUS,
-                value="passed",
-            ),
-            SETTING_SORTFORMER_BENCHMARK_RTF: AppSetting(
-                key=SETTING_SORTFORMER_BENCHMARK_RTF,
-                value="0.32",
-            ),
+            SETTING_SORTFORMER_LAST_RESULT: _stored_result(real_time_factor=0.32),
         })
 
         runtime = asyncio.run(
@@ -137,14 +177,7 @@ class DiarizerRuntimeTests(unittest.TestCase):
                 key=SETTING_SELECTED_DIARIZER,
                 value="sortformer",
             ),
-            SETTING_SORTFORMER_BENCHMARK_STATUS: AppSetting(
-                key=SETTING_SORTFORMER_BENCHMARK_STATUS,
-                value="passed",
-            ),
-            SETTING_SORTFORMER_BENCHMARK_RTF: AppSetting(
-                key=SETTING_SORTFORMER_BENCHMARK_RTF,
-                value="0.60",
-            ),
+            SETTING_SORTFORMER_LAST_RESULT: _stored_result(real_time_factor=0.60),
         })
 
         runtime = asyncio.run(
@@ -174,10 +207,13 @@ class DiarizerRuntimeTests(unittest.TestCase):
     def test_record_benchmark_persists_finite_rtf(self):
         db = FakeDb()
 
-        asyncio.run(record_sortformer_benchmark(db, _benchmark_result(status="passed", rtf=0.42)))
+        result = _benchmark_result(status="passed", rtf=0.42)
+        result = result.__class__(**{**result.__dict__, "contention_adjusted_real_time_factor": 0.5, "peak_memory_mb": 100.0})
+        asyncio.run(record_sortformer_benchmark(db, result, _environment()))
 
-        self.assertEqual("passed", db.settings[SETTING_SORTFORMER_BENCHMARK_STATUS].value)
-        self.assertEqual("0.42", db.settings[SETTING_SORTFORMER_BENCHMARK_RTF].value)
+        stored = json.loads(db.settings[SETTING_SORTFORMER_LAST_RESULT].value)
+        self.assertEqual(0.42, stored["real_time_factor"])
+        self.assertEqual(1, stored["schema_version"])
         self.assertEqual(1, db.commits)
 
     def test_record_benchmark_clears_rtf_when_not_finite(self):
@@ -188,10 +224,9 @@ class DiarizerRuntimeTests(unittest.TestCase):
             )
         })
 
-        asyncio.run(record_sortformer_benchmark(db, _benchmark_result(status="unavailable", rtf=math.inf)))
-
-        self.assertEqual("unavailable", db.settings[SETTING_SORTFORMER_BENCHMARK_STATUS].value)
-        self.assertEqual("", db.settings[SETTING_SORTFORMER_BENCHMARK_RTF].value)
+        asyncio.run(record_sortformer_benchmark(db, _benchmark_result(status="unavailable", rtf=math.inf), _environment()))
+        stored = json.loads(db.settings[SETTING_SORTFORMER_LAST_RESULT].value)
+        self.assertIsNone(stored["real_time_factor"])
 
     def test_record_benchmark_persists_capacity_planner_measurements(self):
         db = FakeDb()
@@ -200,41 +235,43 @@ class DiarizerRuntimeTests(unittest.TestCase):
             real_time_factor=0.20,
             contention_adjusted_real_time_factor=0.30,
             peak_memory_mb=942.4,
+            model_id="test-model",
         )
 
-        asyncio.run(record_sortformer_benchmark(db, result))
-
-        self.assertEqual(
-            "0.3",
-            db.settings[
-                "diarization.sortformer.contention_adjusted_real_time_factor"
-            ].value,
-        )
-        self.assertEqual(
-            "942.4",
-            db.settings["diarization.sortformer.peak_memory_mb"].value,
-        )
+        asyncio.run(record_sortformer_benchmark(db, result, _environment()))
+        stored = json.loads(db.settings[SETTING_SORTFORMER_LAST_RESULT].value)
+        self.assertEqual(0.3, stored["contention_adjusted_real_time_factor"])
+        self.assertEqual(942.4, stored["peak_memory_mb"])
 
     def test_record_benchmark_retains_higher_peak_memory_from_a_cold_run(self):
-        db = FakeDb({
-            "diarization.sortformer.peak_memory_mb": AppSetting(
-                key="diarization.sortformer.peak_memory_mb",
-                value="942.4",
-            )
-        })
+        db = FakeDb({SETTING_SORTFORMER_LAST_RESULT: _stored_result()})
         result = SimpleNamespace(
             status="passed",
             real_time_factor=0.20,
             contention_adjusted_real_time_factor=0.30,
             peak_memory_mb=100.0,
+            model_id="test-model",
         )
 
-        asyncio.run(record_sortformer_benchmark(db, result))
+        asyncio.run(record_sortformer_benchmark(db, result, _environment()))
+        stored = json.loads(db.settings[SETTING_SORTFORMER_LAST_RESULT].value)
+        self.assertEqual(942.4, stored["peak_memory_mb"])
 
-        self.assertEqual(
-            "942.4",
-            db.settings["diarization.sortformer.peak_memory_mb"].value,
+    def test_peak_memory_resets_when_host_changes(self):
+        old = _stored_result()
+        db = FakeDb({SETTING_SORTFORMER_LAST_RESULT: old})
+        changed = SortformerEnvironment(
+            **{**_environment().__dict__, "gpu_name": "new-gpu"}
         )
+        result = SimpleNamespace(
+            real_time_factor=0.20,
+            contention_adjusted_real_time_factor=0.30,
+            peak_memory_mb=100.0,
+            model_id="test-model",
+        )
+        asyncio.run(record_sortformer_benchmark(db, result, changed))
+        stored = json.loads(db.settings[SETTING_SORTFORMER_LAST_RESULT].value)
+        self.assertEqual(100.0, stored["peak_memory_mb"])
 
     def test_runtime_config_treats_stored_non_finite_rtf_as_absent(self):
         db = FakeDb({
@@ -250,14 +287,7 @@ class DiarizerRuntimeTests(unittest.TestCase):
 
     def test_runtime_config_reads_capacity_planner_measurements(self):
         db = FakeDb({
-            "diarization.sortformer.contention_adjusted_real_time_factor": AppSetting(
-                key="diarization.sortformer.contention_adjusted_real_time_factor",
-                value="0.30",
-            ),
-            "diarization.sortformer.peak_memory_mb": AppSetting(
-                key="diarization.sortformer.peak_memory_mb",
-                value="942.4",
-            ),
+            SETTING_SORTFORMER_LAST_RESULT: _stored_result(),
         })
 
         runtime = asyncio.run(
@@ -266,6 +296,51 @@ class DiarizerRuntimeTests(unittest.TestCase):
 
         self.assertEqual(0.30, runtime.benchmark_contention_adjusted_real_time_factor)
         self.assertEqual(942.4, runtime.benchmark_peak_memory_mb)
+
+    def test_legacy_scalar_record_is_incompatible_and_gate_is_closed(self):
+        db = FakeDb({
+            SETTING_SORTFORMER_BENCHMARK_RTF: AppSetting(
+                key=SETTING_SORTFORMER_BENCHMARK_RTF, value="0.20"
+            )
+        })
+        runtime = asyncio.run(get_diarizer_runtime_config(db, environment=_environment()))
+        self.assertEqual("incompatible", runtime.benchmark_validity)
+        self.assertFalse(runtime.sortformer_selectable)
+
+    def test_current_record_missing_required_measurement_keeps_gate_closed(self):
+        db = FakeDb({
+            SETTING_SORTFORMER_LAST_RESULT: _stored_result(
+                contention_adjusted_real_time_factor=None
+            )
+        })
+        runtime = asyncio.run(get_diarizer_runtime_config(db, environment=_environment()))
+        self.assertEqual("incompatible", runtime.benchmark_validity)
+        self.assertFalse(runtime.sortformer_selectable)
+
+    def test_hardware_change_supersedes_record_and_keeps_gate_closed(self):
+        record = json.loads(_stored_result().value)
+        record["host"]["gpu_name"] = "old-gpu"
+        db = FakeDb({
+            SETTING_SORTFORMER_LAST_RESULT: AppSetting(
+                key=SETTING_SORTFORMER_LAST_RESULT, value=json.dumps(record)
+            )
+        })
+        runtime = asyncio.run(get_diarizer_runtime_config(db, environment=_environment()))
+        self.assertEqual("superseded", runtime.benchmark_validity)
+        self.assertFalse(runtime.sortformer_selectable)
+        self.assertIn("old-gpu", runtime.benchmark_validity_reason)
+
+    def test_aged_record_stays_selectable(self):
+        record = json.loads(_stored_result().value)
+        record["measured_at"] = datetime(2025, 1, 1, tzinfo=timezone.utc).isoformat()
+        db = FakeDb({
+            SETTING_SORTFORMER_LAST_RESULT: AppSetting(
+                key=SETTING_SORTFORMER_LAST_RESULT, value=json.dumps(record)
+            )
+        })
+        runtime = asyncio.run(get_diarizer_runtime_config(db, environment=_environment()))
+        self.assertEqual("aged", runtime.benchmark_validity)
+        self.assertTrue(runtime.sortformer_selectable)
 
 
 if __name__ == "__main__":

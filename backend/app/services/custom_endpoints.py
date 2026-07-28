@@ -393,6 +393,7 @@ def _registry_entry(
         "supports_live_audio": False,
         "runs_locally": on_prem,
         "endpoint_id": endpoint_id,
+        "endpoint_fingerprint": f"{validate_base_url(base_url)}|on_prem={str(on_prem).lower()}",
     }
 
 

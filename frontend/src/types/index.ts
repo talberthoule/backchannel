@@ -336,6 +336,9 @@ export interface DiarizationDiagnostics {
   benchmark_real_time_factor: number | null;
   benchmark_contention_adjusted_real_time_factor: number | null;
   benchmark_peak_memory_mb: number | null;
+  benchmark_measured_at: string | null;
+  benchmark_validity: FitValidityStatus;
+  benchmark_validity_reason: string;
   speaker_similarity_threshold: number;
   selection_reason: string;
 }
@@ -362,6 +365,12 @@ export interface TranscriptionConfig {
 
 // Local Model Fit Test: keep-up speed of self-hosted text models per agent role.
 export type FitVerdict = "green" | "yellow" | "red";
+export type FitValidityStatus = "current" | "incompatible" | "superseded" | "aged";
+export interface FitValidity {
+  status: FitValidityStatus;
+  reason: string;
+  age_days: number | null;
+}
 
 export interface FitProfileLatency {
   latency_seconds: number;
@@ -375,9 +384,9 @@ export interface FitRole {
   prompt_profile: "short" | "long";
   latency_seconds: number;
   budget_seconds: number;
-  verdict: FitVerdict;
-  recommended_interval_seconds: number;
-  changed: boolean;
+  verdict?: FitVerdict;
+  recommended_interval_seconds?: number;
+  changed?: boolean;
   // Post-call briefing agents run once at call end: no live budget, not editable.
   post_call: boolean;
   editable: boolean;
@@ -393,6 +402,7 @@ export interface TextModelFit {
   short: FitProfileLatency | null;
   long: FitProfileLatency | null;
   roles: FitRole[];
+  validity?: FitValidity;
 }
 
 export interface LocalFitRoleCatalogEntry {
@@ -438,6 +448,8 @@ export interface LocalFitReport extends LocalFitSummary {
   text_models: TextModelFit[];
   contention: number;
   asr: AsrFitReport | null;
+  measured_at?: string;
+  validity?: FitValidity;
 }
 
 // Local transcription (ASR) keep-up: real-time factor per bundled ONNX model.
@@ -449,9 +461,10 @@ export interface AsrModelFit {
   audio_seconds: number;
   processing_seconds: number;
   real_time_factor: number | null;
-  verdict: FitVerdict | "";
+  verdict?: FitVerdict | "";
   short_real_time_factor: number | null;
-  live_feasibility: FitFeasibility;
+  live_feasibility?: FitFeasibility;
+  validity?: FitValidity;
   estimated: boolean;
 }
 

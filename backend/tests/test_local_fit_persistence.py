@@ -7,9 +7,37 @@ look like they had not been saved.
 
 import json
 import unittest
+from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest import mock
 
 from app.services import local_fit
+from app.services.fit_staleness import stamp_fit_record
+
+
+HOST = {
+    "device": "cuda",
+    "gpu_name": "test-gpu",
+    "gpu_backend": "cuda",
+    "gpu_memory_gb": 16.0,
+}
+
+
+def _environment():
+    return SimpleNamespace(**HOST)
+
+
+def _current_result(**extra):
+    return {
+        "has_local_text_models": True,
+        "text_models": [],
+        **stamp_fit_record(
+            {"model_id": "local-fit", "endpoint_fingerprint": None},
+            HOST,
+            measured_at=datetime(2026, 7, 28, tzinfo=timezone.utc),
+        ),
+        **extra,
+    }
 
 
 class _FakeSettingsStore:
@@ -44,26 +72,86 @@ class FitResultPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.enterContext(
             mock.patch.object(local_fit, "set_app_setting", self.store.set)
         )
+        self.enterContext(
+            mock.patch.object(local_fit, "local_text_models", mock.AsyncMock(return_value=[]))
+        )
+        self.enterContext(
+            mock.patch.object(local_fit, "probe_sortformer_environment", return_value=_environment())
+        )
 
-    async def test_a_stored_result_is_returned_verbatim(self):
-        result = {"has_local_text_models": True, "text_models": [{"id": "m"}]}
+    async def test_a_current_stored_result_is_returned(self):
+        result = _current_result()
         await local_fit.store_local_fit_result(self.db, result)
 
         loaded = await local_fit.load_local_fit_result(self.db)
 
         self.assertEqual(True, loaded["has_local_text_models"])
-        self.assertEqual([{"id": "m"}], loaded["text_models"])
+        self.assertEqual("current", loaded["validity"]["status"])
 
-    async def test_the_result_is_stamped_so_staleness_is_visible(self):
+    async def test_the_result_has_the_four_field_provenance_stamp(self):
         await local_fit.store_local_fit_result(self.db, {"has_local_text_models": True})
-        loaded = await local_fit.load_local_fit_result(self.db)
-        self.assertIn("completed_at", loaded)
+        stored = json.loads(self.store.values[local_fit.LOCAL_FIT_RESULT_KEY])
+        self.assertEqual(
+            {"schema_version", "measured_at", "subject", "host"},
+            {"schema_version", "measured_at", "subject", "host"} & stored.keys(),
+        )
 
     async def test_storing_does_not_mutate_the_caller_payload(self):
         result = {"has_local_text_models": True}
         await local_fit.store_local_fit_result(self.db, result)
         # The live response the user is waiting on must not gain fields.
-        self.assertNotIn("completed_at", result)
+        self.assertNotIn("schema_version", result)
+
+    async def test_frozen_judgments_are_not_persisted(self):
+        result = _current_result(
+            text_models=[{
+                "roles": [{
+                    "verdict": "green",
+                    "recommended_interval_seconds": 10,
+                    "changed": False,
+                    "latency_seconds": 1.2,
+                }]
+            }],
+            asr={"asr_models": [{"verdict": "green", "live_feasibility": "feasible"}]},
+        )
+        await local_fit.store_local_fit_result(self.db, result)
+        stored = json.loads(self.store.values[local_fit.LOCAL_FIT_RESULT_KEY])
+        self.assertEqual({"latency_seconds": 1.2}, stored["text_models"][0]["roles"][0])
+        self.assertNotIn("verdict", stored["asr"]["asr_models"][0])
+
+    async def test_legacy_result_reads_as_incompatible_without_numbers(self):
+        self.store.values[local_fit.LOCAL_FIT_RESULT_KEY] = json.dumps(
+            {"text_models": [{"model_id": "old", "short": {"latency_seconds": 1.0}}]}
+        )
+        loaded = await local_fit.load_local_fit_result(self.db)
+        self.assertEqual("incompatible", loaded["validity"]["status"])
+        self.assertEqual([], loaded["text_models"])
+
+    async def test_repointed_endpoint_marks_only_its_model_superseded(self):
+        measurement = {
+            "model_id": "endpoint:box:model",
+            "roles": [],
+            **stamp_fit_record(
+                {
+                    "model_id": "endpoint:box:model",
+                    "endpoint_fingerprint": "http://old/v1|on_prem=true",
+                },
+                HOST,
+            ),
+        }
+        self.store.values[local_fit.LOCAL_FIT_RESULT_KEY] = json.dumps(
+            _current_result(text_models=[measurement])
+        )
+        local_fit.local_text_models.return_value = [{
+            "id": "endpoint:box:model",
+            "endpoint_fingerprint": "http://new/v1|on_prem=true",
+        }]
+        with mock.patch.object(
+            local_fit, "budgets_for_model", mock.AsyncMock(return_value={})
+        ):
+            loaded = await local_fit.load_local_fit_result(self.db)
+        self.assertEqual("current", loaded["validity"]["status"])
+        self.assertEqual("superseded", loaded["text_models"][0]["validity"]["status"])
 
     async def test_no_previous_run_reads_as_none(self):
         self.assertIsNone(await local_fit.load_local_fit_result(self.db))
@@ -88,7 +176,7 @@ class FitResultPersistenceTests(unittest.IsolatedAsyncioTestCase):
 class SummaryIncludesLastResultTests(unittest.IsolatedAsyncioTestCase):
     async def test_summary_exposes_the_last_result(self):
         store = _FakeSettingsStore(
-            {local_fit.LOCAL_FIT_RESULT_KEY: json.dumps({"text_models": [{"id": "m"}]})}
+            {local_fit.LOCAL_FIT_RESULT_KEY: json.dumps(_current_result())}
         )
         db = _FakeDB(store)
         with (
@@ -96,11 +184,12 @@ class SummaryIncludesLastResultTests(unittest.IsolatedAsyncioTestCase):
             mock.patch.object(local_fit, "local_text_models", mock.AsyncMock(return_value=[])),
             mock.patch.object(local_fit, "current_intervals", mock.AsyncMock(return_value={})),
             mock.patch.object(local_fit, "local_models_all", mock.AsyncMock(return_value=[])),
+            mock.patch.object(local_fit, "probe_sortformer_environment", return_value=_environment()),
         ):
             summary = await local_fit.summarize_local_fit(db)
 
         self.assertIn("last_result", summary)
-        self.assertEqual([{"id": "m"}], summary["last_result"]["text_models"])
+        self.assertEqual("2026-07-28T00:00:00+00:00", summary["last_result"]["measured_at"])
 
 
 if __name__ == "__main__":

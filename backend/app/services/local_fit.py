@@ -19,6 +19,7 @@ import logging
 import math
 import re
 import time
+from datetime import datetime, timezone
 from dataclasses import asdict, dataclass, field
 from typing import Any, Awaitable, Callable
 
@@ -29,6 +30,13 @@ from app.models import AgentConfig
 from app.services.app_settings import get_app_setting, set_app_setting
 from app.services.batch_transcriber import _audio_has_speech_energy
 from app.services.custom_endpoints import endpoint_models
+from app.services.diarization_diagnostics import probe_sortformer_environment
+from app.services.fit_staleness import (
+    INCOMPATIBLE,
+    assess_fit_record,
+    host_fingerprint,
+    stamp_fit_record,
+)
 from app.services.llm import generate_text
 from app.services.local_transcriber import LOCAL_MODEL_MAP, LocalTranscriber
 
@@ -617,6 +625,8 @@ async def run_local_fit(
     """Benchmark every on-prem text model against its per-model budgets, and the
     bundled local ASR models on a synthetic clip, in one pass."""
     models = await local_text_models(db)
+    host = host_fingerprint(probe_sortformer_environment())
+    measured_at = datetime.now(timezone.utc)
     systems = await role_system_prompts(db)
     text_models: list[dict] = []
     for model in models:
@@ -625,12 +635,34 @@ async def run_local_fit(
         )
         budgets = await budgets_for_model(db, model["id"])
         fit.roles = score_text_model(fit, budgets, contention)
-        text_models.append(fit.to_dict())
+        measurement = fit.to_dict()
+        measurement.update(
+            stamp_fit_record(
+                {
+                    "model_id": model["id"],
+                    "endpoint_fingerprint": model.get("endpoint_fingerprint"),
+                },
+                host,
+                measured_at=measured_at,
+            )
+        )
+        text_models.append(measurement)
     asr = None
     if include_asr:
         asr = await run_asr_fit(
             synthetic_speech_clip(), contention=contention, estimated=True
         )
+        for measurement in asr["asr_models"]:
+            measurement.update(
+                stamp_fit_record(
+                    {
+                        "model_id": measurement["model_id"],
+                        "endpoint_fingerprint": None,
+                    },
+                    host,
+                    measured_at=measured_at,
+                )
+            )
     result = {
         "has_local_text_models": bool(models),
         "intervals": await current_intervals(db),
@@ -639,6 +671,14 @@ async def run_local_fit(
         "text_models": text_models,
         "asr": asr,
         "capabilities": build_local_capabilities(await local_models_all(db)),
+        **stamp_fit_record(
+            {
+                "model_id": "local-fit",
+                "endpoint_fingerprint": None,
+            },
+            host,
+            measured_at=measured_at,
+        ),
     }
     await store_local_fit_result(db, result)
     return result
@@ -654,10 +694,16 @@ async def store_local_fit_result(db: AsyncSession, result: dict) -> None:
     re-running it. Stored whole rather than summarized: the card renders the
     same payload it would have received live.
     """
-    from datetime import datetime, timezone
-
-    payload = dict(result)
-    payload["completed_at"] = datetime.now(timezone.utc).isoformat()
+    payload = json.loads(json.dumps(result))
+    if "schema_version" not in payload:
+        host = host_fingerprint(probe_sortformer_environment())
+        payload.update(
+            stamp_fit_record(
+                {"model_id": "local-fit", "endpoint_fingerprint": None},
+                host,
+            )
+        )
+    _drop_stored_judgments(payload)
     try:
         await set_app_setting(db, LOCAL_FIT_RESULT_KEY, json.dumps(payload))
         await db.commit()
@@ -676,7 +722,73 @@ async def load_local_fit_result(db: AsyncSession) -> dict | None:
     except json.JSONDecodeError:
         logger.warning("Stored local fit result is not valid JSON; ignoring")
         return None
-    return stored if isinstance(stored, dict) else None
+    if not isinstance(stored, dict):
+        return None
+    current_models = await local_text_models(db)
+    current_by_id = {model["id"]: model for model in current_models}
+    host = host_fingerprint(probe_sortformer_environment())
+    stored["validity"] = assess_fit_record(
+        stored,
+        current_subject={
+            "model_id": "local-fit",
+            "endpoint_fingerprint": None,
+        },
+        current_host=host,
+    )
+    if stored["validity"]["status"] == INCOMPATIBLE:
+        return {
+            "validity": stored["validity"],
+            "measured_at": stored.get("measured_at"),
+            "has_local_text_models": False,
+            "models": [],
+            "intervals": {},
+            "roles": [],
+            "text_models": [],
+            "contention": DEFAULT_CONTENTION,
+            "asr": None,
+        }
+    for measurement in stored.get("text_models") or []:
+        current = current_by_id.get(measurement.get("model_id"))
+        measurement["validity"] = assess_fit_record(
+            measurement,
+            current_subject=(
+                {
+                    "model_id": current["id"],
+                    "endpoint_fingerprint": current.get("endpoint_fingerprint"),
+                }
+                if current
+                else None
+            ),
+            current_host=host,
+        )
+        budgets = await budgets_for_model(db, measurement.get("model_id", ""))
+        for role in measurement.get("roles") or []:
+            role["budget_seconds"] = budgets.get(
+                role.get("slug"), role.get("budget_seconds", 0)
+            )
+    for measurement in (stored.get("asr") or {}).get("asr_models") or []:
+        measurement["validity"] = assess_fit_record(
+            measurement,
+            current_subject=(
+                {
+                    "model_id": measurement.get("model_id"),
+                    "endpoint_fingerprint": None,
+                }
+                if measurement.get("model_id") in LOCAL_MODEL_MAP
+                else None
+            ),
+            current_host=host,
+        )
+    return stored
+
+def _drop_stored_judgments(payload: dict) -> None:
+    for model in payload.get("text_models") or []:
+        for role in model.get("roles") or []:
+            for key in ("verdict", "recommended_interval_seconds", "changed"):
+                role.pop(key, None)
+    for model in (payload.get("asr") or {}).get("asr_models") or []:
+        model.pop("verdict", None)
+        model.pop("live_feasibility", None)
 
 
 def validate_interval_updates(updates: list[dict]) -> dict[str, int]:
