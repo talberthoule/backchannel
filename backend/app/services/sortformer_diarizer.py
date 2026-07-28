@@ -152,7 +152,10 @@ class SortformerDiarizer:
             )
         except Exception as exc:
             logger.warning(f"Sortformer speaker embedding failed; falling back to local label: {exc}")
-            if len(pcm_bytes) < self._min_new_speaker_bytes and self._registry.profile_count == 0:
+            if (
+                len(pcm_bytes) < self._min_new_speaker_bytes
+                and self._registry.fallback_profile_count == 0
+            ):
                 return "auto_unknown"
             return self._speaker_id_for_label(label)
 

@@ -42,6 +42,24 @@ class SpeakerRegistryTests(unittest.TestCase):
         self.assertEqual("auto_1", result)
         self.assertEqual(2, registry.profile_count)
 
+    def test_enrolled_local_profile_is_frozen_after_threshold_match(self):
+        registry = SpeakerRegistry(threshold=0.8, max_profiles=4)
+        registry.enroll(
+            LOCAL_VOICE_PROFILE_ID,
+            embedding(1.0, 0.0),
+            fallback_for_unmatched=False,
+        )
+
+        self.assertEqual(
+            LOCAL_VOICE_PROFILE_ID,
+            registry.match_or_create(embedding(0.8, 0.6), allow_create=False),
+        )
+
+        self.assertEqual(
+            "auto_1",
+            registry.match_or_create(embedding(0.7, 0.714), allow_create=True),
+        )
+
     def test_incompatible_enrollment_dimension_does_not_break_matching(self):
         registry = SpeakerRegistry(threshold=0.9, max_profiles=1)
         registry.enroll(

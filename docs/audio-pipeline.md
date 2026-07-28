@@ -98,8 +98,10 @@ speaker matching: the backend extracts a speaker embedding and keeps only
 that encrypted voice signature -- the calibration audio itself is
 discarded. Recording again replaces the profile; Delete removes it.
 Browser recordings for both voice enrollment and the mic benchmark arrive
-as WebM/Opus, which is decoded through the same ffmpeg fallback described
-under [Audio file import](#audio-file-import).
+as WebM/Opus. The ffmpeg fallback streams them from memory to memory; it
+does not create a temporary source-audio file. Windows and Linux desktop
+bundles include ffmpeg, while macOS and source runs need it on `PATH` as
+described under [Audio file import](#audio-file-import).
 
 ## Batch transcription
 

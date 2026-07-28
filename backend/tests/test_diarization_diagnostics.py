@@ -1,4 +1,5 @@
 import io
+import threading
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -8,6 +9,7 @@ from fastapi import HTTPException, UploadFile
 from app.routers.diagnostics import (
     MAX_BENCHMARK_SECONDS,
     MIN_BENCHMARK_SECONDS,
+    benchmark_sortformer,
     delete_voice_profile,
     get_voice_profile_status,
     is_benchmark_pcm_too_short,
@@ -18,6 +20,7 @@ from app.routers.diagnostics import (
 )
 from app.services.diarization_diagnostics import (
     BenchmarkMeasurement,
+    BenchmarkResult,
     SortformerEnvironment,
     _peak_memory_delta_mb,
     _sample_resident_memory,
@@ -60,6 +63,9 @@ class DiarizationDiagnosticsTests(unittest.TestCase):
     def test_enrollment_upload_size_is_bounded(self):
         self.assertFalse(is_enrollment_upload_too_large(MAX_ENROLLMENT_UPLOAD_BYTES))
         self.assertTrue(is_enrollment_upload_too_large(MAX_ENROLLMENT_UPLOAD_BYTES + 1))
+
+    def test_enrollment_upload_stays_within_starlette_memory_spool(self):
+        self.assertTrue(is_enrollment_upload_too_large(1024 * 1024 + 1))
 
     def test_classify_benchmark_passes_fast_cuda_measurement(self):
         measurement = BenchmarkMeasurement(
@@ -231,6 +237,33 @@ class DiarizationDiagnosticsTests(unittest.TestCase):
 
 
 class VoiceProfileEndpointTests(unittest.IsolatedAsyncioTestCase):
+    async def test_replacement_offloads_conversion_and_embedding(self):
+        file = UploadFile(filename="voice.webm", file=io.BytesIO(b"encoded"))
+        db = AsyncMock()
+        main_thread = threading.get_ident()
+        worker_threads = []
+
+        def convert(*_args, **_kwargs):
+            worker_threads.append(threading.get_ident())
+            return b"pcm"
+
+        def extract(_pcm):
+            worker_threads.append(threading.get_ident())
+            return np.array([1.0, 0.0], dtype=np.float32)
+
+        with (
+            patch("app.routers.diagnostics.convert_to_pcm16", side_effect=convert),
+            patch("app.routers.diagnostics.extract_enrollment_embedding", side_effect=extract),
+            patch(
+                "app.routers.diagnostics.save_local_voice_embedding",
+                new=AsyncMock(),
+            ),
+        ):
+            await replace_voice_profile(file, db)
+
+        self.assertEqual(2, len(worker_threads))
+        self.assertTrue(all(thread != main_thread for thread in worker_threads))
+
     async def test_replacement_commits_only_after_extraction(self):
         file = UploadFile(filename="voice.webm", file=io.BytesIO(b"encoded"))
         db = AsyncMock()
@@ -296,6 +329,49 @@ class VoiceProfileEndpointTests(unittest.IsolatedAsyncioTestCase):
 
         clear.assert_awaited_once_with(db)
         db.commit.assert_awaited_once()
+
+    async def test_sortformer_benchmark_offloads_conversion_and_inference(self):
+        file = UploadFile(filename="benchmark.webm", file=io.BytesIO(b"encoded"))
+        db = AsyncMock()
+        main_thread = threading.get_ident()
+        worker_threads = []
+        pcm = b"\x00" * (MIN_BENCHMARK_SECONDS * 16000 * 2)
+        result = BenchmarkResult(
+            status="passed",
+            recommended_live_diarizer="sortformer",
+            real_time_factor=0.1,
+            audio_seconds=float(MIN_BENCHMARK_SECONDS),
+            processing_seconds=1.0,
+            device="cpu",
+            model_id="test",
+            threshold=0.33,
+            reason="fast enough",
+        )
+
+        def convert(*_args, **_kwargs):
+            worker_threads.append(threading.get_ident())
+            return pcm
+
+        def benchmark(_path):
+            worker_threads.append(threading.get_ident())
+            return result
+
+        with (
+            patch("app.routers.diagnostics.convert_to_pcm16", side_effect=convert),
+            patch(
+                "app.routers.diagnostics.benchmark_sortformer_audio",
+                side_effect=benchmark,
+            ),
+            patch(
+                "app.routers.diagnostics.record_sortformer_benchmark",
+                new=AsyncMock(),
+            ),
+        ):
+            response = await benchmark_sortformer(file, db)
+
+        self.assertEqual(result.to_dict(), response)
+        self.assertEqual(2, len(worker_threads))
+        self.assertTrue(all(thread != main_thread for thread in worker_threads))
 
 if __name__ == "__main__":
     unittest.main()

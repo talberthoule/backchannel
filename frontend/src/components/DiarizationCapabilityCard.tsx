@@ -185,7 +185,11 @@ export default function DiarizationCapabilityCard() {
       };
       recorder.onstop = () => {
         if (generation !== recordingGenerationRef.current) return;
-        const file = createRecordedFile(chunksRef.current, recorder.mimeType);
+        const file = createRecordedFile(
+          chunksRef.current,
+          recorder.mimeType,
+          mode === "voice" ? "voice-profile" : "mic-benchmark",
+        );
         stopMediaTracks();
         clearRecordingTimer();
         setRecordingMode(null);
@@ -570,8 +574,8 @@ function getRecorderOptions(): MediaRecorderOptions {
   return mimeType ? { mimeType } : {};
 }
 
-function createRecordedFile(chunks: BlobPart[], mimeType: string): File {
+function createRecordedFile(chunks: BlobPart[], mimeType: string, baseName: string): File {
   const type = mimeType || "audio/webm";
   const extension = type.includes("mp4") ? "m4a" : "webm";
-  return new File([new Blob(chunks, { type })], `mic-benchmark.${extension}`, { type });
+  return new File([new Blob(chunks, { type })], `${baseName}.${extension}`, { type });
 }

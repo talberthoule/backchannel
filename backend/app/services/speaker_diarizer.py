@@ -220,6 +220,10 @@ class SpeakerRegistry:
     def profile_count(self) -> int:
         return len(self._profiles)
 
+    @property
+    def fallback_profile_count(self) -> int:
+        return sum(profile.fallback_for_unmatched for profile in self._profiles)
+
     def enroll(
         self,
         speaker_id: str,
@@ -267,10 +271,7 @@ class SpeakerRegistry:
             )
             return best_fallback.speaker_id
 
-        generic_profile_count = sum(
-            profile.fallback_for_unmatched for profile in self._profiles
-        )
-        if best_fallback and generic_profile_count >= self._max_profiles:
+        if best_fallback and self.fallback_profile_count >= self._max_profiles:
             logger.info(
                 "Reusing closest speaker %s for %s (similarity %.3f)",
                 best_fallback.speaker_id,
@@ -311,6 +312,8 @@ class SpeakerRegistry:
         for profile in self._profiles:
             if profile.speaker_id != speaker_id:
                 continue
+            if not profile.fallback_for_unmatched:
+                return
             sample_count = profile.sample_count
             profile.embedding = (profile.embedding * sample_count + embedding) / (sample_count + 1)
             norm = np.linalg.norm(profile.embedding)
@@ -485,7 +488,7 @@ class SpeakerDiarizer:
             return [DiarizedSegment(speaker_id, pcm_bytes, start_sample)]
 
         matched_id, _ = self._registry.match(full_embedding)
-        if matched_id or not allow_create or self._registry.profile_count == 0:
+        if matched_id or not allow_create or self._registry.fallback_profile_count == 0:
             return assign_full()
 
         try:

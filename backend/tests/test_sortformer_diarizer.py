@@ -3,6 +3,8 @@ import unittest
 import numpy as np
 
 from app.services.sortformer_diarizer import SortformerDiarizer, extract_sortformer_turns
+from app.services.speaker_diarizer import SpeakerRegistry
+from app.services.voice_enrollment import LOCAL_VOICE_PROFILE_ID
 
 
 def _embedding_from_signal_mean(pcm_float: np.ndarray, sample_rate: int) -> np.ndarray:
@@ -52,6 +54,30 @@ class SortformerDiarizerTests(unittest.TestCase):
             raise RuntimeError("embedding unavailable")
 
         diarizer = StubSortformerDiarizer([["0.00 1.00 speaker_0"]])
+        diarizer._embedding_extractor = fail_embedding
+        voice = (np.ones(16000, dtype=np.int16) * 1000).tobytes()
+
+        segments = diarizer._process_pcm_window(voice)
+
+        self.assertEqual([], segments)
+        self.assertEqual({}, diarizer._speaker_map)
+
+    def test_enrollment_does_not_change_short_embedding_failure_behavior(self):
+        registry = SpeakerRegistry(threshold=0.9)
+        registry.enroll(
+            LOCAL_VOICE_PROFILE_ID,
+            np.array([1.0, 0.0], dtype=np.float32),
+            fallback_for_unmatched=False,
+        )
+
+        def fail_embedding(pcm_float, sample_rate):
+            del pcm_float, sample_rate
+            raise RuntimeError("embedding unavailable")
+
+        diarizer = StubSortformerDiarizer(
+            [["0.00 1.00 speaker_0"]],
+            registry=registry,
+        )
         diarizer._embedding_extractor = fail_embedding
         voice = (np.ones(16000, dtype=np.int16) * 1000).tobytes()
 

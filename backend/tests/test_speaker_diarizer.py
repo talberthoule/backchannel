@@ -9,6 +9,7 @@ from app.services.speaker_diarizer import (
     SpeakerRegistry,
     VoiceActivityDetector,
 )
+from app.services.voice_enrollment import LOCAL_VOICE_PROFILE_ID
 
 
 def embedding(*values: float) -> np.ndarray:
@@ -90,6 +91,28 @@ class SpeakerDiarizerTests(unittest.TestCase):
         self.assertEqual(["auto_2"], [segment.speaker_id for segment in segments])
         self.assertEqual(2, registry.profile_count)
         self.assertEqual(3, extract.call_count)
+
+    def test_enrollment_preserves_first_long_unmatched_participant(self):
+        registry = SpeakerRegistry(threshold=0.90)
+        registry.enroll(
+            LOCAL_VOICE_PROFILE_ID,
+            embedding(1.0, 0.0),
+            fallback_for_unmatched=False,
+        )
+        diarizer = SpeakerDiarizer(registry=registry)
+
+        segments, _ = finalize(
+            diarizer,
+            pcm(6.0),
+            [
+                embedding(0.0, 1.0),
+                embedding(0.0, 1.0),
+                embedding(0.0, -1.0),
+            ],
+        )
+
+        self.assertEqual(["auto_1"], [segment.speaker_id for segment in segments])
+        self.assertEqual(2, registry.profile_count)
 
     def test_mixed_turn_splits_without_enrollment_or_pcm_loss(self):
         registry = SpeakerRegistry(threshold=0.90)

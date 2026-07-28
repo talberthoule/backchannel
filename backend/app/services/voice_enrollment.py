@@ -16,7 +16,8 @@ SETTING_LOCAL_VOICE_EMBEDDING = "diarization.local_voice_embedding"
 LOCAL_VOICE_PROFILE_ID = "enrolled_local_user"
 MIN_ENROLLMENT_SECONDS = 4
 MAX_ENROLLMENT_SECONDS = 15
-MAX_ENROLLMENT_UPLOAD_BYTES = 8 * 1024 * 1024
+# Accepted browser samples stay below Starlette's in-memory multipart spool.
+MAX_ENROLLMENT_UPLOAD_BYTES = 1024 * 1024
 PCM_BYTES_PER_SECOND = 16000 * 2
 
 
