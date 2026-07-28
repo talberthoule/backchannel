@@ -13,6 +13,8 @@ const KEY_ID = "ed25519-2026-07b";
 const REQUEST_URL =
   `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}` +
   `/secrets_store/stores/${STORE_ID}/secrets`;
+const FILESYSTEM_MODULE = /(["'`])(?:node:)?fs(?:\/promises)?\1/g;
+let streamCaptureTail = Promise.resolve();
 
 function successResponse() {
   return new Response(JSON.stringify({
@@ -31,20 +33,105 @@ function successResponse() {
   }));
 }
 
+async function keyFixture() {
+  const pair = await crypto.subtle.generateKey(
+    "Ed25519", true, ["sign", "verify"],
+  );
+  const privateBytes = new Uint8Array(
+    await crypto.subtle.exportKey("pkcs8", pair.privateKey),
+  );
+  const privateValue = Buffer.from(
+    privateBytes.buffer,
+    privateBytes.byteOffset,
+    privateBytes.byteLength,
+  ).toString("base64url");
+  return {
+    pair,
+    privateValue,
+    wipe: () => privateBytes.fill(0),
+  };
+}
+
 async function runSuccess(auth) {
+  const fixture = await keyFixture();
   const output = [];
   let captured;
-  await runCeremony({
-    accountId: ACCOUNT_ID,
-    storeId: STORE_ID,
-    authToken: async () => auth,
-    fetchImpl: async (url, init) => {
-      captured = {url, init};
-      return successResponse();
-    },
-    writeOutput: value => output.push(value),
+  try {
+    await withoutProcessLeaks(
+      [...Object.values(auth), fixture.privateValue],
+      () => runCeremony({
+        accountId: ACCOUNT_ID,
+        storeId: STORE_ID,
+        authToken: async () => auth,
+        generateKeyPair: async () => fixture.pair,
+        fetchImpl: async (url, init) => {
+          captured = {url, init};
+          return successResponse();
+        },
+        writeOutput: value => output.push(value),
+      }),
+    );
+    return {captured, output};
+  } finally {
+    fixture.wipe();
+  }
+}
+
+async function withoutProcessLeaks(sensitiveValues, operation) {
+  const previousCapture = streamCaptureTail;
+  let releaseCapture;
+  streamCaptureTail = new Promise(resolve => {
+    releaseCapture = resolve;
   });
-  return {captured, output};
+  await previousCapture;
+
+  const stderr = [];
+  const stdout = [];
+  const stderrWrite = process.stderr.write;
+  const stdoutWrite = process.stdout.write;
+  const sensitive = sensitiveValues.filter(Boolean);
+  let error;
+  let result;
+  process.stderr.write = function (chunk, ...args) {
+    stderr.push({args, chunk});
+    return true;
+  };
+  process.stdout.write = function (chunk, ...args) {
+    stdout.push({args, chunk});
+    return true;
+  };
+  try {
+    result = await operation();
+  } catch (caught) {
+    error = caught;
+  } finally {
+    process.stderr.write = stderrWrite;
+    process.stdout.write = stdoutWrite;
+  }
+  try {
+    const stderrText = stderr.map(({chunk}) => String(chunk)).join("");
+    const stdoutText = stdout.map(({chunk}) => String(chunk)).join("");
+    for (const item of sensitive) {
+      assert.ok(
+        !stdoutText.includes(item),
+        "actual stdout leaked sensitive test data",
+      );
+      assert.ok(
+        !stderrText.includes(item),
+        "actual stderr leaked sensitive test data",
+      );
+    }
+    for (const {args, chunk} of stdout) {
+      stdoutWrite.call(process.stdout, chunk, ...args);
+    }
+    for (const {args, chunk} of stderr) {
+      stderrWrite.call(process.stderr, chunk, ...args);
+    }
+    if (error) throw error;
+    return result;
+  } finally {
+    releaseCapture();
+  }
 }
 
 async function captureFailure(operation) {
@@ -59,40 +146,19 @@ async function captureFailure(operation) {
 }
 
 test("posts the PKCS8 key over HTTPS and prints only the public key", async () => {
-  const actualStderr = [];
-  const actualStdout = [];
   const output = [];
   let captured;
   let timeoutMs;
   const timeoutSignal = {};
-  const fixturePair = await crypto.subtle.generateKey(
-    "Ed25519", true, ["sign", "verify"],
-  );
-  const fixturePrivateBytes = new Uint8Array(
-    await crypto.subtle.exportKey("pkcs8", fixturePair.privateKey),
-  );
-  const fixturePrivate = Buffer.from(
-    fixturePrivateBytes.buffer,
-    fixturePrivateBytes.byteOffset,
-    fixturePrivateBytes.byteLength,
-  ).toString("base64url");
+  const fixture = await keyFixture();
   const fixturePublic = Buffer.from(
-    await crypto.subtle.exportKey("raw", fixturePair.publicKey),
+    await crypto.subtle.exportKey("raw", fixture.pair.publicKey),
   ).toString("base64url");
 
   try {
-    const stderrWrite = process.stderr.write;
-    const stdoutWrite = process.stdout.write;
-    process.stderr.write = chunk => {
-      actualStderr.push(String(chunk));
-      return true;
-    };
-    process.stdout.write = chunk => {
-      actualStdout.push(String(chunk));
-      return true;
-    };
-    try {
-      await runCeremony({
+    await withoutProcessLeaks(
+      [fixture.privateValue, "fixture-token"],
+      () => runCeremony({
         accountId: ACCOUNT_ID,
         storeId: STORE_ID,
         authToken: async () => ({type: "api_token", token: "fixture-token"}),
@@ -100,7 +166,7 @@ test("posts the PKCS8 key over HTTPS and prints only the public key", async () =
           timeoutMs = milliseconds;
           return timeoutSignal;
         },
-        generateKeyPair: async () => fixturePair,
+        generateKeyPair: async () => fixture.pair,
         fetchImpl: async (url, init) => {
           captured = {
             url,
@@ -113,11 +179,8 @@ test("posts the PKCS8 key over HTTPS and prints only the public key", async () =
           return successResponse();
         },
         writeOutput: value => output.push(value),
-      });
-    } finally {
-      process.stderr.write = stderrWrite;
-      process.stdout.write = stdoutWrite;
-    }
+      }),
+    );
 
     assert.equal(captured.url, REQUEST_URL);
     assert.equal(captured.method, "POST");
@@ -134,7 +197,7 @@ test("posts the PKCS8 key over HTTPS and prints only the public key", async () =
     assert.equal(captured.body[0].name, KEY_ID);
     assert.deepEqual(captured.body[0].scopes, ["workers"]);
     assert.ok(
-      captured.body[0].value === fixturePrivate,
+      captured.body[0].value === fixture.privateValue,
       "request must contain the fixture PKCS8 value",
     );
     assert.equal(output.length, 1);
@@ -145,20 +208,14 @@ test("posts the PKCS8 key over HTTPS and prints only the public key", async () =
     assert.deepEqual(Object.keys(JSON.parse(output[0])).sort(), [
       "key_id", "public_key",
     ]);
-    assert.ok(!output[0].includes(fixturePrivate));
-    assert.ok(!process.argv.join("\0").includes(fixturePrivate));
-    assert.ok(!Object.values(process.env).join("\0").includes(fixturePrivate));
-    assert.ok(
-      actualStdout.every(value => !value.includes(fixturePrivate)),
-      "actual stdout leaked the fixture private value",
-    );
-    assert.ok(
-      actualStderr.every(value => !value.includes(fixturePrivate)),
-      "actual stderr leaked the fixture private value",
-    );
+    assert.ok(!output[0].includes(fixture.privateValue));
+    assert.ok(!process.argv.join("\0").includes(fixture.privateValue));
+    assert.ok(!Object.values(process.env).join("\0").includes(
+      fixture.privateValue,
+    ));
     assert.ok(captured.mutableBody.every(byte => byte === 0));
   } finally {
-    fixturePrivateBytes.fill(0);
+    fixture.wipe();
     if (captured?.body?.[0]) captured.body[0].value = "";
   }
 });
@@ -168,10 +225,25 @@ test("ceremony source has no filesystem-write path", async () => {
     new URL("../scripts/create-signing-key.mjs", import.meta.url),
     "utf8",
   );
-  assert.doesNotMatch(
-    source,
-    /\b(?:appendFile|appendFileSync|createWriteStream|writeFile|writeFileSync)\b|node:fs(?:\/promises)?/,
+  const filesystemModules = source.match(FILESYSTEM_MODULE) ?? [];
+  assert.equal(
+    filesystemModules.length,
+    0,
+    "ceremony must have no Node filesystem module or file-write path",
   );
+});
+
+test("filesystem guard covers static, dynamic, require, and builtin access", () => {
+  for (const source of [
+    'import fs from "fs"',
+    'import "fs/promises"',
+    'await import("node:fs")',
+    'require("node:fs/promises")',
+    'process.getBuiltinModule("fs")',
+    'process.getBuiltinModule("node:fs/promises")',
+  ]) {
+    assert.equal((source.match(FILESYSTEM_MODULE) ?? []).length, 1);
+  }
 });
 
 test("uses a Bearer header for Wrangler OAuth", async () => {
@@ -231,14 +303,17 @@ test("rejects invalid IDs and non-HTTPS API URLs before external work", async ()
 
 test("captures Wrangler auth without inheriting output or exposing failures", async () => {
   let invocation;
-  const auth = await captureWranglerAuth((file, args, options, callback) => {
-    invocation = {file, args, options};
-    callback(
-      null,
-      JSON.stringify({type: "api_token", token: "fixture-token"}),
-      "captured-stderr",
-    );
-  });
+  const auth = await withoutProcessLeaks(
+    ["fixture-token", "captured-stderr"],
+    () => captureWranglerAuth((file, args, options, callback) => {
+      invocation = {file, args, options};
+      callback(
+        null,
+        JSON.stringify({type: "api_token", token: "fixture-token"}),
+        "captured-stderr",
+      );
+    }),
+  );
 
   assert.deepEqual(auth, {type: "api_token", token: "fixture-token"});
   assert.equal(invocation.file, process.execPath);
@@ -248,10 +323,11 @@ test("captures Wrangler auth without inheriting output or exposing failures", as
   assert.notEqual(invocation.options.stdio, "inherit");
 
   const marker = "fixture-auth-private";
-  const error = await captureFailure(() => captureWranglerAuth(
-    (_file, _args, _options, callback) => {
+  const error = await captureFailure(() => withoutProcessLeaks(
+    [marker],
+    () => captureWranglerAuth((_file, _args, _options, callback) => {
       callback(new Error(marker), marker, marker);
-    },
+    }),
   ));
   assert.equal(error.message, "Cloudflare authentication failed");
   assert.ok(!error.message.includes(marker));
@@ -266,18 +342,21 @@ test("fails generically when Wrangler auth is invalid", async () => {
       throw new Error(marker);
     },
   ]) {
-    const error = await captureFailure(() => runCeremony({
-      accountId: ACCOUNT_ID,
-      storeId: STORE_ID,
-      authToken,
-      generateKeyPair: async () => {
-        assert.fail("must not generate a key after auth failure");
-      },
-      fetchImpl: async () => {
-        assert.fail("must not fetch after auth failure");
-      },
-      writeOutput: value => output.push(value),
-    }));
+    const error = await captureFailure(() => withoutProcessLeaks(
+      [marker],
+      () => runCeremony({
+        accountId: ACCOUNT_ID,
+        storeId: STORE_ID,
+        authToken,
+        generateKeyPair: async () => {
+          assert.fail("must not generate a key after auth failure");
+        },
+        fetchImpl: async () => {
+          assert.fail("must not fetch after auth failure");
+        },
+        writeOutput: value => output.push(value),
+      }),
+    ));
     assert.equal(error.message, "Cloudflare authentication failed");
     assert.ok(!error.message.includes(marker));
   }
@@ -285,38 +364,57 @@ test("fails generically when Wrangler auth is invalid", async () => {
 });
 
 test("fails generically on non-success responses without printing the body", async () => {
+  const fixture = await keyFixture();
   const output = [];
   const marker = "fixture-response-private";
-  const error = await captureFailure(() => runCeremony({
-    accountId: ACCOUNT_ID,
-    storeId: STORE_ID,
-    authToken: async () => ({type: "api_token", token: "fixture-token"}),
-    fetchImpl: async () => new Response(marker, {status: 403}),
-    writeOutput: value => output.push(value),
-  }));
+  let error;
+  try {
+    error = await captureFailure(() => withoutProcessLeaks(
+      ["fixture-token", marker, fixture.privateValue],
+      () => runCeremony({
+        accountId: ACCOUNT_ID,
+        storeId: STORE_ID,
+        authToken: async () => ({type: "api_token", token: "fixture-token"}),
+        generateKeyPair: async () => fixture.pair,
+        fetchImpl: async () => new Response(marker, {status: 403}),
+        writeOutput: value => output.push(value),
+      }),
+    ));
+  } finally {
+    fixture.wipe();
+  }
   assert.equal(error.message, "Cloudflare secret creation failed");
   assert.ok(!error.message.includes(marker));
   assert.deepEqual(output, []);
 });
 
 test("fails generically on invalid success metadata", async () => {
+  const fixture = await keyFixture();
   const output = [];
   const marker = "fixture-response-private";
-  for (const body of [
-    marker,
-    JSON.stringify({success: false, errors: [{message: marker}]}),
-    JSON.stringify({success: true, result: []}),
-    JSON.stringify({success: true, result: [{name: "wrong-secret"}]}),
-  ]) {
-    const error = await captureFailure(() => runCeremony({
-      accountId: ACCOUNT_ID,
-      storeId: STORE_ID,
-      authToken: async () => ({type: "api_token", token: "fixture-token"}),
-      fetchImpl: async () => new Response(body),
-      writeOutput: value => output.push(value),
-    }));
-    assert.equal(error.message, "Cloudflare secret creation failed");
-    assert.ok(!error.message.includes(marker));
+  try {
+    for (const body of [
+      marker,
+      JSON.stringify({success: false, errors: [{message: marker}]}),
+      JSON.stringify({success: true, result: []}),
+      JSON.stringify({success: true, result: [{name: "wrong-secret"}]}),
+    ]) {
+      const error = await captureFailure(() => withoutProcessLeaks(
+        ["fixture-token", marker, fixture.privateValue],
+        () => runCeremony({
+          accountId: ACCOUNT_ID,
+          storeId: STORE_ID,
+          authToken: async () => ({type: "api_token", token: "fixture-token"}),
+          generateKeyPair: async () => fixture.pair,
+          fetchImpl: async () => new Response(body),
+          writeOutput: value => output.push(value),
+        }),
+      ));
+      assert.equal(error.message, "Cloudflare secret creation failed");
+      assert.ok(!error.message.includes(marker));
+    }
+  } finally {
+    fixture.wipe();
   }
   assert.deepEqual(output, []);
 });
