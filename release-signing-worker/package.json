@@ -1,0 +1,14 @@
+{
+  "name": "backchannel-release-signing-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "jose": "6.2.4"
+  },
+  "devDependencies": {
+    "wrangler": "4.115.0"
+  }
+}
