@@ -14,12 +14,13 @@ interface QuestionListProps {
   speakers: Speaker[];
   strategicSignalQuestionIds?: string[];
   showEnhanced?: boolean;
+  emptyMessage?: string;
   onStar: (id: string, starred: boolean) => void;
   onDismiss: (id: string) => void;
   onVote: (id: string, vote: number) => void;
 }
 
-export default function QuestionList({ questions, speakers, strategicSignalQuestionIds = [], showEnhanced = false, onStar, onDismiss, onVote }: QuestionListProps) {
+export default function QuestionList({ questions, speakers, strategicSignalQuestionIds = [], showEnhanced = false, emptyMessage, onStar, onDismiss, onVote }: QuestionListProps) {
   const [activeFilters, setActiveFilters] = useState<Set<Filter>>(new Set(["all"]));
   const strategicSignalIdSet = useMemo(
     () => new Set(strategicSignalQuestionIds),
@@ -128,7 +129,7 @@ export default function QuestionList({ questions, speakers, strategicSignalQuest
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <p className="font-body text-sm text-brand-mid-gray">
               {activeFilters.has("all")
-                ? "No active items. Waiting for conversation..."
+                ? emptyMessage || "No active items. Waiting for conversation..."
                 : "No items match the selected filters."}
             </p>
           </div>

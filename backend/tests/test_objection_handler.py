@@ -58,6 +58,7 @@ class ObjectionHandlerCycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(item["speaker_id"], SPEAKER_ID)
         self.assertIn("Respond now:", item["rationale"])
         self.assertIn("Bigger picture:", item["rationale"])
+        self.assertEqual("insights", agent.last_outcome["kind"])
 
     async def test_unchanged_window_skips_llm_call(self):
         agent = ObjectionHandlerAgent()
@@ -65,9 +66,11 @@ class ObjectionHandlerCycleTests(unittest.IsolatedAsyncioTestCase):
 
         with patch("app.services.agents.objection_handler.generate_json", new=mock_generate):
             await agent.run_cycle("Speaker 1: same text", [], SPEAKERS)
+            self.assertEqual("no_findings", agent.last_outcome["kind"])
             await agent.run_cycle("Speaker 1: same text", [], SPEAKERS)
 
         self.assertEqual(mock_generate.await_count, 1)
+        self.assertEqual("skipped_unchanged", agent.last_outcome["kind"])
 
     async def test_surfaced_objections_fed_back_into_prompt(self):
         agent = ObjectionHandlerAgent()

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AudioSendStats, MeetingType, PostProcessingProgress as PostProcessingProgressState, Question, Session, SessionSynthesis, Speaker, StopDrainMode, TranscriptEntry } from "../../types";
+import type { AgentActivitySnapshot, AudioSendStats, MeetingType, PostProcessingProgress as PostProcessingProgressState, Question, Session, SessionSynthesis, Speaker, StopDrainMode, TranscriptEntry } from "../../types";
+import AgentActivityPanel, { activityEmptyMessage } from "./AgentActivityPanel";
 import AudioIndicator from "./AudioIndicator";
 import DirectiveBar from "./DirectiveBar";
 import PostProcessingProgress from "./PostProcessingProgress";
@@ -31,6 +32,7 @@ interface ActiveCallViewProps {
   speakers: Speaker[];
   postProcessing?: PostProcessingProgressState;
   synthesis: SessionSynthesis | null;
+  activity: AgentActivitySnapshot | null;
 }
 
 const MEETING_TYPE_OPTIONS: { value: MeetingType; label: string }[] = [
@@ -99,6 +101,7 @@ export default function ActiveCallView({
   speakers,
   postProcessing,
   synthesis,
+  activity,
 }: ActiveCallViewProps) {
   const [debugOpen, setDebugOpen] = useState(false);
   const [contextExpanded, setContextExpanded] = useState(false);
@@ -107,6 +110,7 @@ export default function ActiveCallView({
   const autoUpvotedSignalIds = useRef<Set<string>>(new Set());
   const timerDisplay = useSessionTimer(callSegmentStart);
   const postProcessingActive = postProcessing?.active ?? false;
+  const backendDisconnected = status !== "connected";
   const audioSeconds = Math.round(audioStats.bytesSent / 32000);
   const lastAudioAge =
     audioStats.lastSentAt
@@ -172,6 +176,10 @@ export default function ActiveCallView({
           : q
       ),
     [normalizedQuestions, strategicSignalQuestionIdSet]
+  );
+  const emptyInsightMessage = activityEmptyMessage(
+    activity,
+    displayQuestions.length > 0,
   );
 
   return (
@@ -258,10 +266,15 @@ export default function ActiveCallView({
             </button>
           )}
           {/* Session timer */}
-          <div className="flex items-center gap-2">
+          <div className={`flex items-center gap-2 ${backendDisconnected ? "opacity-40" : ""}`}>
             <span className="font-mono text-lg font-semibold tabular-nums text-brand-dark-gray">
               {timerDisplay}
             </span>
+            {backendDisconnected && (
+              <span className="font-body text-[10px] font-semibold uppercase tracking-wide text-red-600">
+                not recording
+              </span>
+            )}
           </div>
 
           {/* End Call split button: primary = full drain, menu = skip briefing */}
@@ -329,8 +342,18 @@ export default function ActiveCallView({
         </div>
       </header>
 
+      <AgentActivityPanel snapshot={activity} />
       {postProcessing && postProcessingActive && <PostProcessingProgress progress={postProcessing} />}
       <SynthesisSignals session={session} synthesis={synthesis} />
+      {backendDisconnected ? (
+        <div className="border-b border-red-200 bg-red-50 px-4 py-3 font-body text-sm font-medium text-red-700 md:px-6">
+          Connection to the backend was lost. Audio is not being recorded. Use Resume Audio to reconnect.
+        </div>
+      ) : activity?.call.degraded ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 font-body text-sm font-medium text-amber-900 md:px-6">
+          {activity.call.degraded_reasons.join(" ")}
+        </div>
+      ) : null}
 
       {/* Two-column on desktop, stacked on mobile */}
       <div className={`flex flex-1 flex-col overflow-hidden md:flex-row ${postProcessingActive ? "pointer-events-none opacity-60" : ""}`}>
@@ -347,6 +370,7 @@ export default function ActiveCallView({
               speakers={speakers}
               strategicSignalQuestionIds={strategicSignalQuestionIds}
               showEnhanced={Boolean(session.speaker_context_enhanced_at)}
+              emptyMessage={emptyInsightMessage}
               onStar={onStarQuestion}
               onDismiss={onDismissQuestion}
               onVote={onVoteQuestion}

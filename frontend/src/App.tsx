@@ -13,7 +13,7 @@ import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
 import { useAppUpdates } from "./hooks/useAppUpdates";
 import { useConfirm } from "./components/ConfirmProvider";
 import * as api from "./services/api";
-import type { PostProcessingProgress, Question, Session, SessionGroup, SessionSynthesis, StopDrainMode, TranscriptEntry, WSStatusData } from "./types";
+import type { AgentActivitySnapshot, PostProcessingProgress, Question, Session, SessionGroup, SessionSynthesis, StopDrainMode, TranscriptEntry, WSStatusData } from "./types";
 
 function idlePostProcessing(): PostProcessingProgress {
   return {
@@ -203,6 +203,7 @@ export default function App() {
   const [liveTranscripts, setLiveTranscripts] = useState<TranscriptEntry[]>([]);
   const [interimText, setInterimText] = useState("");
   const [runtimeSynthesis, setRuntimeSynthesis] = useState<SessionSynthesis | null>(null);
+  const [runtimeActivity, setRuntimeActivity] = useState<AgentActivitySnapshot | null>(null);
   const [processingTranscript, setProcessingTranscript] = useState(false);
   const [processingError, setProcessingError] = useState<string | null>(null);
   const [backendAudioStatus, setBackendAudioStatus] = useState<string | null>(null);
@@ -295,6 +296,8 @@ export default function App() {
           const combined = prev + msg.data.text;
           return combined.length > 500 ? combined.slice(-500) : combined;
         });
+      } else if (msg.type === "agent_activity") {
+        setRuntimeActivity(msg.data);
       } else if (msg.type === "status") {
         if (msg.data.state === "post_processing" || msg.data.state === "finalizing") {
           setPostProcessing((prev) => progressFromStatus(prev, msg.data));
@@ -398,6 +401,7 @@ export default function App() {
   const viewLiveQuestions = runtimeMatchesView ? liveQuestions : [];
   const viewLiveTranscripts = runtimeMatchesView ? liveTranscripts : [];
   const viewRuntimeSynthesis = runtimeMatchesView ? runtimeSynthesis : null;
+  const viewRuntimeActivity = runtimeMatchesView ? runtimeActivity : null;
 
   const allQuestions = runtimeMatchesView
     ? session?.state === "completed"
@@ -443,6 +447,7 @@ export default function App() {
     setLiveTranscripts([]);
     setInterimText("");
     setRuntimeSynthesis(null);
+    setRuntimeActivity(null);
     setProcessingTranscript(false);
     setProcessingError(null);
     setBackendAudioStatus(null);
@@ -660,6 +665,7 @@ export default function App() {
         setLiveTranscripts([]);
         setInterimText("");
         setRuntimeSynthesis(null);
+        setRuntimeActivity(null);
         setProcessingTranscript(false);
         setProcessingError(null);
         setBackendAudioStatus(null);
@@ -696,6 +702,7 @@ export default function App() {
       setLiveTranscripts([]);
       setInterimText("");
       setRuntimeSynthesis(null);
+      setRuntimeActivity(null);
     }
     runtimeSessionIdRef.current = activeSessionId;
     liveSessionIdRef.current = activeSessionId;
@@ -909,6 +916,7 @@ export default function App() {
             speakers={speakers}
             postProcessing={postProcessing}
             synthesis={liveSynthesis}
+            activity={viewRuntimeActivity}
           />
         );
       case "completed":
