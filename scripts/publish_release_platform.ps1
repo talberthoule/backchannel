@@ -270,6 +270,7 @@ try {
             throw "Platform metadata validation failed"
         }
 
+        $handler = $null
         $client = $null
         $content = $null
         $response = $null
@@ -279,7 +280,9 @@ try {
             $requestDocument = (
                 [Text.Encoding]::UTF8.GetString($requestBytes) | ConvertFrom-Json
             )
-            $client = [Net.Http.HttpClient]::new()
+            $handler = [Net.Http.HttpClientHandler]::new()
+            $handler.AllowAutoRedirect = $false
+            $client = [Net.Http.HttpClient]::new($handler, $false)
             $client.Timeout = [TimeSpan]::FromSeconds($SigningTimeoutSeconds)
             $client.DefaultRequestHeaders.Add(
                 "CF-Access-Client-Id",
@@ -298,6 +301,12 @@ try {
                 throw "Remote release signing failed"
             }
             $responseText = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            if (-not $responseText.TrimStart().StartsWith(
+                "{",
+                [StringComparison]::Ordinal
+            )) {
+                throw "Remote release signing failed"
+            }
             $signingResponse = $responseText | ConvertFrom-Json
             if ($signingResponse -isnot [pscustomobject]) {
                 throw "Remote release signing failed"
@@ -321,6 +330,7 @@ try {
             if ($response) { $response.Dispose() }
             if ($content) { $content.Dispose() }
             if ($client) { $client.Dispose() }
+            if ($handler) { $handler.Dispose() }
         }
 
         & python $metadataHelper @metadataArguments `

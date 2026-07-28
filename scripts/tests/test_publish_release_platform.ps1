@@ -48,6 +48,7 @@ $oldFakeLog = $env:R2_FAKE_LOG
 $oldFakeRaceKey = $env:R2_FAKE_RACE_KEY
 $oldFakeRaceDir = $env:R2_FAKE_RACE_DIR
 $oldFakeHeadSize = $env:R2_FAKE_HEAD_SIZE
+$oldFakePowerShell = $env:R2_FAKE_POWERSHELL
 $oldSigningSecret = $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY
 $oldSigningUrl = $env:BACKCHANNEL_RELEASE_SIGNING_URL
 $oldAccessClientId = $env:CLOUDFLARE_ACCESS_CLIENT_ID
@@ -157,12 +158,13 @@ function Start-TestSigner {
     param(
         [int]$StatusCode = 200,
         [string]$ResponseBody,
-        [int]$DelayMilliseconds = 0
+        [int]$DelayMilliseconds = 0,
+        [string]$Location
     )
     $capture = Join-Path $temporary "signer-capture-$([guid]::NewGuid()).json"
     $ready = Join-Path $temporary "signer-ready-$([guid]::NewGuid()).txt"
-    $job = Start-Job -ArgumentList $capture, $ready, $StatusCode, $ResponseBody, $DelayMilliseconds -ScriptBlock {
-        param($CapturePath, $ReadyPath, $Status, $Body, $Delay)
+    $job = Start-Job -ArgumentList $capture, $ready, $StatusCode, $ResponseBody, $DelayMilliseconds, $Location -ScriptBlock {
+        param($CapturePath, $ReadyPath, $Status, $Body, $Delay, $LocationHeader)
         $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
         try {
             $listener.Start()
@@ -240,7 +242,8 @@ function Start-TestSigner {
                 }
                 $reason = if ($Status -eq 200) { "OK" } elseif ($Status -eq 401) { "Unauthorized" } else { "Error" }
                 $responseBytes = [Text.Encoding]::UTF8.GetBytes($Body)
-                $responseHead = "HTTP/1.1 $Status $reason`r`nContent-Type: application/json`r`nX-Fixture-Response: fixture-response-body-value`r`nContent-Length: $($responseBytes.Length)`r`nConnection: close`r`n`r`n"
+                $locationLine = if ($LocationHeader) { "Location: $LocationHeader`r`n" } else { "" }
+                $responseHead = "HTTP/1.1 $Status $reason`r`n${locationLine}Content-Type: application/json`r`nX-Fixture-Response: fixture-response-body-value`r`nContent-Length: $($responseBytes.Length)`r`nConnection: close`r`n`r`n"
                 $headBytes = [Text.Encoding]::ASCII.GetBytes($responseHead)
                 $stream.Write($headBytes, 0, $headBytes.Length)
                 $stream.Write($responseBytes, 0, $responseBytes.Length)
@@ -374,7 +377,7 @@ try {
     Write-Utf8 $privateKey "fixture-private-value"
     $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $null
 
-    Write-Utf8 $fakeNode "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%R2_FAKE_SCRIPT%`" %*`r`nexit /b %ERRORLEVEL%`r`n"
+    Write-Utf8 $fakeNode "@echo off`r`n`"%R2_FAKE_POWERSHELL%`" -NoProfile -ExecutionPolicy Bypass -File `"%R2_FAKE_SCRIPT%`" %*`r`nexit /b %ERRORLEVEL%`r`n"
     Write-Utf8 $fakeNodeScript @'
 param([Parameter(ValueFromRemainingArguments = $true)][string[]]$RawArgs)
 $ErrorActionPreference = "Stop"
@@ -443,7 +446,7 @@ WriteJson '{"error":"invalid arguments"}' $true
 exit 2
 '@
 
-    Write-Utf8 $fakePython "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$fakePythonScript`" %*`r`nexit /b %ERRORLEVEL%`r`n"
+    Write-Utf8 $fakePython "@echo off`r`n`"%R2_FAKE_POWERSHELL%`" -NoProfile -ExecutionPolicy Bypass -File `"$fakePythonScript`" %*`r`nexit /b %ERRORLEVEL%`r`n"
     Write-Utf8 $fakePythonScript @'
 param([Parameter(ValueFromRemainingArguments = $true)][string[]]$RawArgs)
 $ErrorActionPreference = "Stop"
@@ -508,6 +511,7 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
     $env:R2_FAKE_SCRIPT = $fakeNodeScript
     $env:R2_FAKE_STORE = $store
     $env:R2_FAKE_LOG = $log
+    $env:R2_FAKE_POWERSHELL = (Get-Process -Id $PID).Path
     $env:PATH = "$temporary;$oldPath"
 
     $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = "fixture-private-value"
@@ -565,6 +569,13 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
             Timeout = 30
         },
         @{
+            Label = "top-level array"
+            Status = 200
+            Body = ('[{{"key_id":"ed25519-2026-07","signature":"{0}"}}]' -f $validSignature)
+            Delay = 0
+            Timeout = 30
+        },
+        @{
             Label = "wrong key ID"
             Status = 200
             Body = ('{{"key_id":"other-key","signature":"{0}"}}' -f $validSignature)
@@ -589,6 +600,28 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
         Assert-True (@(Read-Log).Count -eq 0) "$($case.Label) reached R2"
         Assert-NoFixtureLeak $remote.Result.Output @($responseSecret)
     }
+
+    Reset-FakeR2
+    $redirectTarget = Start-TestSigner -StatusCode 200 -ResponseBody $validResponse
+    $redirectSource = Start-TestSigner `
+        -StatusCode 302 `
+        -ResponseBody $responseSecret `
+        -Location $redirectTarget.Url
+    $env:BACKCHANNEL_RELEASE_SIGNING_URL = $redirectSource.Url
+    try {
+        $result = Invoke-Publisher `
+            -SigningMode Remote `
+            -AssetPath (New-Asset)
+    } finally {
+        Complete-TestSigner $redirectSource
+        Complete-TestSigner $redirectTarget
+    }
+    Assert-True $result.Failed "Signer redirect was followed"
+    Assert-True (
+        -not (Test-Path -LiteralPath $redirectTarget.Capture -PathType Leaf)
+    ) "Signer redirect reached another authority"
+    Assert-True (@(Read-Log).Count -eq 0) "Signer redirect reached R2"
+    Assert-NoFixtureLeak $result.Output @($responseSecret)
 
     Reset-FakeR2
     $env:BACKCHANNEL_RELEASE_SIGNING_URL = "http://example.com/sign"
@@ -698,7 +731,7 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
     Assert-True ($result.Output.Contains("Latest metadata is invalid")) `
         "Invalid Latest error was unclear"
 
-    Write-Output "Immutable platform publisher classification: OK"
+    Write-Output "Immutable platform publisher classification ($($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion)): OK"
 } finally {
     $env:PATH = $oldPath
     $env:R2_FAKE_SCRIPT = $oldFakeScript
@@ -707,6 +740,7 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
     $env:R2_FAKE_RACE_KEY = $oldFakeRaceKey
     $env:R2_FAKE_RACE_DIR = $oldFakeRaceDir
     $env:R2_FAKE_HEAD_SIZE = $oldFakeHeadSize
+    $env:R2_FAKE_POWERSHELL = $oldFakePowerShell
     $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $oldSigningSecret
     $env:BACKCHANNEL_RELEASE_SIGNING_URL = $oldSigningUrl
     $env:CLOUDFLARE_ACCESS_CLIENT_ID = $oldAccessClientId
