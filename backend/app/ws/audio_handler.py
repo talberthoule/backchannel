@@ -453,91 +453,12 @@ async def _finalize_call(
     )
 
 
-async def _audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
-    await websocket.accept()
-
-    async with async_session() as db:
-        session = await db.get(Session, session_id)
-        if not session:
-            await websocket.send_json({"type": "status", "data": {"state": "error", "message": "Session not found"}})
-            await websocket.close()
-            return
-
-        directives = await get_active_directives(session_id, db)
-        doc_summaries = await get_document_summaries(session_id, db)
-        meeting_type = session.meeting_type
-        meeting_context = session.meeting_context or session.notes or ""
-        # Load existing questions to give agents context on what to track
-        result = await db.execute(
-            select(Question).where(
-                Question.session_id == session_id,
-                Question.answered.is_(False),
-                Question.dismissed.is_(False),
-            )
-        )
-        existing_questions = [{"id": str(q.id), "question": q.question} for q in result.scalars().all()]
-
-        # Load speakers for agent context
-        result = await db.execute(
-            select(Speaker).where(Speaker.session_id == session_id).order_by(Speaker.created_at)
-        )
-        speaker_rows = list(result.scalars().all())
-        speakers_list = [_speaker_context(s) for s in speaker_rows]
-        local_voice_embedding = await load_live_mic_voice_embedding(db, speaker_rows)
-
-        agent_configs = await _load_agent_configs(db, session_id)
-
-        runtime_config, transcription_config, local_only, readiness = (
-            await _load_audio_runtime(db)
-        )
-
-    if not readiness.ready:
-        # Restore the row before notifying so the client's refresh reads the
-        # corrected state.
-        restored = await _restore_session_after_refusal(session_id)
-        logger.warning(
-            f"Refused call start for session {session_id} "
-            f"(restored state: {restored}): {readiness.reason}"
-        )
-        await _refuse_unready_transcription(websocket, readiness)
-        return
-
-    # Track active (unanswered) questions for agent context
-    active_questions: list[dict] = list(existing_questions)
-
-    # Which assigned models Privacy First admits. Resolved once here because
-    # each endpoint model costs a database read and the orchestrator's gate is
-    # synchronous; with the mode off this is every configured model.
-    admitted_models = await admitted_model_ids(
-        (cfg.model_id for cfg in agent_configs.values() if getattr(cfg, "model_id", "")),
-        local_only,
-    )
-
-    # --- Agent Orchestrator ---
-    orchestrator = AgentOrchestrator(
-        session_id=session_id,
-        websocket=websocket,
-        directives=directives,
-        doc_summaries=doc_summaries,
-        active_questions=active_questions,
-        speakers=speakers_list,
-        agent_configs=agent_configs,
-        meeting_type=meeting_type,
-        meeting_context=meeting_context,
-        local_only=local_only,
-        admitted_models=admitted_models,
-    )
-
-    # --- Speaker diarization ---
-    diarizer, transcriber, create_system_diarizer, batch_model_is_local = (
-        _create_audio_processors(
-            runtime_config,
-            transcription_config,
-            session_id,
-            local_voice_embedding,
-        )
-    )
-
+def _create_transcript_emitter(
+    session_id: uuid.UUID,
+    websocket: WebSocket,
+    orchestrator: AgentOrchestrator,
+    speaker_rows: list[Speaker],
+):
     # Map auto-assigned speaker IDs ("auto_1", "auto_2") to DB Speaker rows
     auto_speaker_map: dict[str, str] = {}  # "auto_1" -> str(speaker.id)
     # Also track speaker names for transcript buffer
@@ -648,9 +569,103 @@ async def _audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
             },
         )
 
+    return _emit_transcript
+
+
+async def _audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
+    await websocket.accept()
+
+    async with async_session() as db:
+        session = await db.get(Session, session_id)
+        if not session:
+            await websocket.send_json({"type": "status", "data": {"state": "error", "message": "Session not found"}})
+            await websocket.close()
+            return
+
+        directives = await get_active_directives(session_id, db)
+        doc_summaries = await get_document_summaries(session_id, db)
+        meeting_type = session.meeting_type
+        meeting_context = session.meeting_context or session.notes or ""
+        # Load existing questions to give agents context on what to track
+        result = await db.execute(
+            select(Question).where(
+                Question.session_id == session_id,
+                Question.answered.is_(False),
+                Question.dismissed.is_(False),
+            )
+        )
+        existing_questions = [{"id": str(q.id), "question": q.question} for q in result.scalars().all()]
+
+        # Load speakers for agent context
+        result = await db.execute(
+            select(Speaker).where(Speaker.session_id == session_id).order_by(Speaker.created_at)
+        )
+        speaker_rows = list(result.scalars().all())
+        speakers_list = [_speaker_context(s) for s in speaker_rows]
+        local_voice_embedding = await load_live_mic_voice_embedding(db, speaker_rows)
+
+        agent_configs = await _load_agent_configs(db, session_id)
+
+        runtime_config, transcription_config, local_only, readiness = (
+            await _load_audio_runtime(db)
+        )
+
+    if not readiness.ready:
+        # Restore the row before notifying so the client's refresh reads the
+        # corrected state.
+        restored = await _restore_session_after_refusal(session_id)
+        logger.warning(
+            f"Refused call start for session {session_id} "
+            f"(restored state: {restored}): {readiness.reason}"
+        )
+        await _refuse_unready_transcription(websocket, readiness)
+        return
+
+    # Track active (unanswered) questions for agent context
+    active_questions: list[dict] = list(existing_questions)
+
+    # Which assigned models Privacy First admits. Resolved once here because
+    # each endpoint model costs a database read and the orchestrator's gate is
+    # synchronous; with the mode off this is every configured model.
+    admitted_models = await admitted_model_ids(
+        (cfg.model_id for cfg in agent_configs.values() if getattr(cfg, "model_id", "")),
+        local_only,
+    )
+
+    # --- Agent Orchestrator ---
+    orchestrator = AgentOrchestrator(
+        session_id=session_id,
+        websocket=websocket,
+        directives=directives,
+        doc_summaries=doc_summaries,
+        active_questions=active_questions,
+        speakers=speakers_list,
+        agent_configs=agent_configs,
+        meeting_type=meeting_type,
+        meeting_context=meeting_context,
+        local_only=local_only,
+        admitted_models=admitted_models,
+    )
+
+    # --- Speaker diarization ---
+    diarizer, transcriber, create_system_diarizer, batch_model_is_local = (
+        _create_audio_processors(
+            runtime_config,
+            transcription_config,
+            session_id,
+            local_voice_embedding,
+        )
+    )
+
+    emit_transcript = _create_transcript_emitter(
+        session_id,
+        websocket,
+        orchestrator,
+        speaker_rows,
+    )
     transcription_queue = OrderedTranscriptionQueue(
         transcribe=transcriber.transcribe_segment,
-        emit=_emit_transcript,
+        emit=emit_transcript,
         on_failure=_transcription_failure_handler(
             websocket,
             batch_model_is_local,
