@@ -8,7 +8,7 @@ import BriefingView from "./BriefingView";
 import SpeakerNameMapper from "../SpeakerNameMapper";
 import EditableSessionName from "../EditableSessionName";
 import * as api from "../../services/api";
-import { formatPostProcessingSummary } from "../../lib/postProcessingSummary";
+import { formatPostProcessingSummary, parseSavedDrainSummary } from "../../lib/postProcessingSummary";
 import { estimateCostUsd, estimateSessionCostUsd, formatEstimatedCost } from "../../lib/modelPricing";
 
 interface PostCallViewProps {
@@ -99,6 +99,12 @@ export default function PostCallView({
   const [briefingError, setBriefingError] = useState<string | null>(null);
   const speakerActionsLocked = Boolean(postProcessing?.active || postProcessing?.state === "timeout" || postProcessing?.state === "error");
   const progressSummary = formatPostProcessingSummary(postProcessing?.details);
+  // The live banner only exists for a client that was still connected when the
+  // drain finished. A disconnect mid-drain used to lose the record entirely, so
+  // fall back to what the backend saved on the session (ALP-103).
+  const savedDrain = parseSavedDrainSummary(session.drain_summary);
+  const savedDrainSummary = savedDrain ? formatPostProcessingSummary(savedDrain) : null;
+  const showSavedDrain = Boolean(savedDrain) && !(postProcessing?.state === "completed" && postProcessing.confirmed);
 
   useEffect(() => {
     if (activeTab !== "tokens") return;
@@ -176,6 +182,17 @@ export default function PostCallView({
           </p>
           {progressSummary && (
             <p className="mt-1 font-body text-xs text-green-700">{progressSummary}</p>
+          )}
+        </div>
+      )}
+
+      {showSavedDrain && savedDrain && (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+          <p className="font-body text-sm font-semibold text-green-800">
+            {savedDrain.message || "Post-processing complete"}
+          </p>
+          {savedDrainSummary && (
+            <p className="mt-1 font-body text-xs text-green-700">{savedDrainSummary}</p>
           )}
         </div>
       )}
