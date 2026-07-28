@@ -6,8 +6,10 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.services.update_signing import (
+    attach_platform_signature,
     canonical_update_bytes,
     parse_release_signing_keys,
+    platform_signing_request,
     public_update_descriptor,
     sign_platform_manifest,
     verify_update_descriptor,
@@ -87,6 +89,43 @@ class UpdateSigningTests(unittest.TestCase):
                 canonical_update_bytes(UNSIGNED_DESCRIPTOR)
             ),
         )
+
+    def test_attaches_a_detached_platform_signature(self):
+        descriptor, request = platform_signing_request(MANIFEST, "test-key")
+        signature = Ed25519PrivateKey.from_private_bytes(PRIVATE).sign(request)
+        encoded = base64.urlsafe_b64encode(signature).rstrip(b"=").decode("ascii")
+
+        signed = attach_platform_signature(MANIFEST, "test-key", encoded, PUBLIC)
+
+        self.assertEqual(
+            public_update_descriptor(signed) | {"signature": None},
+            descriptor | {"signature": None},
+        )
+
+    def test_rejects_invalid_detached_platform_signatures_and_manifests(self):
+        _, request = platform_signing_request(MANIFEST, "test-key")
+        encoded = base64.urlsafe_b64encode(
+            Ed25519PrivateKey.from_private_bytes(PRIVATE).sign(request)
+        ).rstrip(b"=").decode("ascii")
+        wrong_public = Ed25519PrivateKey.generate().public_key().public_bytes(
+            serialization.Encoding.Raw,
+            serialization.PublicFormat.Raw,
+        )
+        tampered = copy.deepcopy(MANIFEST)
+        tampered["asset"]["size"] = 8
+        extra = copy.deepcopy(MANIFEST)
+        extra["extra"] = True
+
+        for label, manifest, key_id, signature, public_key in (
+            ("malformed signature", MANIFEST, "test-key", "invalid", PUBLIC),
+            ("wrong public key", MANIFEST, "test-key", encoded, wrong_public),
+            ("tampered manifest", tampered, "test-key", encoded, PUBLIC),
+            ("invalid key id", MANIFEST, "Invalid", encoded, PUBLIC),
+            ("extra manifest field", extra, "test-key", encoded, PUBLIC),
+        ):
+            with self.subTest(label=label):
+                with self.assertRaises(ValueError):
+                    attach_platform_signature(manifest, key_id, signature, public_key)
 
     def test_rejects_tampered_signed_fields(self):
         signed = self.signed_descriptor()
