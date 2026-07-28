@@ -28,6 +28,8 @@ interface ActiveCallViewProps {
   backendAudioStatus: string | null;
   captureError: string | null;
   status: string;
+  /** The call is being ended: the socket closing is expected, not a fault. */
+  ending?: boolean;
   callSegmentStart: string | null;
   speakers: Speaker[];
   postProcessing?: PostProcessingProgressState;
@@ -97,6 +99,7 @@ export default function ActiveCallView({
   backendAudioStatus,
   captureError,
   status,
+  ending = false,
   callSegmentStart,
   speakers,
   postProcessing,
@@ -110,7 +113,12 @@ export default function ActiveCallView({
   const autoUpvotedSignalIds = useRef<Set<string>>(new Set());
   const timerDisplay = useSessionTimer(callSegmentStart);
   const postProcessingActive = postProcessing?.active ?? false;
-  const backendDisconnected = status !== "connected";
+  // Once the user has ended the call, a closed socket is the expected outcome
+  // rather than a fault, so it must not be reported as one. Raw socket status
+  // only means "connection lost" while the call is genuinely in progress
+  // (ALP-171: End Call showed a lost-connection banner and a Resume prompt for
+  // sixteen seconds while the post-call refreshes were still running).
+  const backendDisconnected = !ending && status !== "connected";
   const audioSeconds = Math.round(audioStats.bytesSent / 32000);
   const lastAudioAge =
     audioStats.lastSentAt
@@ -256,7 +264,7 @@ export default function ActiveCallView({
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-4">
-          {(!isCapturing || status !== "connected") && (
+          {!ending && (!isCapturing || status !== "connected") && (
             <button
               onClick={onResumeAudio}
               disabled={postProcessingActive || isStarting}
@@ -345,7 +353,11 @@ export default function ActiveCallView({
       <AgentActivityPanel snapshot={activity} />
       {postProcessing && postProcessingActive && <PostProcessingProgress progress={postProcessing} />}
       <SynthesisSignals session={session} synthesis={synthesis} />
-      {backendDisconnected ? (
+      {ending ? (
+        <div className="border-b border-brand-teal/30 bg-brand-teal/10 px-4 py-3 font-body text-sm font-medium text-brand-dark-gray md:px-6">
+          Wrapping up this call. Finishing post-processing and loading the review...
+        </div>
+      ) : backendDisconnected ? (
         <div className="border-b border-red-200 bg-red-50 px-4 py-3 font-body text-sm font-medium text-red-700 md:px-6">
           Connection to the backend was lost. Audio is not being recorded. Use Resume Audio to reconnect.
         </div>
