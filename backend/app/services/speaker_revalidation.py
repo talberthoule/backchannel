@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import logging
@@ -10,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.database import async_session
 from app.models import (
     Question,
@@ -23,6 +25,12 @@ from app.models import (
     TranscriptEntry,
 )
 from app.services.briefing_synthesis import run_session_synthesis
+from app.services.custom_endpoints import endpoint_models
+from app.services.privacy import (
+    LocalOnlyModeError,
+    admitted_model_ids,
+    get_local_only,
+)
 from app.services.speaker_context_enhancer import run_speaker_context_batch
 
 REVALIDATION_BATCH_SIZE = 25
@@ -48,6 +56,36 @@ _AUTH_MARKERS = (
 _QUOTA_CODE = re.compile(r"\b429\b")
 _AUTH_CODE = re.compile(r"\b(?:401|403)\b")
 _GOOGLE_MARKERS = ("gemini", "google", "generativelanguage", "ai studio")
+# A transient rate limit usually clears in seconds; a spending cap or exhausted
+# quota does not. The retry loop only re-tries the same model for the former, so
+# it never wastes attempts on a wall that will not move before the fallback.
+_RATE_LIMIT_MARKERS = ("rate limit", "too many requests")
+_HARD_CAP_MARKERS = ("resource_exhausted", "spending cap", "quota")
+_RATE_LIMIT_RETRY_DELAYS = (0.5, 2.0)
+
+
+def is_quota_error(error: Exception | str) -> bool:
+    """A provider quota exhaustion or rate limit (HTTP 429 or a quota marker)."""
+    lowered = str(error).lower()
+    return any(marker in lowered for marker in _QUOTA_MARKERS) or bool(
+        _QUOTA_CODE.search(lowered)
+    )
+
+
+def is_rate_limit_error(error: Exception | str) -> bool:
+    """The transient subset of quota errors: a rate limit, not a hard cap.
+
+    A bare 429 with no spending-cap or resource-exhausted wording is treated as
+    a transient rate limit worth retrying; an explicit hard cap is not.
+    """
+    lowered = str(error).lower()
+    if any(marker in lowered for marker in _RATE_LIMIT_MARKERS):
+        return True
+    if _QUOTA_CODE.search(lowered) and not any(
+        marker in lowered for marker in _HARD_CAP_MARKERS
+    ):
+        return True
+    return False
 
 
 def batch_failure_reason(error: Exception | str) -> str:
@@ -55,7 +93,9 @@ def batch_failure_reason(error: Exception | str) -> str:
 
     Recognizes provider quota and auth errors from the exception text (and, for
     exceptions, the raising module); anything else keeps the first line of the
-    original message so the real detail is not lost.
+    original message so the real detail is not lost. The quota remedy leads with
+    assigning a self-hosted model, because that is the durable fix for a cloud
+    quota wall; raising the cap stays as the secondary option.
     """
     text = str(error).strip()
     lowered = text.lower()
@@ -63,15 +103,17 @@ def batch_failure_reason(error: Exception | str) -> str:
     from_google = module.startswith("google") or any(
         marker in lowered for marker in _GOOGLE_MARKERS
     )
-    if any(marker in lowered for marker in _QUOTA_MARKERS) or _QUOTA_CODE.search(lowered):
+    if is_quota_error(error):
         if from_google:
             return (
-                "Gemini quota/spending cap exhausted - raise the cap in "
-                "AI Studio or switch the model in Admin."
+                "Gemini quota/spending cap exhausted. Assign a self-hosted model "
+                "in Admin -> Agents (any on-prem endpoint), or raise the cap in "
+                "AI Studio."
             )
         return (
-            "Model provider quota or rate limit exhausted - raise the limit "
-            "or switch the model in Admin."
+            "Model provider quota or rate limit exhausted. Assign a self-hosted "
+            "model in Admin -> Agents (any on-prem endpoint), or raise the limit "
+            "in the provider console."
         )
     if any(marker in lowered for marker in _AUTH_MARKERS) or _AUTH_CODE.search(lowered):
         return (
@@ -398,6 +440,107 @@ async def run_revalidation(run_id: uuid.UUID) -> None:
         await db.commit()
 
 
+async def select_fallback_models(
+    primary_model_id: str,
+    db: AsyncSession,
+    local_only: bool,
+) -> list[str]:
+    """Admitted self-hosted text models to try when the primary is unavailable.
+
+    The durable answer to a cloud quota wall - or to Privacy First refusing the
+    configured cloud model - is a model that has neither problem: a self-hosted
+    OpenAI-compatible endpoint on this machine or the LAN. Bundled local models
+    are ASR-only (no text), so on-prem endpoint models are the only local text
+    option. On-prem endpoints come first; a non-on-prem endpoint is a candidate
+    only when Privacy First is off. Admission is decided by the shared
+    allows_local_only helper (ALP-152) so the destination guarantee holds, and
+    the exhausted primary is never offered back to itself.
+    """
+    models = await endpoint_models(db)
+    on_prem = [m["id"] for m in models if m.get("runs_locally") and m.get("supports_text")]
+    off_prem = [m["id"] for m in models if not m.get("runs_locally") and m.get("supports_text")]
+    ordered = on_prem + ([] if local_only else off_prem)
+    candidates = [model_id for model_id in ordered if model_id != primary_model_id]
+    admitted = await admitted_model_ids(candidates, local_only)
+    return [model_id for model_id in candidates if model_id in admitted]
+
+
+def _should_try_fallback(error: Exception) -> bool:
+    """Whether another model is worth trying for this failure.
+
+    A quota wall or a Privacy First refusal of the configured cloud model both
+    mean this model cannot do the work, which a self-hosted model can. Any other
+    error - a bad key, a malformed reply, a real bug - is not fixed by switching
+    models, so it propagates and the batch fails as before.
+    """
+    return is_quota_error(error) or isinstance(error, LocalOnlyModeError)
+
+
+async def _enhance_insights_with_fallback(
+    db: AsyncSession,
+    session_id: uuid.UUID,
+    item_ids: list[uuid.UUID],
+    mapping_revision_id: uuid.UUID,
+) -> dict:
+    """Run one insight batch, retrying a rate limit and falling back a model.
+
+    The configured refinement model is tried first, with a short backoff for a
+    transient rate limit. If it is quota-blocked or refused by Privacy First,
+    each admitted self-hosted model is tried in turn. The generate_text call
+    happens before any database write in run_speaker_context_batch, so a failed
+    attempt leaves nothing applied and the next model starts clean. Raises the
+    last error when no model could complete the batch, so the caller marks the
+    batch failed with the usual reworded reason.
+
+    Deliberately does not consult the ALP-156 capacity planner for local
+    headroom. This is a salvage path: the primary has already failed, so the
+    alternative to a slow local run is no run at all, and refusing on headroom
+    would convert a slow success into a hard failure. Capacity planning belongs
+    where recurring work is scheduled, which is what ALP-156 models. The planner
+    also cannot answer this question yet - assess_call_capacity excludes text
+    agents, so role_fits is always empty, an unbenchmarked machine returns
+    admits() anyway, and it runs a blocking torch/NeMo probe. Revisit if it
+    grows a per-model text verdict.
+
+    ALP-157 merge point: when that lands, the primary becomes the synthesizer
+    agent row's model rather than the global setting, here and in
+    run_speaker_context_batch's own default.
+    """
+    primary = settings.REFINEMENT_MODEL
+    local_only = await get_local_only(db)
+    models = [primary, *await select_fallback_models(primary, db, local_only)]
+    last_error: Exception | None = None
+    for model_id in models:
+        for delay in (0.0, *_RATE_LIMIT_RETRY_DELAYS):
+            if delay:
+                await asyncio.sleep(delay)
+            try:
+                metrics = await run_speaker_context_batch(
+                    session_id, item_ids, mapping_revision_id, db, model_id=model_id
+                )
+                if model_id != primary:
+                    logger.info(
+                        "Insight revalidation used fallback model %s after %s was unavailable",
+                        model_id,
+                        primary,
+                    )
+                return metrics
+            except Exception as error:
+                last_error = error
+                if not _should_try_fallback(error):
+                    raise
+                if is_rate_limit_error(error):
+                    continue  # brief backoff, same model
+                break  # hard cap or privacy refusal - move to the next model
+    if last_error is None:
+        # models always starts with the primary, so every path out of the loop
+        # either returned or set this. Raising beats asserting: an assert is
+        # stripped under python -O, which would turn this into a None return
+        # and a KeyError in the caller's metrics lookup.
+        raise RuntimeError("Insight revalidation attempted no model")
+    raise last_error
+
+
 async def _run_batch(
     db: AsyncSession,
     run: SpeakerRevalidationRun,
@@ -411,11 +554,11 @@ async def _run_batch(
     await db.commit()
     try:
         if batch.kind == "insights":
-            metrics = await run_speaker_context_batch(
+            metrics = await _enhance_insights_with_fallback(
+                db,
                 run.session_id,
                 [uuid.UUID(item_id) for item_id in batch.item_ids],
                 run.mapping_revision_id,
-                db,
             )
             batch.processed_entries = metrics["processed_entries"]
             batch.applied_operations = metrics["applied_operations"]
