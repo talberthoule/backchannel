@@ -1,29 +1,8 @@
-"""Call-start capacity admission (ALP-156, first wiring increment).
+"""Call-start capacity admission (ALP-156).
 
-This assembles the measured demands that are actually available at call start,
-runs the pure planner (`capacity_planner.plan_capacity`), and returns a verdict
-with measured headroom - the "measured, not boolean" surface the design calls
-for.
-
-Scope of this increment, stated honestly because the whole point of ALP-156 is
-not to present partial coverage as a complete answer:
-
-* Diarization is modelled from the ALP-155 benchmark's persisted per-track
-  contention-adjusted RTF and per-instance peak memory, but only when the
-  effective live diarizer is Sortformer (the case that OOM-killed the call on
-  2026-07-27). The lightweight diarizer is not separately benchmarked, so it is
-  reported as unmodelled rather than guessed at.
-* The machine budget (usable cores, container memory limit) is detected here.
-* Batch ASR, the live captioner, and the text agents are NOT yet modelled,
-  because their measurements are not persisted (the local fit test recomputes
-  and stores nothing) and no served-model context length is captured anywhere.
-  They are listed in `not_modelled` so a consumer never reads this as a complete
-  clean pass. Wiring them in is the next increment, once those measurements are
-  made available.
-
-Because coverage is partial, an `over_budget` verdict here is definitive (even
-the modelled subset exceeds the machine), but an `ok`/`thin` verdict must be read
-together with `not_modelled`: unmeasured components can only push demand up.
+Assembles every demand backed by a persisted measurement, then names any
+configured local component that remains unmeasured. Partial coverage can never
+read as a complete clean pass.
 """
 
 from __future__ import annotations
@@ -32,16 +11,25 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
+from app.models import AgentConfig
+from app.services import local_fit, transcription_runtime
 from app.services.capacity_planner import (
+    BatchAsrDemand,
     CapacityVerdict,
+    CaptionerDemand,
     DiarizationDemand,
     MachineBudget,
+    TextAgentDemand,
     plan_capacity,
 )
 from app.services.diarizer_runtime import get_diarizer_runtime_config
 from app.services.diarizer_selection import DIARIZER_SORTFORMER
+from app.services.local_live_captioner import LOCAL_LIVE_MODEL_MAP
+from app.services.local_transcriber import LOCAL_MODEL_MAP
 
 
 # Leave at least this many cores for the event loop, WebSocket I/O, the database
@@ -147,13 +135,91 @@ class CapacityAssessment:
         }
 
 
-# Components not yet fed into the numeric verdict in this first increment. Named
-# explicitly so a consumer cannot mistake a partial pass for a complete one.
-_NOT_MODELLED_BASE = (
-    "batch_asr: real-time factor not persisted; run the local fit test",
-    "live_captioner: real-time factor not persisted; run the local fit test",
-    "text_agents: served-model tokens/sec and context window are not captured",
-)
+_ROLES_BY_SLUG = {role.slug: role for role in local_fit.AGENT_ROLES}
+
+
+def _positive_number(value) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if value > 0 else None
+
+
+def _measured_asr_rtf(
+    fit_result: dict,
+    model_id: str,
+    field: str,
+) -> float | None:
+    contention = _positive_number(fit_result.get("contention"))
+    report = fit_result.get("asr")
+    if contention is None or not isinstance(report, dict):
+        return None
+    models = report.get("asr_models")
+    if not isinstance(models, list):
+        return None
+    measured = next(
+        (
+            model
+            for model in models
+            if isinstance(model, dict)
+            and model.get("model_id") == model_id
+            and model.get("status") == "ok"
+        ),
+        None,
+    )
+    value = _positive_number(measured.get(field)) if measured else None
+    return (
+        local_fit.effective_latency(value, contention)
+        if value is not None
+        else None
+    )
+
+
+def _measured_text_latency(
+    fit_result: dict,
+    model_id: str,
+    slug: str,
+) -> float | None:
+    contention = _positive_number(fit_result.get("contention"))
+    if contention is None:
+        return None
+    models = fit_result.get("text_models")
+    if not isinstance(models, list):
+        return None
+    measured = next(
+        (
+            model
+            for model in models
+            if isinstance(model, dict)
+            and model.get("model_id") == model_id
+            and model.get("status") == "ok"
+        ),
+        None,
+    )
+    roles = measured.get("roles") if measured else None
+    if not isinstance(roles, list):
+        return None
+    role = next(
+        (
+            item
+            for item in roles
+            if isinstance(item, dict) and item.get("slug") == slug
+        ),
+        None,
+    )
+    latency = _positive_number(role.get("latency_seconds")) if role else None
+    return (
+        local_fit.effective_latency(latency, contention)
+        if latency is not None
+        else None
+    )
+
+
+def _effective_interval(row: AgentConfig, default: int) -> int | None:
+    return (
+        local_fit.parse_model_intervals(row.model_intervals).get(row.model_id)
+        or row.interval_seconds
+        or default
+    )
 
 
 async def assess_call_capacity(
@@ -172,37 +238,148 @@ async def assess_call_capacity(
         budget = detect_machine_budget()
 
     diarizer = await get_diarizer_runtime_config(db)
+    runtime = await transcription_runtime.get_transcription_runtime_config(db)
+    fit_result = await local_fit.load_local_fit_result(db) or {}
+    agent_rows = list(
+        (
+            await db.execute(select(AgentConfig).order_by(AgentConfig.display_order))
+        ).scalars().all()
+    )
+    agents = {row.slug: row for row in agent_rows}
+    local_text_model_ids = {
+        model["id"]
+        for model in await local_fit.local_text_models(db)
+        if model.get("id")
+    }
 
     diarization: DiarizationDemand | None = None
+    batch_asr: BatchAsrDemand | None = None
+    captioner: CaptionerDemand | None = None
+    text_agents: list[TextAgentDemand] = []
     modelled: list[str] = ["machine_budget"]
-    not_modelled = list(_NOT_MODELLED_BASE)
+    not_modelled: list[str] = []
 
-    if diarizer.benchmark_validity in ("incompatible", "superseded"):
-        not_modelled.append(
-            f"diarization: {diarizer.benchmark_validity_reason}"
-        )
-    elif diarizer.effective_live_diarizer == DIARIZER_SORTFORMER:
-        if (
-            diarizer.benchmark_contention_adjusted_real_time_factor is not None
-            and diarizer.benchmark_peak_memory_mb is not None
-        ):
-            diarization = DiarizationDemand(
-                track_count=track_count,
-                per_track_rtf=diarizer.benchmark_contention_adjusted_real_time_factor,
-                per_instance_memory_mb=diarizer.benchmark_peak_memory_mb,
-            )
-            modelled.append("diarization_sortformer")
-        else:
-            not_modelled.append(
-                "diarization: the Sortformer benchmark is stale; re-run it to "
-                "capture contention and memory"
-            )
-    else:
+    # The diarizer in effect decides which message is honest. A machine on the
+    # lightweight diarizer needs no Sortformer benchmark at all, so reporting
+    # that its Sortformer record is incompatible would answer a question nobody
+    # asked and bury the real one; the lightweight message wins there. Only when
+    # Sortformer is actually in effect does the record's validity matter, and
+    # then an invalid record is missing rather than passing (ALP-160 5.2).
+    if diarizer.effective_live_diarizer != DIARIZER_SORTFORMER:
         not_modelled.append(
             "diarization: the lightweight diarizer is not separately benchmarked"
         )
+    elif diarizer.benchmark_validity in ("incompatible", "superseded"):
+        not_modelled.append(
+            f"diarization: {diarizer.benchmark_validity_reason}"
+        )
+    else:
+        # A record that survived the validity gate carries all three numbers:
+        # ALP-160 classifies an incomplete one as incompatible, which the branch
+        # above already caught. No completeness re-check is reachable here.
+        diarization = DiarizationDemand(
+            track_count=track_count,
+            per_track_rtf=diarizer.benchmark_contention_adjusted_real_time_factor,
+            per_instance_memory_mb=diarizer.benchmark_peak_memory_mb,
+        )
+        modelled.append("diarization_sortformer")
 
-    verdict = plan_capacity(budget, diarization=diarization)
+    batch_model_id = runtime.batch_model_id
+    if batch_model_id in LOCAL_MODEL_MAP:
+        measured_rtf = _measured_asr_rtf(
+            fit_result,
+            batch_model_id,
+            "real_time_factor",
+        )
+        if measured_rtf is None:
+            not_modelled.append(
+                f"batch_asr:{batch_model_id}: run the local fit test for this model"
+            )
+        else:
+            batch_asr = BatchAsrDemand(real_time_factor=measured_rtf)
+            modelled.append(f"batch_asr:{batch_model_id}")
+            not_modelled.append(
+                f"batch_asr:{batch_model_id}: memory demand is not measured"
+            )
+
+    gateway = agents.get(transcription_runtime.AUDIO_GATEWAY_SLUG)
+    live_model_id = runtime.live_preview_model_id
+    if (
+        gateway is not None
+        and gateway.enabled
+        and live_model_id in LOCAL_LIVE_MODEL_MAP
+    ):
+        live_asr_model_id = LOCAL_LIVE_MODEL_MAP[live_model_id]
+        measured_rtf = _measured_asr_rtf(
+            fit_result,
+            live_asr_model_id,
+            "short_real_time_factor",
+        )
+        if measured_rtf is None:
+            not_modelled.append(
+                f"live_captioner:{live_model_id}: run the local fit test "
+                "for live-caption feasibility"
+            )
+        else:
+            captioner = CaptionerDemand(real_time_factor=measured_rtf)
+            modelled.append(f"live_captioner:{live_model_id}")
+            not_modelled.append(
+                f"live_captioner:{live_model_id}: memory demand is not measured"
+            )
+
+    output_budget = settings.LLM_SELF_HOSTED_MAX_TOKENS
+    for row in agent_rows:
+        role = _ROLES_BY_SLUG.get(row.slug)
+        if (
+            not row.enabled
+            or role is None
+            or row.model_id not in local_text_model_ids
+        ):
+            continue
+        latency = _measured_text_latency(fit_result, row.model_id, row.slug)
+        if latency is None or output_budget <= 0:
+            not_modelled.append(
+                f"text_agent:{row.slug}: run the local fit test for "
+                f"{row.model_id}"
+            )
+            continue
+        interval = 0 if role.post_call else _effective_interval(
+            row,
+            role.default_interval,
+        )
+        if not role.post_call and not interval:
+            not_modelled.append(
+                f"text_agent:{row.slug}: no effective cycle interval is configured"
+            )
+            continue
+
+        # TextAgentDemand expresses latency through a token rate. Deriving that
+        # rate from the ALP-154 output bound makes projected_call_seconds equal
+        # the measured end-to-end latency without inventing a prompt size.
+        text_agents.append(
+            TextAgentDemand(
+                role=row.slug,
+                prompt_tokens=0,
+                reserved_output_tokens=output_budget,
+                tokens_per_second=output_budget / latency,
+                context_window=None,
+                interval_seconds=float(interval or 0),
+                timeout_seconds=settings.LLM_SELF_HOSTED_TIMEOUT_SECONDS,
+                one_shot=role.post_call,
+            )
+        )
+        modelled.append(f"text_agent:{row.slug}")
+        not_modelled.append(
+            f"text_agent:{row.slug}: served-model context window is not captured"
+        )
+
+    verdict = plan_capacity(
+        budget,
+        diarization=diarization,
+        batch_asr=batch_asr,
+        captioner=captioner,
+        text_agents=text_agents,
+    )
     return CapacityAssessment(
         verdict=verdict,
         track_count=track_count,

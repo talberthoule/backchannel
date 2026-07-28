@@ -198,6 +198,25 @@ class PlanCapacityTests(unittest.TestCase):
         self.assertTrue(verdict.admits())
         self.assertTrue(any("brief_meeting_lens" in r for r in verdict.reasons))
 
+    def test_a_latency_overrun_with_unknown_context_is_still_only_a_warning(self):
+        verdict = plan_capacity(
+            _comfortable_budget(),
+            text_agents=[
+                TextAgentDemand(
+                    role="brief_meeting_lens",
+                    prompt_tokens=1000,
+                    reserved_output_tokens=1000,
+                    tokens_per_second=10,
+                    context_window=None,
+                    timeout_seconds=120,
+                    one_shot=True,
+                )
+            ],
+        )
+        self.assertEqual(STATUS_THIN, verdict.status)
+        self.assertTrue(verdict.admits())
+        self.assertIsNone(verdict.role_fits[0].context_fits)
+
     def test_memory_can_be_over_budget_while_cpu_is_fine(self):
         budget = MachineBudget(usable_cores=8, memory_limit_mb=2048, overhead_mb=200)
         verdict = plan_capacity(
