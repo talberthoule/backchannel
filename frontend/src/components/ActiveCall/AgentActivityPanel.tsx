@@ -9,7 +9,8 @@ export function isRunningLate(
   now = Date.now(),
 ): boolean {
   if (
-    agent.state !== "waiting"
+    agent.trigger !== "interval"
+    || agent.state !== "waiting"
     || !agent.interval_seconds
     || !agent.next_due_at
   ) return false;
@@ -49,7 +50,8 @@ export function activityEmptyMessage(
     !snapshot
     || snapshot.call.degraded
     || snapshot.agents.some((agent) =>
-      agent.state === "failing" || agent.state === "blocked"
+      agent.state === "failing"
+      || (agent.state === "blocked" && agent.blocked_reason !== "meeting_type")
     )
   ) return undefined;
 

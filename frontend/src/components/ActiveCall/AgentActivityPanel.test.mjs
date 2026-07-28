@@ -71,3 +71,44 @@ test("an interval agent is late only after a full interval overdue", () => {
   assert.equal(isRunningLate(waitingAgent, due + 39_000), false);
   assert.equal(isRunningLate(waitingAgent, due + 41_000), true);
 });
+
+test("an event-driven agent is never marked running late", () => {
+  const eventAgent = {
+    ...waitingAgent,
+    slug: "synthesizer",
+    name: "Synthesizer",
+    trigger: "event",
+    interval_seconds: 75,
+  };
+  const due = Date.parse(eventAgent.next_due_at);
+
+  assert.equal(isRunningLate(eventAgent, due + 151_000), false);
+});
+
+test("an expected meeting-type block preserves the healthy cadence message", () => {
+  const message = activityEmptyMessage(
+    {
+      agents: [
+        waitingAgent,
+        {
+          ...waitingAgent,
+          slug: "opportunity_specialist",
+          name: "Opportunity Specialist",
+          trigger: "event",
+          state: "blocked",
+          blocked_reason: "meeting_type",
+          interval_seconds: 55,
+          next_due_at: null,
+        },
+      ],
+      call: { degraded: false },
+    },
+    false,
+    Date.parse("2026-07-28T12:00:00.000Z"),
+  );
+
+  assert.equal(
+    message,
+    "Agents are listening. Consolidated Analyst checks every 40s - first insights expected in about 30s.",
+  );
+});
