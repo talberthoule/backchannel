@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Session, Question, Speaker, TranscriptEntry, SessionSynthesis
+from app.services import runtime_activity
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -18,20 +19,22 @@ router = APIRouter(prefix="/api/sessions/{session_id}/artifacts", tags=["artifac
 
 async def _stream_and_cleanup(file_path: str, media_type: str, filename: str):
     """Stream a temp file to the client, then delete it immediately after."""
-    try:
-        with open(file_path, "rb") as f:
-            while chunk := f.read(8192):
-                yield chunk
-    finally:
+    with runtime_activity.track("artifact export"):
         try:
-            os.unlink(file_path)
-        except OSError:
-            pass
+            with open(file_path, "rb") as f:
+                while chunk := f.read(8192):
+                    yield chunk
+        finally:
+            try:
+                os.unlink(file_path)
+            except OSError:
+                pass
 
 
 def _stream_bytes(data: bytes):
     """Stream in-memory bytes — nothing ever touches disk."""
-    yield data
+    with runtime_activity.track("artifact export"):
+        yield data
 
 
 @router.get("/transcript-export")

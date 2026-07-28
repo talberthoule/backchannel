@@ -42,6 +42,11 @@ class _AudioPipelineState:
     gateway_available: bool = True
     gateway_reconnect_task: asyncio.Task | None = None
     gateway_retry_at: float = 0.0
+    # Audio queued for diarization but not yet processed, and how many frames
+    # were shed because the diarizer could not keep up (see ALP-153).
+    diarization_backlog_bytes: int = 0
+    diarization_frames_dropped: int = 0
+    diarization_overload_notified: bool = False
 
 
 async def _maintain_audio_gateway(
@@ -181,6 +186,9 @@ async def _run_audio_pipeline(
     def _on_diarization_item_done(item: _QueuedAudioFrame):
         if pending_enqueued_at:
             pending_enqueued_at.popleft()
+        state.diarization_backlog_bytes = max(
+            0, state.diarization_backlog_bytes - len(item.pcm_bytes)
+        )
 
     diarization_worker = asyncio.create_task(
         _run_diarization_worker(
@@ -207,17 +215,39 @@ async def _run_audio_pipeline(
             }
         )
         await orchestrator.start()
-        active_message = (
-            "Listening (Privacy First: local transcription only, cloud AI agents off)..."
-            if local_only
-            else "Listening..."
-        )
+        # Say what is actually running. With a self-hosted model assigned, the
+        # analysis agents do run under Privacy First, and any agent left out is
+        # named so nine quiet minutes are never the first sign of a problem.
+        blocked = orchestrator.privacy_blocked_agents
+        if not local_only:
+            active_message = "Listening..."
+        elif blocked:
+            # The remedy differs per agent (a text agent wants a self-hosted
+            # model, the gateway wants the on-device captioner), so name who is
+            # paused and let Admin carry the specific fix for each.
+            names = ", ".join(b["agent"] for b in blocked)
+            active_message = (
+                f"Listening (Privacy First: {names} paused, see Admin -> Agents)..."
+            )
+        else:
+            active_message = "Listening (Privacy First: everything running on your network)..."
         await websocket.send_json(
             {
                 "type": "status",
-                "data": {"state": "active", "message": active_message},
+                "data": {
+                    "state": "active",
+                    "message": active_message,
+                    "privacy_blocked_agents": blocked,
+                },
             }
         )
+        if blocked:
+            logger.warning(
+                "[privacy] session %s: %d agent(s) sat out under Privacy First: %s",
+                session_id,
+                len(blocked),
+                ", ".join(f"{b['agent']}={b['model_id'] or 'unset'}" for b in blocked),
+            )
 
         segment_start = await start_call_segment(session_id)
         if segment_start is not None:

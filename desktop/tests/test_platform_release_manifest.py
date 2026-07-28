@@ -1,5 +1,7 @@
+import base64
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -7,6 +9,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from app.services.update_signing import sign_platform_manifest
 from desktop.scripts.build_release_manifest import (
     ASSETS,
     build_platform_manifest,
@@ -18,6 +24,7 @@ CLI = ROOT / "desktop" / "scripts" / "build_platform_manifest.py"
 TAG = "v1.2.3"
 COMMIT = "a" * 40
 PUBLISHED_AT = "2026-07-15T18:00:00Z"
+PRIVATE = bytes(range(1, 33))
 
 
 class PlatformReleaseManifestTests(unittest.TestCase):
@@ -79,26 +86,86 @@ class PlatformReleaseManifestTests(unittest.TestCase):
         asset = self.asset("linux-x64", b"linux")
         release_out = self.root / "metadata" / "release.json"
         platform_out = self.root / "metadata" / "linux-x64.json"
+        keys_file = self.root / "release_signing_keys.json"
+        notes_file = self.root / "notes.md"
+        notes_file.write_text("## Reliable updates\n\nSafer restarts.\n", encoding="utf-8")
+        public = Ed25519PrivateKey.from_private_bytes(PRIVATE).public_key().public_bytes(
+            serialization.Encoding.Raw,
+            serialization.PublicFormat.Raw,
+        )
+        keys_file.write_text(
+            json.dumps(
+                {
+                    "active": "test-key",
+                    "keys": {
+                        "test-key": base64.urlsafe_b64encode(public)
+                        .rstrip(b"=")
+                        .decode()
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        environment = {
+            **os.environ,
+            "BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY": (
+                base64.urlsafe_b64encode(PRIVATE).rstrip(b"=").decode()
+            ),
+        }
         result = subprocess.run(
             [
                 sys.executable, str(CLI), "--asset", str(asset),
                 "--platform-id", "linux-x64", "--tag", TAG,
                 "--commit", COMMIT, "--published-at", PUBLISHED_AT,
+                "--keys-file", str(keys_file),
+                "--release-notes-file", str(notes_file),
                 "--release-out", str(release_out),
                 "--platform-out", str(platform_out),
-            ], cwd=ROOT, capture_output=True, text=True,
+            ], cwd=ROOT, env=environment, capture_output=True, text=True,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         expected_release = json.dumps(
             build_release_identity(TAG, COMMIT, PUBLISHED_AT),
             sort_keys=True, separators=(",", ":"),
         ).encode() + b"\n"
+        unsigned_platform = {
+            **build_platform_manifest(asset, TAG, COMMIT, "linux-x64"),
+            "published_at": PUBLISHED_AT,
+            "release_notes": notes_file.read_text(encoding="utf-8"),
+        }
         expected_platform = json.dumps(
-            build_platform_manifest(asset, TAG, COMMIT, "linux-x64"),
+            sign_platform_manifest(unsigned_platform, "test-key", PRIVATE),
             sort_keys=True, separators=(",", ":"),
         ).encode() + b"\n"
         self.assertEqual(release_out.read_bytes(), expected_release)
         self.assertEqual(platform_out.read_bytes(), expected_platform)
+        self.assertNotIn(environment["BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY"], result.stdout)
+        self.assertNotIn(environment["BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY"], result.stderr)
+
+    def test_cli_requires_signing_secret_before_writing(self):
+        asset = self.asset("windows-x64")
+        result = subprocess.run(
+            [
+                sys.executable, str(CLI), "--asset", str(asset),
+                "--platform-id", "windows-x64", "--tag", TAG,
+                "--commit", COMMIT, "--published-at", PUBLISHED_AT,
+                "--keys-file", str(self.root / "missing.json"),
+                "--release-notes-file", str(self.root / "missing.md"),
+                "--release-out", str(self.root / "release.json"),
+                "--platform-out", str(self.root / "platform.json"),
+            ],
+            cwd=ROOT,
+            env={
+                key: value
+                for key, value in os.environ.items()
+                if key != "BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY"
+            },
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.root / "release.json").exists())
+        self.assertFalse((self.root / "platform.json").exists())
 
 
 if __name__ == "__main__":

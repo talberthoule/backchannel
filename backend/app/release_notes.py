@@ -31,6 +31,12 @@ one endpoint, and Privacy First keeps on-prem agents running.
   First is on; only cloud providers stay blocked. A fully local setup --
   local ONNX transcription plus a self-hosted model -- now runs with the
   switch on. Only interim live captions remain cloud-only.
+- Enhanced Sortformer diarization now unlocks only after three sustained
+  windows prove enough throughput for both live audio tracks plus
+  transcription load. Diagnostics show the measured margin and retain the
+  model's peak memory footprint for whole-call capacity planning. Earlier
+  passes below the new requirement return to Lightweight and show the
+  measured shortfall.
 - If you configured the earlier single OpenAI-compatible endpoint, it is
   migrated automatically into a named endpoint on first launch. Nothing to
   redo, and env-var-only installs keep working unchanged.""",

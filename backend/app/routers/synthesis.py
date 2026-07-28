@@ -25,7 +25,10 @@ async def get_synthesis(
     return await get_session_synthesis(session_id, mode=mode)
 
 
-@router.post("/refresh", response_model=SessionSynthesisOut)
+@router.post(
+    "/refresh",
+    response_model=SessionSynthesisOut,
+)
 async def refresh_synthesis(
     session_id: uuid.UUID,
     mode: Literal["live", "post_call"] = "post_call",

@@ -45,6 +45,7 @@ $oldFakeLog = $env:R2_FAKE_LOG
 $oldFakeRaceKey = $env:R2_FAKE_RACE_KEY
 $oldFakeRaceDir = $env:R2_FAKE_RACE_DIR
 $oldFakeHeadSize = $env:R2_FAKE_HEAD_SIZE
+$oldSigningSecret = $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY
 $credentialNames = @(
     "R2_ACCESS_KEY_ID",
     "R2_SECRET_ACCESS_KEY",
@@ -118,7 +119,8 @@ function Platform-Json {
     $info = Asset-Info $PlatformId
     $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $AssetPath).Hash.ToLowerInvariant()
     $size = (Get-Item -LiteralPath $AssetPath).Length
-    '{{"asset":{{"content_type":"{0}","filename":"{1}","id":"{2}","key":"releases/{3}/{1}","platform":"{4}","sha256":"{5}","size":{6}}},"commit":"{7}","version":"{3}"}}' -f $info[2], $info[1], $PlatformId, $VersionValue, $info[0], $sha, $size, $CommitValue
+    $signature = "A" * 86
+    '{{"asset":{{"content_type":"{0}","filename":"{1}","id":"{2}","key":"releases/{3}/{1}","platform":"{4}","sha256":"{5}","size":{6}}},"commit":"{7}","published_at":"{8}","release_notes":"test notes","update":{{"key_id":"ed25519-2026-07","schema":1,"signature":"{9}"}},"version":"{3}"}}' -f $info[2], $info[1], $PlatformId, $VersionValue, $info[0], $sha, $size, $CommitValue, $PublishedAt, $signature
 }
 
 function Reset-FakeR2 {
@@ -156,6 +158,8 @@ function Invoke-Publisher {
             -PublishedAt $PublishedAt `
             -PlatformId $PlatformId `
             -AssetPath $AssetPath `
+            -ReleaseNotesPath $releaseNotes `
+            -SigningPrivateKeyPath $privateKey `
             -Confirm:$false 2>&1)
     } catch {
         $failed = $true
@@ -169,6 +173,11 @@ try {
     $fakeNodeScript = Join-Path $temporary "fake-r2.ps1"
     $fakePython = Join-Path $temporary "python.cmd"
     $fakePythonScript = Join-Path $temporary "fake-python.ps1"
+    $releaseNotes = Join-Path $temporary "release-notes.md"
+    $privateKey = Join-Path $temporary "release-signing.private"
+    Write-Utf8 $releaseNotes "test notes"
+    Write-Utf8 $privateKey "test-private"
+    $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $null
 
     Write-Utf8 $fakeNode "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%R2_FAKE_SCRIPT%`" %*`r`nexit /b %ERRORLEVEL%`r`n"
     Write-Utf8 $fakeNodeScript @'
@@ -271,14 +280,22 @@ $platformId = $options["platform-id"]
 $info = Info $platformId
 $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash.ToLowerInvariant()
 $size = (Get-Item -LiteralPath $asset).Length
+$signature = "A" * 86
 WriteUtf8 $options["release-out"] ('{{"commit":"{0}","published_at":"{1}","version":"{2}"}}' -f $commit, $publishedAt, $tag)
-WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename":"{1}","id":"{2}","key":"releases/{3}/{1}","platform":"{4}","sha256":"{5}","size":{6}}},"commit":"{7}","version":"{3}"}}' -f $info[2], $info[1], $platformId, $tag, $info[0], $sha, $size, $commit)
+WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename":"{1}","id":"{2}","key":"releases/{3}/{1}","platform":"{4}","sha256":"{5}","size":{6}}},"commit":"{7}","published_at":"{8}","release_notes":"test notes","update":{{"key_id":"ed25519-2026-07","schema":1,"signature":"{9}"}},"version":"{3}"}}' -f $info[2], $info[1], $platformId, $tag, $info[0], $sha, $size, $commit, $publishedAt, $signature)
 '@
 
     $env:R2_FAKE_SCRIPT = $fakeNodeScript
     $env:R2_FAKE_STORE = $store
     $env:R2_FAKE_LOG = $log
     $env:PATH = "$temporary;$oldPath"
+
+    Remove-Item -LiteralPath $privateKey -Force
+    Reset-FakeR2
+    $result = Invoke-Publisher
+    Assert-True $result.Failed "Missing signing key was accepted"
+    Assert-True (@(Read-Log).Count -eq 0) "Missing signing key reached R2"
+    Write-Utf8 $privateKey "test-private"
 
     Reset-FakeR2
     $asset = New-Asset
@@ -382,6 +399,7 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
     $env:R2_FAKE_RACE_KEY = $oldFakeRaceKey
     $env:R2_FAKE_RACE_DIR = $oldFakeRaceDir
     $env:R2_FAKE_HEAD_SIZE = $oldFakeHeadSize
+    $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $oldSigningSecret
     foreach ($name in $credentialNames) {
         [Environment]::SetEnvironmentVariable($name, $oldCredentials[$name])
     }

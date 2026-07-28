@@ -234,6 +234,7 @@ export default function DiarizationCapabilityCard() {
     try {
       const updated = await api.updateDiarizationConfig({ selected_live_diarizer: mode });
       setDiarization(updated);
+      setBenchmark(null);
     } catch (err) {
       console.error("Diarization selection failed", err);
       setDiagnosticError(err instanceof Error ? err.message : "Unable to update diarization mode.");
@@ -431,7 +432,7 @@ export default function DiarizationCapabilityCard() {
         <p className="font-body text-xs text-brand-gray">
           {loadingDiagnostics
             ? "Checking diarization capability..."
-            : diarization?.selection_reason ?? benchmark?.reason ?? diarization?.reason ?? "Diagnostics have not been loaded."}
+            : benchmark?.reason ?? diarization?.selection_reason ?? diarization?.reason ?? "Diagnostics have not been loaded."}
         </p>
         {diarization?.gpu_memory_gb != null && (
           <p className="mt-1 font-body text-[10px] text-brand-mid-gray">GPU memory: {diarization.gpu_memory_gb} GB</p>
@@ -470,7 +471,7 @@ export default function DiarizationCapabilityCard() {
         </button>
         {benchmark ? (
           <span className="font-body text-xs text-brand-mid-gray">
-            {benchmark.audio_seconds.toFixed(1)}s audio in {benchmark.processing_seconds.toFixed(1)}s processing
+            {benchmark.audio_seconds.toFixed(1)}s benchmarked in {benchmark.processing_seconds.toFixed(1)}s processing
           </span>
         ) : benchmarkFile && (
           <span className="font-body text-[10px] text-brand-mid-gray">

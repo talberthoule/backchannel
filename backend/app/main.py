@@ -1,7 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -9,9 +9,10 @@ from app.config import settings
 from app.database import engine
 from app.models import Base
 from app.release_notes import APP_VERSION
-from app.routers import agents, analyze, artifacts, chat, credentials, retranscribe, diagnostics, directives, documents, endpoints, groups, imports, knowledge, meta, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts
+from app.routers import agents, analyze, artifacts, chat, credentials, retranscribe, diagnostics, directives, documents, endpoints, groups, imports, knowledge, meta, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts, updates
 from app.services.privacy import LocalOnlyModeError
 from app.services.audio_store import cleanup_orphan_track_audio
+from app.services import runtime_activity
 from app.ws import audio_handler
 
 logging.basicConfig(level=logging.INFO)
@@ -229,10 +230,11 @@ async def _cleanup_orphan_audio(conn):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await _add_missing_columns(conn)
-        await _cleanup_orphan_audio(conn)
+    with runtime_activity.track("startup schema"):
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            await _add_missing_columns(conn)
+            await _cleanup_orphan_audio(conn)
 
     # Seed agent configs and knowledge sources
     from app.database import async_session
@@ -252,9 +254,11 @@ async def lifespan(app: FastAPI):
 
     from app.services.provider_health import verify_untested_provider_keys
     verify_task = asyncio.create_task(verify_untested_provider_keys())
+    update_task = updates.start_background_check()
 
     yield
     verify_task.cancel()
+    updates.stop_background_check(update_task)
     await engine.dispose()
 
 
@@ -267,6 +271,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+updates.configure_app(app)
 
 app.include_router(sessions.router)
 app.include_router(agents.router)
@@ -276,20 +281,36 @@ app.include_router(documents.router)
 app.include_router(questions.router)
 app.include_router(transcripts.router)
 app.include_router(speakers.router)
-app.include_router(synthesis.router)
+app.include_router(
+    synthesis.router,
+    dependencies=[Depends(runtime_activity.request_tracker("briefing synthesis"))],
+)
 app.include_router(offerings.router)
 app.include_router(knowledge.router)
-app.include_router(artifacts.router)
-app.include_router(imports.router)
-app.include_router(analyze.router)
+app.include_router(
+    artifacts.router,
+    dependencies=[Depends(runtime_activity.request_tracker("artifact export"))],
+)
+app.include_router(
+    imports.router,
+    dependencies=[Depends(runtime_activity.request_tracker("import"))],
+)
+app.include_router(
+    analyze.router,
+    dependencies=[Depends(runtime_activity.request_tracker("analysis"))],
+)
 app.include_router(models.router)
 app.include_router(meta.router)
 app.include_router(credentials.router)
 app.include_router(endpoints.router)
-app.include_router(retranscribe.router)
+app.include_router(
+    retranscribe.router,
+    dependencies=[Depends(runtime_activity.request_tracker("retranscription"))],
+)
 app.include_router(chat.router)
 app.include_router(diagnostics.router)
 app.include_router(privacy.router)
+app.include_router(updates.router)
 app.include_router(audio_handler.router)
 
 

@@ -56,6 +56,10 @@ export interface AgentConfig {
   sub_types: string;
   lenses: string; // JSON array of AnalystLens
   interval_seconds: number | null;
+  // JSON {model_id: seconds}. A budget the local-model fit test wrote for a
+  // specific model; when the agent runs that model this wins over
+  // interval_seconds, so it is what actually determines cadence.
+  model_intervals: string;
   knowledge_source_ids: string;
   display_order: number;
   created_at: string;
@@ -217,6 +221,41 @@ export interface ReleaseNote {
   body: string;
 }
 
+export type DesktopUpdateState =
+  | "idle"
+  | "checking"
+  | "available"
+  | "authorizing"
+  | "downloading"
+  | "needs_authorization"
+  | "ready"
+  | "applying"
+  | "error";
+
+export interface DesktopUpdateStatus {
+  enabled: boolean;
+  state: DesktopUpdateState;
+  current_version?: string;
+  available_version?: string;
+  available_notes?: string;
+  published_at?: string;
+  platform_id?: string;
+  filename?: string;
+  size?: number;
+  downloaded?: number;
+  checked_at?: string;
+  error?: string;
+  blocked_reason?: string;
+}
+
+export interface DesktopUpdateController {
+  status: DesktopUpdateStatus;
+  check: () => Promise<void>;
+  authorize: () => Promise<void>;
+  cancel: () => Promise<void>;
+  apply: () => Promise<void>;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;
@@ -295,6 +334,8 @@ export interface DiarizationDiagnostics {
   sortformer_selectable: boolean;
   benchmark_status: "passed" | "failed" | "unavailable" | "";
   benchmark_real_time_factor: number | null;
+  benchmark_contention_adjusted_real_time_factor: number | null;
+  benchmark_peak_memory_mb: number | null;
   speaker_similarity_threshold: number;
   selection_reason: string;
 }
@@ -303,6 +344,8 @@ export interface DiarizationBenchmarkResult {
   status: "passed" | "failed" | "unavailable";
   recommended_live_diarizer: "lightweight" | "sortformer";
   real_time_factor: number | null;
+  contention_adjusted_real_time_factor: number | null;
+  peak_memory_mb: number | null;
   audio_seconds: number;
   processing_seconds: number;
   device: string;
@@ -386,6 +429,9 @@ export interface LocalFitSummary {
   roles: LocalFitRoleCatalogEntry[];
   // Present on current backends; optional so an older backend still parses.
   capabilities?: LocalCapabilities;
+  // The last run, persisted server-side so returning to the tab does not
+  // discard a benchmark the user waited on. Null when none has been run.
+  last_result?: LocalFitReport | null;
 }
 
 export interface LocalFitReport extends LocalFitSummary {

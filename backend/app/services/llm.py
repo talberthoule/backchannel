@@ -19,7 +19,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
-from app.config import MODEL_REGISTRY
+from app.config import MODEL_REGISTRY, settings
 from app.services.custom_endpoints import is_endpoint_model
 from app.services.llm_endpoint import (
     OPENAI_COMPATIBLE_PROVIDER,
@@ -34,6 +34,62 @@ from app.services.secrets import resolve_provider_key
 from app.services.token_usage import record_token_usage
 
 logger = logging.getLogger(__name__)
+
+
+class LLMReplyTruncated(ValueError):
+    """The server stopped generating before the reply was complete.
+
+    Its own class because the raw symptom is a json decode error partway
+    through a well-formed document, which reads like a broken model rather
+    than an output budget the user can raise.
+    """
+
+    def __init__(self, model_id: str, source: str = ""):
+        subject = f"{source} ({model_id})" if source else model_id
+        super().__init__(
+            f"{subject} hit its output limit before finishing the reply. Raise the "
+            "server's max tokens (or LLM_SELF_HOSTED_MAX_TOKENS), or use a model "
+            "with more output headroom."
+        )
+        self.model_id = model_id
+        self.source = source
+
+
+def _is_self_hosted(model_id: str) -> bool:
+    """Whether this model is served by one of the workspace's own endpoints.
+
+    Self-hosted servers are the slow, small-budget case: they run on whatever
+    hardware the user has rather than a provider's fleet.
+    """
+    return is_endpoint_model(model_id)
+
+
+def _request_timeout(model_id: str) -> float:
+    return (
+        settings.LLM_SELF_HOSTED_TIMEOUT_SECONDS
+        if _is_self_hosted(model_id)
+        else settings.LLM_TIMEOUT_SECONDS
+    )
+
+
+def _apply_output_budget(payload: dict, model_id: str, budget: int | None = None) -> dict:
+    """Give self-hosted servers an explicit completion budget.
+
+    Hosted providers are left alone: their defaults are already generous and
+    an explicit cap here could only make them worse. budget overrides the
+    configured default with whatever this server has been observed to accept.
+    """
+    if not _is_self_hosted(model_id):
+        return payload
+    effective = budget if budget is not None else settings.LLM_SELF_HOSTED_MAX_TOKENS
+    if effective > 0:
+        payload["max_tokens"] = effective
+    return payload
+
+
+def _truncated(data: dict) -> bool:
+    choices = data.get("choices") or [{}]
+    return (choices[0] or {}).get("finish_reason") == "length"
 
 
 class LLMKeyMissing(ValueError):
@@ -103,7 +159,7 @@ async def _call_google(model_id: str, prompt: str, system: str | None, temperatu
     return response.text or "", getattr(response, "usage_metadata", None)
 
 
-async def _call_openai(endpoint: OpenAIEndpoint, prompt: str, system: str | None, temperature: float | None, key: str) -> tuple[str, object]:
+async def _call_openai(model_id: str, endpoint: OpenAIEndpoint, prompt: str, system: str | None, temperature: float | None, key: str) -> tuple[str, object]:
     messages = []
     if system is not None:
         messages.append({"role": "system", "content": system})
@@ -111,13 +167,14 @@ async def _call_openai(endpoint: OpenAIEndpoint, prompt: str, system: str | None
     payload: dict = {"model": endpoint.model, "messages": messages}
     if temperature is not None:
         payload["temperature"] = temperature
-    async with httpx.AsyncClient(timeout=120) as client:
+    _apply_output_budget(payload, model_id)
+    async with httpx.AsyncClient(timeout=_request_timeout(model_id)) as client:
         resp = await client.post(
             f"{endpoint.base_url}/chat/completions",
             headers=auth_headers(key),
             json=payload,
         )
-        resp.raise_for_status()
+        _raise_for_status(resp)
         data = resp.json()
     return data["choices"][0]["message"]["content"] or "", data.get("usage")
 
@@ -133,7 +190,9 @@ async def generate_text(
 ) -> str:
     target = await _prepare_call(model_id, "text generation")
     if target.endpoint is not None:
-        text, usage = await _call_openai(target.endpoint, prompt, system, temperature, target.key)
+        text, usage = await _call_openai(
+            model_id, target.endpoint, prompt, system, temperature, target.key
+        )
     else:
         text, usage = await _call_google(model_id, prompt, system, temperature, target.key)
     await record_token_usage(session_id, source, model_id, usage)
@@ -242,6 +301,75 @@ async def _google_json(
     return _parse_google_response(response, response_schema)
 
 
+# OpenAI-shaped servers disagree on which response_format shapes they accept:
+# LM Studio requires json_schema or text and rejects json_object outright, while
+# other builds only know json_object. Negotiate by walking these in order and
+# remember the winner per base URL, so the cost is one rejected call per server
+# rather than one per request. The JSON contract is in the prompt either way, so
+# the "text" fallback still returns parseable output.
+_JSON_MODES = ("json_schema", "json_object", "text")
+_json_mode_by_base_url: dict[str, str] = {}
+
+
+def _response_format(mode: str, response_schema: type[BaseModel]) -> dict | None:
+    if mode == "json_object":
+        return {"type": "json_object"}
+    if mode == "json_schema":
+        # "strict" is deliberately omitted: it demands every property be
+        # required with additionalProperties false, which these schemas (all
+        # optional fields with defaults) do not satisfy.
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": response_schema.__name__,
+                "schema": response_schema.model_json_schema(),
+            },
+        }
+    return None
+
+
+def _rejects_response_format(exc: httpx.HTTPStatusError) -> bool:
+    if exc.response.status_code not in (400, 404, 422):
+        return False
+    return "response_format" in (exc.response.text or "").lower()
+
+
+# A completion budget is only safe relative to a context window we cannot see:
+# prompt plus max_tokens must fit, and the briefing arbiter's prompt carries
+# both lens documents. Asking for too much is refused outright, so start at the
+# configured budget and halve on refusal, remembering what fit per base URL.
+_MIN_OUTPUT_BUDGET = 1024
+_json_budget_by_base_url: dict[str, int] = {}
+
+
+def _rejects_output_budget(exc: httpx.HTTPStatusError) -> bool:
+    if exc.response.status_code not in (400, 413, 422):
+        return False
+    text = (exc.response.text or "").lower()
+    return any(
+        term in text
+        for term in ("context", "max_tokens", "too long", "too large", "exceed")
+    )
+
+
+def _raise_for_status(resp: httpx.Response) -> None:
+    """raise_for_status, but keep the server's explanation.
+
+    httpx's own message names only the status and the URL, so the reason the
+    call failed is thrown away exactly when it is most needed. That is what
+    reduced a context-window refusal to a bare "HTTP 400" in the briefing.
+    """
+    if resp.is_success:
+        return
+    detail = (resp.text or "").strip()
+    raise httpx.HTTPStatusError(
+        f"HTTP {resp.status_code} from {resp.request.url}"
+        + (f": {detail[:400]}" if detail else ""),
+        request=resp.request,
+        response=resp,
+    )
+
+
 async def _openai_json(
     model_id: str,
     endpoint: OpenAIEndpoint,
@@ -254,22 +382,69 @@ async def _openai_json(
 ):
     contract = _contract_prompt(prompt, schema_hint)
 
-    async def call(messages: list[dict]) -> str:
-        payload = {
-            "model": endpoint.model,
-            "messages": messages,
-            "response_format": {"type": "json_object"},
-        }
-        async with httpx.AsyncClient(timeout=120) as client:
+    async def post(messages: list[dict], mode: str) -> str:
+        payload: dict = {"model": endpoint.model, "messages": messages}
+        response_format = _response_format(mode, response_schema)
+        if response_format is not None:
+            payload["response_format"] = response_format
+        _apply_output_budget(payload, model_id, _json_budget_by_base_url.get(endpoint.base_url))
+        async with httpx.AsyncClient(timeout=_request_timeout(model_id)) as client:
             resp = await client.post(
                 f"{endpoint.base_url}/chat/completions",
                 headers=auth_headers(key),
                 json=payload,
             )
-            resp.raise_for_status()
+            _raise_for_status(resp)
             data = resp.json()
         await record_token_usage(session_id, source, model_id, data.get("usage"))
+        if _truncated(data):
+            # Say why the JSON will not parse. Retrying cannot help: the model
+            # will hit the same ceiling again.
+            raise LLMReplyTruncated(model_id, source)
         return data["choices"][0]["message"]["content"] or ""
+
+    async def _post_within_budget(messages: list[dict], mode: str) -> str:
+        """post(), shrinking the completion budget until the server accepts it."""
+        while True:
+            try:
+                return await post(messages, mode)
+            except httpx.HTTPStatusError as exc:
+                current = _json_budget_by_base_url.get(
+                    endpoint.base_url, settings.LLM_SELF_HOSTED_MAX_TOKENS
+                )
+                if (
+                    not _is_self_hosted(model_id)
+                    or not _rejects_output_budget(exc)
+                    or current <= _MIN_OUTPUT_BUDGET
+                ):
+                    raise
+                reduced = max(_MIN_OUTPUT_BUDGET, current // 2)
+                _json_budget_by_base_url[endpoint.base_url] = reduced
+                logger.info(
+                    "%s refused a %s-token completion budget; retrying at %s",
+                    endpoint.base_url,
+                    current,
+                    reduced,
+                )
+
+    async def call(messages: list[dict]) -> str:
+        start = _json_mode_by_base_url.get(endpoint.base_url, _JSON_MODES[0])
+        candidates = _JSON_MODES[_JSON_MODES.index(start):]
+        for mode in candidates:
+            try:
+                text = await _post_within_budget(messages, mode)
+            except httpx.HTTPStatusError as exc:
+                if not _rejects_response_format(exc) or mode == candidates[-1]:
+                    raise
+                logger.info(
+                    "%s rejected response_format '%s'; falling back", endpoint.base_url, mode
+                )
+                continue
+            if _json_mode_by_base_url.get(endpoint.base_url) != mode:
+                _json_mode_by_base_url[endpoint.base_url] = mode
+                logger.info("Using response_format '%s' for %s", mode, endpoint.base_url)
+            return text
+        raise RuntimeError("unreachable: response_format negotiation exhausted")
 
     text = await call([{"role": "user", "content": contract}])
     try:

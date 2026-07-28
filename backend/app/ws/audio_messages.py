@@ -20,6 +20,7 @@ from app.ws.audio_runtime import (
     _decode_audio_frame,
     _record_audio_flow,
     _send_gateway_audio,
+    _shed_diarization_backlog,
     _send_status,
     _split_track_established_after_frame,
     _split_track_established_after_message,
@@ -71,6 +72,35 @@ async def _handle_audio_frame(
                 enqueued_at=enqueued_at,
             )
         )
+        # Bound what a lagging diarizer can accumulate. Shedding the oldest
+        # audio costs some speaker attribution; letting it grow costs the whole
+        # call, because the process is killed for running out of memory.
+        state.diarization_backlog_bytes += len(pcm_data)
+        state.diarization_backlog_bytes, dropped = _shed_diarization_backlog(
+            queue,
+            pending_enqueued_at,
+            state.diarization_backlog_bytes,
+        )
+        if dropped:
+            state.diarization_frames_dropped += dropped
+            logger.warning(
+                "Diarization overloaded: shed %s frame(s), %s total this call. "
+                "The diarizer is slower than realtime for this audio.",
+                dropped,
+                state.diarization_frames_dropped,
+            )
+            if not state.diarization_overload_notified:
+                state.diarization_overload_notified = True
+                await _send_status(
+                    websocket,
+                    "diarization_overloaded",
+                    (
+                        "Speaker detection is running slower than the call. Some "
+                        "audio is being skipped to keep the call alive - speaker "
+                        "labels may be incomplete. A lighter diarizer will fix this."
+                    ),
+                    details={"frames_dropped": state.diarization_frames_dropped},
+                )
         if mixed_frames and state.gateway_available:
             state.gateway_available = await _send_gateway_audio(
                 orchestrator,

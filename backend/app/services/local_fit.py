@@ -15,6 +15,7 @@ analysis only.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 import time
@@ -25,10 +26,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AgentConfig
+from app.services.app_settings import get_app_setting, set_app_setting
 from app.services.batch_transcriber import _audio_has_speech_energy
 from app.services.custom_endpoints import endpoint_models
 from app.services.llm import generate_text
 from app.services.local_transcriber import LOCAL_MODEL_MAP, LocalTranscriber
+
+logger = logging.getLogger(__name__)
 
 # Verdicts, worst-to-best kept explicit so the UI and tests share one vocabulary.
 GREEN = "green"
@@ -597,6 +601,9 @@ async def summarize_local_fit(db: AsyncSession) -> dict:
         "intervals": await current_intervals(db),
         "roles": role_catalog(),
         "capabilities": build_local_capabilities(await local_models_all(db)),
+        # The last run, so returning to the tab shows what was measured rather
+        # than an empty card (see store_local_fit_result).
+        "last_result": await load_local_fit_result(db),
     }
 
 
@@ -624,7 +631,7 @@ async def run_local_fit(
         asr = await run_asr_fit(
             synthetic_speech_clip(), contention=contention, estimated=True
         )
-    return {
+    result = {
         "has_local_text_models": bool(models),
         "intervals": await current_intervals(db),
         "roles": role_catalog(),
@@ -633,6 +640,43 @@ async def run_local_fit(
         "asr": asr,
         "capabilities": build_local_capabilities(await local_models_all(db)),
     }
+    await store_local_fit_result(db, result)
+    return result
+
+
+LOCAL_FIT_RESULT_KEY = "diagnostics.local_fit.last_result"
+
+
+async def store_local_fit_result(db: AsyncSession, result: dict) -> None:
+    """Persist the last run so a page reload does not discard it.
+
+    The test costs real time on a local model, so losing it to a refresh means
+    re-running it. Stored whole rather than summarized: the card renders the
+    same payload it would have received live.
+    """
+    from datetime import datetime, timezone
+
+    payload = dict(result)
+    payload["completed_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        await set_app_setting(db, LOCAL_FIT_RESULT_KEY, json.dumps(payload))
+        await db.commit()
+    except Exception:
+        # A benchmark the user already waited for must not be lost to a
+        # storage problem; they still get the live result.
+        logger.warning("Could not persist the local fit result", exc_info=True)
+
+
+async def load_local_fit_result(db: AsyncSession) -> dict | None:
+    raw = await get_app_setting(db, LOCAL_FIT_RESULT_KEY, "")
+    if not raw:
+        return None
+    try:
+        stored = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("Stored local fit result is not valid JSON; ignoring")
+        return None
+    return stored if isinstance(stored, dict) else None
 
 
 def validate_interval_updates(updates: list[dict]) -> dict[str, int]:

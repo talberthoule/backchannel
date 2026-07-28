@@ -10,6 +10,7 @@ import {
   hashPassword,
   loadReleaseCatalog,
   parseSingleRange,
+  publicUpdateDescriptor,
   releaseSummary,
   resolveEntitlements,
   verifyPassword,
@@ -61,6 +62,8 @@ const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverif
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VERSION = /^(?=.{2,32}$)v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
 const ASSET_ID = /^[a-z0-9-]{1,32}$/;
+const UPDATE_ASSET_IDS = new Set(['windows-x64', 'macos-arm64', 'linux-x64']);
+const UPDATE_NONCE = /^[0-9a-f]{32}$/;
 const ACCESS_HOST = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.cloudflareaccess\.com$/;
 const PRIVATE_HEADERS = {
   'cache-control': 'no-store',
@@ -784,8 +787,7 @@ function rawSessionToken(request) {
   return cookie ? cookie.slice(prefix.length) : null;
 }
 
-async function tokenHashFromRequest(request) {
-  const token = rawSessionToken(request);
+async function opaqueTokenHash(token) {
   if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
   try {
     const bytes = Uint8Array.from(
@@ -801,6 +803,17 @@ async function tokenHashFromRequest(request) {
   } catch {
     return null;
   }
+}
+
+async function tokenHashFromRequest(request) {
+  return opaqueTokenHash(rawSessionToken(request));
+}
+
+async function bearerTokenHash(request) {
+  const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(
+    request.headers.get('authorization') || '',
+  );
+  return opaqueTokenHash(match?.[1]);
 }
 
 async function findDownloadSession(env, tokenHash, now) {
@@ -1053,7 +1066,12 @@ async function handleReleaseDownload(request, env, dependencies) {
     return downloadUnavailable();
   }
   if (!asset) return releaseNotFound();
+  return streamReleaseAsset(
+    request, env, manifest, asset, session.account.email, dependencies,
+  );
+}
 
+async function streamReleaseAsset(request, env, manifest, asset, email, dependencies) {
   let metadata;
   try {
     if (typeof env.RELEASES.head !== 'function') return downloadUnavailable();
@@ -1096,7 +1114,7 @@ async function handleReleaseDownload(request, env, dependencies) {
     await statement(env, `
       INSERT INTO release_access_events (email, action, version, created_at)
       VALUES (?, 'download_start', ?, ?)
-    `, session.account.email, manifest.version, downloadNow(dependencies).toISOString()).run();
+    `, email, manifest.version, downloadNow(dependencies).toISOString()).run();
   } catch {
     return downloadUnavailable();
   }
@@ -1105,6 +1123,116 @@ async function handleReleaseDownload(request, env, dependencies) {
 
 async function readDownloadBody(request) {
   return readAdminBody(request, DOWNLOAD_HOST, MAX_DOWNLOAD_BODY_BYTES, downloadJson);
+}
+
+function validUpdateGrantBody(body) {
+  return Object.keys(body).length === 3
+    && UPDATE_NONCE.test(body.nonce)
+    && VERSION.test(body.version)
+    && UPDATE_ASSET_IDS.has(body.asset_id);
+}
+
+async function handleUpdateGrant(request, env, dependencies) {
+  const parsed = await readDownloadBody(request);
+  if (parsed.response) return parsed.response;
+  const body = parsed.body;
+  if (!validUpdateGrantBody(body)) {
+    return downloadJson(400, { ok: false, error: 'Request is invalid.' });
+  }
+
+  const session = await releaseSession(request, env, dependencies);
+  if (session.response) return session.response;
+  if (!env.RELEASES) return downloadUnavailable();
+  let manifest;
+  let asset;
+  try {
+    const entitled = await entitledCatalog(env, session.authorization);
+    manifest = entitled.manifests.find(({ version }) => version === body.version);
+    asset = manifest?.assets.find(({ id }) => id === body.asset_id);
+  } catch {
+    return downloadUnavailable();
+  }
+  if (!asset?.update) return releaseNotFound();
+
+  const now = downloadNow(dependencies);
+  const expiresAt = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
+  let grant;
+  try {
+    grant = await (dependencies.createSessionToken || createSessionToken)(
+      randomBytesFrom(dependencies),
+    );
+    const results = await env.INTEREST_DB.batch([
+      statement(
+        env,
+        'DELETE FROM release_update_grants WHERE expires_at <= ?',
+        now.toISOString(),
+      ),
+      statement(env, `
+        INSERT INTO release_update_grants
+          (token_hash, email, version, asset_id, expires_at)
+        VALUES (?, ?, ?, ?, ?)
+      `, grant.tokenHash, session.account.email, manifest.version, asset.id, expiresAt),
+    ]);
+    if (results.length !== 2 || results.some((result) => result?.success !== true)
+      || (results[1]?.meta?.changes ?? 0) !== 1) return downloadUnavailable();
+  } catch {
+    return downloadUnavailable();
+  }
+  return downloadJson(200, {
+    nonce: body.nonce,
+    version: manifest.version,
+    asset_id: asset.id,
+    grant: grant.token,
+    expires_at: expiresAt,
+  });
+}
+
+function validStoredUpdateGrant(grant, match, now) {
+  const expiresAt = Date.parse(grant?.expires_at);
+  return grant
+    && grant.state === 'active'
+    && grant.release_decision === 'approved'
+    && grant.version === match[1]
+    && grant.asset_id === match[2]
+    && Number.isFinite(expiresAt)
+    && expiresAt > now.getTime();
+}
+
+async function handleUpdateDownload(request, env, dependencies) {
+  const match = /^\/api\/update\/assets\/(v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))\/(windows-x64|macos-arm64|linux-x64)$/
+    .exec(new URL(request.url).pathname);
+  if (!match || !env.INTEREST_DB || !env.RELEASES) return releaseNotFound();
+  const now = downloadNow(dependencies);
+  const tokenHash = await bearerTokenHash(request);
+  if (!tokenHash) return releaseNotFound();
+
+  let grant;
+  try {
+    grant = await env.INTEREST_DB.prepare(`
+      SELECT g.email, g.version, g.asset_id, g.expires_at,
+             a.state, i.release_decision
+      FROM release_update_grants g
+      JOIN release_accounts a ON a.email = g.email
+      JOIN interest_subscribers i ON i.email = g.email
+      WHERE g.token_hash = ? AND g.expires_at > ?
+        AND a.state = 'active' AND i.release_decision = 'approved'
+    `).bind(tokenHash, now.toISOString()).first();
+  } catch {
+    return releaseNotFound();
+  }
+  if (!validStoredUpdateGrant(grant, match, now)) return releaseNotFound();
+
+  try {
+    const authorization = await findReleaseAuthorization(env, grant.email);
+    if (!authorization) return releaseNotFound();
+    const entitled = await entitledCatalog(env, authorization);
+    const manifest = entitled.manifests.find(({ version }) => version === grant.version);
+    const asset = manifest?.assets.find(({ id }) => id === grant.asset_id);
+    if (!asset?.update) return releaseNotFound();
+    return streamReleaseAsset(request, env, manifest, asset, grant.email, dependencies);
+  } catch {
+    return releaseNotFound();
+  }
 }
 
 async function handleDownloadAsset(request, env, assetPath) {
@@ -1398,6 +1526,7 @@ async function handleDownloadRequest(request, env, dependencies) {
     ['/api/download/password', ['POST', handleDownloadPassword]],
     ['/api/download/logout', ['POST', handleDownloadLogout]],
     ['/api/download/releases', ['GET', handleReleaseList]],
+    ['/api/download/update-grants', ['POST', handleUpdateGrant]],
   ]);
   const pathname = new URL(request.url).pathname;
   const routeValue = routes.get(pathname)
@@ -1409,6 +1538,43 @@ async function handleDownloadRequest(request, env, dependencies) {
     return downloadJson(405, { ok: false, error: 'Method not allowed.' }, { allow: routeValue[0] });
   }
   return routeValue[1](request, env, dependencies);
+}
+
+async function handlePublicUpdate(request, env, dependencies = {}) {
+  if (request.method !== 'GET') {
+    return downloadJson(405, { ok: false, error: 'Method not allowed.' }, { allow: 'GET' });
+  }
+  const match = /^\/api\/update\/latest\/(windows-x64|macos-arm64|linux-x64)$/
+    .exec(new URL(request.url).pathname);
+  if (!match || !env.RELEASES) return releaseNotFound();
+  const cache = dependencies.cache ?? globalThis.caches?.default;
+  const cacheKey = new Request(request.url);
+  if (cache) {
+    try {
+      const cached = await cache.match(cacheKey);
+      if (cached) return cached;
+    } catch {
+      // Cache failure must not hide a published update.
+    }
+  }
+  try {
+    const catalog = await loadReleaseCatalog(env.RELEASES);
+    const manifest = catalog.manifests.get(catalog.latestVersion);
+    const descriptor = publicUpdateDescriptor(manifest, match[1]);
+    const response = descriptor
+      ? downloadJson(200, descriptor, { 'cache-control': 'public, max-age=300' })
+      : releaseNotFound();
+    if (descriptor && cache) {
+      try {
+        await cache.put(cacheKey, response.clone());
+      } catch {
+        // The uncached response remains valid.
+      }
+    }
+    return response;
+  } catch {
+    return releaseNotFound();
+  }
 }
 
 export async function handleInterest(request, env, fetcher = fetch) {
@@ -1505,6 +1671,19 @@ async function dispatch(url, request, env, verify, dependencies) {
   if (url.hostname === DOWNLOAD_HOST) {
     const assetPath = DOWNLOAD_ASSETS.get(url.pathname);
     if (assetPath) return handleDownloadAsset(request, env, assetPath);
+    if (url.pathname.startsWith('/api/update/latest/')) {
+      return handlePublicUpdate(request, env, dependencies);
+    }
+    if (url.pathname.startsWith('/api/update/assets/')) {
+      if (request.method !== 'GET') {
+        return downloadJson(
+          405,
+          { ok: false, error: 'Method not allowed.' },
+          { allow: 'GET' },
+        );
+      }
+      return handleUpdateDownload(request, env, dependencies);
+    }
     return handleDownloadRequest(request, env, dependencies);
   }
   if (url.hostname === ADMIN_HOST) {

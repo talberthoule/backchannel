@@ -6,6 +6,7 @@ persisted app setting so it survives restarts and applies to all sessions.
 """
 
 import logging
+from typing import Iterable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,14 +23,32 @@ DEFAULT_LOCAL_BATCH_MODEL = "local-whisper-base"
 
 
 class LocalOnlyModeError(ValueError):
-    """Raised when a cloud-only feature is used while Privacy First mode is on."""
+    """Raised when Privacy First refuses the model a feature was asked to use.
 
-    def __init__(self, feature: str):
+    The remedy that matters first is pointing the agent at a self-hosted model,
+    because that keeps the guarantee the mode exists to make. Turning the mode
+    off is the fallback, not the headline. When the caller knows which agent and
+    model were refused, naming them saves the user hunting through Admin.
+    """
+
+    def __init__(self, feature: str, model_id: str = "", agent: str = ""):
+        target = f"'{agent}' is set to {model_id}" if agent and model_id else (
+            f"it is set to {model_id}" if model_id else ""
+        )
+        cause = (
+            f", and {target}, which sends data off this machine and its network"
+            if target
+            else ", which requires an outside API call"
+        )
         super().__init__(
-            f"Privacy First mode is on: {feature} requires an outside API call and "
-            "has no local alternative. Disable Privacy First mode in Admin to use it."
+            f"Privacy First mode is on: {feature} is unavailable{cause}. "
+            "Assign a self-hosted model in Admin -> Agents (any endpoint on this "
+            "machine or your LAN qualifies), or turn off Privacy First mode in "
+            "Admin -> Transcription & Audio."
         )
         self.feature = feature
+        self.model_id = model_id
+        self.agent = agent
 
 
 def is_local_model(model_id: str) -> bool:
@@ -53,6 +72,38 @@ async def allows_local_only(model_id: str) -> bool:
         return False
     target = await resolve_target_standalone(model_id)
     return bool(target and target.on_prem)
+
+
+async def admitted_model_ids(model_ids: Iterable[str], local_only: bool = True) -> set[str]:
+    """The subset of model_ids Privacy First still admits.
+
+    Callers that gate several agents at once (the orchestrator, the briefing
+    pipeline) need the verdict for every assigned model before they can decide
+    what runs. Resolving an endpoint model is a database read, so each distinct
+    id is resolved exactly once here rather than on every agent tick.
+
+    With the mode off every model is admitted, which lets callers use the same
+    membership test on both paths instead of branching on the flag.
+    """
+    unique = {m for m in model_ids if m}
+    if not local_only:
+        return unique
+    admitted = set()
+    for model_id in unique:
+        try:
+            if await allows_local_only(model_id):
+                admitted.add(model_id)
+        except Exception:
+            # One unresolvable model (a transient database error reading its
+            # endpoint) pauses only its own agent instead of aborting call
+            # setup. Leaving it out of the set is the fail-closed choice: an
+            # unverified model is never admitted.
+            logger.warning(
+                "Could not resolve %s for Privacy First; treating it as not admitted",
+                model_id,
+                exc_info=True,
+            )
+    return admitted
 
 
 def local_models(capability: str) -> list[dict]:

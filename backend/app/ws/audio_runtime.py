@@ -197,6 +197,54 @@ def _queued_speaker_auto_id(
     return f"mic_{auto_id}" if track == 0 and split_track_established else auto_id
 
 
+# A diarizer slower than realtime makes the queue grow without bound: every
+# frame that arrives while it is behind is another buffer nobody frees. A
+# streaming Sortformer on two tracks did exactly this and the container was
+# OOM-killed 95 seconds into a call (ALP-153). Cap the audio held here so a
+# slow model degrades the analysis instead of ending the call.
+#
+# 30 s of dual-track PCM is ~2 MB: enough to absorb a model warm-up or a GC
+# pause, far below what exhausts the process.
+MAX_DIARIZATION_BACKLOG_SECONDS = 30.0
+MAX_DIARIZATION_BACKLOG_BYTES = int(MAX_DIARIZATION_BACKLOG_SECONDS * 2 * _PCM_BYTES_PER_SECOND)
+
+
+def _shed_diarization_backlog(
+    queue: "asyncio.Queue[_QueuedAudioFrame | None]",
+    pending_enqueued_at: deque[float],
+    buffered_bytes: int,
+    limit_bytes: int = MAX_DIARIZATION_BACKLOG_BYTES,
+) -> tuple[int, int]:
+    """Drop the oldest queued frames until the buffer is back under the cap.
+
+    Oldest-first because live analysis values recency: a frame from 90 seconds
+    ago has already missed the conversation it belonged to, while the newest
+    audio is what the speaker is saying now. Shedding the front also lets a
+    lagging diarizer catch back up to realtime instead of falling further
+    behind forever.
+
+    Returns the new buffered byte count and how many frames were dropped.
+    """
+    dropped = 0
+    while buffered_bytes > limit_bytes:
+        try:
+            stale = queue.get_nowait()
+        except asyncio.QueueEmpty:
+            # Accounting drifted (the worker took frames as we shed); the
+            # queue is empty, so nothing is buffered.
+            return 0, dropped
+        if stale is None:
+            # The shutdown sentinel must never be discarded, or the worker
+            # would never stop.
+            queue.put_nowait(None)
+            break
+        buffered_bytes -= len(stale.pcm_bytes)
+        if pending_enqueued_at:
+            pending_enqueued_at.popleft()
+        dropped += 1
+    return max(0, buffered_bytes), dropped
+
+
 async def _run_diarization_worker(
     queue: asyncio.Queue[_QueuedAudioFrame | None],
     mic_diarizer: Any,

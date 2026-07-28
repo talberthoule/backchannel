@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from app.database import async_session
 from app.models import AgentConfig, CallSegment, Question, Session, SessionAgentOverride, Speaker, TranscriptEntry
 from app.services.agents.orchestrator import AgentOrchestrator, drain_progress_percent
+from app.services.privacy import admitted_model_ids
 from app.services.session_manager import get_active_directives, get_document_summaries, get_next_sequence
 from app.services.audio_store import SegmentAudioWriter
 from app.services.speaker_assignment import (
@@ -20,6 +21,7 @@ from app.services.speaker_assignment import (
 )
 from app.services.speaker_ghost_filter import should_defer_new_speaker_segment
 from app.services.ordered_transcription import OrderedTranscriptionQueue
+from app.services import runtime_activity
 from app.ws.audio_persistence import (
     _append_audio_frames,
     _close_audio_writers,
@@ -450,8 +452,7 @@ async def _finalize_call(
     )
 
 
-@router.websocket("/ws/{session_id}")
-async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
+async def _audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
     await websocket.accept()
 
     async with async_session() as db:
@@ -503,6 +504,14 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
     # Track active (unanswered) questions for agent context
     active_questions: list[dict] = list(existing_questions)
 
+    # Which assigned models Privacy First admits. Resolved once here because
+    # each endpoint model costs a database read and the orchestrator's gate is
+    # synchronous; with the mode off this is every configured model.
+    admitted_models = await admitted_model_ids(
+        (cfg.model_id for cfg in agent_configs.values() if getattr(cfg, "model_id", "")),
+        local_only,
+    )
+
     # --- Agent Orchestrator ---
     orchestrator = AgentOrchestrator(
         session_id=session_id,
@@ -515,6 +524,7 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         meeting_type=meeting_type,
         meeting_context=meeting_context,
         local_only=local_only,
+        admitted_models=admitted_models,
     )
 
     # --- Speaker diarization ---
@@ -657,3 +667,12 @@ async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         _start_call_segment,
         _finalize_call,
     )
+
+
+@router.websocket("/ws/{session_id}")
+async def audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
+    try:
+        with runtime_activity.track("active call"):
+            await _audio_websocket(websocket, session_id)
+    except runtime_activity.ShutdownReserved as exc:
+        await websocket.close(code=1013, reason=str(exc))

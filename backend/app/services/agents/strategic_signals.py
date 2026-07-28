@@ -16,7 +16,7 @@ from app.services.briefing_synthesis import (
 )
 from app.services.llm import generate_json, provider_for
 from app.services.meeting_context import format_prompt_with_meeting_context
-from app.services.privacy import LocalOnlyModeError, is_local_only
+from app.services.privacy import LocalOnlyModeError, allows_local_only, is_local_only
 from app.services.provider_errors import PROVIDER_ERROR_TYPES, provider_error_message
 
 logger = logging.getLogger(__name__)
@@ -33,13 +33,15 @@ async def run_strategic_signals_cycle(
     speakers: list[dict] | None = None,
     active_questions: list[dict] | None = None,
 ):
-    if await is_local_only():
-        raise LocalOnlyModeError("live strategic signals")
-
     configs = agent_configs or await load_agent_configs(session_id)
     cfg = configs.get(STRATEGIC_SIGNALS_SLUG)
     if not cfg or not cfg.enabled:
         return None
+
+    # Judge the agent's own model: a self-hosted one keeps the signals running
+    # with the mode on, which is the whole point of Privacy First by destination.
+    if await is_local_only() and not await allows_local_only(cfg.model_id):
+        raise LocalOnlyModeError("live strategic signals", cfg.model_id, STRATEGIC_SIGNALS_SLUG)
 
     context = await _build_context(
         session_id,

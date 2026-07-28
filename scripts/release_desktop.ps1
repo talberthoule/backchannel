@@ -370,6 +370,10 @@ function Build-WindowsRelease {
     if ($asset.Length -le 0) {
         throw "Windows release zip is empty"
     }
+    Invoke-Checked "Smoke testing Windows update archive" {
+        & $venvPython (Join-Path $Source "desktop\scripts\smoke_update_archive.py") `
+            --platform windows-x64 --archive $AssetPath
+    } | Out-Null
     return $asset.FullName
 }
 
