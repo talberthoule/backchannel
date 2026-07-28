@@ -237,6 +237,10 @@ export default function App() {
   // Track when the current call segment started (resets on each start/resume)
   const [callSegmentStart, setCallSegmentStart] = useState<string | null>(null);
   const [postProcessing, setPostProcessing] = useState<PostProcessingProgress>(() => idlePostProcessing());
+  // True from the moment End Call is pressed until the post-call data has
+  // landed. The socket closes early in that window, and without this the
+  // still-mounted active view reads that as a lost connection (ALP-171).
+  const [endingCall, setEndingCall] = useState(false);
   const runtimeSessionIdRef = useRef(runtimeSessionId);
   const liveSessionIdRef = useRef(liveSessionId);
   const audioStartPromiseRef = useRef<Promise<void> | null>(null);
@@ -795,6 +799,7 @@ export default function App() {
   }, [refreshSession, refreshQuestions, refreshSynthesis, refreshSessions]);
 
   const handleEndCall = useCallback(async (drain: StopDrainMode = "full") => {
+    setEndingCall(true);
     setPostProcessing(startPostProcessing());
     beginCallGenerationRef.current += 1;
     beginCallPromiseRef.current = null;
@@ -831,13 +836,21 @@ export default function App() {
       } else {
         setPostProcessing((prev) => unconfirmedPostProcessing(prev));
       }
-      await refreshSession();
-      await refreshQuestions();
-      await refreshSegments();
-      await refreshSpeakers();
-      await refreshTranscripts();
-      await refreshSynthesis();
-      await refreshSessions();
+      try {
+        await refreshSession();
+        await refreshQuestions();
+        await refreshSegments();
+        await refreshSpeakers();
+        await refreshTranscripts();
+        await refreshSynthesis();
+        await refreshSessions();
+      } finally {
+        // Always release the ending state. A failed refresh should drop the
+        // user back to a normal view, never strand them on "wrapping up".
+        setEndingCall(false);
+      }
+    } else {
+      setEndingCall(false);
     }
   }, [activeSessionId, sendStop, stopCapture, stopListening, disconnect, refreshSession, refreshQuestions, refreshSegments, refreshSpeakers, refreshTranscripts, refreshSynthesis, refreshSessions, pollSessionCompletion]);
 
@@ -946,6 +959,7 @@ export default function App() {
       case "active":
         return (
           <ActiveCallView
+            ending={endingCall}
             session={session}
             questions={allQuestions}
             transcripts={displayTranscripts}
