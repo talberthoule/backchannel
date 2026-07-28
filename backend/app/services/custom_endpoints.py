@@ -42,7 +42,7 @@ _DOCKER_HOST_ALIASES = ("host.docker.internal", "gateway.docker.internal")
 
 
 class EndpointError(ValueError):
-    """Invalid endpoint definition; routers translate this into a 400."""
+    """Invalid endpoint definition or unavailable saved endpoint."""
 
 
 @dataclass(frozen=True)
@@ -435,7 +435,7 @@ async def endpoint_model_entry(db: AsyncSession, model_id: str) -> dict | None:
 
 
 async def resolve_target(db: AsyncSession, model_id: str) -> EndpointTarget | None:
-    """The endpoint behind an "endpoint:..." model id, or None if it is gone."""
+    """Resolve an endpoint model, returning None if it never existed and raising if deleted."""
     parsed = parse_model_id(model_id)
     if parsed is None:
         return None
