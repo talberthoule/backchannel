@@ -671,12 +671,20 @@ class AgentOrchestrator:
             except (asyncio.CancelledError, Exception):
                 pass
 
-        result: dict[str, int | bool] = {
+        result: dict = {
             "transcript_available": False,
             "insights_saved": 0,
             "synthesizer_ops": 0,
             "opportunity_ops": 0,
+            # Stages that failed. The drain already degrades past a failure and
+            # the call still finalizes, but until this was reported the client
+            # saw only counts, so a failed briefing was indistinguishable from a
+            # clean finish - and a slow one from a stranded call.
+            "stage_errors": [],
         }
+
+        def _stage_failed(stage: str, error: Exception) -> None:
+            result["stage_errors"].append({"stage": stage, "detail": str(error)})
         stages = self.drain_stages(mode)
         drain_total_steps = 2 + len(stages)
         if "call_briefing" in stages:
@@ -739,6 +747,7 @@ class AgentOrchestrator:
                     )
             except Exception as e:
                 logger.error(f"Final consolidated analyst drain error: {e}")
+                _stage_failed("final_insights", e)
                 await self.activity.cycle_error(
                     "consolidated_analyst",
                     classify_error(e, self._get_model("consolidated_analyst")),
@@ -776,6 +785,7 @@ class AgentOrchestrator:
                 )
             except Exception as e:
                 logger.error(f"Final synthesizer drain error: {e}")
+                _stage_failed("insight_reconciliation", e)
                 await self.activity.cycle_error(
                     "synthesizer",
                     classify_error(e, self._get_model("synthesizer")),
@@ -817,6 +827,7 @@ class AgentOrchestrator:
                 )
             except Exception as e:
                 logger.error(f"Final opportunity specialist drain error: {e}")
+                _stage_failed("opportunity_matching", e)
                 await self.activity.cycle_error(
                     "opportunity_specialist",
                     classify_error(e, self._get_model("opportunity_specialist")),
@@ -863,6 +874,7 @@ class AgentOrchestrator:
                     )
             except Exception as e:
                 logger.error(f"Final briefing synthesis error: {e}")
+                _stage_failed("call_briefing", e)
                 for slug in briefing_slugs:
                     await self.activity.cycle_error(
                         slug,

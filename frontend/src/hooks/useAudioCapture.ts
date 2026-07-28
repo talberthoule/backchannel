@@ -29,6 +29,40 @@ export function startSingleFlight<T>(
   return pending;
 }
 
+interface SystemCaptureHandle {
+  /** Silences the track-1 pipeline so no further frames reach onChunk. */
+  disconnect: () => void;
+  /** The display stream, whose tracks are released. */
+  stream: { getTracks(): { stop(): void }[] } | null;
+  /** Reports the new system-track state to the backend. */
+  notify: ((active: boolean) => void) | null;
+}
+
+/**
+ * Builds the one function that ends system capture, whatever triggered it.
+ *
+ * Chrome's own "Stop sharing" bar is the only way to end a share mid-call, and
+ * it ends the track without any in-page click to hang logic off. Ending must
+ * therefore do the whole job from a track event: stop forwarding frames, release
+ * the tracks, and tell the backend the system track went inactive so it closes
+ * the split segment writer and diarizer state. Forgetting the first of those is
+ * what let frames keep flowing in lockstep with the mic for a whole call.
+ *
+ * Idempotent, because the native bar, an explicit stop, and full capture
+ * release can all reach it, and a second track_state would misreport the call.
+ */
+export function createSystemCaptureStop(handle: SystemCaptureHandle): () => boolean {
+  let stopped = false;
+  return () => {
+    if (stopped) return false;
+    stopped = true;
+    handle.disconnect();
+    handle.stream?.getTracks().forEach((track) => track.stop());
+    handle.notify?.(false);
+    return true;
+  };
+}
+
 const WORKLET_CODE = `
   class PCM16Processor extends AudioWorkletProcessor {
     constructor() {
@@ -74,6 +108,7 @@ export function useAudioCapture() {
   const workletReadyRef = useRef(false);
   const startPromiseRef = useRef<Promise<void> | null>(null);
   const captureGenerationRef = useRef(0);
+  const systemStopRef = useRef<(() => boolean) | null>(null);
 
   useEffect(() => {
     const resumeContext = () => {
@@ -96,6 +131,7 @@ export function useAudioCapture() {
     setSystemAudioActive(false);
     onLevelRef.current = null;
     onSystemAudioStateChangeRef.current = null;
+    systemStopRef.current = null;
 
     for (const node of nodesRef.current) {
       node.disconnect();
@@ -115,12 +151,15 @@ export function useAudioCapture() {
     setIsCapturing(false);
   }, []);
 
+  // Returns a teardown that silences just this track's pipeline. The system
+  // side has to be able to stop on its own while the mic keeps running, which
+  // a single whole-graph teardown cannot express.
   const attachPipeline = useCallback(async (
     ctx: AudioContext,
     stream: MediaStream,
     track: AudioTrack,
     onChunk: (chunk: ArrayBuffer, track: AudioTrack) => void,
-  ) => {
+  ): Promise<() => void> => {
     const source = ctx.createMediaStreamSource(stream);
     const silentSink = ctx.createGain();
     silentSink.gain.value = 0;
@@ -146,6 +185,7 @@ export function useAudioCapture() {
       source.connect(workletNode);
       workletNode.connect(silentSink); // required for processing to run
       nodesRef.current.push(workletNode);
+      return () => teardown(workletNode, () => { workletNode.port.onmessage = null; });
     } catch {
       // Fallback: ScriptProcessorNode
       const scriptNode = ctx.createScriptProcessor(4096, 1, 1);
@@ -168,6 +208,19 @@ export function useAudioCapture() {
       source.connect(scriptNode);
       scriptNode.connect(silentSink);
       nodesRef.current.push(scriptNode);
+      return () => teardown(scriptNode, () => { scriptNode.onaudioprocess = null; });
+    }
+
+    function teardown(node: AudioNode, detach: () => void) {
+      // Detach the callback first: disconnecting stops new buffers arriving,
+      // but a buffer already in flight must not reach onChunk either.
+      detach();
+      source.disconnect();
+      analyser.disconnect();
+      node.disconnect();
+      silentSink.disconnect();
+      nodesRef.current = nodesRef.current.filter((n) => n !== node);
+      analysersRef.current = analysersRef.current.filter((a) => a.track !== track);
     }
   }, []);
 
@@ -203,7 +256,12 @@ export function useAudioCapture() {
             audio: true,
             video: true,
           });
-          candidate.getVideoTracks().forEach((track) => track.stop());
+          // Disabled, not stopped. Chrome hangs the share's lifetime on the
+          // video track, so stopping it here throws away the only reliable
+          // signal that the user hit "Stop sharing" - and a track we stop
+          // ourselves never fires "ended" per spec. Disabled costs black
+          // frames and keeps that signal.
+          candidate.getVideoTracks().forEach((track) => { track.enabled = false; });
           if (generation !== captureGenerationRef.current) {
             candidate.getTracks().forEach((track) => track.stop());
             return;
@@ -212,15 +270,12 @@ export function useAudioCapture() {
             displayStream = candidate;
             streamsRef.current.push(candidate);
             const handleEnded = () => {
-              if (
-                generation === captureGenerationRef.current
-                && candidate.getAudioTracks().every((track) => track.readyState === "ended")
-              ) {
-                setSystemAudioActive(false);
-                onSystemAudioStateChangeRef.current?.(false);
-              }
+              if (generation !== captureGenerationRef.current) return;
+              if (systemStopRef.current?.()) setSystemAudioActive(false);
             };
-            candidate.getAudioTracks().forEach((track) => {
+            // Every track, because which one carries the stop differs by
+            // browser and by share type; whichever ends first is the answer.
+            candidate.getTracks().forEach((track) => {
               track.addEventListener("ended", handleEnded, { once: true });
             });
           }
@@ -238,7 +293,13 @@ export function useAudioCapture() {
 
       await attachPipeline(ctx, micStream, 0, onChunk);
       if (displayStream) {
-        await attachPipeline(ctx, displayStream, 1, onChunk);
+        const disconnect = await attachPipeline(ctx, displayStream, 1, onChunk);
+        const stream = displayStream;
+        systemStopRef.current = createSystemCaptureStop({
+          disconnect,
+          stream,
+          notify: (active) => onSystemAudioStateChangeRef.current?.(active),
+        });
       }
       if (generation !== captureGenerationRef.current) return;
       const systemActive = Boolean(
