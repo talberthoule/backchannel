@@ -57,6 +57,58 @@ test("capture startup can retry after a rejected attempt", async () => {
   assert.equal(attempts, 2);
 });
 
+test("ending the share stops system frames and reports the track inactive", async () => {
+  const { createSystemCaptureStop } = await import("./useAudioCapture.ts");
+
+  let forwarding = true;
+  const stopped = [];
+  const states = [];
+  const stop = createSystemCaptureStop({
+    disconnect: () => { forwarding = false; },
+    stream: { getTracks: () => [{ stop: () => stopped.push("audio") }, { stop: () => stopped.push("video") }] },
+    notify: (active) => states.push(active),
+  });
+
+  // What the native "Stop sharing" bar reaches through the track's ended event.
+  assert.equal(stop(), true);
+
+  assert.equal(forwarding, false, "system frames must stop being forwarded");
+  assert.deepEqual(states, [false], "the backend must be told the system track went inactive");
+  assert.deepEqual(stopped, ["audio", "video"], "every display track is released");
+});
+
+test("ending the share twice reports the track inactive only once", async () => {
+  const { createSystemCaptureStop } = await import("./useAudioCapture.ts");
+
+  let disconnects = 0;
+  const states = [];
+  const stop = createSystemCaptureStop({
+    disconnect: () => { disconnects += 1; },
+    stream: null,
+    notify: (active) => states.push(active),
+  });
+
+  assert.equal(stop(), true);
+  // The native bar, an explicit stop, and capture release can all land here.
+  assert.equal(stop(), false);
+  assert.equal(stop(), false);
+
+  assert.equal(disconnects, 1);
+  assert.deepEqual(states, [false]);
+});
+
+test("the display stream keeps a live track to carry the native stop signal", () => {
+  const hook = readFileSync(new URL("./useAudioCapture.ts", import.meta.url), "utf8");
+
+  // Chrome hangs the share's lifetime on the video track, and a track we stop
+  // ourselves never fires "ended", so stopping it here would discard the only
+  // signal that the user ended the share.
+  assert.match(hook, /getVideoTracks\(\)\.forEach\(\(track\) => \{ track\.enabled = false; \}\)/);
+  assert.doesNotMatch(hook, /getVideoTracks\(\)\.forEach\(\(track\) => track\.stop\(\)\)/);
+  // Listen on every track, not just audio: which one ends first varies.
+  assert.match(hook, /candidate\.getTracks\(\)\.forEach\(\(track\) => \{\s*track\.addEventListener\("ended", handleEnded/);
+});
+
 test("admin recorder cancels pending and active capture on unmount", () => {
   const card = readFileSync(
     new URL("../components/DiarizationCapabilityCard.tsx", import.meta.url),
