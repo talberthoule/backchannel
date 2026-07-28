@@ -37,12 +37,13 @@ arbiter's prompt dwarfs a single lens (ALP-154, commit df9fc5c).
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Sequence
 
 
-# How a consumer draws on the machine.
-CONSUMER_IN_PROCESS = "in_process"        # backend thread pool + container memory (the OOM axis)
+# How a text agent draws on the machine. (The other demands - diarization,
+# batch ASR, the captioner - are always in-process: backend thread pool plus
+# container memory, the OOM axis.)
 CONSUMER_LOCAL_OFF_PROCESS = "local_off_process"  # same machine, separate process (loopback endpoint)
 CONSUMER_REMOTE = "remote"                # off-box (LAN or cloud): no local CPU or memory
 
@@ -114,20 +115,19 @@ class DiarizationDemand:
 
     track_count: int
     per_track_rtf: float
-    per_instance_memory_mb: float | None = None
+    per_instance_memory_mb: float = 0.0
 
     def cpu_cores(self) -> float:
         return max(0, self.track_count) * max(0.0, self.per_track_rtf)
 
     def memory_mb(self) -> float:
-        if self.per_instance_memory_mb is None:
-            return 0.0
         return max(0, self.track_count) * max(0.0, self.per_instance_memory_mb)
 
 
 @dataclass(frozen=True)
 class BatchAsrDemand:
-    """Batch ASR over diarized speech. In-process, bounded at max_concurrency.
+    """Batch ASR over diarized speech. In-process; concurrency is bounded by
+    ordered_transcription.OrderedTranscriptionQueue.
 
     Load is the ASR real-time factor scaled by the fraction of wall-clock that is
     actually speech (VAD-derived). Bursty; the sustained average is what the
@@ -136,15 +136,11 @@ class BatchAsrDemand:
 
     real_time_factor: float
     speech_fraction: float = 0.6
-    memory_mb: float | None = None
-    max_concurrency: int = 3
+    memory_mb: float = 0.0
 
     def cpu_cores(self) -> float:
         fraction = min(1.0, max(0.0, self.speech_fraction))
         return fraction * max(0.0, self.real_time_factor)
-
-    def memory_mb_value(self) -> float:
-        return 0.0 if self.memory_mb is None else max(0.0, self.memory_mb)
 
 
 @dataclass(frozen=True)
@@ -156,16 +152,11 @@ class CaptionerDemand:
     """
 
     real_time_factor: float
-    memory_mb: float | None = None
+    memory_mb: float = 0.0
     enabled: bool = True
 
     def cpu_cores(self) -> float:
         return max(0.0, self.real_time_factor) if self.enabled else 0.0
-
-    def memory_mb_value(self) -> float:
-        if not self.enabled or self.memory_mb is None:
-            return 0.0
-        return max(0.0, self.memory_mb)
 
 
 @dataclass(frozen=True)
@@ -306,10 +297,10 @@ def plan_capacity(
         memory_demand += diarization.memory_mb()
     if batch_asr is not None:
         cpu_demand += batch_asr.cpu_cores()
-        memory_demand += batch_asr.memory_mb_value()
-    if captioner is not None:
+        memory_demand += max(0.0, batch_asr.memory_mb)
+    if captioner is not None and captioner.enabled:
         cpu_demand += captioner.cpu_cores()
-        memory_demand += captioner.memory_mb_value()
+        memory_demand += max(0.0, captioner.memory_mb)
     for agent in text_agents:
         cpu_demand += agent.cpu_cores()
 

@@ -1,7 +1,7 @@
 import os
 import tempfile
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -176,7 +176,7 @@ async def get_transcription_readiness_status(db: AsyncSession = Depends(get_db))
 
 @router.get("/capacity")
 async def get_call_capacity(
-    track_count: int = 2,
+    track_count: int = Query(2, ge=1, le=2),
     db: AsyncSession = Depends(get_db),
 ):
     """Call-start capacity admission: measured headroom for the selected config.
@@ -186,7 +186,6 @@ async def get_call_capacity(
     headroom rather than a boolean, and names what it does and does not yet
     model (see capacity_admission).
     """
-    track_count = max(1, min(2, track_count))
     assessment = await assess_call_capacity(db, track_count=track_count)
     return assessment.to_dict()
 

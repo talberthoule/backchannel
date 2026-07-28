@@ -37,8 +37,8 @@ class DiarizationDemandTests(unittest.TestCase):
         self.assertEqual(400, single.memory_mb())
         self.assertEqual(800, dual.memory_mb())
 
-    def test_missing_memory_footprint_reads_as_zero_not_a_crash(self):
-        demand = DiarizationDemand(track_count=2, per_track_rtf=0.4, per_instance_memory_mb=None)
+    def test_default_memory_footprint_reads_as_zero(self):
+        demand = DiarizationDemand(track_count=2, per_track_rtf=0.4)
         self.assertEqual(0.0, demand.memory_mb())
 
 
@@ -235,7 +235,9 @@ class PlanCapacityTests(unittest.TestCase):
     def test_disabled_captioner_costs_nothing(self):
         captioner = CaptionerDemand(real_time_factor=0.9, memory_mb=400, enabled=False)
         self.assertEqual(0.0, captioner.cpu_cores())
-        self.assertEqual(0.0, captioner.memory_mb_value())
+        verdict = plan_capacity(_comfortable_budget(), captioner=captioner)
+        # Only the budget's own overhead is counted; the disabled captioner adds nothing.
+        self.assertEqual(200.0, verdict.memory_demand_mb)
 
 
 class DegradationOrderTests(unittest.TestCase):
