@@ -1,162 +1,20 @@
-"""Periodic insight refinement loop (Tier 2).
+"""Insight refinement operations.
 
-Runs alongside the Gemini Live session during an active call. Every N seconds
-it takes a snapshot of all current insights + the recent transcript window and
-asks a batch Gemini call to propose updates: enrichments, type elevations,
-answer detections, merges, and new items the real-time tier may have missed.
+The periodic refinement loop this module was built around is gone: the
+synthesizer agent replaced it, and its cycle function had no callers left. What
+survives is the operation vocabulary both the synthesizer and the speaker
+context enhancer apply against saved insights - answer, enrich, elevate,
+adjust, create, dismiss, and merge.
 """
 
-import asyncio
-import json
 import logging
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
-
-from app.config import settings
-from app.services.llm import generate_text
 from app.database import async_session
-from app.models import Question, TranscriptEntry
+from app.models import Question
 
 logger = logging.getLogger(__name__)
-
-REFINEMENT_PROMPT_TEMPLATE = """You are a refinement engine for a live call assistant. You are reviewing the current state of all captured insights against the most recent transcript.
-
-Your job is to find things the real-time system may have missed or that have evolved:
-
-1. **Answer detection** — A question may have been implicitly answered without the real-time system noticing.
-2. **Enrichment** — An observation or opportunity may now have additional supporting evidence.
-3. **Type elevation** — An observation may now clearly be an opportunity, or a question may have become an action item.
-4. **Adjustment** — An action item's scope or details may need updating based on new context.
-5. **New insight** — Something important the real-time system missed entirely.
-6. **Merge** — Two items are really saying the same thing and should be combined.
-
-## Current Insights
-{insights_json}
-
-## Recent Transcript (last ~3 minutes)
-{transcript_text}
-
-## Output Format
-Return a JSON array of operation objects. ONLY include operations where something meaningfully changed. If nothing changed, return an empty array `[]`.
-
-Operations:
-
-### Answer a question that was implicitly answered:
-{{"op": "answer", "id": "<insight-uuid>", "answer_summary": "what we learned", "needs_followup": true/false, "followup": "next question if needed"}}
-
-### Enrich an insight with additional evidence:
-{{"op": "enrich", "id": "<insight-uuid>", "additional_context": "new supporting evidence from the conversation", "reason": "why this matters"}}
-
-### Elevate an insight's type (e.g. observation → opportunity):
-{{"op": "elevate", "id": "<insight-uuid>", "new_type": "opportunity|action_item|observation|question", "reason": "why this type change is warranted"}}
-
-### Adjust an existing insight's text or supporting fields:
-{{"op": "adjust", "id": "<insight-uuid>", "new_text": "updated insight text", "new_rationale": "updated rationale", "new_source_context": "updated source context", "reason": "what changed"}}
-
-### Create a new insight the real-time system missed:
-{{"op": "create", "item_type": "question|observation|opportunity|action_item", "question": "the insight text", "rationale": "why this matters", "source_context": "what was said"}}
-
-### Merge two duplicate/overlapping insights:
-{{"op": "merge", "keep_id": "<uuid-to-keep>", "remove_id": "<uuid-to-remove>", "merged_text": "combined text", "reason": "why these are the same"}}
-
-Rules:
-- Do NOT touch dismissed items.
-- Be conservative — only propose changes where the transcript clearly supports it.
-- Use exact UUIDs from the insights list.
-- Return ONLY valid JSON array, no other text.
-"""
-
-
-def _build_insights_json(questions: list[Question]) -> str:
-    items = []
-    for q in questions:
-        items.append({
-            "id": str(q.id),
-            "item_type": q.item_type,
-            "text": q.question,
-            "rationale": q.rationale,
-            "source_context": q.source_context,
-            "answered": q.answered,
-            "answer_summary": q.answer_summary,
-            "starred": q.starred,
-            "enrichment_notes": q.enrichment_notes or "",
-        })
-    return json.dumps(items, indent=2)
-
-
-async def run_refinement_cycle(session_id: uuid.UUID) -> list[dict]:
-    """Execute one refinement cycle. Returns list of applied operations."""
-    async with async_session() as db:
-        # Load active (non-dismissed) insights
-        result = await db.execute(
-            select(Question).where(
-                Question.session_id == session_id,
-                Question.dismissed.is_(False),
-            )
-        )
-        questions = list(result.scalars().all())
-
-        if not questions:
-            return []
-
-        # Load recent transcript (~3 min window = last ~18 entries at 10s batches)
-        result = await db.execute(
-            select(TranscriptEntry)
-            .where(TranscriptEntry.session_id == session_id)
-            .order_by(TranscriptEntry.sequence.desc())
-            .limit(20)
-        )
-        entries = list(reversed(result.scalars().all()))
-
-    transcript_text = "\n".join(e.text for e in entries) if entries else "(No transcript yet)"
-    insights_json = _build_insights_json(questions)
-
-    prompt = REFINEMENT_PROMPT_TEMPLATE.format(
-        insights_json=insights_json,
-        transcript_text=transcript_text,
-    )
-
-    model_id = settings.REFINEMENT_MODEL
-
-    try:
-        raw = await generate_text(model_id, prompt, session_id=session_id, source="insight_refiner")
-    except Exception as e:
-        logger.error(f"Refinement API call failed: {e}")
-        return []
-
-        raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-    if raw.endswith("```"):
-        raw = raw[:-3]
-    raw = raw.strip()
-
-    if not raw or raw == "[]":
-        return []
-
-    try:
-        ops = json.loads(raw)
-    except json.JSONDecodeError:
-        start = raw.find("[")
-        end = raw.rfind("]")
-        if start != -1 and end != -1:
-            try:
-                ops = json.loads(raw[start:end + 1])
-            except json.JSONDecodeError:
-                logger.warning(f"Refinement parse failed: {raw[:200]}")
-                return []
-        else:
-            logger.warning(f"Refinement parse failed: {raw[:200]}")
-            return []
-
-    if not isinstance(ops, list):
-        return []
-
-    applied = await _apply_operations(session_id, ops, questions, agent_source="refiner")
-    return applied
-
 
 async def _apply_operations(
     session_id: uuid.UUID,
