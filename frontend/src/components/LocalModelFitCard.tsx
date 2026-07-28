@@ -232,6 +232,9 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
   }, [capabilities]);
   // Prefer a real-voice measurement; fall back to the auto synthetic-clip run.
   const asr = asrReport ?? report?.asr ?? null;
+  const validity = report?.validity;
+  const incompatible = validity?.status === "incompatible";
+  const superseded = validity?.status === "superseded";
 
   return (
     <div className="rounded-xl bg-surface p-5 shadow-sm">
@@ -282,10 +285,24 @@ export default function LocalModelFitCard({ onIntervalsApplied }: LocalModelFitC
         </div>
       )}
 
-      {report && !running && (
+      {(validity || report?.measured_at) && !running && (
+        <p className={`mt-3 rounded border px-3 py-2 font-body text-xs ${
+          validity?.status === "superseded"
+            ? "border-amber-200 bg-amber-50 text-amber-800"
+            : "border-brand-light-gray-1 bg-brand-light-gray-2/30 text-brand-gray"
+        }`}>
+          {validity?.status === "aged"
+            ? validity.reason
+            : (!validity || validity.status === "current") && report?.measured_at
+              ? `Measured ${new Date(report.measured_at).toLocaleString()}`
+              : validity?.reason}
+        </p>
+      )}
+
+      {report && !running && !incompatible && (
         <>
           <ContentionSlider contention={contention} onChange={setContention} />
-          <div className="mt-3 space-y-4">
+          <div className={`mt-3 space-y-4 ${superseded ? "opacity-60" : ""}`}>
             {report.text_models.map((model) => (
               <ModelFitBlock
                 key={model.model_id}
@@ -434,12 +451,18 @@ function ModelFitBlock({
 }) {
   const views = model.status === "ok" ? model.roles.map(resolveRole) : [];
   const changes = views.filter((v) => v.changed).length;
+  const superseded = model.validity?.status === "superseded";
 
   return (
-    <div className="rounded-lg border border-brand-light-gray-1 p-4">
+    <div className={`rounded-lg border border-brand-light-gray-1 p-4 ${superseded ? "opacity-60" : ""}`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-display text-sm font-bold text-brand-dark-gray" title={model.model_id}>{model.model_name}</p>
+          {superseded && (
+            <span className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-body text-[10px] text-amber-800">
+              Superseded
+            </span>
+          )}
           {model.status === "ok" && model.short && model.long ? (
             <p className="mt-0.5 font-body text-[11px] text-brand-mid-gray">
               Short {model.short.latency_seconds.toFixed(1)}s - Long {model.long.latency_seconds.toFixed(1)}s per call
@@ -451,7 +474,7 @@ function ModelFitBlock({
             <p className="mt-0.5 font-body text-[11px] text-brand-mid-gray">Usable for: <span className="text-brand-gray">{usableFor.join(", ")}</span></p>
           )}
         </div>
-        {model.status === "ok" && changes > 0 && (
+        {model.status === "ok" && changes > 0 && !superseded && (
           <button
             onClick={onApply}
             disabled={applying}
@@ -483,6 +506,7 @@ function ModelFitBlock({
                   contention={contention}
                   onEditBudget={onEditBudget}
                   onCommitBudget={onCommitBudget}
+                  suppressRecommendation={superseded}
                 />
               ))}
             </tbody>
@@ -501,11 +525,13 @@ function RoleRow({
   contention,
   onEditBudget,
   onCommitBudget,
+  suppressRecommendation,
 }: {
   view: RoleView;
   contention: number;
   onEditBudget: (slug: string, seconds: number) => void;
   onCommitBudget: (slug: string, seconds: number) => void;
+  suppressRecommendation: boolean;
 }) {
   const { role, budget, verdict, recommended, changed } = view;
   const eff = effective(role.latency_seconds, contention);
@@ -518,7 +544,9 @@ function RoleRow({
       <td className="py-1.5 pr-3 capitalize text-brand-gray">{role.prompt_profile}</td>
       <td className="py-1.5 pr-3 text-brand-gray" title={`${eff.toFixed(1)}s at ${contention.toFixed(1)}x load`}>{role.latency_seconds.toFixed(1)}s</td>
       <td className="py-1.5 pr-3 text-brand-gray">
-        {role.post_call ? (
+        {suppressRecommendation ? (
+          <span className="text-brand-mid-gray">-</span>
+        ) : role.post_call ? (
           <span className="text-brand-mid-gray">end-of-call</span>
         ) : role.editable ? (
           <input

@@ -23,11 +23,18 @@ def _diarizer(
     effective: str = DIARIZER_SORTFORMER,
     contention_rtf: float | None = 0.3,
     peak_memory_mb: float | None = 300.0,
+    validity: str = "current",
 ) -> SimpleNamespace:
     return SimpleNamespace(
         effective_live_diarizer=effective,
         benchmark_contention_adjusted_real_time_factor=contention_rtf,
         benchmark_peak_memory_mb=peak_memory_mb,
+        benchmark_validity=validity,
+        benchmark_validity_reason=(
+            "This machine has not been measured against the current benchmark."
+            if validity == "incompatible"
+            else ""
+        ),
     )
 
 
@@ -52,6 +59,23 @@ class DetectMachineBudgetTests(unittest.TestCase):
 
 
 class AssessCallCapacityTests(unittest.IsolatedAsyncioTestCase):
+    async def test_invalid_sortformer_measurement_is_excluded_and_named(self):
+        with mock.patch(
+            "app.services.capacity_admission.get_diarizer_runtime_config",
+            new=mock.AsyncMock(
+                return_value=_diarizer(
+                    effective=DIARIZER_LIGHTWEIGHT,
+                    validity="incompatible",
+                )
+            ),
+        ):
+            assessment = await assess_call_capacity(
+                db=None,
+                budget=MachineBudget(usable_cores=8, memory_limit_mb=8192),
+            )
+        self.assertNotIn("diarization_sortformer", assessment.modelled)
+        self.assertTrue(any("current benchmark" in item for item in assessment.not_modelled))
+
     async def test_sortformer_diarization_is_modelled_from_the_benchmark(self):
         with mock.patch(
             "app.services.capacity_admission.get_diarizer_runtime_config",

@@ -179,7 +179,11 @@ async def assess_call_capacity(
     modelled: list[str] = ["machine_budget"]
     not_modelled = list(_NOT_MODELLED_BASE)
 
-    if diarizer.effective_live_diarizer == DIARIZER_SORTFORMER:
+    if diarizer.benchmark_validity in ("incompatible", "superseded"):
+        not_modelled.append(
+            f"diarization: {diarizer.benchmark_validity_reason}"
+        )
+    elif diarizer.effective_live_diarizer == DIARIZER_SORTFORMER:
         if (
             diarizer.benchmark_contention_adjusted_real_time_factor is not None
             and diarizer.benchmark_peak_memory_mb is not None

@@ -1,3 +1,4 @@
+import json
 import math
 from dataclasses import dataclass
 
@@ -7,6 +8,7 @@ from app.config import settings
 from app.services.app_settings import get_app_setting, set_app_setting
 from app.services.diarization_diagnostics import (
     BenchmarkResult,
+    SORTFORMER_RTF_THRESHOLD,
     SortformerEnvironment,
     describe_benchmark_headroom,
     probe_sortformer_environment,
@@ -18,6 +20,13 @@ from app.services.diarizer_selection import (
     resolve_effective_diarizer_mode,
     sortformer_is_selectable,
 )
+from app.services.fit_staleness import (
+    AGED,
+    CURRENT,
+    assess_fit_record,
+    host_fingerprint,
+    stamp_fit_record,
+)
 
 SETTING_SELECTED_DIARIZER = "diarization.selected_live_diarizer"
 SETTING_SORTFORMER_BENCHMARK_STATUS = "diarization.sortformer.benchmark_status"
@@ -28,6 +37,7 @@ SETTING_SORTFORMER_BENCHMARK_CONTENTION_RTF = (
 SETTING_SORTFORMER_BENCHMARK_PEAK_MEMORY_MB = (
     "diarization.sortformer.peak_memory_mb"
 )
+SETTING_SORTFORMER_LAST_RESULT = "diarization.sortformer.last_result"
 SETTING_SPEAKER_SIMILARITY_THRESHOLD = "diarization.speaker_similarity_threshold"
 MIN_SPEAKER_SIMILARITY_THRESHOLD = 0.5
 MAX_SPEAKER_SIMILARITY_THRESHOLD = 0.95
@@ -42,6 +52,9 @@ class DiarizerRuntimeConfig:
     benchmark_real_time_factor: float | None
     benchmark_contention_adjusted_real_time_factor: float | None
     benchmark_peak_memory_mb: float | None
+    benchmark_measured_at: str | None
+    benchmark_validity: str
+    benchmark_validity_reason: str
     speaker_similarity_threshold: float
     selection_reason: str
 
@@ -56,6 +69,9 @@ class DiarizerRuntimeConfig:
                 self.benchmark_contention_adjusted_real_time_factor
             ),
             "benchmark_peak_memory_mb": self.benchmark_peak_memory_mb,
+            "benchmark_measured_at": self.benchmark_measured_at,
+            "benchmark_validity": self.benchmark_validity,
+            "benchmark_validity_reason": self.benchmark_validity_reason,
             "speaker_similarity_threshold": self.speaker_similarity_threshold,
             "selection_reason": self.selection_reason,
         }
@@ -88,13 +104,26 @@ async def get_diarizer_runtime_config(
                     "for this request."
                 ),
             )
-    benchmark_status = await get_app_setting(db, SETTING_SORTFORMER_BENCHMARK_STATUS, "")
-    rtf = _parse_float(await get_app_setting(db, SETTING_SORTFORMER_BENCHMARK_RTF, ""))
-    contention_rtf = _parse_float(
-        await get_app_setting(db, SETTING_SORTFORMER_BENCHMARK_CONTENTION_RTF, "")
+    record = await _load_sortformer_record(db)
+    validity = assess_fit_record(
+        record,
+        current_subject={"model_id": environment.model_id, "endpoint_fingerprint": None},
+        current_host=host_fingerprint(environment),
+        required_fields=(
+            "real_time_factor",
+            "contention_adjusted_real_time_factor",
+            "peak_memory_mb",
+        ),
     )
-    peak_memory_mb = _parse_float(
-        await get_app_setting(db, SETTING_SORTFORMER_BENCHMARK_PEAK_MEMORY_MB, "")
+    rtf = _finite_number(record.get("real_time_factor"))
+    contention_rtf = _finite_number(record.get("contention_adjusted_real_time_factor"))
+    peak_memory_mb = _finite_number(record.get("peak_memory_mb"))
+    gradeable = validity["status"] in (CURRENT, AGED)
+    benchmark_status = (
+        "passed"
+        if gradeable and rtf is not None and 0 < rtf <= SORTFORMER_RTF_THRESHOLD
+        else "failed" if gradeable and rtf is not None
+        else ""
     )
     threshold = _parse_threshold(
         await get_app_setting(db, SETTING_SPEAKER_SIMILARITY_THRESHOLD, str(settings.SPEAKER_SIMILARITY_THRESHOLD))
@@ -119,6 +148,9 @@ async def get_diarizer_runtime_config(
         benchmark_real_time_factor=rtf,
         benchmark_contention_adjusted_real_time_factor=contention_rtf,
         benchmark_peak_memory_mb=peak_memory_mb,
+        benchmark_measured_at=record.get("measured_at"),
+        benchmark_validity=validity["status"],
+        benchmark_validity_reason=validity["reason"],
         speaker_similarity_threshold=threshold,
         selection_reason=_selection_reason(
             selected,
@@ -126,6 +158,7 @@ async def get_diarizer_runtime_config(
             selectable,
             environment.reason,
             rtf,
+            validity,
         ),
     )
 
@@ -133,16 +166,8 @@ async def get_diarizer_runtime_config(
 async def set_selected_diarizer(db: AsyncSession, selected_mode: str) -> DiarizerRuntimeConfig:
     selected = normalize_diarizer_mode(selected_mode)
     environment = probe_sortformer_environment()
-    benchmark_status = await get_app_setting(db, SETTING_SORTFORMER_BENCHMARK_STATUS, "")
-    rtf = _parse_float(
-        await get_app_setting(db, SETTING_SORTFORMER_BENCHMARK_RTF, "")
-    )
-
-    if selected == DIARIZER_SORTFORMER and not sortformer_is_selectable(
-        benchmark_status,
-        environment.sortformer_available,
-        rtf,
-    ):
+    runtime = await get_diarizer_runtime_config(db, environment=environment)
+    if selected == DIARIZER_SORTFORMER and not runtime.sortformer_selectable:
         raise ValueError("Sortformer can be selected after a passing benchmark on this machine.")
 
     await set_app_setting(db, SETTING_SELECTED_DIARIZER, selected)
@@ -150,25 +175,18 @@ async def set_selected_diarizer(db: AsyncSession, selected_mode: str) -> Diarize
     return await get_diarizer_runtime_config(db, environment=environment)
 
 
-async def record_sortformer_benchmark(db: AsyncSession, result: BenchmarkResult) -> None:
-    await set_app_setting(db, SETTING_SORTFORMER_BENCHMARK_STATUS, result.status)
-    # A non-finite RTF (inf marks an unmeasurable benchmark) must never be
-    # persisted: it is not JSON-serializable in diagnostics responses. Clear
-    # any stale value instead so the stored RTF matches the stored status.
-    rtf = result.real_time_factor
-    await set_app_setting(
-        db,
-        SETTING_SORTFORMER_BENCHMARK_RTF,
-        str(rtf) if math.isfinite(rtf) else "",
-    )
-    contention_rtf = result.contention_adjusted_real_time_factor
-    await set_app_setting(
-        db,
-        SETTING_SORTFORMER_BENCHMARK_CONTENTION_RTF,
-        str(contention_rtf) if math.isfinite(contention_rtf) else "",
-    )
-    previous_peak_memory_mb = _parse_float(
-        await get_app_setting(db, SETTING_SORTFORMER_BENCHMARK_PEAK_MEMORY_MB, "")
+async def record_sortformer_benchmark(
+    db: AsyncSession,
+    result: BenchmarkResult,
+    environment: SortformerEnvironment | None = None,
+) -> None:
+    environment = environment or probe_sortformer_environment(model_id=result.model_id)
+    host = host_fingerprint(environment)
+    previous = await _load_sortformer_record(db)
+    previous_peak_memory_mb = (
+        _finite_number(previous.get("peak_memory_mb"))
+        if previous.get("host") == host
+        else None
     )
     peak_candidates = [
         value
@@ -176,14 +194,50 @@ async def record_sortformer_benchmark(db: AsyncSession, result: BenchmarkResult)
         if value is not None and math.isfinite(value)
     ]
     peak_memory_mb = max(peak_candidates) if peak_candidates else None
-    await set_app_setting(
-        db,
-        SETTING_SORTFORMER_BENCHMARK_PEAK_MEMORY_MB,
-        str(peak_memory_mb)
-        if peak_memory_mb is not None and math.isfinite(peak_memory_mb)
-        else "",
-    )
+    record = {
+        "real_time_factor": _finite_number(result.real_time_factor),
+        "contention_adjusted_real_time_factor": _finite_number(
+            result.contention_adjusted_real_time_factor
+        ),
+        "peak_memory_mb": peak_memory_mb,
+        **stamp_fit_record(
+            {"model_id": result.model_id, "endpoint_fingerprint": None},
+            host,
+        ),
+    }
+    await set_app_setting(db, SETTING_SORTFORMER_LAST_RESULT, json.dumps(record))
     await db.commit()
+
+
+async def _load_sortformer_record(db: AsyncSession) -> dict:
+    raw = await get_app_setting(db, SETTING_SORTFORMER_LAST_RESULT, "")
+    if raw:
+        try:
+            record = json.loads(raw)
+        except json.JSONDecodeError:
+            record = {}
+        if isinstance(record, dict):
+            return record
+    legacy = {
+        "schema_version": 0,
+        "real_time_factor": _parse_float(
+            await get_app_setting(db, SETTING_SORTFORMER_BENCHMARK_RTF, "")
+        ),
+        "contention_adjusted_real_time_factor": _parse_float(
+            await get_app_setting(db, SETTING_SORTFORMER_BENCHMARK_CONTENTION_RTF, "")
+        ),
+        "peak_memory_mb": _parse_float(
+            await get_app_setting(db, SETTING_SORTFORMER_BENCHMARK_PEAK_MEMORY_MB, "")
+        ),
+    }
+    return legacy if any(value is not None for value in legacy.values() if value != 0) else {}
+
+
+def _finite_number(value) -> float | None:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    value = float(value)
+    return value if math.isfinite(value) else None
 
 
 async def set_speaker_similarity_threshold(
@@ -209,7 +263,10 @@ def _selection_reason(
     selectable: bool,
     environment_reason: str,
     benchmark_real_time_factor: float | None,
+    validity: dict,
 ) -> str:
+    if validity["status"] in ("incompatible", "superseded"):
+        return validity["reason"]
     benchmark_reason = (
         describe_benchmark_headroom(
             benchmark_real_time_factor,

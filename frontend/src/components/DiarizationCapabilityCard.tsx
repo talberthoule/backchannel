@@ -336,6 +336,17 @@ export default function DiarizationCapabilityCard() {
           }
         />
       </div>
+      {diarization?.benchmark_measured_at && (
+        <p className="mb-4 font-body text-[11px] text-brand-mid-gray">
+          Measured {new Date(diarization.benchmark_measured_at).toLocaleString()}
+          {diarization.benchmark_validity === "aged" ? ` - ${diarization.benchmark_validity_reason}` : ""}
+        </p>
+      )}
+      {["incompatible", "superseded"].includes(diarization?.benchmark_validity ?? "") && (
+        <p className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 font-body text-xs text-amber-800">
+          {diarization?.benchmark_validity_reason}
+        </p>
+      )}
 
       <div className="mb-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
