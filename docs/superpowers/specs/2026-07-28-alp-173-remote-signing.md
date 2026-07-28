@@ -1,6 +1,6 @@
 # ALP-173 Remote Release Signing Design
 
-Status: stage-one design for shepherd review
+Status: stage-one design approved with genesis-release amendment
 
 Date: 2026-07-28
 
@@ -30,9 +30,8 @@ material, key rotation, deployment, or cutover.
 - Send the exact canonical public-descriptor bytes and sign those bytes
   directly with Ed25519.
 - Use key ID `ed25519-2026-07b`.
-- Bootstrap trust with one bridge release signed by `ed25519-2026-07` that
-  bundles both public keys. Only a later release may switch to
-  `ed25519-2026-07b`.
+- Treat `v0.4.0` as the genesis release of the update channel. It ships only
+  `ed25519-2026-07b` and is remote-signed with that key from its first byte.
 - Store the private key as unpadded base64url PKCS#8 in Secrets Store. Workers
   WebCrypto supports Ed25519 but private-key import is not supported from the
   raw 32-byte form used by the current Python signer.
@@ -94,7 +93,7 @@ Stage two adds a small top-level Worker directory with its own `package.json`,
 lockfile, `wrangler.jsonc`, source, and Node test. It uses `jose` for Access JWT
 verification and Workers WebCrypto for Ed25519.
 
-The Wrangler configuration will:
+The final Wrangler configuration will:
 
 - disable `workers.dev` and preview URLs;
 - route only `signing.backchannel.page`;
@@ -103,6 +102,10 @@ The Wrangler configuration will:
 - declare one `secrets_store_secrets` binding named
   `RELEASE_SIGNING_PRIVATE_KEY`;
 - contain the Secrets Store ID and secret name, never the secret value.
+
+Stage two checks in the deployable base configuration without invented
+resource IDs or audience values. Stage three adds the real Access audience,
+Secrets Store binding, and other provisioned identifiers before deployment.
 
 Cloudflare Secrets Store has service-level scopes such as `workers`; it does
 not provide a per-Worker cryptographic ACL in the secret value. "Scoped to this
@@ -276,54 +279,39 @@ The workflow still restores and verifies the exact cache handoff before
 calling `publish_release_platform.ps1`. Cleanup remains credential-free and
 separate. No signing credential enters the build job.
 
-The one approved bridge release still selects explicit local mode in the
-protected publish job and uses the old protected signing secret. That secret is
-removed only after the bridge has moved every supported installed version onto
-a bundle that trusts both public keys.
-
 ## Key rotation and stage boundary
 
 `desktop/release_signing_keys.json` is bundled into each desktop application.
 `UpdateService` loads that local file at startup; it does not fetch new trust
-roots before verifying an update. A currently installed client knows only
-`ed25519-2026-07`, so it cannot verify a first update signed by
-`ed25519-2026-07b`, even if that update would contain the new public key after
-installation.
+roots before verifying an update. Tag-history inspection confirms that no
+released tag contains that file or `UpdateService`, so no released client
+trusts `ed25519-2026-07` and no auto-update client exists to bridge.
 
-Rotation therefore requires two releases:
+`v0.4.0` is therefore the genesis release of the update channel. Its trust
+file contains `ed25519-2026-07b` as the only key and marks it active. The
+never-used `ed25519-2026-07` public key is removed, and no production release
+uses its private key. Existing `v0.3.x` installations continue to upgrade
+through the portal.
 
-1. A bridge release retains `active: ed25519-2026-07`, adds the
-   `ed25519-2026-07b` public key beside the old public key, and is signed by the
-   old private key through explicit local mode. Existing clients can verify and
-   install it; the installed bridge then trusts both keys.
-2. After every supported installed version has moved to the bridge or later,
-   the next release flips `active` to `ed25519-2026-07b` and is signed by the
-   remote Worker. The old public key remains in the bundle for the documented
-   compatibility window.
-
-For the current release train, `v0.4.0` is the natural bridge and `v0.4.1` is
-the earliest safe remote-signed release. Signing `v0.4.0` directly with the new
-key would strand existing auto-update clients and is rejected.
+Future rotations, after `v0.4.0` establishes an installed trust root, still
+require the documented two-release procedure: first ship both public keys in a
+release signed by the old key, then switch the active key only after the
+supported-version floor trusts it.
 
 The production public key cannot exist before the no-disk ceremony generates
 the production keypair. Creating it during stage two would provision production
 key material before the required shepherd review. A placeholder public key
 would be unsafe and unreviewable.
 
-The stages therefore apply rotation as follows:
+The stages therefore apply the genesis key as follows:
 
-- Stage two implements and tests multi-key rotation, detached signatures,
-  remote publication, the ceremony, Worker, workflow, and docs using test-only
-  fixture keys. It does not place a placeholder in the production trust file.
-- After stage-two review, stage three runs the ceremony, adds the emitted
-  public key beside the old public key while leaving the old key active,
-  reruns the signing and release gates, and commits that exact public-only
-  bridge change before deployment.
-
-The real public-key insertion and two-release trust bootstrap are necessary
-stage-order adjustments to the brief. Shepherd approval of this design
-explicitly approves them; otherwise implementation must stop until a different
-backward-compatible trust bootstrap is specified.
+- Stage two implements and tests detached signatures, remote publication, the
+  ceremony, Worker, workflow, and docs using test-only fixture keys. It does
+  not change the production trust file or add placeholder resource IDs.
+- After stage-two review, stage three runs the ceremony, replaces the trust file
+  with `ed25519-2026-07b` as its only and active entry, adds the real provisioned
+  Worker configuration, reruns the signing and release gates, and commits only
+  the public key before the `v0.4.0` tag.
 
 ## Provisioning and cutover
 
@@ -333,9 +321,9 @@ Stage three starts only after shepherd approval of stages one and two.
    without printing credentials.
 2. Create or identify the account Secrets Store and dedicated secret name.
 3. Run the ceremony and capture only the public JSON output.
-4. Add the real public key to `desktop/release_signing_keys.json`, retain the
-   old key as active, run the focused and full release gates, and commit the
-   bridge trust file.
+4. Replace `desktop/release_signing_keys.json` with the real public key as the
+   only entry and set `active` to `ed25519-2026-07b`; run the focused and full
+   release gates and commit that exact public-only change.
 5. Create the Access self-hosted application for
    `signing.backchannel.page`, its dedicated audience, a Service Auth policy
    allowing only the release publisher token, and the service token.
@@ -347,19 +335,16 @@ Stage three starts only after shepherd approval of stages one and two.
    and verify it locally against the newly checked-in public key.
 9. Run the publisher smoke path and confirm a failed or malformed signing
    response makes zero R2 operations.
-10. Publish the approved bridge release with the old key through explicit local
-    mode. Do not call this remote-signing cutover.
-11. After the supported-version floor has moved onto the bridge or later, flip
-    `active` to `ed25519-2026-07b`, run the full release gates, and publish the
-    next patch release through the remote signer.
-12. Remove the obsolete GitHub private-key secret. Machine one securely deletes
-    its old laptop-held private file as a separately recorded operator action.
-    The old public key stays checked in.
+10. After stage-three review and merge, create the `v0.4.0` tag and publish
+    every platform through remote mode. No production release uses local mode.
+11. Remove the obsolete GitHub private-key secret. Machine one securely deletes
+    its old laptop-held private file as a separately recorded ALP-170 operator
+    action.
 
 No production release is published merely to prove signing. ALP-173 remains
 open after Worker deployment and test signing; cutover is complete only when a
-remote-signed patch is accepted by a bridge-or-later installed client and the
-old private material has been removed.
+remote-signed `v0.4.0` descriptor is accepted by a `v0.4.0` client and the old
+private material has been removed.
 
 ## Failure handling
 

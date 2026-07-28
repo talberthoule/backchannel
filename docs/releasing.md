@@ -123,7 +123,7 @@ has the signing key ID, schema, and unpadded base64url Ed25519 signature:
   "published_at": "<strict UTC ISO-8601 timestamp>",
   "release_notes": "<1 to 8192 UTF-8 bytes>",
   "update": {
-    "key_id": "ed25519-2026-07",
+    "key_id": "ed25519-2026-07b",
     "schema": 1,
     "signature": "<86-character unpadded base64url Ed25519 signature>"
   },
@@ -153,38 +153,63 @@ The production GitHub environment requires these repository secrets:
 - `CLOUDFLARE_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
-- `BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY`
+- `CLOUDFLARE_ACCESS_CLIENT_ID`
+- `CLOUDFLARE_ACCESS_CLIENT_SECRET`
 
-It also requires repository variable `R2_RELEASES_BUCKET` with value
-`backchannel-desktop-releases`. Create a separate bucket-scoped Cloudflare R2
-API token with Object Read & Write permission; Cloudflare exposes its
-S3-compatible writer credentials as access-key and secret fields. Do not reuse
-or expand the site deployment token.
+It also requires repository variables `R2_RELEASES_BUCKET` with value
+`backchannel-desktop-releases` and `BACKCHANNEL_RELEASE_SIGNING_URL` with the
+HTTPS signing endpoint. Create a separate bucket-scoped Cloudflare R2 API token
+with Object Read & Write permission; Cloudflare exposes its S3-compatible
+writer credentials as access-key and secret fields. Do not reuse or expand the
+site deployment token.
 
-The protected macOS publish job is blocked until
-`BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY` contains the unpadded base64url raw
-Ed25519 private key matching `desktop/release_signing_keys.json`. Never expose
-that secret to the credential-free build or cleanup jobs.
+The publisher environment, whether local or the protected macOS publish job,
+must provide `BACKCHANNEL_RELEASE_SIGNING_URL`,
+`CLOUDFLARE_ACCESS_CLIENT_ID`, and `CLOUDFLARE_ACCESS_CLIENT_SECRET`. The
+protected job uses `-SigningMode Remote`; never expose those credentials to the
+credential-free build or cleanup jobs.
 
-The local coordinator requires the same four names as user-scoped environment
-variables: `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
-`R2_SECRET_ACCESS_KEY`, and `R2_RELEASES_BUCKET`. Never print their values. It
-also requires Python 3.12, Node 24 or newer, authenticated `gh`, a reachable
-Docker engine reporting `linux/x86_64`, and clean `master` synchronized with
-`origin/master`.
-Local publication reads the same signing material from
-`%LOCALAPPDATA%\Backchannel\release-signing\ed25519-2026-07.private`; an
-explicit `BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY` overrides that file.
+The local coordinator also requires `CLOUDFLARE_ACCOUNT_ID`,
+`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_RELEASES_BUCKET` as
+user-scoped environment variables. Never print their values. It also requires
+Python 3.12, Node 24 or newer, authenticated `gh`, a reachable Docker engine
+reporting `linux/x86_64`, and clean `master` synchronized with `origin/master`.
 
-Rotate signing keys by adding the new public key to
-`desktop/release_signing_keys.json`, retaining every still-accepted old key,
-and changing `active` to the new ID before building the first release signed
-by it. Keep the prior private key protected until supported installed versions
-have moved beyond it. Removing an old public key requires shipping a later
-desktop bundle; an offline client cannot receive an emergency revocation, so
-key compromise requires a new key, a new patch release, and direct operator
-communication. The persisted greatest-seen version/time limits replay after a
-client has observed the replacement but is not an offline revocation service.
+### Genesis key and stage-three cutover
+
+`v0.4.0` is the genesis release of the update channel. After stage-two review
+and before creating its tag, complete stage three:
+
+1. Provision the dedicated Access application and service-token policy,
+   Secrets Store, and `signing.backchannel.page` custom domain.
+2. Run `node release-signing-worker/scripts/create-signing-key.mjs` as the
+   no-disk ceremony. Capture only its public JSON output.
+3. Replace `desktop/release_signing_keys.json` with
+   `ed25519-2026-07b` as its only key and active entry, using the exact public
+   key emitted by the ceremony. Do not use a placeholder.
+4. Add the real Access audience, Secrets Store binding, and custom domain to
+   the signing Worker's stage-three configuration, then deploy and verify it.
+5. Rerun the signing and release gates, commit the exact public-only trust-file
+   change, complete stage-three review, and only then create the `v0.4.0` tag.
+
+Publish every `v0.4.0` platform through remote mode. No production release,
+including `v0.4.0`, uses `-SigningMode Local`. Deleting the never-used old
+laptop-held private-key file is a separate ALP-170 operator action.
+
+After `v0.4.0` establishes the installed trust root, future rotations require
+a two-release bridge. First add the new public key while keeping the old key
+active and publish that bridge through the old remote signer. After the
+supported-version floor trusts both keys, switch `active` and publish the next
+release through the new remote signer. Keep the prior public key for the
+documented compatibility window.
+
+`-SigningMode Local` is reserved for a future, explicitly approved emergency
+rotation. There is no stored local production key and no automatic fallback
+from remote mode. An emergency operator must supply newly generated matching
+key material explicitly, publish a new patch release, and communicate directly
+with affected users. An offline client cannot receive an emergency revocation;
+the persisted greatest-seen version/time only limits replay after a client has
+observed the replacement.
 
 The checked-in `scripts/r2-object.mjs` client calls Cloudflare R2 directly and
 is the only release object transport. `AWS4-HMAC-SHA256` and `x-amz-*` are the
@@ -245,8 +270,8 @@ docker build --file desktop/Dockerfile.release-linux --build-context controller=
 The credential-free macOS build runs
 `smoke_update_archive.py --platform macos-arm64` against the real
 `ditto -c -k --keepParent` `.app` archive before cache handoff. Its native run
-is reserved for the later approved CI phase. Configure
-`BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY` in the protected production
+is reserved for the later approved CI phase. Configure the remote publisher
+URL and Access service-token credentials in the protected production
 environment before allowing that publication job to proceed.
 
 ALP-150's current phase ends after local verification and local merge. Do not
@@ -284,7 +309,9 @@ user explicitly approves the final release phase.
    powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test_release_desktop.ps1
    ```
 
-5. Commit release metadata, then create and push an annotated canonical tag:
+5. For `v0.4.0`, complete the reviewed stage-three genesis ceremony and
+   cutover above before tagging. Commit release metadata, then create and push
+   an annotated canonical tag:
 
    ```powershell
    git tag -a vX.Y.Z -m "Backchannel vX.Y.Z"
@@ -310,8 +337,9 @@ immutable metadata already matches.
 
 Every platform publisher performs this fail-closed sequence:
 
-1. Require the versioned release-note file and matching Ed25519 private/public
-   key pair, then sign the complete public update descriptor before any R2
+1. Require the versioned release-note file and remote signer environment, ask
+   the Worker to sign the complete public update descriptor, then verify the
+   detached signature against the active checked-in public key before any R2
    request.
 2. Read or conditionally create the immutable release identity, then read it
    back and require byte-equivalent metadata.
