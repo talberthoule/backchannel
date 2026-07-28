@@ -33,6 +33,13 @@ const CHAT = [
       "clinical validation owner, and legal review of the managed-service boundary.",
   },
 ];
+const CLEAN_CREDENTIALS = ["google", "openai", "openai-compatible"].map((provider) => ({
+  provider,
+  configured: false,
+  env_fallback: false,
+  masked: "",
+  connected: false,
+}));
 
 mkdirSync(OUT, { recursive: true });
 const log = [];
@@ -82,8 +89,16 @@ async function openDemo(page) {
   await page.waitForTimeout(900);
 }
 
+async function useCleanConnections(page) {
+  await page.route(`${BASE}/api/credentials`, (route) =>
+    route.fulfill({ json: CLEAN_CREDENTIALS }));
+  await page.route(`${BASE}/api/endpoints`, (route) =>
+    route.fulfill({ json: [] }));
+}
+
 async function runCompleted(colorScheme, suffix) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme });
+  await useCleanConnections(page);
   const shot = async (name, note) => {
     await page.screenshot({ path: `${OUT}/${name}${suffix}.png` });
     log.push(`  ${name}${suffix} -- ${note}`);
@@ -131,8 +146,12 @@ async function runCompleted(colorScheme, suffix) {
     [/About/, "admin-about"],
   ]) {
     await page.getByRole("button", { name }).first().click();
+    if (asset === "admin-api-keys") {
+      await page.getByText("Not configured", { exact: true }).first().waitFor();
+      await page.getByText("No self-hosted endpoints yet.", { exact: true }).waitFor();
+    }
     await page.waitForTimeout(700);
-    await shot(asset, "admin tab");
+    await shot(asset, asset === "admin-api-keys" ? "clean Connections fixture" : "admin tab");
   }
 
   await page.getByText("Offerings Catalog").first().click();
@@ -161,8 +180,11 @@ async function runLive(colorScheme, suffix) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme });
   try {
     await openDemo(page);
-    await page.getByRole("button", { name: "Resume Audio" }).click();
-    await page.getByText("Listening", { exact: true }).first().waitFor({ timeout: 20000 });
+    const resume = page.getByRole("button", { name: "Resume Audio" });
+    const listening = page.getByText("Listening", { exact: true }).first();
+    await resume.or(listening).first().waitFor({ timeout: 20000 });
+    if (await resume.isVisible().catch(() => false)) await resume.click();
+    await listening.waitFor({ timeout: 20000 });
     await page.waitForTimeout(700);
     await page.screenshot({ path: `${OUT}/live-call${suffix}.png` });
     log.push(`  live-call${suffix} -- active call listening with saved insights and transcript`);
