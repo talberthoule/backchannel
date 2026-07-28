@@ -32,19 +32,19 @@ Speaker context:
 {active_questions}
 
 ## Output Format
-Return a JSON array. Each item:
+Return a JSON object with an `items` array. Each item:
 {{"item_type": "{item_type_values}", "question": "the insight text", "rationale": "why this matters", "source_context": "what was said that triggered this", "speaker_id": "matching speaker UUID from the transcript or participants list, or null", "directive_source": "matching directive text" or null}}
 
 Rules:
 - Return 0-3 items per lens. Quality over quantity.
-- If nothing significant for a lens, skip it entirely. An empty array `[]` is fine.
+- If nothing significant for a lens, skip it entirely. An empty `items` array is fine.
 - Each lens section states the item_type its findings must use; never invent other item_type values.
 - Later lenses should build on earlier ones — if an earlier lens surfaces a constraint, gap, or need, use later lenses to probe or address it in a way that fits the Meeting Context.
 - Use speaker_id for attribution. Only use speaker_id values shown in Participants or Recent Transcript.
 - Use speaker_type and Meeting Context together; `external` does not automatically mean client.
 - Do not invent Speaker numbers, real names, or combined labels like "Speaker 1/Mark" in the insight text.
 - If the responsible or source speaker is unclear, set speaker_id to null.
-- Return ONLY valid JSON array, no other text.
+- Return ONLY the valid JSON object, no other text.
 
 ## Call Directives
 {directives_text}
@@ -149,16 +149,16 @@ For each objection provide BOTH:
 {recent_objections}
 
 ## Output Format
-Return a JSON array. Each item:
+Return a JSON object with an `items` array. Each item:
 {{"item_type": "objection", "question": "concise statement of the objection", "response_now": "what to say right now", "bigger_picture": "underlying concern and strategic angle", "source_context": "the quote that triggered this", "severity": "high|medium|low", "speaker_id": "matching speaker UUID from the transcript or participants list, or null"}}
 
 Rules:
 - Only flag objections raised in the LAST few exchanges. Old or already-handled objections do not belong here.
-- Return 0-2 items per cycle. An empty array `[]` is the most common correct answer.
+- Return 0-2 items per cycle. An empty `items` array is the most common correct answer.
 - Never re-flag an objection listed above unless it has clearly escalated or changed shape.
 - `high` = deal/relationship-threatening, `medium` = should be handled this call, `low` = note and revisit.
 - Only use speaker_id values shown in Participants or the Recent Transcript; otherwise null.
-- Return ONLY a valid JSON array, no other text.
+- Return ONLY the valid JSON object, no other text.
 
 ## Call Directives
 {directives_text}
@@ -385,7 +385,7 @@ Speaker context:
 - If an existing opportunity appears to be based only on unsupported framing, adjust it into a validation question or observation instead of strengthening it.
 
 ## Output Format
-Return a JSON array of operation objects. ONLY include operations where something meaningfully changed. If nothing changed, return an empty array `[]`.
+Return a JSON object with an `items` array of operation objects. ONLY include operations where something meaningfully changed. If nothing changed, return an empty `items` array.
 
 Operations:
 
@@ -412,7 +412,7 @@ Rules:
 - Be conservative — only propose changes where the transcript clearly supports it.
 - Use exact UUIDs from the insights list.
 - When creating strategic synthesis insights, clearly explain how the pieces connect and what bigger picture they reveal.
-- Return ONLY valid JSON array, no other text.
+- Return ONLY the valid JSON object, no other text.
 """
 
 # ---------------------------------------------------------------------------

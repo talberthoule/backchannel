@@ -8,11 +8,12 @@ import json
 import logging
 import uuid
 
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
-from app.services.llm import generate_text
+from app.services.llm import generate_json
 from app.database import async_session
 from app.models import Question, Session, TranscriptEntry
 from app.services.agents.prompts import PRINCIPAL_AGENT_PROMPT
@@ -21,6 +22,37 @@ from app.services.insight_refiner import _apply_operations
 from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
 
 logger = logging.getLogger(__name__)
+
+
+class SynthesizerOperation(BaseModel):
+    op: str
+    id: str | None = None
+    keep_id: str | None = None
+    remove_id: str | None = None
+    answer_summary: str | None = None
+    needs_followup: bool | None = None
+    followup: str | None = None
+    additional_context: str | None = None
+    reason: str | None = None
+    new_type: str | None = None
+    new_text: str | None = None
+    new_rationale: str | None = None
+    new_source_context: str | None = None
+    new_answer_summary: str | None = None
+    new_followup_question: str | None = None
+    new_followup: str | None = None
+    new_offering_match: str | None = None
+    offering_match: str | None = None
+    followup_question: str | None = None
+    item_type: str | None = None
+    question: str | None = None
+    rationale: str | None = None
+    source_context: str | None = None
+    merged_text: str | None = None
+
+
+class SynthesizerOutput(BaseModel):
+    items: list[SynthesizerOperation]
 
 
 def _build_insights_json(questions: list[Question]) -> str:
@@ -109,38 +141,17 @@ async def run_synthesizer_cycle(session_id: uuid.UUID, model_override: str | Non
     model_id = model_override or settings.REFINEMENT_MODEL
 
     try:
-        raw = await generate_text(model_id, prompt, session_id=session_id, source="synthesizer")
+        output = await generate_json(
+            model_id,
+            prompt,
+            SynthesizerOutput,
+            session_id=session_id,
+            source="synthesizer",
+        )
     except Exception as e:
         logger.error(f"[synthesizer] API call failed: {e}")
         return []
 
-        raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-    if raw.endswith("```"):
-        raw = raw[:-3]
-    raw = raw.strip()
-
-    if not raw or raw == "[]":
-        return []
-
-    try:
-        ops = json.loads(raw)
-    except json.JSONDecodeError:
-        start = raw.find("[")
-        end = raw.rfind("]")
-        if start != -1 and end != -1:
-            try:
-                ops = json.loads(raw[start:end + 1])
-            except json.JSONDecodeError:
-                logger.warning(f"[synthesizer] parse failed: {raw[:200]}")
-                return []
-        else:
-            logger.warning(f"[synthesizer] parse failed: {raw[:200]}")
-            return []
-
-    if not isinstance(ops, list):
-        return []
-
+    ops = [item.model_dump(exclude_unset=True) for item in output.items]
     applied = await _apply_operations(session_id, ops, questions, agent_source="synthesizer")
     return applied

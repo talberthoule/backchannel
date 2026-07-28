@@ -6,14 +6,15 @@ Action Tracker) with one structured call for ~60% cost reduction
 and better cross-cutting insight quality.
 """
 
-import json
 import logging
 import re
 import uuid
 
+from pydantic import BaseModel
+
 from app.config import settings
 from app.services.agents.prompts import CONSOLIDATED_ANALYST_BASE_PROMPT, DEFAULT_ANALYST_LENSES
-from app.services.llm import generate_text
+from app.services.llm import generate_json
 from app.services.agents.speaker_context import format_speakers_list
 from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
 
@@ -38,6 +39,20 @@ TYPE_SLUG_RE = re.compile(r"^[a-z][a-z0-9_]{0,49}$")
 _SLUG_CLEAN_RE = re.compile(r"[^a-z0-9_]+")
 
 LENS_SECTIONS_PLACEHOLDER = "{lens_sections}"
+
+
+class ConsolidatedAnalystItem(BaseModel):
+    item_type: str
+    question: str
+    rationale: str = ""
+    source_context: str = ""
+    speaker_id: str | None = None
+    directive_source: str | None = None
+    lens: str | None = None
+
+
+class ConsolidatedAnalystOutput(BaseModel):
+    items: list[ConsolidatedAnalystItem]
 
 
 def normalize_type_slug(raw: object) -> str:
@@ -187,15 +202,21 @@ class ConsolidatedAnalystAgent:
         )
 
         try:
-            raw_text = await generate_text(
-                self._model, prompt, session_id=self._session_id, source="consolidated_analyst"
+            output = await generate_json(
+                self._model,
+                prompt,
+                ConsolidatedAnalystOutput,
+                session_id=self._session_id,
+                source="consolidated_analyst",
             )
         except Exception as e:
             logger.error(f"[consolidated_analyst] API call failed: {e}")
             return []
 
-        logger.info(f"[consolidated_analyst] raw response length={len(raw_text)}, first 200 chars: {raw_text[:200]}")
-        items = self._parse_response(raw_text, valid_speaker_ids)
+        items = self._parse_response(
+            [item.model_dump(exclude_unset=True) for item in output.items],
+            valid_speaker_ids,
+        )
         logger.info(f"[consolidated_analyst] parsed {len(items)} items from response")
 
         # Filter to enabled types, tag with agent_source, and attach the
@@ -204,6 +225,10 @@ class ConsolidatedAnalystAgent:
         for item in items:
             itype = item.get("item_type")
             if itype not in self.enabled_types:
+                logger.warning(
+                    "[consolidated_analyst] dropped item: item_type=%r is not enabled",
+                    itype,
+                )
                 continue
             item["agent_source"] = AGENT_SOURCE_BY_TYPE.get(itype, "consolidated_analyst")
             item["lens_label"] = self._resolve_lens_label(item.pop("lens", None), itype)
@@ -219,45 +244,37 @@ class ConsolidatedAnalystAgent:
                 return info["label"]
         return self._label_by_type.get(item_type, "")
 
-    def _parse_response(self, raw: str, valid_speaker_ids: set[str] | None = None) -> list[dict]:
-        """Parse JSON array from model response."""
+    def _parse_response(
+        self,
+        items: list[object],
+        valid_speaker_ids: set[str] | None = None,
+    ) -> list[dict]:
+        """Normalize schema-validated model items for the insight pipeline."""
         valid_speaker_ids = valid_speaker_ids or set()
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-        if raw.endswith("```"):
-            raw = raw[:-3]
-        raw = raw.strip()
-
-        if not raw or raw == "[]":
-            return []
-
-        try:
-            items = json.loads(raw)
-        except json.JSONDecodeError:
-            start = raw.find("[")
-            end = raw.rfind("]")
-            if start != -1 and end != -1:
-                try:
-                    items = json.loads(raw[start:end + 1])
-                except json.JSONDecodeError:
-                    logger.warning(f"[consolidated_analyst] parse failed: {raw[:200]}")
-                    return []
-            else:
-                logger.warning(f"[consolidated_analyst] parse failed: {raw[:200]}")
-                return []
-
-        if not isinstance(items, list):
-            return []
-
         valid = []
         for item in items:
             if not isinstance(item, dict):
+                logger.warning(
+                    "[consolidated_analyst] dropped item: expected object "
+                    "(entry_type=%s)",
+                    type(item).__name__,
+                )
                 continue
-            if "question" not in item:
+            question = item.get("question")
+            if not isinstance(question, str) or not question.strip():
+                logger.warning(
+                    "[consolidated_analyst] dropped item: question=%r must be "
+                    "a non-empty string",
+                    question,
+                )
                 continue
             itype = normalize_type_slug(item.get("item_type", ""))
             if not itype:
+                logger.warning(
+                    "[consolidated_analyst] dropped item: item_type=%r cannot "
+                    "be normalized to a slug",
+                    item.get("item_type"),
+                )
                 continue
             item["item_type"] = itype
             item["speaker_id"] = _normalize_speaker_id(item.get("speaker_id"), valid_speaker_ids)

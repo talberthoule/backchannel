@@ -6,14 +6,15 @@ respond is still open. Each finding pairs an immediate suggested reply
 (micro) with the underlying concern and strategic angle (macro).
 """
 
-import json
 import logging
 import uuid
 from collections import deque
 
+from pydantic import BaseModel
+
 from app.services.agents.prompts import OBJECTION_HANDLER_PROMPT
 from app.services.agents.speaker_context import format_speakers_list
-from app.services.llm import generate_text
+from app.services.llm import generate_json
 from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,20 @@ VALID_SEVERITIES = {"high", "medium", "low"}
 # How many surfaced objections to remind the model about so overlapping
 # scan windows don't re-flag the same pushback every cycle.
 _MAX_RECENT_OBJECTIONS = 12
+
+
+class ObjectionHandlerItem(BaseModel):
+    item_type: str | None = None
+    question: str
+    response_now: str = ""
+    bigger_picture: str = ""
+    source_context: str = ""
+    severity: str | None = None
+    speaker_id: str | None = None
+
+
+class ObjectionHandlerOutput(BaseModel):
+    items: list[ObjectionHandlerItem]
 
 
 def _normalize_speaker_id(raw: object, valid_speaker_ids: set[str]) -> str | None:
@@ -107,56 +122,49 @@ class ObjectionHandlerAgent:
         )
 
         try:
-            raw_text = await generate_text(
-                self._model, prompt, session_id=self._session_id, source="objection_handler"
+            output = await generate_json(
+                self._model,
+                prompt,
+                ObjectionHandlerOutput,
+                session_id=self._session_id,
+                source="objection_handler",
             )
         except Exception as e:
             logger.error(f"[objection_handler] API call failed: {e}")
             return []
 
-        items = self._parse_response(raw_text, valid_speaker_ids)
+        items = self._parse_response(
+            [item.model_dump(exclude_unset=True) for item in output.items],
+            valid_speaker_ids,
+        )
         for item in items:
             self._recent_objections.append(item["question"])
         if items:
             logger.info(f"[objection_handler] flagged {len(items)} objection(s)")
         return items
 
-    def _parse_response(self, raw: str, valid_speaker_ids: set[str]) -> list[dict]:
-        """Parse JSON array from model response, handling markdown fences."""
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-        if raw.endswith("```"):
-            raw = raw[:-3]
-        raw = raw.strip()
-
-        if not raw or raw == "[]":
-            return []
-
-        try:
-            items = json.loads(raw)
-        except json.JSONDecodeError:
-            start = raw.find("[")
-            end = raw.rfind("]")
-            if start != -1 and end != -1:
-                try:
-                    items = json.loads(raw[start:end + 1])
-                except json.JSONDecodeError:
-                    logger.warning(f"[objection_handler] parse failed: {raw[:200]}")
-                    return []
-            else:
-                logger.warning(f"[objection_handler] parse failed: {raw[:200]}")
-                return []
-
-        if not isinstance(items, list):
-            return []
-
+    def _parse_response(
+        self,
+        items: list[object],
+        valid_speaker_ids: set[str],
+    ) -> list[dict]:
+        """Normalize schema-validated objections for the insight pipeline."""
         valid = []
         for item in items:
             if not isinstance(item, dict):
+                logger.warning(
+                    "[objection_handler] dropped item: expected object "
+                    "(entry_type=%s)",
+                    type(item).__name__,
+                )
                 continue
             text = item.get("question")
             if not isinstance(text, str) or not text.strip():
+                logger.warning(
+                    "[objection_handler] dropped item: question=%r must be "
+                    "a non-empty string",
+                    text,
+                )
                 continue
             valid.append({
                 "item_type": "objection",
