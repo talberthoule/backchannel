@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Three Degrees of Local: What "Self-Hosted" Actually Means in a Meeting Assistant | Backchannel</title>
+  <meta name="description" content="Locality in a meeting assistant is a spectrum with three positions, chosen per component. A walk through the pipeline naming exactly which bytes leave your machine at each position, cited to file paths instead of adjectives." />
+  <link rel="canonical" href="https://backchannel.page/blog/three-degrees-of-local/" />
+  <meta property="og:title" content="Three Degrees of Local: What &quot;Self-Hosted&quot; Actually Means in a Meeting Assistant" />
+  <meta property="og:description" content="Locality in a meeting assistant is a spectrum with three positions, chosen per component. A walk through the pipeline naming exactly which bytes leave your machine at each position, cited to file paths instead of adjectives." />
+  <meta property="og:type" content="article" />
+  <meta property="article:published_time" content="2026-07-28" />
+  <meta property="og:site_name" content="Backchannel" />
+  <meta property="og:url" content="https://backchannel.page/blog/three-degrees-of-local/" />
+  <meta property="og:image" content="https://backchannel.page/assets/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Backchannel: live meeting transcription and real-time insight agents, self-hosted." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <link rel="stylesheet" href="../../style.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "Three degrees of local: what \"self-hosted\" actually means in a meeting assistant",
+        "description": "Locality in a meeting assistant is a spectrum with three positions, chosen per component. A walk through the pipeline naming exactly which bytes leave your machine at each position, cited to file paths instead of adjectives.",
+        "datePublished": "2026-07-28",
+        "dateModified": "2026-07-28",
+        "url": "https://backchannel.page/blog/three-degrees-of-local/",
+        "mainEntityOfPage": {
+          "@id": "https://backchannel.page/blog/three-degrees-of-local/"
+        },
+        "author": {
+          "@type": "Person",
+          "name": "Talbert Houle",
+          "url": "https://backchannel.page/"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "Backchannel",
+          "url": "https://backchannel.page/"
+        },
+        "image": "https://backchannel.page/assets/og-image.png"
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Backchannel",
+            "item": "https://backchannel.page/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Writing",
+            "item": "https://backchannel.page/blog/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "Three degrees of local"
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <img src="/assets/favicon.svg" alt="" />
+      backchannel
+    </a>
+    <nav class="site-nav">
+      <a href="/#features">Features</a>
+      <a href="/blog/">Writing</a>
+      <a href="/docs/">Docs</a>
+      <a class="btn primary nav-cta" href="https://github.com/talberthoule/backchannel">Star on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="wrap">
+      <span class="kicker">28 July 2026</span>
+      <h1>Three degrees of local: <span class="accent">what "self-hosted" actually means</span> in a meeting assistant</h1>
+      <p class="lede">
+        "Private" is the most abused word in the meeting-AI category. It gets
+        applied to products that record on your device and process in a
+        vendor cloud, to products with good compliance badges and broad
+        privacy policies, and to products that are private in exactly the way
+        a sealed envelope handed to a courier is private. When I say
+        Backchannel -- the open-source meeting assistant I build -- is
+        self-hosted, I owe you something more precise than the word.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="prose">
+        <p>
+          So here is the precise version: locality in this system is a
+          spectrum with three positions, and you choose your position per
+          component, in the admin panel. This post walks the pipeline and
+          names exactly which bytes leave your machine at each position.
+          Everything below is verifiable in the repository; I cite file paths
+          instead of adjectives.
+        </p>
+
+        <h2>The pipeline, end to end</h2>
+        <p>
+          The browser captures microphone audio with getUserMedia, converts
+          it to PCM16 16 kHz mono, and streams it over a WebSocket as binary
+          frames with a 1-byte track prefix -- 0x00 for mic, 0x01 for
+          tab/system audio
+          (<code>frontend/src/hooks/useAudioCapture.ts</code>,
+          <code>backend/app/ws/audio_handler.py</code>). Capturing the two
+          tracks separately matters later: remote participants arrive on the
+          system track and get their own speaker identities, so "who said
+          what" survives even though everyone is coming out of one pair of
+          speakers.
+        </p>
+        <p>
+          From there, four stages: voice activity detection and diarization,
+          transcription, live interim captions, and the LLM agent layer. Each
+          stage has a different locality story, and being honest about the
+          seams is the point of this post.
+        </p>
+
+        <h2>Stage 1: diarization is always local, in every configuration</h2>
+        <p>
+          Speech segmentation and speaker attribution never touch a network.
+          Silero VAD (ONNX) finds speech at a 0.6 threshold, segments run
+          750 ms to 15 s with a 600 ms silence gap, and each segment gets a
+          speaker embedding from a WeSpeaker ResNet152-LM model, also ONNX,
+          with Kaldi fbank features computed by kaldi-native-fbank with
+          mean-only cepstral normalization -- matching the frontend the model
+          was trained with
+          (<code>backend/app/services/speaker_diarizer.py</code>,
+          <code>backend/app/config.py</code>). Embeddings are matched against
+          per-track speaker profiles at a 0.68 cosine-similarity threshold.
+        </p>
+        <p>
+          There is no "diarization API" in this system to route audio
+          through. This was a deliberate constraint: the biometric part of
+          the pipeline -- voice embeddings, the part that is literally a
+          model of the people speaking -- runs on your hardware in all three
+          configurations, full stop.
+        </p>
+        <p>
+          Call audio is also written to disk locally as per-segment WAV
+          (<code>backend/app/services/audio_store.py</code>), which enables a
+          feature I have not seen elsewhere in this category:
+          <code>POST /api/sessions/{id}/retranscribe</code> replays any
+          stored call through a different transcription model later, so you
+          can test a new local model against your own real audio instead of
+          against a benchmark.
+        </p>
+
+        <h2>Stage 2: transcription -- degree one and degree two</h2>
+        <p>
+          This is the first fork. Batch transcription routes through a
+          factory (<code>backend/app/services/local_transcriber.py</code>):
+          model ids beginning with <code>local-</code> run ONNX Whisper or
+          Parakeet on your machine via onnx-asr, with weights downloaded once
+          to the data directory; anything else wraps the diarized segment as
+          WAV and sends it to Gemini on your API key.
+        </p>
+        <p>
+          Degree one, the default: local diarization, cloud transcription.
+          Audio segments leave your machine, but to a provider you chose, on
+          a key you hold, under that provider's API terms -- not to a
+          meeting-AI vendor with its own retention and training policies
+          layered on top.
+        </p>
+        <p>
+          Degree two: local transcription. No audio leaves the machine at
+          all. The tradeoff is real and I will not launder it: hosted
+          frontier models transcribe difficult audio -- crosstalk, accents,
+          jargon -- better than compact local ONNX models. That is exactly
+          what the re-transcription endpoint is for: run a meeting both ways
+          and read the diff before you decide what your accuracy budget is.
+        </p>
+        <p>
+          Live interim captions follow the same fork. The default is a Gemini
+          Live session acting as a silent listener that relays interim text
+          (<code>backend/app/services/gemini_live.py</code>). Set the audio
+          gateway model to <code>local-parakeet-live</code> and captions come
+          from an on-device Parakeet captioner instead
+          (<code>backend/app/services/local_live_captioner.py</code>) -- no
+          cloud, works under Privacy First. It is experimental and CPU-heavy,
+          and the app ships a fit test that projects whether your machine can
+          sustain it, because "it works on my machine" is not a deployment
+          plan.
+        </p>
+
+        <h2>Stage 3: the LLM agents -- degree three</h2>
+        <p>
+          The analysis layer is a crew of agents -- an analyst, a low-latency
+          objection handler, a synthesizer, an opportunity specialist, a
+          strategic signals agent, and a three-lens post-call briefing --
+          each with an editable model, prompt, and trigger. Agents consume
+          transcript text, not audio. So in degree two, what leaves your
+          machine is text, on your key.
+        </p>
+        <p>
+          Degree three closes that last seam. The backend speaks to any
+          OpenAI-compatible server: register an endpoint (LM Studio, Ollama,
+          vLLM, LiteLLM -- there are presets), it lists its models, and every
+          served model becomes a first-class entry in the model registry with
+          the id <code>endpoint:&lt;slug&gt;:&lt;model&gt;</code>, selectable
+          in every model picker next to the cloud options
+          (<code>backend/app/services/custom_endpoints.py</code>,
+          <code>backend/app/services/llm_endpoint.py</code>). Point the
+          agents at a model served on your own box or your LAN, use local
+          ONNX transcription, and the entire pipeline -- capture,
+          diarization, transcription, live captions, agents -- runs with no
+          API key from anyone and no packet leaving your network.
+        </p>
+        <p>
+          Privacy First mode is the enforcement mechanism rather than a
+          promise: it locks every model picker to models flagged as running
+          locally, and it admits self-hosted endpoints on loopback,
+          private-network addresses, or LAN hostnames
+          (<code>frontend/src/lib/modelOptions.ts</code>). Flip it on and a
+          cloud model is not a worse choice; it is not a choice.
+        </p>
+
+        <h2>What I am not claiming</h2>
+        <p>
+          Honesty about the boundary is worth more than the boundary itself,
+          so:
+        </p>
+        <ul>
+          <li>
+            Degree one sends audio to your model provider, and degrees one
+            and two send transcript text to it. If your threat model
+            includes your own API provider, only degree three answers it.
+          </li>
+          <li>
+            Local model quality is your problem to evaluate. A 7B instruct
+            model will not write the same objection analysis a frontier
+            model writes. The per-agent model picker exists precisely so you
+            can spend cloud budget where it matters and keep the rest local
+            -- but I will not pretend the outputs are interchangeable.
+          </li>
+          <li>
+            There are no user accounts or authentication in the application.
+            It is a single-operator tool designed to sit behind your own
+            network boundary, not on the public internet. Provider keys are
+            encrypted at rest (Fernet, with a master key in the data
+            directory), but access control is your reverse proxy's job, not
+            the app's.
+          </li>
+          <li>
+            There are no compliance badges. No SOC 2, no ISO, no HIPAA. What
+            I can offer instead is an MIT-licensed codebase where every
+            claim in this post is a file path you can read. For some
+            reviewers that is stronger than an attestation; for procurement
+            it is usually weaker. Know which reviewer you are.
+          </li>
+        </ul>
+
+        <h2>Why the spectrum, instead of just shipping degree three</h2>
+        <p>
+          Because the honest engineering answer is that the degrees trade
+          accuracy against locality, and that trade belongs to you, not me.
+          A sales team that wants maximum insight quality with audio kept
+          on-premises runs degree two. A therapist, a lawyer, or anyone whose
+          transcripts are the sensitive artifact runs degree three and
+          accepts local-model output. A homelab user benchmarking Parakeet
+          against Gemini on their own standup recordings runs all three in an
+          afternoon through the re-transcription endpoint.
+        </p>
+        <p>
+          A hosted product has to pick one position on this spectrum for all
+          of its customers, and its incentives push it cloudward. A
+          self-hosted one can hand you the slider. That -- not a bot-free
+          gimmick, not a compliance page -- is what "self-hosted" actually
+          buys you.
+        </p>
+        <p>
+          The code is at
+          <a href="https://github.com/talberthoule/backchannel">github.com/talberthoule/backchannel</a>
+          under MIT, and it runs with <code>docker compose up --build</code>.
+          If you try degree three with a local model I have not tested, the
+          issue tracker is where I would genuinely like to hear about it.
+        </p>
+      </div>
+
+      <div class="cta-row" style="justify-content: flex-start; margin-top: 28px;">
+        <a class="btn primary" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="/open-source-meeting-assistants/">How the self-hosted landscape compares</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Related reading</h2>
+      <div class="doc-list">
+        <a class="doc" href="/open-source-meeting-assistants/">
+          <strong>Open-source meeting assistants</strong>
+          <span>The self-hosted landscape, compared honestly -- including when to pick something else</span>
+        </a>
+        <a class="doc" href="/vs-anarlog/">
+          <strong>Backchannel vs Anarlog</strong>
+          <span>Both keep audio local; only one acts during the call</span>
+        </a>
+        <a class="doc" href="/plaud-alternative/">
+          <strong>Plaud alternative</strong>
+          <span>Bot-free capture without the hardware or the cloud</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final">
+    <div class="wrap">
+      <h2>Meeting AI that runs on your hardware</h2>
+      <p class="sub">Self-hosted, open source, MIT licensed. No bot in the room, no audio in anyone's cloud.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site">
+  <div class="wrap footer-compare">
+    <span>Compare:</span>
+    <a href="/open-source-meeting-assistants/">Open-source meeting assistants</a>
+    <a href="/otter-alternative/">Open-source Otter.ai alternative</a>
+    <a href="/fireflies-alternative/">Fireflies.ai alternative without the bot</a>
+    <a href="/granola-alternative/">Open-source Granola alternative</a>
+    <a href="/fathom-alternative/">Fathom alternative</a>
+    <a href="/gong-and-backchannel/">Gong and Backchannel</a>
+    <a href="/teams-premium-alternative/">Teams Premium alternative</a>
+  </div>
+  <div class="wrap">
+    <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
+    <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

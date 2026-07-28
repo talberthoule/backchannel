@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Free AI Notetaker Is Genuinely Free. Here Is Why I Self-Host Anyway. | Backchannel</title>
+  <meta name="description" content="Sourced competitive research against Fathom, Otter, Read AI, tl;dv, and Avoma, starting with the concessions: the free tier is real, 'no bot' stopped being special, and real-time AI stopped being novel. What survives is where the audio goes." />
+  <link rel="canonical" href="https://backchannel.page/blog/self-hosted-ai-notetaker-honest-comparison/" />
+  <meta property="og:title" content="The Free AI Notetaker Is Genuinely Free. Here Is Why I Self-Host Anyway." />
+  <meta property="og:description" content="Sourced competitive research against Fathom, Otter, Read AI, tl;dv, and Avoma, starting with the concessions: the free tier is real, 'no bot' stopped being special, and real-time AI stopped being novel. What survives is where the audio goes." />
+  <meta property="og:type" content="article" />
+  <meta property="article:published_time" content="2026-07-28" />
+  <meta property="og:site_name" content="Backchannel" />
+  <meta property="og:url" content="https://backchannel.page/blog/self-hosted-ai-notetaker-honest-comparison/" />
+  <meta property="og:image" content="https://backchannel.page/assets/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Backchannel: live meeting transcription and real-time insight agents, self-hosted." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <link rel="stylesheet" href="../../style.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "The free AI notetaker is genuinely free. Here is why I self-host anyway.",
+        "description": "Sourced competitive research against Fathom, Otter, Read AI, tl;dv, and Avoma, starting with the concessions: the free tier is real, 'no bot' stopped being special, and real-time AI stopped being novel. What survives is where the audio goes.",
+        "datePublished": "2026-07-28",
+        "dateModified": "2026-07-28",
+        "url": "https://backchannel.page/blog/self-hosted-ai-notetaker-honest-comparison/",
+        "mainEntityOfPage": {
+          "@id": "https://backchannel.page/blog/self-hosted-ai-notetaker-honest-comparison/"
+        },
+        "author": {
+          "@type": "Person",
+          "name": "Talbert Houle",
+          "url": "https://backchannel.page/"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "Backchannel",
+          "url": "https://backchannel.page/"
+        },
+        "image": "https://backchannel.page/assets/og-image.png"
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Backchannel",
+            "item": "https://backchannel.page/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Writing",
+            "item": "https://backchannel.page/blog/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "The free AI notetaker is genuinely free"
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <img src="/assets/favicon.svg" alt="" />
+      backchannel
+    </a>
+    <nav class="site-nav">
+      <a href="/#features">Features</a>
+      <a href="/blog/">Writing</a>
+      <a href="/docs/">Docs</a>
+      <a class="btn primary nav-cta" href="https://github.com/talberthoule/backchannel">Star on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="wrap">
+      <span class="kicker">28 July 2026</span>
+      <h1>The free AI notetaker is genuinely free. <span class="accent">Here is why I self-host anyway.</span></h1>
+      <p class="lede">
+        I build and maintain Backchannel, an open-source, self-hosted meeting
+        assistant. In July I spent several days doing competitive research
+        against the tools it gets compared to -- Fathom, Otter, Read AI,
+        tl;dv, Avoma -- with one rule: every claim needs a primary source,
+        fetched from the vendor's own site, with a date on it. Claims I could
+        not verify got dropped, including some that would have been very
+        convenient for me.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="prose">
+        <p>
+          This is the write-up. It starts with the parts that hurt.
+        </p>
+
+        <h2>Concession one: Fathom's free tier beats mine on cost</h2>
+        <p>
+          Fathom's free plan is unlimited recordings, unlimited storage, and
+          unlimited transcription in 38 languages, forever, for zero dollars,
+          with zero setup (fathom.ai/pricing and Fathom's help center, both
+          fetched 2026-07-24). The fine print is milder than you would expect:
+          advanced AI summaries are capped at your first 5 calls each month,
+          and features like AI action items and follow-up emails are Premium.
+        </p>
+        <p>
+          Backchannel is $0 in license terms. It is not $0 in practice. It
+          costs a Docker host, optionally a GPU, and either LLM API spend on
+          your own key or the accuracy hit of running local ONNX models.
+          Anyone who tells you a self-hosted meeting assistant is "cheaper
+          than Fathom" for a single user is lying to you. The cost argument
+          only starts working at team scale -- Fathom Business is
+          $25/user/month billed annually, so 20 seats is $6,000 a year -- or
+          when your constraint is where the data lives rather than what the
+          software costs.
+        </p>
+
+        <h2>Concession two: "no bot joins your call" stopped being special</h2>
+        <p>
+          For years the self-hosted pitch leaned on the visible recorder bot
+          in the participant list. That era is ending. Fathom shipped
+          bot-free capture in April 2026 (Mac only, Windows "coming soon").
+          Avoma's pricing page lists "Bot-less Native Recording" alongside bot
+          capture. Granola and Otter already had non-bot desktop capture. The
+          bot is still the loudest complaint in public reviews of Fireflies,
+          tl;dv, and Read AI, but "no bot" is now a feature the incumbents
+          advertise too. If an open-source project leads with it in 2026, it
+          is following, not differentiating.
+        </p>
+
+        <h2>Concession three: real-time in-call AI stopped being novel -- in one week</h2>
+        <p>
+          Within a single week in July 2026, real-time meeting assistance went
+          from rare to shipping at two of the biggest vendors. Otter announced
+          Live Assist on 2026-07-21, positioned as a real-time AI coaching
+          agent that joins any call -- available on Otter Enterprise only.
+          Zoom took Sales Assist to general availability on 2026-07-22 inside
+          Zoom Revenue Accelerator, at $66/user/month (Essentials) to
+          $99.99/user/month (Premium), billed annually -- the only vendor in
+          my entire research set that publishes a real price for real-time
+          assistance. Avoma sells a Real-time Answer Assistant inside a
+          $29-35/user/month add-on, which lands at roughly $53-74 per user
+          per month all-in.
+        </p>
+        <p>
+          So I cannot claim novelty, and I will not. What I can describe is
+          the mechanism, because it is different in a way that matters.
+        </p>
+
+        <h2>What the incumbents' live AI actually does</h2>
+        <p>
+          Zoom documents its system best, so I will use Zoom as the example.
+          Per Zoom's own support documentation, an administrator
+          pre-configures talking points for each topic category -- discovery,
+          objection handling, pricing, competitor talking points -- attaches
+          knowledge collections as reference, and rule-based live signals and
+          timers drive when a card is displayed. It is a well-built retrieval
+          system over content that was written before the call started.
+        </p>
+        <p>
+          Backchannel's objection handler does something else. Every 10
+          seconds it sends the trailing 90 seconds of the actual transcript to
+          a low-latency model, with the meeting context, the speaker roster,
+          your standing directives, and a do-not-repeat list. It generates two
+          things: a response_now -- one or two conversational sentences you
+          could say in the next ten seconds -- and a bigger_picture naming the
+          underlying concern (cost justification, risk aversion, change
+          fatigue, a missing stakeholder) and the strategic angle for later in
+          the call. Nothing was authored in advance. It reasons over what was
+          just said.
+        </p>
+        <p>
+          The honest counterpoint, and I want to state it rather than have a
+          commenter state it for me: a curated battlecard is deterministic and
+          enablement-approved. A generated response is neither. If your org
+          needs every in-call prompt to have passed legal review, the
+          prepared-content model is the correct one for you.
+        </p>
+
+        <h2>What the fine print says about "free" and "unlimited"</h2>
+        <p>
+          The category's pricing pages and help centers frequently describe
+          two different products. A few examples, all from vendor-primary
+          sources fetched 2026-07-24:
+        </p>
+        <ul>
+          <li>
+            tl;dv's free plan advertises unlimited recordings. The help
+            center (updated 2025-11-24) adds: your first 10 meetings get
+            automatic AI notes, after which only the first 10 minutes of each
+            meeting does; you get 10 AI prompts and 10 AI reports -- and
+            "these limits are for the lifetime of the account, they do not
+            renew monthly." Free recordings are stored for 3 months, then
+            gone.
+          </li>
+          <li>
+            Read AI's free tier is 5 meeting transcripts per month with a
+            1-hour cap, and audio playback of your own meetings is an
+            Enterprise-tier feature. Read AI also has a documented governance
+            problem: Chapman University's IS&amp;T published a notice on
+            2025-08-13 stating that "the use of Read AI is prohibited due to
+            security, privacy, and institutional data risks," and
+            UW-Madison's IT knowledge base documents its calendar auto-join
+            behavior. Read AI disputes the framing; the institutional notices
+            are citable either way.
+          </li>
+          <li>
+            Otter's free tier is 300 minutes per month with a 30-minute cap
+            per conversation and 3 file imports for the lifetime of the
+            account.
+          </li>
+          <li>
+            Fathom's free tier really is the good one -- unlimited recording,
+            storage, and transcription. Per Fathom's privacy documentation,
+            Fathom may use de-identified data derived from meeting content to
+            train its in-house AI models, with an opt-out in account
+            settings. That is the trade. The free tool is free partly because
+            the meetings feed the model, and the control is opt-out, not
+            opt-in.
+          </li>
+        </ul>
+        <p>
+          None of this is scandalous. It is just the shape of the business
+          model, and you should know it before you route every conversation
+          you have through it.
+        </p>
+
+        <h2>What actually survives as a difference</h2>
+        <p>
+          After conceding cost, bot-free capture, and real-time novelty, here
+          is what was left standing at the end of the research -- the rows
+          where the answer for every mainstream tool was "no" and the answer
+          for a self-hosted deployment was "yes":
+        </p>
+        <ul>
+          <li>
+            Where audio is processed. Fathom, Otter, Read AI, tl;dv, and
+            Avoma all process audio in their cloud. Backchannel processes it
+            on your server. Diarization -- who said what -- is always local
+            (Silero VAD plus WeSpeaker ResNet152 speaker embeddings, both
+            ONNX, both on your machine). Transcription is local ONNX
+            Whisper/Parakeet if you choose, or your own API key if you
+            choose.
+          </li>
+          <li>
+            Whether a vendor trains on your conversations. With no vendor in
+            the path, the question dissolves.
+          </li>
+          <li>
+            Whether the live output is tactical content or a description.
+            Live summaries and talk-time meters tell you what is happening. A
+            generated next sentence is a different category of output, and in
+            this tier nobody ships it at any price -- Otter and Avoma gate
+            live assistance behind Enterprise or an add-on, and Fathom's and
+            Read AI's live layer is summaries and behavioral metrics.
+          </li>
+          <li>
+            Whether you can change the machine. Every Backchannel agent's
+            model, prompt, and trigger interval is editable in the admin
+            panel. You can also replay any recorded call through a different
+            transcription model later and diff the results.
+          </li>
+          <li>
+            Whether you can read the source. MIT license. For an IT security
+            reviewer, source code is a different kind of answer than a
+            questionnaire.
+          </li>
+        </ul>
+        <p>
+          And the honest inverse list -- what the incumbents have that
+          Backchannel does not: compliance attestations (SOC 2, ISO, HIPAA
+          badges -- I have an architectural argument, not an audit), CRM
+          sync, mobile apps, marketed language support, mature account and
+          permission systems, and hundreds of thousands of companies of
+          social proof. If you need those, you know who to buy from.
+        </p>
+
+        <h2>Who should use what</h2>
+        <p>
+          If you are one person who wants free meeting notes with zero setup,
+          use Fathom. I mean that without irony; its free tier is the best
+          deal in the category and my research did not find a catch big
+          enough to change that sentence.
+        </p>
+        <p>
+          If your constraint is data location, if your review process prefers
+          source code to vendor questionnaires, if you want live tactical
+          help rather than a live summary, or if you are paying per-seat
+          prices for a team -- that is the quadrant where self-hosting stops
+          being a hobby and starts being the correct engineering decision.
+        </p>
+        <p>
+          The full sourced comparison tables, with access dates on every
+          claim, are at
+          <a href="/open-source-meeting-assistants/">backchannel.page/open-source-meeting-assistants/</a>.
+          The code is MIT and runs with docker compose up.
+        </p>
+      </div>
+
+      <div class="cta-row" style="justify-content: flex-start; margin-top: 28px;">
+        <a class="btn primary" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="/open-source-meeting-assistants/">The full sourced comparison</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Related reading</h2>
+      <div class="doc-list">
+        <a class="doc" href="/open-source-meeting-assistants/">
+          <strong>Open-source meeting assistants</strong>
+          <span>The self-hosted landscape, compared honestly -- including when to pick something else</span>
+        </a>
+        <a class="doc" href="/fathom-alternative/">
+          <strong>Fathom alternative</strong>
+          <span>What a generous free tier does and does not cover</span>
+        </a>
+        <a class="doc" href="/read-ai-alternative/">
+          <strong>Read AI alternative</strong>
+          <span>Meeting intelligence without the auto-join governance problem</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final">
+    <div class="wrap">
+      <h2>Meeting AI that runs on your hardware</h2>
+      <p class="sub">Self-hosted, open source, MIT licensed. No bot in the room, no audio in anyone's cloud.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/#quickstart">Self-host in minutes</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site">
+  <div class="wrap footer-compare">
+    <span>Compare:</span>
+    <a href="/open-source-meeting-assistants/">Open-source meeting assistants</a>
+    <a href="/otter-alternative/">Open-source Otter.ai alternative</a>
+    <a href="/fireflies-alternative/">Fireflies.ai alternative without the bot</a>
+    <a href="/granola-alternative/">Open-source Granola alternative</a>
+    <a href="/fathom-alternative/">Fathom alternative</a>
+    <a href="/gong-and-backchannel/">Gong and Backchannel</a>
+    <a href="/teams-premium-alternative/">Teams Premium alternative</a>
+  </div>
+  <div class="wrap">
+    <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
+    <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
