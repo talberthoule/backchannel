@@ -1558,6 +1558,16 @@ pre .cmt {
   color: var(--ink-soft);
 }
 
+.prose ul {
+  margin: 0 0 14px;
+  padding-left: 22px;
+  color: var(--ink-soft);
+}
+
+.prose li + li {
+  margin-top: 8px;
+}
+
 /* Footer */
 
 footer.site {
