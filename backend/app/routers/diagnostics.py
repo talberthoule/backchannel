@@ -1,3 +1,4 @@
+import asyncio
 import os
 import tempfile
 
@@ -137,7 +138,8 @@ async def replace_voice_profile(
         raise HTTPException(413, "Voice sample is too large.")
 
     try:
-        pcm_data = convert_to_pcm16(
+        pcm_data = await asyncio.to_thread(
+            convert_to_pcm16,
             content,
             ext.lstrip("."),
             max_seconds=MAX_ENROLLMENT_SECONDS,
@@ -145,7 +147,7 @@ async def replace_voice_profile(
     except Exception as exc:
         raise HTTPException(400, f"Audio conversion failed: {exc}") from exc
     try:
-        embedding = extract_enrollment_embedding(pcm_data)
+        embedding = await asyncio.to_thread(extract_enrollment_embedding, pcm_data)
     except VoiceEnrollmentError as exc:
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
@@ -267,7 +269,7 @@ async def benchmark_sortformer(file: UploadFile, db: AsyncSession = Depends(get_
     content = await file.read()
     source_format = ext.lstrip(".")
     try:
-        pcm_data = convert_to_pcm16(content, source_format)
+        pcm_data = await asyncio.to_thread(convert_to_pcm16, content, source_format)
     except Exception as exc:
         raise HTTPException(400, f"Audio conversion failed: {exc}") from exc
     if is_benchmark_pcm_too_short(pcm_data):
@@ -285,7 +287,7 @@ async def benchmark_sortformer(file: UploadFile, db: AsyncSession = Depends(get_
             tmp.write(pcm_data)
             tmp_path = tmp.name
 
-        result = benchmark_sortformer_audio(tmp_path)
+        result = await asyncio.to_thread(benchmark_sortformer_audio, tmp_path)
         await record_sortformer_benchmark(db, result)
         return result.to_dict()
     finally:

@@ -1,10 +1,12 @@
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import numpy as np
 
+from app.services.audio_utils import convert_to_pcm16, resolve_ffmpeg
 from app.services.voice_enrollment import (
     MAX_ENROLLMENT_SECONDS,
     MIN_ENROLLMENT_SECONDS,
@@ -118,6 +120,22 @@ class VoiceEnrollmentTests(unittest.IsolatedAsyncioTestCase):
                         voiced.tobytes(),
                         extractor=lambda *_args, value=invalid: value,
                     )
+
+    @unittest.skipUnless(resolve_ffmpeg(), "ffmpeg is not installed")
+    def test_webm_fixture_runs_real_conversion_fbank_and_embedding(self):
+        fixture = Path(__file__).with_name("fixtures") / "voice_enrollment.webm"
+
+        pcm = convert_to_pcm16(
+            fixture.read_bytes(),
+            "webm",
+            max_seconds=MAX_ENROLLMENT_SECONDS,
+        )
+        result = extract_enrollment_embedding(pcm)
+
+        self.assertGreaterEqual(len(pcm), MIN_ENROLLMENT_SECONDS * 16000 * 2)
+        self.assertEqual(1, result.ndim)
+        self.assertTrue(np.isfinite(result).all())
+        self.assertAlmostEqual(1.0, float(np.linalg.norm(result)), places=5)
 
 
 if __name__ == "__main__":

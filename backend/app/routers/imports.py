@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import uuid
@@ -170,7 +171,7 @@ async def _transcribe_audio_diarized(
 ) -> int:
     """Transcribe audio using diarization pipeline. Returns count of entries created."""
     # Convert to PCM16 16kHz mono
-    pcm_data = convert_to_pcm16(file_bytes, source_format)
+    pcm_data = await asyncio.to_thread(convert_to_pcm16, file_bytes, source_format)
 
     if persist_audio:
         await _persist_import_audio(pcm_data, session_id, db)
@@ -193,8 +194,9 @@ async def _transcribe_audio_diarized(
 
     if auto_speaker_map is None:
         auto_speaker_map = {}
+    segments = await asyncio.to_thread(_diarize_pcm, pcm_data, diarizer)
     count = await _persist_diarized_segments(
-        [(segment, local_track, auto_speaker_map) for segment in _diarize_pcm(pcm_data, diarizer)],
+        [(segment, local_track, auto_speaker_map) for segment in segments],
         session_id,
         db,
         transcriber,

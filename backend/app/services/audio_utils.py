@@ -61,6 +61,7 @@ def convert_to_pcm16(
 ) -> bytes:
     """Convert audio file bytes to PCM16 16kHz mono using soundfile/ffmpeg."""
     import io
+    import os
     import subprocess
     import tempfile
 
@@ -96,35 +97,57 @@ def convert_to_pcm16(
             "PATH, then restart Backchannel."
         )
 
-    with tempfile.NamedTemporaryFile(suffix=f".{source_format}", delete=False) as tmp_in:
-        tmp_in.write(file_bytes)
-        tmp_in_path = tmp_in.name
-
-    tmp_out_path = tmp_in_path + ".raw"
+    output_limit = int(max_seconds * 16000) + 1 if max_seconds is not None else None
+    duration_args = ["-t", f"{output_limit / 16000:.8f}"] if output_limit is not None else []
+    input_path = None
     try:
-        output_limit = int(max_seconds * 16000) + 1 if max_seconds is not None else None
-        duration_args = ["-t", f"{output_limit / 16000:.8f}"] if output_limit is not None else []
-        try:
-            subprocess.run(
-                [
-                    ffmpeg, "-y", "-i", tmp_in_path,
-                    *duration_args,
-                    "-ar", "16000", "-ac", "1", "-f", "s16le",
-                    tmp_out_path,
-                ],
-                capture_output=True,
-                check=True,
-            )
-        except subprocess.CalledProcessError as exc:
-            lines = (exc.stderr or b"").decode(errors="replace").strip().splitlines()
-            detail = lines[-1] if lines else "unknown ffmpeg error"
-            raise RuntimeError(
-                f"FFmpeg could not decode this {source_format} audio: {detail}"
-            ) from exc
-        with open(tmp_out_path, "rb") as f:
-            return f.read(output_limit * 2 if output_limit is not None else -1)
+        input_arg = "pipe:0"
+        run_options = {"input": file_bytes}
+        normalized_format = source_format.lower().lstrip(".")
+        if normalized_format in {"m4a", "mp4", "mov"}:
+            with tempfile.NamedTemporaryFile(
+                suffix=f".{normalized_format}",
+                delete=False,
+            ) as temp_input:
+                input_path = temp_input.name
+                temp_input.write(file_bytes)
+            input_arg = input_path
+            run_options = {}
+
+        result = subprocess.run(
+            [
+                ffmpeg, "-y", "-i", input_arg,
+                *duration_args,
+                "-ar", "16000", "-ac", "1", "-f", "s16le",
+                "pipe:1",
+            ],
+            capture_output=True,
+            check=True,
+            timeout=60,
+            **run_options,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"FFmpeg timed out while decoding {source_format} audio."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        lines = (exc.stderr or b"").decode(errors="replace").strip().splitlines()
+        detail = lines[-1] if lines else "unknown ffmpeg error"
+        if input_path:
+            detail = detail.replace(input_path, "temporary input")
+        raise RuntimeError(
+            f"FFmpeg could not decode this {source_format} audio: {detail}"
+        ) from exc
     finally:
-        import os
-        os.unlink(tmp_in_path)
-        if os.path.exists(tmp_out_path):
-            os.unlink(tmp_out_path)
+        if input_path:
+            try:
+                os.unlink(input_path)
+            except FileNotFoundError:
+                pass
+
+    pcm_data = result.stdout[: output_limit * 2 if output_limit is not None else None]
+    if not pcm_data:
+        raise RuntimeError(
+            f"FFmpeg produced no audio while decoding this {source_format} file."
+        )
+    return pcm_data
