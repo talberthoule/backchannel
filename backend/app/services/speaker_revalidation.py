@@ -528,6 +528,18 @@ async def _enhance_insights_with_fallback(
                     )
                 return metrics
             except Exception as error:
+                if model_id != primary and not _should_try_fallback(error):
+                    # The batch banner will carry only this model's error, which
+                    # reads as an unrelated outage. last_error still holds the
+                    # wall that routed us here, so put the pair on the record.
+                    logger.warning(
+                        "Insight revalidation fallback %s failed (%s) after %s "
+                        "was unavailable (%s)",
+                        model_id,
+                        error,
+                        primary,
+                        last_error,
+                    )
                 last_error = error
                 if not _should_try_fallback(error):
                     raise

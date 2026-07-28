@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import AgentConfig
-from app.services import local_fit, transcription_runtime
+from app.services import fit_staleness, local_fit, transcription_runtime
 from app.services.capacity_planner import (
     BatchAsrDemand,
     CapacityVerdict,
@@ -97,6 +97,10 @@ class CapacityAssessment:
     track_count: int
     modelled: tuple[str, ...]
     not_modelled: tuple[str, ...]
+    # Inputs that were modelled but carry a caveat. Aged measurements land here
+    # rather than in not_modelled: they are still this machine's numbers, so
+    # they annotate the verdict instead of degrading it (ALP-160 5.2).
+    annotations: tuple[str, ...] = ()
 
     @property
     def partial(self) -> bool:
@@ -132,6 +136,7 @@ class CapacityAssessment:
             ],
             "modelled": list(self.modelled),
             "not_modelled": list(self.not_modelled),
+            "annotations": list(self.annotations),
         }
 
 
@@ -144,18 +149,54 @@ def _positive_number(value) -> float | None:
     return float(value) if value > 0 else None
 
 
+@dataclass(frozen=True)
+class _Measured:
+    """A measurement read, plus what the verdict must say about its validity.
+
+    value is None whenever the number may not be modelled, so a caller that
+    ignores the rest still fails closed. unusable carries the reason a stamped
+    row was refused; aged carries the reason a row was accepted with a caveat.
+    """
+
+    value: float | None = None
+    unusable: str = ""
+    aged: str = ""
+
+
+def _validity_of(measured: dict) -> _Measured:
+    """Read one measurement's ALP-160 validity stamp.
+
+    An invalid input is missing, not passing: Incompatible and Superseded
+    describe a machine or a served model that is no longer the one in front of
+    us, so modelling from those numbers would invent demand and round a gap up
+    into a favorable verdict. Aged rows are still this machine's numbers, only
+    old, so they stay admissible and annotate the verdict instead of degrading
+    it. A row with no stamp predates ALP-160 and is left alone.
+    """
+    validity = measured.get("validity")
+    if not isinstance(validity, dict):
+        return _Measured()
+    status = validity.get("status")
+    reason = validity.get("reason") or ""
+    if status in (fit_staleness.INCOMPATIBLE, fit_staleness.SUPERSEDED):
+        return _Measured(unusable=reason or status)
+    if status == fit_staleness.AGED:
+        return _Measured(aged=reason or "measured a while ago")
+    return _Measured()
+
+
 def _measured_asr_rtf(
     fit_result: dict,
     model_id: str,
     field: str,
-) -> float | None:
+) -> _Measured:
     contention = _positive_number(fit_result.get("contention"))
     report = fit_result.get("asr")
     if contention is None or not isinstance(report, dict):
-        return None
+        return _Measured()
     models = report.get("asr_models")
     if not isinstance(models, list):
-        return None
+        return _Measured()
     measured = next(
         (
             model
@@ -166,11 +207,17 @@ def _measured_asr_rtf(
         ),
         None,
     )
-    value = _positive_number(measured.get(field)) if measured else None
-    return (
-        local_fit.effective_latency(value, contention)
-        if value is not None
-        else None
+    if measured is None:
+        return _Measured()
+    validity = _validity_of(measured)
+    if validity.unusable:
+        return validity
+    value = _positive_number(measured.get(field))
+    if value is None:
+        return _Measured()
+    return _Measured(
+        value=local_fit.effective_latency(value, contention),
+        aged=validity.aged,
     )
 
 
@@ -178,13 +225,13 @@ def _measured_text_latency(
     fit_result: dict,
     model_id: str,
     slug: str,
-) -> float | None:
+) -> _Measured:
     contention = _positive_number(fit_result.get("contention"))
     if contention is None:
-        return None
+        return _Measured()
     models = fit_result.get("text_models")
     if not isinstance(models, list):
-        return None
+        return _Measured()
     measured = next(
         (
             model
@@ -195,9 +242,14 @@ def _measured_text_latency(
         ),
         None,
     )
-    roles = measured.get("roles") if measured else None
+    if measured is None:
+        return _Measured()
+    validity = _validity_of(measured)
+    if validity.unusable:
+        return validity
+    roles = measured.get("roles")
     if not isinstance(roles, list):
-        return None
+        return _Measured()
     role = next(
         (
             item
@@ -207,10 +259,11 @@ def _measured_text_latency(
         None,
     )
     latency = _positive_number(role.get("latency_seconds")) if role else None
-    return (
-        local_fit.effective_latency(latency, contention)
-        if latency is not None
-        else None
+    if latency is None:
+        return _Measured()
+    return _Measured(
+        value=local_fit.effective_latency(latency, contention),
+        aged=validity.aged,
     )
 
 
@@ -258,6 +311,7 @@ async def assess_call_capacity(
     text_agents: list[TextAgentDemand] = []
     modelled: list[str] = ["machine_budget"]
     not_modelled: list[str] = []
+    annotations: list[str] = []
 
     # The diarizer in effect decides which message is honest. A machine on the
     # lightweight diarizer needs no Sortformer benchmark at all, so reporting
@@ -291,12 +345,20 @@ async def assess_call_capacity(
             batch_model_id,
             "real_time_factor",
         )
-        if measured_rtf is None:
+        if measured_rtf.unusable:
+            not_modelled.append(
+                f"batch_asr:{batch_model_id}: {measured_rtf.unusable}"
+            )
+        elif measured_rtf.value is None:
             not_modelled.append(
                 f"batch_asr:{batch_model_id}: run the local fit test for this model"
             )
         else:
-            batch_asr = BatchAsrDemand(real_time_factor=measured_rtf)
+            if measured_rtf.aged:
+                annotations.append(
+                    f"batch_asr:{batch_model_id}: {measured_rtf.aged}"
+                )
+            batch_asr = BatchAsrDemand(real_time_factor=measured_rtf.value)
             modelled.append(f"batch_asr:{batch_model_id}")
             not_modelled.append(
                 f"batch_asr:{batch_model_id}: memory demand is not measured"
@@ -315,13 +377,21 @@ async def assess_call_capacity(
             live_asr_model_id,
             "short_real_time_factor",
         )
-        if measured_rtf is None:
+        if measured_rtf.unusable:
+            not_modelled.append(
+                f"live_captioner:{live_model_id}: {measured_rtf.unusable}"
+            )
+        elif measured_rtf.value is None:
             not_modelled.append(
                 f"live_captioner:{live_model_id}: run the local fit test "
                 "for live-caption feasibility"
             )
         else:
-            captioner = CaptionerDemand(real_time_factor=measured_rtf)
+            if measured_rtf.aged:
+                annotations.append(
+                    f"live_captioner:{live_model_id}: {measured_rtf.aged}"
+                )
+            captioner = CaptionerDemand(real_time_factor=measured_rtf.value)
             modelled.append(f"live_captioner:{live_model_id}")
             not_modelled.append(
                 f"live_captioner:{live_model_id}: memory demand is not measured"
@@ -337,12 +407,17 @@ async def assess_call_capacity(
         ):
             continue
         latency = _measured_text_latency(fit_result, row.model_id, row.slug)
-        if latency is None or output_budget <= 0:
+        if latency.unusable:
+            not_modelled.append(f"text_agent:{row.slug}: {latency.unusable}")
+            continue
+        if latency.value is None or output_budget <= 0:
             not_modelled.append(
                 f"text_agent:{row.slug}: run the local fit test for "
                 f"{row.model_id}"
             )
             continue
+        if latency.aged:
+            annotations.append(f"text_agent:{row.slug}: {latency.aged}")
         interval = 0 if role.post_call else _effective_interval(
             row,
             role.default_interval,
@@ -361,7 +436,7 @@ async def assess_call_capacity(
                 role=row.slug,
                 prompt_tokens=0,
                 reserved_output_tokens=output_budget,
-                tokens_per_second=output_budget / latency,
+                tokens_per_second=output_budget / latency.value,
                 context_window=None,
                 interval_seconds=float(interval or 0),
                 timeout_seconds=settings.LLM_SELF_HOSTED_TIMEOUT_SECONDS,
@@ -385,4 +460,5 @@ async def assess_call_capacity(
         track_count=track_count,
         modelled=tuple(modelled),
         not_modelled=tuple(not_modelled),
+        annotations=tuple(annotations),
     )

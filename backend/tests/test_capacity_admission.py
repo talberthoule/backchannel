@@ -157,6 +157,87 @@ class AssessCallCapacityTests(unittest.IsolatedAsyncioTestCase):
                 budget=budget or MachineBudget(usable_cores=8, memory_limit_mb=8192),
             )
 
+    def _asr(self, validity: dict | None = None) -> list[dict]:
+        model = {
+            "model_id": "local-parakeet-tdt-0.6b",
+            "status": "ok",
+            "real_time_factor": 0.2,
+            "short_real_time_factor": 0.1,
+        }
+        if validity is not None:
+            model["validity"] = validity
+        return [model]
+
+    async def test_a_superseded_measurement_is_excluded_and_named(self):
+        """An invalid input is missing, not passing (ALP-160 5.2).
+
+        The numbers describe a server that is no longer the configured one, so
+        modelling from them would invent demand and round a gap up into a
+        favorable verdict.
+        """
+        assessment = await self._assess(
+            fit_result=_fit_result(
+                asr_models=self._asr(
+                    {"status": "superseded", "reason": "Measured model X is gone."}
+                )
+            ),
+            rows=[],
+        )
+
+        self.assertNotIn(
+            "batch_asr:local-parakeet-tdt-0.6b", assessment.modelled
+        )
+        self.assertTrue(
+            any("Measured model X is gone." in i for i in assessment.not_modelled)
+        )
+
+    async def test_an_incompatible_measurement_is_excluded_and_named(self):
+        assessment = await self._assess(
+            fit_result=_fit_result(
+                asr_models=self._asr(
+                    {"status": "incompatible", "reason": "Not measured currently."}
+                )
+            ),
+            rows=[],
+        )
+
+        self.assertNotIn(
+            "batch_asr:local-parakeet-tdt-0.6b", assessment.modelled
+        )
+        self.assertTrue(
+            any("Not measured currently." in i for i in assessment.not_modelled)
+        )
+
+    async def test_an_aged_measurement_is_modelled_and_annotated(self):
+        """Aged annotates, it does not degrade: still this machine's numbers."""
+        assessment = await self._assess(
+            fit_result=_fit_result(
+                asr_models=self._asr(
+                    {"status": "aged", "reason": "Measured 94 days ago."}
+                )
+            ),
+            rows=[],
+        )
+
+        self.assertIn("batch_asr:local-parakeet-tdt-0.6b", assessment.modelled)
+        self.assertTrue(
+            any("Measured 94 days ago." in i for i in assessment.annotations)
+        )
+        self.assertFalse(
+            any("Measured 94 days ago." in i for i in assessment.not_modelled)
+        )
+        self.assertIn("annotations", assessment.to_dict())
+
+    async def test_an_unstamped_measurement_still_models(self):
+        """A pre-ALP-160 blob has nothing to say about validity."""
+        assessment = await self._assess(
+            fit_result=_fit_result(asr_models=self._asr()),
+            rows=[],
+        )
+
+        self.assertIn("batch_asr:local-parakeet-tdt-0.6b", assessment.modelled)
+        self.assertEqual((), assessment.annotations)
+
     async def test_an_invalid_sortformer_record_is_excluded_and_named(self):
         """Carried forward from ALP-160, now scoped to a Sortformer machine.
 
