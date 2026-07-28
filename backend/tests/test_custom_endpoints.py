@@ -8,9 +8,11 @@ box - with its own key, and without a cloud provider key ever being required.
 import os
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from unittest import mock
 
 from app.models import CustomEndpoint
+from app.routers import endpoints as endpoint_router
 from app.services import custom_endpoints as ce
 
 
@@ -50,9 +52,20 @@ class _FakeSession:
     async def commit(self):
         pass
 
+    async def refresh(self, _obj):
+        pass
+
     async def execute(self, statement):
         self.statements.append(statement)
-        ordered = sorted(self.rows.values(), key=lambda e: (e.display_order, e.id))
+        filters_deleted = "custom_endpoints.deleted_at IS NULL" in str(statement)
+        ordered = sorted(
+            (
+                e
+                for e in self.rows.values()
+                if not filters_deleted or getattr(e, "deleted_at", None) is None
+            ),
+            key=lambda e: (e.display_order, e.id),
+        )
         return _FakeResult(ordered)
 
 
@@ -203,6 +216,20 @@ class StorageTests(_EncryptionCase):
         await ce.create_endpoint(db, name="LM Studio", base_url="http://gpu-box:1234/v1")
         self.assertEqual(["lm-studio", "lm-studio-2"], sorted(db.rows))
 
+    async def test_collision_suffix_never_exceeds_the_slug_cap(self):
+        db = _FakeSession()
+        ids = []
+        for index in range(11):
+            endpoint = await ce.create_endpoint(
+                db,
+                name="x" * ce.MAX_ENDPOINT_SLUG,
+                base_url=f"http://gpu-box-{index}:1234/v1",
+            )
+            ids.append(endpoint.id)
+            self.assertLessEqual(len(endpoint.id), ce.MAX_ENDPOINT_SLUG)
+        self.assertEqual(11, len(set(db.rows)))
+        self.assertTrue(ids[-1].endswith("-11"))
+
     async def test_remote_endpoint_models_are_not_marked_local(self):
         db = _FakeSession()
         await ce.create_endpoint(
@@ -271,13 +298,80 @@ class StorageTests(_EncryptionCase):
         await ce.update_endpoint(db, endpoint, name="Workstation")
         self.assertEqual("ok", endpoint.last_status)
 
-    async def test_deleted_endpoint_resolves_to_nothing(self):
+    async def test_privacy_first_rejects_moving_an_endpoint_off_prem(self):
+        db = _FakeSession()
+        endpoint = await ce.create_endpoint(db, name="Box", base_url="http://localhost:1234/v1")
+        with (
+            mock.patch(
+                "app.services.privacy.get_local_only",
+                new=mock.AsyncMock(return_value=True),
+            ),
+            self.assertRaisesRegex(ce.EndpointError, "Privacy First"),
+        ):
+            await ce.update_endpoint(
+                db,
+                endpoint,
+                base_url="https://api.together.xyz/v1",
+            )
+        self.assertEqual("http://localhost:1234/v1", endpoint.base_url)
+
+    async def test_off_prem_move_requires_confirmation_when_privacy_first_is_off(self):
+        db = _FakeSession()
+        endpoint = await ce.create_endpoint(db, name="Box", base_url="http://localhost:1234/v1")
+        with mock.patch(
+            "app.services.privacy.get_local_only",
+            new=mock.AsyncMock(return_value=False),
+        ):
+            with self.assertRaisesRegex(ce.EndpointError, "confirm_off_prem"):
+                await ce.update_endpoint(
+                    db,
+                    endpoint,
+                    base_url="https://api.together.xyz/v1",
+                )
+            await ce.update_endpoint(
+                db,
+                endpoint,
+                base_url="https://api.together.xyz/v1",
+                confirm_off_prem=True,
+            )
+        self.assertEqual("https://api.together.xyz/v1", endpoint.base_url)
+
+    async def test_deleted_endpoint_is_hidden_and_its_slug_is_not_reused(self):
+        db = _FakeSession()
+        endpoint = await ce.create_endpoint(
+            db,
+            name="Box",
+            base_url="http://localhost:1234/v1",
+            api_key="sk-secret",
+            models=["m"],
+        )
+        await ce.delete_endpoint(db, endpoint)
+        self.assertIsNotNone(getattr(endpoint, "deleted_at", None))
+        self.assertEqual("", endpoint.api_key)
+        self.assertEqual([], await ce.list_endpoints(db))
+        self.assertIsNone(await ce.get_endpoint(db, endpoint.id))
+        self.assertIsNone(await ce.endpoint_model_entry(db, "endpoint:box:m"))
+        replacement = await ce.create_endpoint(
+            db,
+            name="Box",
+            base_url="http://gpu-box:1234/v1",
+            models=["m"],
+        )
+        self.assertEqual("box-2", replacement.id)
+
+    async def test_resolution_distinguishes_deleted_from_never_existing(self):
         db = _FakeSession()
         endpoint = await ce.create_endpoint(
             db, name="Box", base_url="http://localhost:1234/v1", models=["m"]
         )
-        await ce.delete_endpoint(db, endpoint)
-        self.assertIsNone(await ce.resolve_target(db, "endpoint:box:m"))
+        deleted_at = datetime(2026, 7, 28, 6, 45, tzinfo=timezone.utc)
+        endpoint.deleted_at = deleted_at
+        with self.assertRaisesRegex(
+            ce.EndpointError,
+            r"Box.*deleted.*2026-07-28T06:45:00\+00:00",
+        ):
+            await ce.resolve_target(db, "endpoint:box:m")
+        self.assertIsNone(await ce.resolve_target(db, "endpoint:never-existed:m"))
 
     async def test_name_is_required(self):
         db = _FakeSession()
@@ -335,6 +429,27 @@ class SelectableEverywhereTests(_EncryptionCase):
         db = _FakeSession()
         await self._endpoint(db)
         self.assertIsNone(await ce.endpoint_model_entry(db, "gemini-3.5-flash"))
+
+
+class RouterTests(_EncryptionCase):
+    async def test_edit_forwards_an_off_prem_confirmation(self):
+        db = _FakeSession()
+        await ce.create_endpoint(
+            db,
+            name="Box",
+            base_url="http://localhost:1234/v1",
+            models=["m"],
+        )
+        body = endpoint_router.EndpointPatch(
+            base_url="https://api.together.xyz/v1",
+            confirm_off_prem=True,
+        )
+        with mock.patch(
+            "app.services.privacy.get_local_only",
+            new=mock.AsyncMock(return_value=False),
+        ):
+            payload = await endpoint_router.edit("box", body, db)
+        self.assertEqual("https://api.together.xyz/v1", payload["base_url"])
 
 
 class ProbeTests(unittest.IsolatedAsyncioTestCase):

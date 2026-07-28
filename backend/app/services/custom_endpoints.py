@@ -207,13 +207,16 @@ def to_dict(endpoint: CustomEndpoint) -> dict:
 
 async def list_endpoints(db: AsyncSession) -> list[CustomEndpoint]:
     result = await db.execute(
-        select(CustomEndpoint).order_by(CustomEndpoint.display_order, CustomEndpoint.created_at)
+        select(CustomEndpoint)
+        .where(CustomEndpoint.deleted_at.is_(None))
+        .order_by(CustomEndpoint.display_order, CustomEndpoint.created_at)
     )
     return list(result.scalars().all())
 
 
 async def get_endpoint(db: AsyncSession, endpoint_id: str) -> CustomEndpoint | None:
-    return await db.get(CustomEndpoint, endpoint_id)
+    endpoint = await db.get(CustomEndpoint, endpoint_id)
+    return endpoint if endpoint is not None and endpoint.deleted_at is None else None
 
 
 async def _unique_slug(db: AsyncSession, name: str) -> str:
@@ -221,7 +224,7 @@ async def _unique_slug(db: AsyncSession, name: str) -> str:
     slug = base
     suffix = 2
     while await db.get(CustomEndpoint, slug) is not None:
-        slug = f"{base[: MAX_ENDPOINT_SLUG - 2]}-{suffix}"
+        slug = f"{base[: MAX_ENDPOINT_SLUG - len(str(suffix)) - 1]}-{suffix}"
         suffix += 1
     return slug
 
@@ -268,6 +271,7 @@ async def update_endpoint(
     api_key: str | None = None,
     models: list | None = None,
     enabled: bool | None = None,
+    confirm_off_prem: bool = False,
 ) -> CustomEndpoint:
     """Patch semantics: omitted fields keep their stored value.
 
@@ -284,6 +288,21 @@ async def update_endpoint(
         new_url = validate_base_url(base_url)
         # Reaching a different server invalidates the recorded test outcome.
         if new_url != endpoint.base_url:
+            if is_on_prem(endpoint.base_url) and not is_on_prem(new_url):
+                from app.services.privacy import get_local_only
+
+                if await get_local_only(db):
+                    raise EndpointError(
+                        "Privacy First is on; this endpoint cannot move from on-prem "
+                        "to an off-prem base URL. Turn off Privacy First first or keep "
+                        "the endpoint on this machine or network."
+                    )
+                if not confirm_off_prem:
+                    raise EndpointError(
+                        "This change moves the endpoint off-prem and can send call data "
+                        "outside this machine or network. Repeat with "
+                        "confirm_off_prem=true to confirm."
+                    )
             endpoint.last_status = ""
             endpoint.last_error = ""
             endpoint.last_checked_at = None
@@ -302,8 +321,10 @@ async def update_endpoint(
 
 
 async def delete_endpoint(db: AsyncSession, endpoint: CustomEndpoint) -> None:
-    await db.delete(endpoint)
-    logger.info("Removed custom endpoint %s", endpoint.id)
+    endpoint.deleted_at = datetime.now(timezone.utc)
+    endpoint.api_key = ""
+    await db.flush()
+    logger.info("Retired custom endpoint %s", endpoint.id)
 
 
 async def record_probe(db: AsyncSession, endpoint: CustomEndpoint, ok: bool, message: str) -> None:
@@ -405,7 +426,7 @@ async def endpoint_model_entry(db: AsyncSession, model_id: str) -> dict | None:
         return None
     endpoint_id, wire = parsed
     endpoint = await db.get(CustomEndpoint, endpoint_id)
-    if endpoint is None or not endpoint.enabled:
+    if endpoint is None or endpoint.deleted_at is not None or not endpoint.enabled:
         return None
     model = next((m for m in normalize_models(endpoint.models) if m["id"] == wire), None)
     if model is None:
@@ -422,6 +443,11 @@ async def resolve_target(db: AsyncSession, model_id: str) -> EndpointTarget | No
     endpoint = await db.get(CustomEndpoint, endpoint_id)
     if endpoint is None:
         return None
+    if endpoint.deleted_at is not None:
+        raise EndpointError(
+            f"Endpoint '{endpoint.name}' was deleted at {endpoint.deleted_at.isoformat()}; "
+            "pick another model or add a new endpoint in Admin -> Connections."
+        )
     return EndpointTarget(
         endpoint_id=endpoint.id,
         name=endpoint.name,

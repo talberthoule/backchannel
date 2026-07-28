@@ -238,6 +238,7 @@ export interface EndpointPayload {
   api_key?: string;
   models?: { id: string; label?: string }[];
   enabled?: boolean;
+  confirm_off_prem?: boolean;
 }
 
 export const listEndpoints = () => request<CustomEndpoint[]>("/endpoints");

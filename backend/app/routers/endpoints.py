@@ -47,6 +47,7 @@ class EndpointPatch(BaseModel):
     api_key: str | None = None
     models: list[EndpointModelIn] | None = None
     enabled: bool | None = None
+    confirm_off_prem: bool = False
 
 
 class ProbeIn(BaseModel):
@@ -104,6 +105,7 @@ async def edit(endpoint_id: str, body: EndpointPatch, db: AsyncSession = Depends
             api_key=body.api_key,
             models=_models_payload(body.models),
             enabled=body.enabled,
+            confirm_off_prem=body.confirm_off_prem,
         )
     except EndpointError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

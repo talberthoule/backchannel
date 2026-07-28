@@ -183,6 +183,16 @@ async def _add_missing_columns(conn):
                     text("ALTER TABLE session_syntheses ADD COLUMN speaker_mapping_revision_id UUID")
                 )
 
+        if "custom_endpoints" in tables:
+            columns = {c["name"] for c in inspector.get_columns("custom_endpoints")}
+            if "deleted_at" not in columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE custom_endpoints "
+                        "ADD COLUMN deleted_at TIMESTAMP WITH TIME ZONE"
+                    )
+                )
+
         # Model ids for self-hosted endpoints ("endpoint:<slug>:<model name>")
         # are longer than the registry ids these columns were sized for.
         for table in ("agent_configs", "token_usage"):
