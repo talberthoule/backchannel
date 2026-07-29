@@ -8,6 +8,7 @@
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -84,6 +85,13 @@ function props(overrides = {}) {
     onEndCall: noop,
     onResumeAudio: noop,
     onAddDirective: noop,
+    onAsk: noop,
+    askModels: [],
+    askModelId: "",
+    onAskModelChange: noop,
+    localOnly: false,
+    pendingAsk: null,
+    askError: null,
     onStarQuestion: noop,
     onDismissQuestion: noop,
     onVoteQuestion: noop,
@@ -118,4 +126,20 @@ test("a connected call in progress shows neither the banner nor wrapping-up", ()
 
   assert.doesNotMatch(html, new RegExp(LOST_BANNER));
   assert.doesNotMatch(html, /Wrapping up this call/);
+});
+
+test("the pending ask renders above the insight list", () => {
+  const src = readFileSync(new URL("./ActiveCallView.tsx", import.meta.url), "utf8");
+  assert.match(src, /pendingAsk/);
+  assert.ok(
+    src.indexOf("pendingAsk") < src.indexOf("<QuestionList"),
+    "the pending card must render before the list",
+  );
+});
+
+test("the bar receives the ask handler and model props", () => {
+  const src = readFileSync(new URL("./ActiveCallView.tsx", import.meta.url), "utf8");
+  assert.match(src, /onAsk=\{/);
+  assert.match(src, /modelId=\{/);
+  assert.match(src, /localOnly=\{/);
 });

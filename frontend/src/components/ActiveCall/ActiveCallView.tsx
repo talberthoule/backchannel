@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AgentActivitySnapshot, AudioSendStats, MeetingType, PostProcessingProgress as PostProcessingProgressState, Question, Session, SessionSynthesis, Speaker, StopDrainMode, TranscriptEntry } from "../../types";
+import type { AgentActivitySnapshot, AudioSendStats, MeetingType, ModelInfo, PostProcessingProgress as PostProcessingProgressState, Question, Session, SessionSynthesis, Speaker, StopDrainMode, TranscriptEntry } from "../../types";
 import AgentActivityPanel, { activityEmptyMessage } from "./AgentActivityPanel";
 import AudioIndicator from "./AudioIndicator";
 import DirectiveBar from "./DirectiveBar";
@@ -18,6 +18,14 @@ interface ActiveCallViewProps {
   onDismissQuestion: (id: string) => void;
   onVoteQuestion: (id: string, vote: number) => void | Promise<void>;
   onAddDirective: (text: string) => void;
+  onAsk: (question: string) => void;
+  askModels: ModelInfo[];
+  askModelId: string;
+  onAskModelChange: (id: string) => void;
+  localOnly: boolean;
+  pendingAsk: string | null;
+  askError: string | null;
+  onMakeDirective?: (question: Question) => void;
   onUpdateSessionContext: (data: { meeting_type?: MeetingType; meeting_context?: string }) => Promise<void>;
   audioLevel: number;
   systemAudioLevel?: number;
@@ -89,6 +97,14 @@ export default function ActiveCallView({
   onDismissQuestion,
   onVoteQuestion,
   onAddDirective,
+  onAsk,
+  askModels,
+  askModelId,
+  onAskModelChange,
+  localOnly,
+  pendingAsk,
+  askError,
+  onMakeDirective,
   onUpdateSessionContext,
   audioLevel,
   systemAudioLevel,
@@ -376,6 +392,25 @@ export default function ActiveCallView({
               Live Insights
             </h2>
           </div>
+          {(pendingAsk || askError) && (
+            <div className="px-4 pb-2">
+              <div className="rounded-lg border border-brand-light-gray-1 border-l-4 border-l-brand-gray bg-brand-light-gray-2 px-3 py-2">
+                <p className="font-mono text-[9px] uppercase tracking-wider text-brand-gray">
+                  You asked
+                </p>
+                <p className="mt-0.5 font-body text-sm font-semibold text-brand-dark-gray">
+                  {pendingAsk}
+                </p>
+                {askError ? (
+                  <p className="mt-1 font-body text-xs text-red-600">{askError}</p>
+                ) : (
+                  <p className="mt-1 font-mono text-[10px] uppercase tracking-wider text-brand-gray">
+                    Reading the call...
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
           <div className="flex-1 overflow-hidden">
             <QuestionList
               questions={displayQuestions}
@@ -386,6 +421,7 @@ export default function ActiveCallView({
               onStar={onStarQuestion}
               onDismiss={onDismissQuestion}
               onVote={onVoteQuestion}
+              onMakeDirective={onMakeDirective}
             />
           </div>
         </div>
@@ -397,7 +433,16 @@ export default function ActiveCallView({
       </div>
 
       {/* Bottom: Directive bar */}
-      <DirectiveBar onAddDirective={onAddDirective} disabled={postProcessingActive} />
+      <DirectiveBar
+        onAddDirective={onAddDirective}
+        onAsk={onAsk}
+        models={askModels}
+        modelId={askModelId}
+        onModelChange={onAskModelChange}
+        localOnly={localOnly}
+        asking={Boolean(pendingAsk) && !askError}
+        disabled={postProcessingActive}
+      />
     </div>
   );
 }

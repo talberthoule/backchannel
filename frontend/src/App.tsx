@@ -14,7 +14,7 @@ import { useAppUpdates } from "./hooks/useAppUpdates";
 import { useConfirm } from "./components/ConfirmProvider";
 import * as api from "./services/api";
 import { parseSavedDrainSummary } from "./lib/postProcessingSummary";
-import type { AgentActivitySnapshot, PostProcessingProgress, Question, Session, SessionGroup, SessionSynthesis, StopDrainMode, TranscriptEntry, WSStatusData } from "./types";
+import type { AgentActivitySnapshot, ModelInfo, PostProcessingProgress, Question, Session, SessionGroup, SessionSynthesis, StopDrainMode, TranscriptEntry, WSStatusData } from "./types";
 
 function idlePostProcessing(): PostProcessingProgress {
   return {
@@ -241,6 +241,14 @@ export default function App() {
   // landed. The socket closes early in that window, and without this the
   // still-mounted active view reads that as a lost connection (ALP-171).
   const [endingCall, setEndingCall] = useState(false);
+  // In-call chat ("ask this call anything"): the question text stays visible
+  // once asked, even on failure, so it never disappears without explanation;
+  // pendingAsk only clears on a successful answer (see handleAsk below).
+  const [pendingAsk, setPendingAsk] = useState<string | null>(null);
+  const [askError, setAskError] = useState<string | null>(null);
+  const [askModels, setAskModels] = useState<ModelInfo[]>([]);
+  const [askModelId, setAskModelId] = useState("");
+  const [localOnly, setLocalOnly] = useState(false);
   const runtimeSessionIdRef = useRef(runtimeSessionId);
   const liveSessionIdRef = useRef(liveSessionId);
   const audioStartPromiseRef = useRef<Promise<void> | null>(null);
@@ -424,6 +432,36 @@ export default function App() {
     }
   }, [messages, activeSessionId, speakers, refreshSpeakers, stopCapture, disconnect, savedTranscripts.length, refreshSession]);
 
+  // Seed the in-call ask model from a per-session localStorage choice, falling
+  // back to the objection handler's model (it already runs on a ten-second
+  // loop, so it is the session's known-fast choice), then the analyst, then
+  // the first available text model.
+  useEffect(() => {
+    if (!session) return;
+    const storageKey = `backchannel:ask-model:${session.id}`;
+    Promise.all([api.listModels(), api.listAgents()])
+      .then(([allModels, agents]) => {
+        const textModels = allModels.filter((m) => m.supports_text && m.key_available !== false);
+        setAskModels(textModels);
+        const stored = window.localStorage.getItem(storageKey);
+        if (stored && textModels.some((m) => m.id === stored)) {
+          setAskModelId(stored);
+          return;
+        }
+        const bySlug = (slug: string) => agents.find((a) => a.slug === slug)?.model_id;
+        const preferred = [bySlug("objection_handler"), bySlug("consolidated_analyst")]
+          .find((id) => id && textModels.some((m) => m.id === id));
+        setAskModelId(preferred || textModels[0]?.id || "");
+      })
+      .catch(() => {});
+  }, [session?.id]);
+
+  // Fetched once at mount: a stale value only affects which rows the model
+  // chip greys out, since the backend enforces Privacy First regardless.
+  useEffect(() => {
+    api.getPrivacyConfig().then((cfg) => setLocalOnly(cfg.local_only)).catch(() => {});
+  }, []);
+
   const runtimeMatchesView = Boolean(activeSessionId && activeSessionId === runtimeSessionId);
   const viewLiveQuestions = runtimeMatchesView ? liveQuestions : [];
   const viewLiveTranscripts = runtimeMatchesView ? liveTranscripts : [];
@@ -481,6 +519,8 @@ export default function App() {
     setCaptureError(null);
     setCallSegmentStart(null);
     setPostProcessing(idlePostProcessing());
+    setPendingAsk(null);
+    setAskError(null);
     processedCount.current = messages.length;
   }, [messages.length]);
 
@@ -699,6 +739,8 @@ export default function App() {
         setCaptureError(null);
         setCallSegmentStart(new Date().toISOString());
         setPostProcessing(idlePostProcessing());
+        setPendingAsk(null);
+        setAskError(null);
         processedCount.current = messages.length;
 
         // Start capture before the active view exposes Resume and End.
@@ -901,6 +943,36 @@ export default function App() {
     [activeSessionId, session?.state, sendDirective, refreshDirectives]
   );
 
+  const handleAsk = useCallback(
+    async (question: string) => {
+      if (!session) return;
+      setPendingAsk(question);
+      setAskError(null);
+      try {
+        const created = await api.askSession(session.id, askModelId, question);
+        setLiveQuestions((prev) => [created, ...prev]);
+        setPendingAsk(null);
+      } catch (err) {
+        // Keep the question visible next to the error: it must not vanish
+        // silently, only handleAsk (a fresh submit) clears it.
+        setAskError(errorMessage(err, "Ask failed"));
+      }
+    },
+    [session, askModelId]
+  );
+
+  const handleAskModelChange = useCallback((id: string) => {
+    setAskModelId(id);
+    if (session) window.localStorage.setItem(`backchannel:ask-model:${session.id}`, id);
+  }, [session]);
+
+  const handleMakeDirective = useCallback(
+    (question: Question) => {
+      void handleAddDirective(question.question);
+    },
+    [handleAddDirective]
+  );
+
   const renderContent = () => {
     if (showAdmin || showOfferings || showKnowledge) {
       return (
@@ -969,6 +1041,14 @@ export default function App() {
             onDismissQuestion={handleDismissQuestion}
             onVoteQuestion={handleVoteQuestion}
             onAddDirective={handleAddDirective}
+            onAsk={handleAsk}
+            askModels={askModels}
+            askModelId={askModelId}
+            onAskModelChange={handleAskModelChange}
+            localOnly={localOnly}
+            pendingAsk={runtimeMatchesView ? pendingAsk : null}
+            askError={runtimeMatchesView ? askError : null}
+            onMakeDirective={handleMakeDirective}
             onUpdateSessionContext={handleUpdateSessionContext}
             audioLevel={audioLevel}
             systemAudioLevel={liveSessionId === session.id ? systemAudioLevel : 0}
