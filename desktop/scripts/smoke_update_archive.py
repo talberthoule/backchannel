@@ -155,7 +155,9 @@ def stop(process: GracefulProcess) -> None:
 
 @contextmanager
 def temporary_directory():
-    root = Path(tempfile.mkdtemp(prefix="backchannel-update-smoke-"))
+    # Resolve so plan paths survive the updater's symlink refusal on macOS,
+    # where the runner TMPDIR sits under the /var -> /private/var symlink.
+    root = Path(tempfile.mkdtemp(prefix="backchannel-update-smoke-")).resolve(strict=True)
     try:
         yield root
     finally:
