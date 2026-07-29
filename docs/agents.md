@@ -41,6 +41,15 @@ The three briefing agents never run on the live interval. Normal **End Call**
 runs them; **End without briefing** skips them; **Generate Briefing** runs them
 on demand. Live Strategic Signals is separately enabled and configured.
 
+The settled briefing leads with an at-a-glance summary strip (outcome, action,
+risk, and open-question counts plus synthesis status) and a Top Outcomes hero,
+followed by per-section cards that each carry their own icon and accent color.
+Items show owner and status chips, with the supporting "Why this matters"
+rationale collapsed behind a toggle, and strategic signals captured during the
+call are folded into the briefing as their own section
+(`backend/app/services/briefing_synthesis.py`, rendered by
+`frontend/src/components/PostCall/BriefingView.tsx`).
+
 There is no standalone question-hunter agent: question generation is one
 enabled lens of `consolidated_analyst`. The `question_hunter` label only
 survives as a backward-compatible `agent_source` value on exported/saved
@@ -115,7 +124,9 @@ the long-window roles are `consolidated_analyst`, `strategic_signals`, and
 `brief_discovery_lens`, `brief_arbiter`) are also scored, but they run once at
 call end -- no live loop -- so they are judged on an acceptable end-of-call wait
 (green <= 60 s, yellow <= 180 s) rather than a cycle budget, and are not editable.
-The audio bridge is not a text model, so it is not scored.
+The audio gateway is not a text model, so it gets no cycle-budget score here;
+its on-device option (`local-parakeet-live`) is judged instead by the ASR
+section's live-caption feasibility projection described below.
 
 **Per-model budgets.** A cycle budget is stored per agent *and per model* in
 `AgentConfig.model_intervals` (JSON `{model_id: seconds}`), so the analyst can
@@ -137,22 +148,34 @@ times them automatically on a synthetic speech-band clip (an estimate); upload o
 record real speech via `POST /api/diagnostics/local-fit/asr` for a precise
 number. It reports a real-time factor (processing / audio, green below half real
 time) plus an **experimental live-caption feasibility** projection (short-window
-RTF, very conservative) for the future local captioner (ALP-147). Note: local
-ASR is batch-only today, so live interim captions still have no local option.
+RTF, very conservative) for the on-device captioner (`local-parakeet-live`,
+ALP-147) described above -- check it before pointing the audio gateway at
+Parakeet Live.
 
 To answer "where can this model actually go?", the card shows, per model, the
 services it can fill (a **Usable for** list) and a **What can run locally** map
 of each AI service to its local option. Both are derived from the registry
 capability flags (`supports_batch_audio`, `supports_text`, `supports_live_audio`)
-by `build_local_capabilities`, so they never drift from how calls route: local
-ONNX ASR is batch-transcription-only, a self-hosted chat endpoint drives the
-analysis agents and meeting chat, and live interim captions have no local option
-(they need a cloud streaming model), which is why live preview is off under
-Privacy First. Document upload and summarization is the one AI service with no
+by `build_local_capabilities`, so they never drift from how calls route: the
+bundled ONNX ASR models fill batch transcription, a self-hosted chat endpoint
+drives the analysis agents and meeting chat, and live interim captions list the
+on-device `local-parakeet-live` captioner as their local option, which is how
+captions keep running under Privacy First (the cloud streaming gateways remain
+the default). Document upload and summarization is the one AI service with no
 local option at all, because it calls the Gemini Files API rather than choosing
 a text model; configuring a self-hosted endpoint does not enable it. The card
 also auto-retries its summary fetch so it recovers on its own if the backend
 was still starting or an endpoint was connected after the page loaded.
+
+**Call-start capacity admission.** The fit test measures each component alone;
+`backend/app/services/capacity_admission.py` (served at
+`GET /api/diagnostics/capacity`) checks whether the configured combination fits
+together. At call start it sums the measured demand of Sortformer diarization,
+local batch transcription, the local live captioner, and every enabled agent on
+a self-hosted model against the machine's usable CPU cores and memory limit.
+Only persisted measurements count: any configured local component without one
+is named under `not_modelled`, so partial coverage can never read as a complete
+clean pass, and aged measurements annotate the verdict rather than blocking it.
 
 Two features have no agent row of their own and borrow one instead. Post-import
 Analyze runs the model set on **Consolidated Analyst**, and Enhance Insights
@@ -161,6 +184,30 @@ Analyze runs the model set on **Consolidated Analyst**, and Enhance Insights
 are buttons the user presses, so disabling either agent does not turn them off.
 That also means Privacy First judges them by destination like any other agent
 model, and `REFINEMENT_MODEL` is reached only when the row has no model set.
+
+## Runtime activity and call health
+
+When nothing is happening, the app says why. Each orchestrator keeps an
+in-memory `ActivityRegistry` (`backend/app/services/agents/activity.py`) that
+pushes `agent_activity` snapshots over the session WebSocket, coalesced to at
+most one every ~2 seconds; errors, newly blocked agents, and degradation
+changes emit immediately. A snapshot carries:
+
+- **Per-agent status** -- the state (`waiting`, `running`, `failing`, or
+  `blocked` with a reason and remedy), when the last run started and how long
+  it took, when the next run is due, the last outcome (insights saved, all
+  items deduplicated as near-repeats, or nothing found), the last error
+  (classified as truncated, timeout, refusal, or API error, each with a
+  suggested remedy), and cumulative counts of runs, insights, deduplicated
+  items, and errors.
+- **Call health** -- the interim gateway state, transcription job and failure
+  counts, the diarization queue depth and shed-frame count, and a `degraded`
+  flag with plain-language `degraded_reasons` (failed transcription segments,
+  shed diarization audio, or a reconnecting gateway).
+
+The live agent activity panel
+(`frontend/src/components/ActiveCall/AgentActivityPanel.tsx`) renders these
+snapshots during the call.
 
 ## Insight lifecycle
 

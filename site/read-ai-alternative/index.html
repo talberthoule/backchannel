@@ -28,7 +28,7 @@
         "url": "https://backchannel.page/read-ai-alternative/",
         "name": "Open-Source Read AI Alternative (No Uninvited Bot) | Backchannel",
         "description": "An open-source, self-hosted Read AI alternative: nothing auto-joins your calendar, nothing joins the call, and no meeting audio leaves your server. MIT licensed.",
-        "dateModified": "2026-07-24",
+        "dateModified": "2026-07-29",
         "isPartOf": {
           "@id": "https://backchannel.page/#website"
         },
@@ -220,7 +220,7 @@
             <tr>
               <td>Where audio is processed</td>
               <td>Read AI's cloud</td>
-              <td>Your server; diarization always local, transcription can run fully offline</td>
+              <td>Your server; diarization always local, transcription and analysis can run fully offline</td>
             </tr>
             <tr>
               <td>Free tier</td>
@@ -334,13 +334,16 @@
           Capture, voice activity detection, speaker diarization, and
           transcription all run locally, and the analysis agents can be
           pointed at a self-hosted OpenAI-compatible server (Ollama, LM
-          Studio, vLLM), so a zero-cloud deployment is possible. Our Privacy
+          Studio, vLLM, LiteLLM) -- several endpoints if you like, with every
+          served model appearing by name in every picker -- so a zero-cloud
+          deployment is possible. Our Privacy
           First switch now accounts for that: it judges the destination rather
           than the vendor, so agents pointed at an endpoint on your own machine
           or LAN keep running with the switch on and only cloud providers stay
           blocked. Flip it on and a fully local Backchannel runs end to end --
-          the one caveat is that interim live captions still come from the
-          cloud audio gateway. To compare other zero-cloud setups, see
+          interim live captions default to the cloud audio gateway, but they
+          can also run on-device through the local Parakeet captioner, so
+          there is no cloud caveat left. To compare other zero-cloud setups, see
           <a href="/open-source-meeting-assistants/">the other open-source options</a>.
         </p>
       </div>
@@ -357,7 +360,7 @@
         </div>
         <div class="card">
           <h3>Switch to Backchannel if you...</h3>
-          <p>Have been asked by IT to remove a calendar-joining bot, take external calls where an uninvited participant is a liability, want a tool that structurally cannot appear in a colleague's meeting, want recordings you can replay without an Enterprise upgrade, and can run docker compose with your own API key.</p>
+          <p>Have been asked by IT to remove a calendar-joining bot, take external calls where an uninvited participant is a liability, want a tool that structurally cannot appear in a colleague's meeting, want recordings you can replay without an Enterprise upgrade, and can run docker compose, with your own API key or your own model server.</p>
         </div>
       </div>
     </div>
@@ -369,8 +372,8 @@
       <div class="prose">
         <p>
           Setup is a git clone and <code>docker compose up --build</code>,
-          plus a Gemini or OpenAI API key (or a local ONNX Whisper/Parakeet
-          model for fully offline transcription). The
+          plus a Gemini or OpenAI API key (or local ONNX transcription plus
+          a self-hosted model to run offline end to end). The
           <a href="/docs/quickstart/">quickstart</a> is upfront about the
           friction: the first start builds images and downloads models, so
           plan for a few minutes.

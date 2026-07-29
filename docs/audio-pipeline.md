@@ -14,7 +14,11 @@ second track. Each frame carries a 1-byte track prefix:
 
 Because PCM16 payloads are always even-length, the backend detects the
 prefix by frame parity: odd-length frames are prefixed, even-length frames
-are treated as legacy mic audio (`backend/app/ws/audio_handler.py`).
+are treated as legacy mic audio (`_decode_audio_frame` in
+`backend/app/ws/audio_runtime.py`). The WebSocket layer is split across
+`backend/app/ws/audio_handler.py` (the endpoint and call lifecycle) and its
+companions `audio_messages.py`, `audio_pipeline.py`, `audio_runtime.py`, and
+`audio_persistence.py`.
 
 On the backend the two tracks are mixed into a single stream
 (`backend/app/services/track_mixer.py`) for the interim audio gateway and
@@ -44,6 +48,16 @@ diagnostics endpoints (`/api/diagnostics/diarization`):
 | `SPEAKER_SIMILARITY_THRESHOLD` | 0.68 | Cosine similarity required to match an existing speaker embedding |
 | `MIN_NEW_SPEAKER_MS` | 4000 | Minimum speech needed before enrolling a new voice profile |
 | `MAX_SPEAKER_PROFILES_PER_TRACK` | 4 | Safety cap for auto-enrolled profiles on each audio track |
+
+A diarizer slower than realtime would otherwise buffer incoming audio without
+bound until the process is killed for running out of memory. The ingress path
+therefore caps the queued diarization backlog at 30 seconds of dual-track
+audio and sheds the oldest queued frames past that cap (`_shed_diarization_backlog` in
+`backend/app/ws/audio_runtime.py`, applied per frame in
+`backend/app/ws/audio_messages.py`), so an overloaded diarizer loses some
+speaker attribution instead of ending the call. The client is told once via a
+`diarization_overloaded` status message, and the shed count feeds the
+call-health block of the live agent activity feed.
 
 ## Speaker identification
 
@@ -112,9 +126,16 @@ Diarized segments are transcribed in original audio order through
 - `local-*` model IDs (for example `local-whisper-base`,
   `local-parakeet-tdt-0.6b`) run ONNX Whisper/Parakeet locally via
   `onnx-asr`. Weights download to `DATA_DIR/asr-models/` on first use; no
-  API key required. These models transcribe only -- they cannot back the
-  analysis agents, which always call Google or OpenAI (see
+  API key required. These models transcribe only; the analysis agents run on
+  text models instead -- cloud, or self-hosted via an
+  `endpoint:<slug>:<model>` registry entry (see
   [Configuration](configuration.md#privacy-first-local-only-mode)).
+- OpenAI-provider registry IDs route to OpenAI
+  (`backend/app/services/openai_transcriber.py`): the specialized transcribe
+  models (`gpt-4o-transcribe`, `gpt-4o-mini-transcribe`) go through
+  `/v1/audio/transcriptions` (`OpenAITranscriber`), and the audio chat
+  models (`gpt-audio-1.5`, `gpt-audio-mini`) go through Chat Completions
+  with an `input_audio` content part (`OpenAIChatTranscriber`).
 - Everything else goes to Gemini: the segment is wrapped as WAV and sent
   with a transcription prompt (`backend/app/services/batch_transcriber.py`).
 
@@ -127,9 +148,17 @@ saved.
 ## Interim transcription
 
 Independently of the batch path, the mixed stream is forwarded to the audio
-gateway (Gemini Live or OpenAI Realtime) which streams back interim text
-within seconds. Interim text is display-only; the diarized batch transcript
-is the source of truth that agents analyze and that gets persisted.
+gateway, which sends back interim text. The gateway is a cloud streaming
+session (Gemini Live or OpenAI Realtime, sub-second partials) or, when the
+`audio_gateway` agent is set to `local-parakeet-live`, the on-device local
+captioner (`backend/app/services/local_live_captioner.py`): it batches the
+incoming audio into short, non-overlapping chunks committed roughly every 3
+seconds (chunks under 1 second are held for more context) and transcribes
+each with local Parakeet ONNX. No cloud call is made, so it works under
+Privacy First; it is experimental and CPU-heavy, and latency is about one
+commit interval rather than sub-second. Interim text is display-only; the
+diarized batch transcript is the source of truth that agents analyze and
+that gets persisted.
 
 ## Audio storage and re-transcription
 

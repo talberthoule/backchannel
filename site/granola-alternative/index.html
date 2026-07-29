@@ -28,7 +28,7 @@
         "url": "https://backchannel.page/granola-alternative/",
         "name": "Open-Source Granola Alternative (Bot-Free, Self-Hosted) | Backchannel",
         "description": "An open-source Granola alternative: the same bot-free capture, plus self-hosted processing and real-time insights during the call. MIT licensed.",
-        "dateModified": "2026-07-13",
+        "dateModified": "2026-07-29",
         "isPartOf": {
           "@id": "https://backchannel.page/#website"
         },
@@ -68,7 +68,7 @@
             "name": "Does Granola keep my meeting audio private?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Granola captures audio locally but processes it in the cloud, including third-party LLMs; 'private by default' refers to sharing controls, not data sovereignty. Backchannel processes audio on your own server: diarization is always local, transcription can run fully offline, and recordings never upload anywhere."
+              "text": "Granola captures audio locally but processes it in the cloud, including third-party LLMs; 'private by default' refers to sharing controls, not data sovereignty. Backchannel processes audio on your own server: diarization is always local, transcription can run fully offline, and with a self-hosted model the analysis runs locally too; recordings never upload anywhere."
             }
           },
           {
@@ -174,9 +174,11 @@
           does not emphasize at all.
         </p>
         <p>
-          Then it goes further than notes. While the call is live, a set of
-          <a href="/docs/agents/">insight agents</a> reads the transcript and
-          pushes questions worth asking, responses to objections,
+          Then it goes further than notes. Backchannel seeds nine agents --
+          an audio gateway, five live insight agents, and a three-agent
+          briefing pass. While the call is live, the
+          <a href="/docs/agents/">insight agents</a> read the transcript and
+          push questions worth asking, responses to objections,
           opportunities, and action items to your screen in real time.
           Granola helps you remember the meeting; Backchannel tries to help
           you win it.
@@ -185,7 +187,8 @@
           The honest trade: Granola's design polish, native desktop and
           mobile apps, and hybrid human-plus-AI note editing are ahead of
           Backchannel's web UI, and Granola installs in seconds while
-          Backchannel needs Docker and an API key. If you take in-person
+          Backchannel needs Docker, and an API key only if you use a cloud
+          model. If you take in-person
           meetings from a phone, Granola wins that use case outright.
         </p>
       </div>
@@ -214,12 +217,12 @@
             <tr>
               <td>Where audio is processed</td>
               <td>Granola's cloud plus third-party LLMs</td>
-              <td>Your server; diarization always local, transcription can run fully offline</td>
+              <td>Your server; diarization always local, transcription and analysis can run fully offline</td>
             </tr>
             <tr>
               <td>Real-time in-call insights</td>
               <td>None; notes and actions finalize after the call</td>
-              <td>Live agents: questions, objection responses, opportunities, action items</td>
+              <td>Five live agents: questions, objection responses, opportunities, action items, strategic signal cards</td>
             </tr>
             <tr>
               <td>Speaker diarization</td>
@@ -267,8 +270,12 @@
           two. Granola's audio and transcripts are processed in its cloud.
           Backchannel's stay on your server: diarization is always local, and
           with a local ONNX Whisper or Parakeet model even transcription runs
-          offline -- only the text-analysis agents call Gemini or OpenAI, on
-          keys you control. The full flow is documented in the
+          offline. The text-analysis agents run on Gemini or OpenAI keys you
+          control, or on a self-hosted OpenAI-compatible server on your own
+          machine or LAN; with Privacy First on, a fully local Backchannel
+          keeps the agents, post-import Analyze, Enhance Insights, and the
+          briefing all running while making no outbound calls. The full flow
+          is documented in the
           <a href="/docs/audio-pipeline/">audio pipeline docs</a>.
         </p>
         <h3>During the call vs after it</h3>
@@ -320,8 +327,9 @@
       <div class="prose">
         <p>
           Setup is a git clone and <code>docker compose up --build</code>,
-          plus a Gemini API key (or a local ONNX model for offline
-          transcription). The <a href="/docs/quickstart/">quickstart</a>
+          plus a Gemini API key (or local ONNX transcription plus a
+          self-hosted model to run offline end to end). The
+          <a href="/docs/quickstart/">quickstart</a>
           covers it honestly: the first start builds images and downloads
           models, so it takes a few minutes, not seconds.
         </p>
@@ -345,7 +353,7 @@
         </div>
         <div class="card">
           <h3>Does Granola keep my meeting audio private?</h3>
-          <p>Granola captures audio locally but processes it in the cloud, including third-party LLMs; 'private by default' refers to sharing controls, not data sovereignty. Backchannel processes audio on your own server: diarization is always local, transcription can run fully offline, and recordings never upload anywhere.</p>
+          <p>Granola captures audio locally but processes it in the cloud, including third-party LLMs; 'private by default' refers to sharing controls, not data sovereignty. Backchannel processes audio on your own server: diarization is always local, transcription can run fully offline, and with a self-hosted model the analysis runs locally too; recordings never upload anywhere.</p>
         </div>
         <div class="card">
           <h3>What does Granola do better than Backchannel?</h3>

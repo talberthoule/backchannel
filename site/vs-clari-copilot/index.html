@@ -28,7 +28,7 @@
         "url": "https://backchannel.page/vs-clari-copilot/",
         "name": "Backchannel vs Clari Copilot | Backchannel",
         "description": "Both help during the live call. Clari Copilot shows prepared battlecards from the cloud; Backchannel generates a response to the objection actually raised, on your own machine. Compared honestly.",
-        "dateModified": "2026-07-24",
+        "dateModified": "2026-07-29",
         "isPartOf": {
           "@id": "https://backchannel.page/#website"
         },
@@ -76,7 +76,7 @@
             "name": "What does Clari Copilot cost compared to Backchannel?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Clari does not publish prices on its own site. Capterra lists Clari Copilot at $1,080 per user per year for Accelerator and $1,320 per user per year for Enterprise, as of July 2026, with a free trial and no free version. Backchannel is MIT-licensed and costs nothing beyond your own hardware and whatever Gemini or OpenAI API usage you choose."
+              "text": "Clari does not publish prices on its own site. Capterra lists Clari Copilot at $1,080 per user per year for Accelerator and $1,320 per user per year for Enterprise, as of July 2026, with a free trial and no free version. Backchannel is MIT-licensed and costs nothing beyond your own hardware and whatever cloud API usage you choose -- which can be zero with a self-hosted model."
             }
           },
           {
@@ -329,7 +329,8 @@
           signals every 45 seconds), and a three-agent briefing pass after the
           call. Every agent's
           <a href="/docs/agents/">model, prompt, and trigger</a> is editable,
-          and you route them to Gemini or OpenAI on your own keys.
+          and you route them to Gemini, OpenAI, or a self-hosted
+          OpenAI-compatible server -- with your own keys or none at all.
         </p>
         <h3>What we do not have</h3>
         <p>
@@ -340,10 +341,13 @@
           no way to roll a team up. On privacy we are in better shape than we
           were: Privacy First now judges the destination rather than the vendor,
           so with local ONNX transcription and the analysis agents pointed at a
-          self-hosted OpenAI-compatible model (Ollama, LM Studio, vLLM) on your
-          own machine or LAN, the whole pipeline runs end to end with the switch
-          on. Only cloud providers stay blocked, and the one caveat left is that
-          interim live captions still come from the cloud audio gateway.
+          self-hosted OpenAI-compatible model (Ollama, LM Studio, vLLM, LiteLLM)
+          on your own machine or LAN -- as many endpoints as you like, each
+          served model listed by name -- the whole pipeline runs end to end
+          with the switch on. Only cloud providers stay blocked. Interim live
+          captions default to the cloud audio gateway, but they can run
+          on-device through the local Parakeet captioner, so nothing is left in
+          the cloud.
         </p>
       </div>
     </div>
@@ -371,9 +375,9 @@
       <div class="prose">
         <p>
           Setup is a git clone and <code>docker compose up --build</code> plus a
-          Gemini or OpenAI API key, or a desktop build for Windows, macOS, or
-          Linux. If you want transcription offline, point it at a local ONNX
-          Whisper or Parakeet model instead. The
+          Gemini or OpenAI API key, a self-hosted endpoint, or a desktop build
+          for Windows, macOS, or Linux. If you want transcription offline,
+          point it at a local ONNX Whisper or Parakeet model instead. The
           <a href="/docs/quickstart/">quickstart</a> is upfront about the
           friction: the first start builds images and downloads models, so plan
           for a few minutes rather than seconds.
@@ -405,7 +409,7 @@
         </div>
         <div class="card">
           <h3>What does Clari Copilot cost compared to Backchannel?</h3>
-          <p>Clari does not publish prices on its own site. Capterra lists Clari Copilot at $1,080 per user per year for Accelerator and $1,320 per user per year for Enterprise, as of July 2026, with a free trial and no free version. Backchannel is MIT-licensed and costs nothing beyond your own hardware and whatever Gemini or OpenAI API usage you choose.</p>
+          <p>Clari does not publish prices on its own site. Capterra lists Clari Copilot at $1,080 per user per year for Accelerator and $1,320 per user per year for Enterprise, as of July 2026, with a free trial and no free version. Backchannel is MIT-licensed and costs nothing beyond your own hardware and whatever cloud API usage you choose -- which can be zero with a self-hosted model.</p>
         </div>
         <div class="card">
           <h3>What does Clari Copilot do better than Backchannel?</h3>

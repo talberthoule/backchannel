@@ -28,7 +28,7 @@
         "url": "https://backchannel.page/gong-and-backchannel/",
         "name": "Where Backchannel Fits Alongside Gong | Backchannel",
         "description": "Gong is the post-call revenue record for your team. Backchannel is the live seller-side layer on your own machine. How the two fit together, honestly.",
-        "dateModified": "2026-07-24",
+        "dateModified": "2026-07-29",
         "isPartOf": {
           "@id": "https://backchannel.page/#website"
         },
@@ -84,7 +84,7 @@
             "name": "What does Backchannel cost next to Gong?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Gong does not publish prices; its pricing page says licenses are priced per user with a platform fee based on the number of users supported. Procurement data from Vendr puts the median Gong contract at $54,900 a year across 1,126 purchases, as of July 2026. Backchannel is MIT-licensed software that costs nothing: you pay for your own hardware and any Gemini or OpenAI API usage."
+              "text": "Gong does not publish prices; its pricing page says licenses are priced per user with a platform fee based on the number of users supported. Procurement data from Vendr puts the median Gong contract at $54,900 a year across 1,126 purchases, as of July 2026. Backchannel is MIT-licensed software that costs nothing: you pay for your own hardware and any cloud API usage you choose, which can be zero."
             }
           }
         ]
@@ -181,9 +181,12 @@
           own machine or LAN -- loopback, a private address, a .local host --
           and they keep running with the switch on, while only cloud providers
           stay blocked. So a fully local setup, local ONNX transcription plus a
-          self-hosted OpenAI-compatible model (Ollama, LM Studio, vLLM), now
-          runs end to end with Privacy First on; only the interim live captions
-          still come from the cloud audio gateway. If you would rather bring
+          self-hosted OpenAI-compatible model (Ollama, LM Studio, vLLM,
+          LiteLLM; any number of endpoints, each model listed by name), now
+          runs end to end with Privacy First on. Interim captions default to
+          the cloud audio gateway, but they can run on-device through the
+          local Parakeet captioner, so nothing has to leave the machine. If
+          you would rather bring
           your own cloud key, the middle setting is local transcription with
           that gateway disabled: your audio never leaves the machine, while
           transcript <em>text</em> goes to Gemini or OpenAI. That is meaningfully
@@ -290,7 +293,8 @@
           action cards. A further three-agent briefing pass runs after the call
           to settle the record. Each agent's
           <a href="/docs/agents/">model, prompt, and trigger</a> is
-          configurable, and you route them to Gemini or OpenAI on your own keys.
+          configurable, and you route them to Gemini, OpenAI, or a self-hosted
+          OpenAI-compatible server on your own hardware.
         </p>
         <h3>Real-time objection help is no longer novel. The mechanism still is.</h3>
         <p>
@@ -360,8 +364,8 @@
           your own machine and captures from your browser, so the two do not
           contend for the meeting or for the audio device. Setup is a git clone
           and <code>docker compose up --build</code> plus a Gemini API key, or a
-          desktop build, or a local ONNX Whisper or Parakeet model if you want
-          transcription to stay offline. The
+          desktop build, or local ONNX models plus a self-hosted endpoint if
+          you want the whole pipeline offline. The
           <a href="/docs/quickstart/">quickstart</a> is upfront about the
           friction: the first start builds images and downloads models, so plan
           for a few minutes rather than seconds.
@@ -394,7 +398,7 @@
         </div>
         <div class="card">
           <h3>What does Backchannel cost next to Gong?</h3>
-          <p>Gong does not publish prices; its pricing page says licenses are priced per user with a platform fee based on the number of users supported. Procurement data from Vendr puts the median Gong contract at $54,900 a year across 1,126 purchases, as of July 2026. Backchannel is MIT-licensed software that costs nothing: you pay for your own hardware and any Gemini or OpenAI API usage.</p>
+          <p>Gong does not publish prices; its pricing page says licenses are priced per user with a platform fee based on the number of users supported. Procurement data from Vendr puts the median Gong contract at $54,900 a year across 1,126 purchases, as of July 2026. Backchannel is MIT-licensed software that costs nothing: you pay for your own hardware and any cloud API usage you choose, which can be zero.</p>
         </div>
       </div>
     </div>

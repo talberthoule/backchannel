@@ -24,19 +24,24 @@ Key facts:
   Fireflies.ai, and Granola
 - Stack: React 18 + TypeScript frontend, FastAPI backend, PostgreSQL 16
 - Diarization: Silero VAD + WeSpeaker ResNet152 speaker embeddings (local, ONNX)
-- Transcription: Gemini Flash, or fully offline ONNX Whisper/Parakeet
-- Text analysis: Google, OpenAI, or any self-hosted OpenAI-compatible
-  endpoint (Ollama, LM Studio, vLLM) -- so a deployment can run end to end
-  with no cloud key. Privacy First judges the destination, so an on-prem
-  endpoint (loopback or LAN) keeps the analysis agents running with the
-  switch on while cloud providers stay blocked.
+- Transcription: Gemini Flash, OpenAI batch audio models, or fully offline
+  ONNX Whisper/Parakeet; interim live captions come from Gemini Live or
+  OpenAI Realtime by default, or run on-device with the local Parakeet
+  captioner
+- Text analysis: Google, OpenAI, or any number of self-hosted
+  OpenAI-compatible endpoints (Ollama, LM Studio, vLLM, LiteLLM), with
+  every served model listed by name in the pickers -- so a deployment can
+  run end to end with no cloud key. Privacy First judges the destination,
+  so an on-prem endpoint (loopback or LAN) keeps the analysis agents
+  running with the switch on while cloud providers stay blocked.
 - Agents: nine seeded agents -- an audio gateway, five live insight agents
   (consolidated analyst every 40s, objection handler every 10s over the last
   90s, synthesizer, opportunity specialist, strategic signals every 45s), and
   a three-agent post-call briefing pass (meeting lens, discovery lens,
   arbiter) -- each with a configurable model, prompt, and trigger
-- Works with any meeting app: captures mic plus tab/system audio in the
-  browser, so Zoom, Meet, and Teams need no bot or integration
+- Works with any meeting, digital or in person: captures mic plus tab/system
+  audio in the browser, so Zoom, Meet, and Teams need no bot or integration,
+  and a conference-room conversation needs only the microphone
 
 ## Docs
 
@@ -57,7 +62,7 @@ Key facts:
 
 - [Writing index](https://backchannel.page/blog/): dated, vendor-sourced notes on the AI meeting-assistant category
 - [The free AI notetaker is genuinely free. Here is why I self-host anyway.](https://backchannel.page/blog/self-hosted-ai-notetaker-honest-comparison/) (2026-07-28): sourced competitive research against Fathom, Otter, Read AI, tl;dv, and Avoma that opens with the concessions -- Fathom's free tier really is unlimited, bot-free capture is no longer a differentiator, and real-time in-call AI shipped at Otter and Zoom in July 2026 -- then argues from what survives: where audio is processed, whether a vendor trains on conversations, tactical generated responses vs descriptive live summaries, configurability, and readable source.
-- [Three degrees of local: what "self-hosted" actually means in a meeting assistant](https://backchannel.page/blog/three-degrees-of-local/) (2026-07-28): architecture walk-through showing locality as a three-position spectrum chosen per component. Diarization is always local (Silero VAD plus WeSpeaker ResNet152, ONNX); degree one pairs local diarization with cloud transcription on your own key; degree two runs transcription and live captions fully on-device; degree three points the analysis agents at a self-hosted OpenAI-compatible endpoint (Ollama, LM Studio, vLLM) so no packet leaves your network. Every claim cited to a file path.
+- [Three degrees of local: what "self-hosted" actually means in a meeting assistant](https://backchannel.page/blog/three-degrees-of-local/) (2026-07-28): architecture walk-through showing locality as a three-position spectrum chosen per component. Diarization is always local (Silero VAD plus WeSpeaker ResNet152, ONNX); degree one pairs local diarization with cloud transcription on your own key; degree two runs transcription and live captions fully on-device; degree three points the analysis agents at a self-hosted OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, LiteLLM) so no packet leaves your network. Every claim cited to a file path.
 - [Live meeting AI arrived in one week, and all of it is Enterprise-gated](https://backchannel.page/blog/live-meeting-ai-enterprise-gate/) (2026-07-25): Otter Live Assist (2026-07-21, Otter Enterprise) and Zoom Revenue Accelerator Sales Assist (2026-07-22, Essentials from $66/user/mo and Premium from $99.99/user/mo annual, Essentials dated August) both shipped real-time in-call guidance within 48 hours. Compares the three mechanisms now in market: Zoom pre-configures guidance per topic category via admin setup, Otter grounds it in playbooks and SOPs you supply, and Backchannel generates it from the trailing transcript window. Concedes that pre-authored guidance is more consistent and reviewable.
 
 ## Compare

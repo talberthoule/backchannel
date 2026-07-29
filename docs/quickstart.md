@@ -5,16 +5,30 @@
 Prefer the shortest path? Download the latest desktop build from the
 [authenticated Backchannel portal](https://downloads.backchannel.page/).
 An approved Backchannel account is required; no GitHub identity or repository
-membership is required. See the public [v0.3.6 release notes](https://backchannel.page/releases/v0.3.6/)
+membership is required. See the public [v0.4.0 release notes](https://backchannel.page/releases/v0.4.0/)
 for the current asset inventory.
 
 - **Windows** -- `Backchannel-windows-x64.zip`; unzip and run `Backchannel.exe`.
 - **macOS** (Apple Silicon) -- `Backchannel-macos-arm64.zip`; unzip and open `Backchannel.app`.
 - **Linux** (x64) -- `Backchannel-linux-x64.tar.gz`; a portable bundle (not a
   package-manager installer): `tar -xzf` it and run `Backchannel/Backchannel`.
-  Data lives in `~/.local/share/backchannel`.
 
-The app runs from your system tray / menu bar and stores data per-user, no Docker needed. Set a Gemini API key in Admin -> Connections on first run ([Getting API Keys](api-keys.md) shows how to create one in about two minutes). For the full self-hosted stack, use Docker Compose below.
+The app runs from your system tray / menu bar and stores data per-user --
+`%LOCALAPPDATA%\Backchannel` on Windows,
+`~/Library/Application Support/Backchannel` on macOS,
+`~/.local/share/backchannel` on Linux -- no Docker needed. Set a Gemini API key in Admin -> Connections on first run ([Getting API Keys](api-keys.md) shows how to create one in about two minutes). For the full self-hosted stack, use Docker Compose below.
+
+### Keeping the desktop app up to date
+
+From v0.4.0 the desktop app updates itself in place. "Check for updates" in
+the tray menu (or Admin -> About) checks for a newer version; when one is
+available, download it from the update card, completing the authorization
+step in the secure downloads window if prompted. Every update is verified
+against the Ed25519 signing keys shipped with the app before it is applied,
+and installation is blocked until any active call, recording, or
+post-processing has finished. The app then restarts into the new version,
+keeping a backup and rolling back to the previous version automatically if
+the new one fails to start.
 
 ## Prerequisites
 

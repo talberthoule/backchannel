@@ -28,7 +28,7 @@
         "url": "https://backchannel.page/vs-anarlog/",
         "name": "Backchannel vs Anarlog (formerly Hyprnote): Local-First Meeting Tools Compared",
         "description": "Backchannel vs Anarlog, formerly Hyprnote: both MIT and local-first. Anarlog is macOS only and routes automatic speaker ID to Pro; Backchannel ships diarization and live agents free.",
-        "dateModified": "2026-07-24",
+        "dateModified": "2026-07-29",
         "isPartOf": {
           "@id": "https://backchannel.page/#website"
         },
@@ -188,7 +188,7 @@
             <tr>
               <td>Fully-offline analysis</td>
               <td>Yes -- on-device transcription plus LM Studio or Ollama for summaries and chat</td>
-              <td>Yes -- local ONNX transcription plus any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM) for the agents</td>
+              <td>Yes -- local ONNX transcription plus any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, LiteLLM) for the agents; several at once, each served model listed by name</td>
             </tr>
             <tr>
               <td>Install experience</td>
@@ -320,8 +320,9 @@
           destination rather than the vendor, so agents pointed at an endpoint
           on your own machine or LAN keep running with the switch on and only
           cloud providers stay blocked. Flip it on and a fully local
-          Backchannel runs end to end -- the one caveat is that interim live
-          captions still come from the cloud audio gateway.
+          Backchannel runs end to end -- interim live captions default to the
+          cloud audio gateway, but they can run on-device through the local
+          Parakeet captioner, so nothing is left in the cloud.
         </p>
         <h3>Maturity and community</h3>
         <p>
@@ -367,7 +368,8 @@
           on-device model. Two steps, no terminal, no account, no key.
           Backchannel: git clone,
           <code>docker compose up --build</code>, add a Gemini API key (or a
-          local ONNX transcription model), open localhost in a browser -- or
+          local ONNX transcription model plus a self-hosted endpoint, for no
+          key at all), open localhost in a browser -- or
           use a desktop bundle for Windows, macOS, or Linux, which needs an
           approved Backchannel account where Anarlog's download is ungated.
           Call it five to seven steps against two, and the

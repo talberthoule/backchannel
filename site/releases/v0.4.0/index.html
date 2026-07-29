@@ -210,6 +210,14 @@
           <h3>Ending a call tells the truth</h3>
           <p>Stopping the browser share finalizes the system track at that moment rather than surfacing a stray speaker minutes later. End Call names any analysis stage that degraded, saves that summary with the call so a dropped connection cannot lose it, and a long post-processing run is no longer reported as a lost connection.</p>
         </div>
+        <div>
+          <h3>When nothing is happening, the app says why</h3>
+          <p>A runtime diagnosis surface reports what is running, what is blocked, and what to change to unblock it. Editing a self-hosted endpoint no longer silently orphans the agents pointing at it.</p>
+        </div>
+        <div>
+          <h3>The briefing reads like a briefing</h3>
+          <p>An at-a-glance strip sums up the meeting in five seconds and the top outcomes lead the page. Every section carries its own color and icon so risks, actions, and open questions can be found by scanning; owners and status show as chips, supporting rationale tucks behind a toggle, and strategic signals from the call now appear in the briefing.</p>
+        </div>
       </div>
     </div>
   </section>
@@ -229,7 +237,7 @@
             </tr>
             <tr>
               <td>Provider key</td>
-              <td>Follow the guided setup on first launch, or add a key later in <strong>Admin -&gt; API Keys</strong>. Calls will not start until the transcription model has a usable credential.</td>
+              <td>Follow the guided setup on first launch, or add a key later in <strong>Admin -&gt; Connections</strong>. Calls will not start until the transcription model has a usable credential; local ONNX transcription needs none.</td>
             </tr>
             <tr>
               <td>Voice calibration</td>
@@ -237,7 +245,7 @@
             </tr>
             <tr>
               <td>Upgrading</td>
-              <td>Quit the old version from the tray before starting the new one. Session data is stored per-user and shared by every version. A previously configured OpenAI-compatible endpoint is migrated automatically on first launch. The Admin <strong>About</strong> tab shows a what's-new notice after upgrading.</td>
+              <td>From this release the app updates itself in place: it verifies the new build's signature first and waits for recording and post-processing to finish before restarting. If you install a build manually instead, quit the old version from the tray first. Session data is stored per-user and shared by every version. A previously configured OpenAI-compatible endpoint is migrated automatically on first launch. The Admin <strong>About</strong> tab shows a what's-new notice after upgrading.</td>
             </tr>
             <tr>
               <td>Desktop launch</td>

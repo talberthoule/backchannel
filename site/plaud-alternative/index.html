@@ -28,7 +28,7 @@
         "url": "https://backchannel.page/plaud-alternative/",
         "name": "Open-Source Plaud Alternative (Self-Hosted, Real-Time) | Backchannel",
         "description": "An open-source Plaud alternative: bot-free capture, always-local diarization, optional offline transcription, and live in-call insights. Self-hosted and MIT licensed.",
-        "dateModified": "2026-07-24",
+        "dateModified": "2026-07-29",
         "isPartOf": {
           "@id": "https://backchannel.page/#website"
         },
@@ -192,9 +192,11 @@
           your own server, where voice activity detection and
           <a href="/docs/audio-pipeline/">speaker diarization always run locally</a>
           using Silero VAD and WeSpeaker ResNet152 embeddings, and every
-          transcript line gets a speaker label. Point the transcriber at a
-          local ONNX Whisper or Parakeet model and the entire pipeline runs
-          offline, with no API key and nothing leaving the machine. Plaud has
+          transcript line gets a speaker label. Point the transcriber at local
+          ONNX Whisper or Parakeet models, the agents at a self-hosted
+          OpenAI-compatible server, and the interim captions at the on-device
+          Parakeet captioner, and the entire pipeline runs offline with no API
+          key -- Privacy First keeps every stage running. Plaud has
           no equivalent: PCWorld's review of the Note Pro states plainly that
           you cannot run its AI locally.
         </p>

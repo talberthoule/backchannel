@@ -262,12 +262,15 @@ Required:
 - `GEMINI_API_KEY` (or an OpenAI key for OpenAI-routed agents)
 
 Local ONNX transcription needs no key, and no local registry entry sets
-`supports_text` -- so local analysis runs through the `openai-compatible`
-provider (Ollama, LM Studio, vLLM), not through those transcription models.
-Configure its base URL in Admin -> Connections or via `OPENAI_BASE_URL`. Without
-it, the analysis agents require a Google or OpenAI key. Note that the Privacy
-First switch gates on `provider != "local"` and so still disables the agents
-even when the endpoint is local.
+`supports_text` -- so local analysis runs through self-hosted OpenAI-compatible
+endpoints (Ollama, LM Studio, vLLM, LiteLLM), not through those transcription
+models. Register endpoints in Admin -> Connections (each served model becomes a
+registry entry named `endpoint:<slug>:<model>`); `OPENAI_BASE_URL` remains the
+legacy single-endpoint fallback. Without an endpoint, the analysis agents
+require a Google or OpenAI key. Privacy First judges the destination
+(`runs_locally` plus an on-prem base URL): endpoints on loopback, a private
+network, or a LAN hostname keep the agents running with the switch on; only
+cloud providers are blocked.
 
 Database variables are optional in Docker because defaults are provided:
 

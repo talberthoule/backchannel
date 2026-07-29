@@ -250,7 +250,7 @@ export function DroppableGroup({ group, children, isExpanded, onToggle, onDelete
   return (
     <div ref={setNodeRef} className={`mt-1 rounded-lg transition-colors ${isOver ? "bg-brand-teal/5 ring-1 ring-brand-teal/20" : ""}`}>
       <div className="flex items-center gap-1 px-1 py-1">
-        <button onClick={onToggle} className="flex flex-1 items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-brand-light-gray-2">
+        <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-brand-light-gray-2">
           <svg className={`h-3 w-3 text-brand-mid-gray transition-transform ${isExpanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
@@ -258,7 +258,7 @@ export function DroppableGroup({ group, children, isExpanded, onToggle, onDelete
             <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
           </svg>
           <span className="text-sm font-semibold text-brand-dark-gray truncate">{group.name}</span>
-          <span className="text-[10px] font-medium text-brand-mid-gray bg-brand-light-gray-2 px-1.5 py-0.5 rounded-full">{sessionCount}</span>
+          <span className="shrink-0 text-[10px] font-medium text-brand-mid-gray bg-brand-light-gray-2 px-1.5 py-0.5 rounded-full">{sessionCount}</span>
         </button>
         <button
           type="button"
@@ -639,7 +639,7 @@ export default function Layout({
               <div className="mx-4 mb-2 border-t border-brand-light-gray-1" />
 
               <DndContext sensors={sensors} onDragStart={(e) => setDraggedId(e.active.id as string)} onDragEnd={handleDragEnd}>
-                <nav className="flex-1 overflow-y-auto px-2 pb-4">
+                <nav className="flex-1 overflow-y-auto overflow-x-clip px-2 pb-4">
                   {/* Groups first */}
                   {grouped.byGroup.length > 0 && (
                     <div className="mb-2 px-3 pt-2 text-[10px] font-bold uppercase tracking-wider text-brand-mid-gray">

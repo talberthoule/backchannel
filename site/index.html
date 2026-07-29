@@ -83,10 +83,10 @@
           },
           {
             "@type": "Question",
-            "name": "Does it work with Zoom, Google Meet, and Teams?",
+            "name": "Does it work with Zoom, Google Meet, Teams, and in-person meetings?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Yes, with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration to install. Cross-platform coverage is no longer unique: Google's take-notes-for-me now reaches meetings hosted on other providers, and Zoom's assistant can join Meet and Teams. Both do it as a visible bot in a vendor cloud."
+              "text": "Yes -- any meeting, digital or in person, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration to install. For a conference room or an in-person conversation, the microphone alone carries the meeting, with diarization separating the voices. Cross-platform coverage is no longer unique: Google's take-notes-for-me now reaches meetings hosted on other providers, and Zoom's assistant can join Meet and Teams. Both do it as a visible bot in a vendor cloud, and neither can sit in a room."
             }
           },
           {
@@ -157,7 +157,7 @@
             <a class="btn primary" href="#early-access">Request early access</a>
             <a class="btn ghost" href="#quickstart">Self-host in minutes</a>
           </div>
-          <p class="quickstart-note">Private desktop preview for Windows, macOS &amp; Linux &middot; self-host anytime with Docker Compose &middot; works with Zoom, Meet, and Teams &middot; MIT licensed</p>
+          <p class="quickstart-note">Private desktop preview for Windows, macOS &amp; Linux &middot; self-host anytime with Docker Compose &middot; works with any meeting &mdash; Zoom, Meet, Teams, or in the room &middot; MIT licensed</p>
         </div>
         <aside class="console" aria-label="Live listening console demonstration">
           <div class="console-bar">
@@ -179,10 +179,10 @@
           <picture>
             <source srcset="assets/shots/live-call-dark.webp" media="(prefers-color-scheme: dark)" />
             <img src="assets/shots/live-call.webp" width="1440" height="900" fetchpriority="high"
-                 alt="Backchannel live during a fictional recovery-readiness review: dual Listening indicators, 24 insights, answered objection cards with ready-to-use responses, and a speaker-attributed transcript." />
+                 alt="Backchannel live during a fictional recovery-readiness review: dual Listening indicators, 123 insights, answered objection cards with ready-to-use responses, and a speaker-attributed transcript." />
           </picture>
         </div>
-        <figcaption class="fig-caption"><span class="fig-no">FIG. 1</span><span>A high-stakes recovery review, handled remotely: objections surface with responses already drafted beside the attributed transcript. <strong>24 insights</strong> from one 46-minute call, distilled into a single briefing.</span></figcaption>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 1</span><span>A high-stakes recovery review, handled remotely: objections surface with responses already drafted beside the attributed transcript. <strong>123 insights</strong> from one 46-minute call, distilled into a single briefing.</span></figcaption>
       </figure>
     </div>
   </section>
@@ -227,13 +227,13 @@
       <div class="feature-row">
         <div class="feature-copy">
           <h3>Provider-routed models, on your keys</h3>
-          <p>Mix Google Gemini and OpenAI per agent, transcribe fully offline with local ONNX Whisper and Parakeet, or point the agents at your own OpenAI-compatible server -- Ollama, LM Studio, vLLM -- and run the whole pipeline with no key from anyone. Privacy First judges the destination, so an endpoint on your own machine or LAN keeps the agents running with the switch on; only cloud providers stay blocked.</p>
+          <p>Mix Google Gemini and OpenAI per agent, transcribe fully offline with local ONNX Whisper and Parakeet, or point the agents at any number of your own OpenAI-compatible servers -- Ollama, LM Studio, vLLM, LiteLLM -- where every model an endpoint serves appears by name in each agent's picker, and run the whole pipeline with no key from anyone. Privacy First judges the destination, so an endpoint on your own machine or LAN keeps the agents running with the switch on; only cloud providers stay blocked.</p>
         </div>
         <div class="feature-visual">
           <picture>
-            <source srcset="assets/shots/admin-agents-dark.webp" media="(prefers-color-scheme: dark)" />
-            <img src="assets/shots/admin-agents.webp" width="1185" height="900" loading="lazy"
-                 alt="Backchannel administration: per-agent model selection, prompts, and a Privacy First toggle." />
+            <source srcset="assets/shots/admin-api-keys-dark.webp" media="(prefers-color-scheme: dark)" />
+            <img src="assets/shots/admin-api-keys.webp" width="1185" height="900" loading="lazy"
+                 alt="Admin Connections tab: the Privacy First switch and Google and OpenAI credential cards above the Self-Hosted Models card for LM Studio, Ollama, vLLM, and LiteLLM endpoints." />
           </picture>
         </div>
       </div>
@@ -248,8 +248,8 @@
           <p>Bring in existing transcripts or audio files, and replay any recorded call through a different model later.</p>
         </div>
         <div>
-          <h3>Exports and chat</h3>
-          <p>Transcript, insight, and summary exports, plus cross-session chat over your past meetings.</p>
+          <h3>Exports, chat, and token accounting</h3>
+          <p>Transcript, insight, and summary exports, cross-session chat over your past meetings, and a per-session Tokens tab that breaks usage down by agent and model.</p>
         </div>
       </div>
     </div>
@@ -295,9 +295,9 @@
   <section id="results">
     <div class="wrap">
       <h2>The briefing does the reading for you</h2>
-      <p class="sub">A 46-minute call produced 24 grounded signals. You never wade through them. Backchannel distills the whole conversation into one briefing of outcomes and objectives, so you start from the point instead of the pile.</p>
+      <p class="sub">A 46-minute call produced 123 grounded signals. You never wade through them. Backchannel distills the whole conversation into one briefing that opens with an at-a-glance strip and leads with the top outcomes &mdash; risks, actions, and open questions each color-coded, owners and status shown as chips &mdash; so you start from the point instead of the pile.</p>
       <div class="proof-line">
-        <span class="big">24</span>
+        <span class="big">123</span>
         <span class="arrow">&rarr;</span>
         <span class="big">1</span>
         <span class="desc"><strong>One briefing</strong> of outcomes, objectives, and follow-ups &mdash; with every underlying insight kept, attributed, and exportable.</span>
@@ -313,17 +313,17 @@
         </div>
         <figcaption class="fig-caption"><span class="fig-no">FIG. 4</span><span>The settled briefing &mdash; two independent lens drafts reconciled by an arbiter into outcomes and objectives.</span></figcaption>
       </figure>
-      <p class="sub">The detail is all still there: every one of the 24, each attributed to who said it, ready to take with you as Excel, HTML, or text.</p>
+      <p class="sub">The detail is all still there: every one of the 123, each attributed to who said it, ready to take with you as Excel, HTML, or text.</p>
       <figure class="shot">
         <div class="browser-frame">
           <div class="bar" aria-hidden="true"></div>
           <picture>
             <source srcset="assets/shots/postcall-insights-dark.webp" media="(prefers-color-scheme: dark)" />
             <img src="assets/shots/postcall-insights.webp" width="1440" height="900" loading="lazy"
-                 alt="Insights tab: 24 total, with 5 action items, 4 objections, 4 opportunities, 5 observations, and 6 questions above speaker-attributed cards." />
+                 alt="Insights tab: 123 total, with 24 action items, 16 objections, 18 opportunities, 31 observations, and 34 questions above speaker-attributed cards." />
           </picture>
         </div>
-        <figcaption class="fig-caption"><span class="fig-no">FIG. 5</span><span>All 24, kept and attributed &mdash; 5 action items, 4 objections, 4 opportunities, 5 observations, 6 questions.</span></figcaption>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 5</span><span>All 123, kept and attributed &mdash; 24 action items, 16 objections, 18 opportunities, 31 observations, 34 questions.</span></figcaption>
       </figure>
     </div>
   </section>
@@ -372,7 +372,7 @@
   <section id="chat" class="center">
     <div class="wrap">
       <h2>Ask across every meeting</h2>
-      <p class="sub">Every transcript stays on your server, and stays queryable. Ask a question against one call or all of them at once, and get a grounded answer with the meetings it came from.</p>
+      <p class="sub">Every transcript stays local, and stays queryable. Ask a question against one call or all of them at once, and get a grounded answer with the meetings it came from.</p>
       <figure class="shot">
         <div class="browser-frame">
           <div class="bar" aria-hidden="true"></div>
@@ -396,7 +396,7 @@
         <article class="setup-panel featured">
           <span class="kicker">Desktop app</span>
           <h3>Download, unzip, run</h3>
-          <p>Windows, macOS, and Linux builds bundle the app, backend, and per-user database. Backchannel sits in your system tray or menu bar, opens in your browser, and needs no Docker. Downloads require an approved Backchannel account; no GitHub identity or repository membership is required.</p>
+          <p>Windows, macOS, and Linux builds bundle the app, backend, and per-user database. Backchannel sits in your system tray or menu bar, opens in your browser, and needs no Docker. From v0.4.0 the app updates itself in place: it verifies the new build's signature before applying it, rolls back if the swap fails, and waits for recording and post-processing to finish first. Downloads require an approved Backchannel account; no GitHub identity or repository membership is required.</p>
           <ul class="setup-list">
             <li><strong>Windows x64:</strong> unzip <code>Backchannel-windows-x64.zip</code> and run <code>Backchannel.exe</code>.</li>
             <li><strong>macOS Apple Silicon:</strong> unzip <code>Backchannel-macos-arm64.zip</code> and open <code>Backchannel.app</code>.</li>
@@ -476,7 +476,7 @@ docker compose up --build
             <tr>
               <td><strong>Audio Bridge</strong><br /><code>audio_gateway</code></td>
               <td>Continuous audio stream</td>
-              <td>Listens silently via Gemini Live or OpenAI Realtime and streams interim transcription</td>
+              <td>Listens silently via Gemini Live, OpenAI Realtime, or the on-device Parakeet captioner and streams interim transcription</td>
             </tr>
             <tr>
               <td><strong>Consolidated Analyst</strong><br /><code>consolidated_analyst</code></td>
@@ -538,8 +538,8 @@ docker compose up --build
           <p>Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API. You can route agents to OpenAI instead, transcribe fully offline with local ONNX Whisper or Parakeet models, or point the agents at a self-hosted OpenAI-compatible server such as Ollama or LM Studio -- which makes the whole pipeline local, with no key from anyone. Recordings and transcripts stay on your server.</p>
         </div>
         <div class="faq-item">
-          <h3>Does it work with Zoom, Google Meet, and Teams?</h3>
-          <p>Yes, with all of them, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration to install. Cross-platform coverage is no longer unique: Google's take-notes-for-me now reaches meetings hosted on other providers, and Zoom's assistant can join Meet and Teams. Both do it as a visible bot in a vendor cloud.</p>
+          <h3>Does it work with Zoom, Google Meet, Teams, and in-person meetings?</h3>
+          <p>Yes -- any meeting, digital or in person, because it never joins the call. Backchannel captures your microphone and, optionally, tab or system audio directly in the browser, so there is no bot participant and no per-platform integration to install. For a conference room or an in-person conversation, the microphone alone carries the meeting, with diarization separating the voices. Cross-platform coverage is no longer unique: Google's take-notes-for-me now reaches meetings hosted on other providers, and Zoom's assistant can join Meet and Teams. Both do it as a visible bot in a vendor cloud, and neither can sit in a room.</p>
         </div>
         <div class="faq-item">
           <h3>How is it different from Otter.ai and other cloud note-takers?</h3>
