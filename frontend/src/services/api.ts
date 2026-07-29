@@ -203,6 +203,12 @@ export const chat = (modelId: string, sessionIds: string[], messages: { role: st
     body: JSON.stringify({ model_id: modelId, session_ids: sessionIds, messages }),
   });
 
+export const askSession = (sessionId: string, modelId: string, question: string) =>
+  request<Question>(`/sessions/${sessionId}/ask`, {
+    method: "POST",
+    body: JSON.stringify({ model_id: modelId, question }),
+  });
+
 // Credentials (workspace API keys)
 export interface CredentialInfo {
   provider: string;

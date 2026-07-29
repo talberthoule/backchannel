@@ -139,6 +139,7 @@ export function useSession(sessionId: string | null) {
     directives,
     documents,
     questions,
+    setQuestions,
     segments,
     speakers,
     transcripts,
