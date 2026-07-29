@@ -37,7 +37,8 @@ source of truth, which is updated as part of every release.
 | GET | `/api/sessions/{id}/segments` | List call segments |
 | GET | `/api/sessions/{id}/segments/{n}/audio` | Download a segment's recorded WAV |
 | GET | `/api/sessions/{id}/token-usage` | Token totals with per-source and per-model breakdowns |
-| POST | `/api/sessions/{id}/enhance-insights` | Re-run insight enrichment after speaker changes |
+| POST | `/api/sessions/{id}/enhance-insights` | Re-run insight enrichment after speaker changes; started in the background, returns the run summary |
+| GET | `/api/sessions/{id}/enhance-insights/{run_id}` | Poll a started enhance run: status, dirty flag, and whether the briefing was updated |
 | GET | `/api/sessions/{id}/agents` | Effective per-session agent list |
 | PUT | `/api/sessions/{id}/agents` | Set per-session agent enable/disable overrides |
 
@@ -145,9 +146,17 @@ empty `by_source` / `by_model` lists; historical sessions are not backfilled.
 | GET | `/api/models` | Model registry with capabilities and key requirements |
 | GET | `/api/models/pricing` | Published USD-per-1M-token rates keyed by model id, plus the as-of date (standard text-tier rates; `null` = no published pricing) |
 
+### Privacy First (`routers/privacy.py`)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/privacy` | Current Privacy First state: `local_only`, the effective batch transcription model, and an `impact` summary of what enabling it keeps and disables |
+| PUT | `/api/privacy` | Set `{"local_only": true\|false}`; returns the same payload |
+
 ### Credentials (`routers/credentials.py`)
 
-Providers: `google`, `openai`. Keys are stored encrypted (see
+Providers: `google`, `openai`, `openai-compatible` (the legacy single
+self-hosted server; its key is optional). Keys are stored encrypted (see
 [Configuration](configuration.md)).
 
 | Method | Path | Purpose |
@@ -156,6 +165,29 @@ Providers: `google`, `openai`. Keys are stored encrypted (see
 | PUT | `/api/credentials/{provider}` | Save/replace a key |
 | DELETE | `/api/credentials/{provider}` | Remove a key |
 | POST | `/api/credentials/{provider}/test` | Validate the stored key against the provider |
+| GET | `/api/credentials/openai-compatible/endpoint` | Legacy single-endpoint base URL and wire model id |
+| PUT | `/api/credentials/openai-compatible/endpoint` | Update them; omitted fields are untouched, empty strings clear back to env/default |
+
+The `openai-compatible/endpoint` routes predate named endpoints and are
+superseded by `/api/endpoints`; existing legacy configurations are migrated
+to a named endpoint on startup.
+
+### Self-hosted endpoints (`routers/endpoints.py`)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/endpoints` | List endpoints, their models, and last test result |
+| POST | `/api/endpoints` | Register an endpoint (name, base URL, optional API key, served models) |
+| PUT | `/api/endpoints/{id}` | Patch it; omitted fields keep their value, an empty `api_key` clears the stored key |
+| DELETE | `/api/endpoints/{id}` | Retire an endpoint; agents still pointing at its models report it as missing until repointed |
+| POST | `/api/endpoints/{id}/test` | Probe `{base_url}/models` and record the outcome for the status badge |
+| POST | `/api/endpoints/probe` | Probe an unsaved base URL and list the models it serves |
+
+Each model listed on an endpoint becomes a registry entry with the id
+`endpoint:<slug>:<served model name>` (see [Configuration](configuration.md)).
+DELETE is a soft delete: the row is tombstoned (`deleted_at` set, stored key
+cleared) rather than removed
+(`delete_endpoint()` in `backend/app/services/custom_endpoints.py`).
 
 ### Offerings (`routers/offerings.py`)
 
@@ -204,12 +236,28 @@ Providers: `google`, `openai`. Keys are stored encrypted (see
 | DELETE | `/api/diagnostics/diarization/voice-profile` | Delete the enrolled voice profile |
 | GET | `/api/diagnostics/transcription` | Batch transcription config |
 | GET | `/api/diagnostics/transcription/readiness` | Whether the selected transcription models have usable credentials |
-| PATCH | `/api/diagnostics/transcription/config` | Update batch transcription config |
+| GET | `/api/diagnostics/capacity` | Call-start capacity admission verdict: measured headroom for the selected config (`?track_count=1\|2`, default 2) |
+| PATCH | `/api/diagnostics/transcription/config` | Update the batch transcription model and/or the live-caption (audio gateway) model |
 | POST | `/api/diagnostics/diarization/sortformer/benchmark` | Benchmark Sortformer on an uploaded file (needs at least 15 seconds of audio) |
 | GET | `/api/diagnostics/local-fit` | On-prem text models available to test plus each scored agent's current cycle interval |
 | POST | `/api/diagnostics/local-fit/run` | Time a role-sized call on each on-prem text model and score keep-up per live agent role |
 | POST | `/api/diagnostics/local-fit/apply` | Apply recommended cycle intervals to the scored agents (speed tuning) |
 | POST | `/api/diagnostics/local-fit/asr` | Measure real-time factor for the local ONNX ASR models on an uploaded speech clip |
+
+### Desktop updates (`routers/updates.py`)
+
+Desktop auto-update routes. Every route except the status read requires the
+`X-Backchannel-Instance` header to match the launcher-issued instance token
+(403 otherwise), so they are effectively available only under the desktop
+launcher (`BACKCHANNEL_DESKTOP=1`).
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/updates` | Update status; a ready update also reports `blocked_reason` when active work defers install |
+| POST | `/api/updates/check` | Force an update check |
+| POST | `/api/updates/grant` | Submit a signed update grant and start the download |
+| DELETE | `/api/updates/download` | Cancel an in-progress download |
+| POST | `/api/updates/apply` | Install the downloaded update; 409 while a call or other active work is running |
 
 ## WebSocket
 

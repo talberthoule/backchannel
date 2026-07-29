@@ -28,7 +28,7 @@
         "url": "https://backchannel.page/otter-alternative/",
         "name": "Open-Source, Self-Hosted Otter.ai Alternative | Backchannel",
         "description": "An open-source, self-hosted Otter.ai alternative: live diarized transcripts and real-time meeting insights on your own hardware. MIT licensed.",
-        "dateModified": "2026-07-24",
+        "dateModified": "2026-07-29",
         "isPartOf": {
           "@id": "https://backchannel.page/#website"
         },
@@ -60,7 +60,7 @@
             "name": "Is Backchannel really a free Otter.ai alternative?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Yes. Backchannel is MIT-licensed open source with no hosted tier, no seat pricing, no minute caps, and no feature paywall. Your only costs are hardware and any Gemini or OpenAI API usage you configure; transcription can run fully offline with local ONNX models."
+              "text": "Yes. Backchannel is MIT-licensed open source with no hosted tier, no seat pricing, no minute caps, and no feature paywall. Your only costs are hardware and any Gemini or OpenAI API usage you configure -- or nothing beyond hardware, if you run self-hosted models. Transcription can run fully offline with local ONNX models."
             }
           },
           {
@@ -84,7 +84,7 @@
             "name": "What does switching from Otter.ai to Backchannel involve?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Run docker compose up, add a Gemini API key (or pick a local ONNX transcription model), and start a session in the browser. Existing transcripts import as .txt, .md, or .docx and audio as .mp3, .m4a, .wav, .ogg, or .flac; there is no automated Otter export migration."
+              "text": "Run docker compose up, then add a Gemini API key, pick a local ONNX transcription model, or point everything at your own OpenAI-compatible server, and start a session in the browser. Existing transcripts import as .txt, .md, or .docx and audio as .mp3, .m4a, .wav, .ogg, or .flac; there is no automated Otter export migration."
             }
           }
         ]
@@ -182,7 +182,7 @@
         <p>
           The honest trade: you give up Otter's mobile apps, multilingual
           polish, and zero-setup onboarding, and take on running a Docker
-          stack with your own API keys. In exchange, recordings and
+          stack with your own API keys or your own model server. In exchange, recordings and
           transcripts never leave your server, nothing is metered, and the
           whole pipeline is MIT-licensed and auditable.
         </p>
@@ -212,7 +212,7 @@
             <tr>
               <td>Where audio is processed</td>
               <td>Otter's cloud</td>
-              <td>Your server; diarization always local, transcription can run fully offline</td>
+              <td>Your server; diarization always local, transcription and analysis can both run fully offline</td>
             </tr>
             <tr>
               <td>Real-time in-call insights</td>
@@ -270,9 +270,11 @@
           meeting in its cloud; its compliance story is certifications and
           policy. Backchannel's story is simpler: audio is captured in your
           browser, diarized on your server, and stored on your disk. With a
-          local ONNX transcription model, even transcription happens offline
-          -- only the text-analysis agents call out to Gemini or OpenAI, and
-          you choose which. Details are in the
+          local ONNX transcription model, even transcription happens offline.
+          The text-analysis agents route to Gemini or OpenAI on your keys, or
+          to a self-hosted OpenAI-compatible server on your own machine or
+          LAN -- a fully local deployment makes no outbound calls at all.
+          Details are in the
           <a href="/docs/audio-pipeline/">audio pipeline docs</a>.
         </p>
         <h3>When the value arrives</h3>
@@ -290,7 +292,7 @@
           Otter meters minutes at every tier below Business. Backchannel has
           no meter, no seats, and no tiers -- the cost is your hardware plus
           whatever you spend on LLM API calls, which you control by choosing
-          models (including free local transcription).
+          models (including free local transcription and self-hosted models for the agents).
         </p>
         <h3>Polish and reach</h3>
         <p>
@@ -349,7 +351,7 @@
       <div class="grid">
         <div class="card">
           <h3>Is Backchannel really a free Otter.ai alternative?</h3>
-          <p>Yes. Backchannel is MIT-licensed open source with no hosted tier, no seat pricing, no minute caps, and no feature paywall. Your only costs are hardware and any Gemini or OpenAI API usage you configure; transcription can run fully offline with local ONNX models.</p>
+          <p>Yes. Backchannel is MIT-licensed open source with no hosted tier, no seat pricing, no minute caps, and no feature paywall. Your only costs are hardware and any Gemini or OpenAI API usage you configure -- or nothing beyond hardware, if you run self-hosted models. Transcription can run fully offline with local ONNX models.</p>
         </div>
         <div class="card">
           <h3>Does Backchannel work with Zoom, Google Meet, and Teams?</h3>
@@ -361,7 +363,7 @@
         </div>
         <div class="card">
           <h3>What does switching from Otter.ai to Backchannel involve?</h3>
-          <p>Run docker compose up, add a Gemini API key (or pick a local ONNX transcription model), and start a session in the browser. Existing transcripts import as .txt, .md, or .docx and audio as .mp3, .m4a, .wav, .ogg, or .flac; there is no automated Otter export migration.</p>
+          <p>Run docker compose up, then add a Gemini API key, pick a local ONNX transcription model, or point everything at your own OpenAI-compatible server, and start a session in the browser. Existing transcripts import as .txt, .md, or .docx and audio as .mp3, .m4a, .wav, .ogg, or .flac; there is no automated Otter export migration.</p>
         </div>
       </div>
     </div>

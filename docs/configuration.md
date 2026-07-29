@@ -14,13 +14,28 @@ Configuration comes from three layers, lowest precedence first:
 | --- | --- | --- |
 | `GEMINI_API_KEY` | empty | Google API key fallback when no encrypted credential is stored |
 | `OPENAI_API_KEY` | empty | OpenAI API key fallback |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Base URL for every OpenAI-shaped chat call; the persisted `llm.openai_compatible.base_url` app setting overrides it for the `openai-compatible` provider only |
+| `OPENAI_COMPATIBLE_API_KEY` | empty | Optional key for the legacy `openai-compatible` provider; local servers need none |
+| `OPENAI_COMPATIBLE_MODEL_ID` | empty | Wire model name for the legacy `openai-compatible` provider; the `llm.openai_compatible.model_id` app setting takes precedence |
+| `LLM_TIMEOUT_SECONDS` | 120 | Ceiling for a hosted chat-completions reply |
+| `LLM_SELF_HOSTED_TIMEOUT_SECONDS` | 900 | Ceiling for a self-hosted reply, which can take minutes on CPU |
+| `LLM_SELF_HOSTED_MAX_TOKENS` | 8192 | Completion budget sent to self-hosted servers, so long replies are not truncated at the server's own default |
 | `DATABASE_URL` | `postgresql+asyncpg://callhelper:changeme@db:5432/callhelper` | Async SQLAlchemy connection string; set by Docker Compose for the backend container |
+| `FRONTEND_DIST` | empty | Path to a built frontend for the backend to serve directly (the desktop launcher sets it); empty means nginx serves the frontend (Docker) |
 | `DATA_DIR` | `/app/data` | Root for recorded audio, downloaded ASR models, and the credentials master key; a named Docker volume (`backend_data`) in Compose |
 | `BACKCHANNEL_FFMPEG` | empty | Explicit path to the ffmpeg executable used for compressed-audio decoding; the desktop launcher sets it to the bundled copy on Windows and Linux, and `PATH` lookup is the fallback |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `callhelper` / `changeme` / `callhelper` | Consumed by the db container and interpolated into `DATABASE_URL` in Compose |
 | `CREDENTIALS_MASTER_KEY` | auto-generated | Overrides the Fernet master key used for encrypted credentials |
 
-Copy `.env.example` to `.env` as a starting point.
+`DATA_DIR`, `BACKCHANNEL_FFMPEG`, and `CREDENTIALS_MASTER_KEY` are read
+straight from the process environment (`os.environ`), not through the
+pydantic `Settings` object, so they must be set as real environment
+variables; a `.env` entry alone does not reach them.
+
+Copy `.env.example` to `.env` as a starting point; it contains only
+commented-out entries for `GEMINI_API_KEY`, the Sortformer
+`PYTORCH_INDEX_URL`, and the database settings. Other variables, including
+`OPENAI_API_KEY`, must be added by hand.
 
 ## API credentials
 
@@ -35,7 +50,11 @@ provider call.
 ## Transcription and audio
 
 Transcription model, batch behavior, and audio handling are set in
-Admin -> Transcription & Audio.
+Admin -> Transcription & Audio. The live-caption model on this tab is the
+audio gateway agent's model: `PATCH /api/diagnostics/transcription/config`
+with `live_preview_model_id` writes the same `audio_gateway` `AgentConfig`
+row that Admin -> Agents edits
+(`backend/app/services/transcription_runtime.py`).
 
 <picture>
   <source srcset="/assets/shots/admin-transcription-dark.webp" media="(prefers-color-scheme: dark)" />
@@ -76,6 +95,12 @@ on does not run; the Admin panel badges it and names the fix, and the live
 call status says which agents are paused, so a quiet call is never the first
 sign of it.
 
+Speaker diarization, session recording, file imports, and exports already run
+locally and are unaffected. Turning the switch off restores the previously
+selected cloud models. The enable flow in the UI shows the full list of
+features that stop working before the mode is applied
+(`privacy_impact()` in `backend/app/services/privacy.py`).
+
 ## Self-hosted endpoints
 
 Any number of OpenAI-shaped chat servers can be registered in
@@ -100,13 +125,20 @@ REST surface (`backend/app/routers/endpoints.py`):
 | `GET /api/endpoints` | List endpoints, their models, and last test result |
 | `POST /api/endpoints` | Add an endpoint |
 | `PUT /api/endpoints/{id}` | Patch it; an empty `api_key` clears the stored key |
-| `DELETE /api/endpoints/{id}` | Remove it |
+| `DELETE /api/endpoints/{id}` | Soft delete: the row is tombstoned (`deleted_at` set, stored key cleared), not removed |
 | `POST /api/endpoints/{id}/test` | Probe `{base_url}/models` and record the outcome |
 | `POST /api/endpoints/probe` | Probe an unsaved URL and list what it serves |
 
 No API key is required: `requires_key` is `None` for these models and no
 `Authorization` header is sent at all when the endpoint has no key, since an
 empty bearer token breaks some servers rather than being ignored.
+
+`PUT /api/endpoints/{id}` guards the privacy boundary: moving an endpoint
+from an on-prem base URL to an off-prem one is refused outright while
+Privacy First is on, and without Privacy First it requires
+`confirm_off_prem=true`, because the change can send call data outside the
+machine or network (`update_endpoint()` in
+`backend/app/services/custom_endpoints.py`).
 
 Running Backchannel in Docker? Inside the container `localhost` is the
 container, not your machine. Use `http://host.docker.internal:1234/v1` to
@@ -123,12 +155,6 @@ entry. That configuration is migrated to a named endpoint on first startup
 the migrated model, and the placeholder is then hidden. Installs configured
 purely through the environment variables keep the placeholder and keep
 working.
-
-Speaker diarization, session recording, file imports, and exports already run
-locally and are unaffected. Turning the switch off restores the previously
-selected cloud models. The enable flow in the UI shows the full list of
-features that stop working before the mode is applied
-(`privacy_impact()` in `backend/app/services/privacy.py`).
 
 ## Settings reference (`backend/app/config.py`)
 
@@ -166,6 +192,8 @@ defaults (see [Agent System](agents.md)).
 | `MAX_SEGMENT_MS` | 15000 | Maximum segment length before a forced cut |
 | `SILENCE_GAP_MS` | 600 | Silence gap that closes a segment |
 | `SPEAKER_SIMILARITY_THRESHOLD` | 0.68 | Embedding similarity to match an existing speaker |
+| `SPEAKER_COHERENCE_WINDOW_MS` | 3000 | Window size for within-segment coherence embeddings |
+| `SPEAKER_COHERENCE_THRESHOLD` | 0.40 | Adjacent-window similarity below which a segment is split at a speaker change |
 | `MIN_NEW_SPEAKER_MS` | 4000 | Minimum speech needed to enroll a new speaker profile |
 | `MAX_SPEAKER_PROFILES_PER_TRACK` | 4 | Maximum auto-enrolled speaker profiles per audio track |
 | `SORTFORMER_WINDOW_MS` | 15000 | Sortformer processing window |
@@ -196,16 +224,28 @@ required key, and capabilities:
 | `supports_batch_audio` | Usable for batch/segment transcription and re-transcription |
 | `supports_live_audio` | Usable as the live audio gateway |
 
+`GET /api/models` also returns `runs_locally` and `endpoint_id` on every
+entry (`backend/app/routers/models.py`): `runs_locally` covers the bundled
+ONNX models and models served by an on-prem endpoint, and is the flag the
+Privacy First UI admission keys off; `endpoint_id` is set for models served
+by a saved custom endpoint.
+
 Current entries include Google Gemini text/audio models
 (`gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.5-flash`, `gemini-3-flash-preview`, `gemini-3.1-pro-preview`,
-`gemini-3.1-flash-lite`, the `gemini-2.5` family), the live gateway model
+`gemini-3.1-flash-lite`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`,
+`gemini-2.5-pro`), the live gateway model
 `gemini-3.1-flash-live-preview`, OpenAI text models (the GPT-5.6 family
 `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, plus `gpt-5.5`, `gpt-5.4`,
 `gpt-5.4-mini`, `gpt-5.4-nano`), OpenAI speech-to-text models
 (`gpt-realtime-whisper` as a realtime-only gateway; `gpt-4o-transcribe` and
 `gpt-4o-mini-transcribe` usable both as realtime gateways and as batch
-transcription models), and key-free local ASR models
-(`local-whisper-base`, `local-parakeet-tdt-0.6b`, both
-`supports_batch_audio` only -- no local entry sets `supports_text`, so no
-agent can run without a provider key). Add new models by appending to the
-registry.
+transcription models; `gpt-audio-1.5` and `gpt-audio-mini` as batch-only
+audio chat models), the `openai-compatible` placeholder for the legacy
+single self-hosted endpoint (text-capable, keyless, listed only while that
+legacy configuration is active), and key-free local models
+(`local-whisper-base` and `local-parakeet-tdt-0.6b`,
+`supports_batch_audio` only; `local-parakeet-live`, the experimental
+on-device live captioner, `supports_live_audio` only). No `Local` entry sets
+`supports_text`, so text agents need a provider key, the legacy
+placeholder, or a self-hosted endpoint model. Add new models by appending to
+the registry.

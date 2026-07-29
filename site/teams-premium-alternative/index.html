@@ -28,7 +28,7 @@
         "url": "https://backchannel.page/teams-premium-alternative/",
         "name": "Teams Premium Alternative: Free, Self-Hosted Meeting AI | Backchannel",
         "description": "An open-source Microsoft Teams Premium and Copilot alternative: live meeting assistance across Teams, Zoom, and Meet, self-hosted, with no per-seat license. MIT licensed.",
-        "dateModified": "2026-07-24",
+        "dateModified": "2026-07-29",
         "isPartOf": {
           "@id": "https://backchannel.page/#website"
         },
@@ -100,7 +100,7 @@
             "name": "What does running Backchannel actually involve?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Either download a desktop build for Windows, macOS, or Linux, or run docker compose up --build and open the browser app. You add a Gemini or OpenAI API key, or pick a local ONNX Whisper or Parakeet model to transcribe fully offline. Speaker diarization always runs locally. There are no seats to buy, no minutes to meter, and no tenant to configure, because the whole thing runs on your own machine."
+              "text": "Either download a desktop build for Windows, macOS, or Linux, or run docker compose up --build and open the browser app. You add a Gemini or OpenAI API key -- or run the whole stack locally: ONNX transcription, a self-hosted model for the agents, and the on-device captioner, with Privacy First on. Speaker diarization always runs locally. There are no seats to buy, no minutes to meter, and no tenant to configure, because the whole thing runs on your own machine."
             }
           }
         ]
@@ -274,7 +274,7 @@
               <td>Yes</td>
               <td>Yes</td>
               <td>Yes</td>
-              <td>Yes -- interim gateway text plus a diarized transcript of record</td>
+              <td>Yes -- interim caption text (cloud or on-device) plus a diarized transcript of record</td>
             </tr>
             <tr>
               <td>Post-call recap</td>
@@ -309,7 +309,7 @@
               <td>Microsoft tenant cloud</td>
               <td>Zoom cloud; regional processing options available</td>
               <td>Google cloud; admins can pin covered data to the US or EU</td>
-              <td>Your hardware. Diarization is always local; transcription can run fully offline with local ONNX models</td>
+              <td>Your hardware. Diarization is always local; transcription and analysis can both run fully offline with local ONNX models and a self-hosted endpoint</td>
             </tr>
             <tr>
               <td>Admin can withhold or disable it</td>
@@ -414,8 +414,9 @@
           simpler rather than stronger on paper: audio is captured in your
           browser, diarized on your machine, and stored on your disk. With a
           local ONNX transcription model even transcription happens offline,
-          and only the text-analysis agents call out to a model provider you
-          choose. Details are in the
+          and the text-analysis agents route to a provider you choose -- or
+          to a self-hosted OpenAI-compatible server on your own machine or
+          LAN, so a fully local deployment calls out to nobody. Details are in the
           <a href="/docs/audio-pipeline/">audio pipeline docs</a>.
         </p>
         <h3>What we are worse at</h3>
@@ -459,8 +460,9 @@
           There is no tenant to configure and no admin to ask. Download a
           desktop build for Windows, macOS, or Linux, or clone the repo and run
           <code>docker compose up --build</code>. Add a Gemini or OpenAI API
-          key, or pick a local ONNX Whisper or Parakeet model and transcribe
-          fully offline. The <a href="/docs/quickstart/">quickstart</a> is
+          key -- or run the whole stack locally: ONNX transcription, a
+          self-hosted model for the agents, and the on-device captioner,
+          with Privacy First on. The <a href="/docs/quickstart/">quickstart</a> is
           honest about the friction: the first start builds images and
           downloads models, so give it a few minutes.
         </p>
@@ -507,7 +509,7 @@
         </div>
         <div class="card">
           <h3>What does running Backchannel actually involve?</h3>
-          <p>Either download a desktop build for Windows, macOS, or Linux, or run docker compose up --build and open the browser app. You add a Gemini or OpenAI API key, or pick a local ONNX Whisper or Parakeet model to transcribe fully offline. Speaker diarization always runs locally. There are no seats to buy, no minutes to meter, and no tenant to configure, because the whole thing runs on your own machine.</p>
+          <p>Either download a desktop build for Windows, macOS, or Linux, or run docker compose up --build and open the browser app. You add a Gemini or OpenAI API key -- or run the whole stack locally: ONNX transcription, a self-hosted model for the agents, and the on-device captioner, with Privacy First on. Speaker diarization always runs locally. There are no seats to buy, no minutes to meter, and no tenant to configure, because the whole thing runs on your own machine.</p>
         </div>
       </div>
     </div>

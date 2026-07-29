@@ -19,7 +19,8 @@ Named volumes:
 - `pgdata` -- PostgreSQL data
 - `backend_data` -- mounted at `/app/data` (`DATA_DIR`): recorded call
   audio, locally downloaded ASR model weights, and the credentials master
-  key. Back this volume up if recordings matter to you.
+  key. Back this volume up if recordings matter to you; losing
+  `DATA_DIR/master.key` makes the stored provider credentials unreadable.
 
 The backend service also bind-mounts `./backend/app` into the container and
 starts uvicorn with reload by default (`BACKEND_RELOAD=true`), so code edits
@@ -33,8 +34,20 @@ Set via environment variables consumed in `docker-compose.yml`:
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `INSTALL_SORTFORMER` | `true` | Install PyTorch/NeMo dependencies for the Sortformer diarizer at build time |
-| `PYTORCH_INDEX_URL` | `https://download.pytorch.org/whl/cu130` | PyTorch wheel index (switch to the CPU index to slim the image) |
+| `PYTORCH_INDEX_URL` | `auto` | PyTorch wheel index. `auto` selects CUDA wheels only when an NVIDIA GPU is detected, and Docker builds never see a GPU, so images get CPU wheels unless you set this explicitly (e.g. `cu130`) |
 | `ONNX_GPU` | `false` (set `true` by the GPU override) | Install GPU ONNX Runtime |
+
+## Container sizing and call-start admission
+
+The call-start capacity check
+(`backend/app/services/capacity_admission.py`) budgets the audio and model
+stack from the container's own limits: it reads the cgroup memory limit
+(v2 `memory.max`, then v1 `memory.limit_in_bytes`), falls back to a
+conservative 4096 MB when no limit is readable, and reserves 1.0 CPU core
+for the event loop, WebSocket I/O, the database driver, and the OS. CPU and
+memory limits on the backend container therefore directly shape the
+call-start verdict: give it explicit, realistic limits so admission reasons
+from real numbers rather than the fallback.
 
 ## GPU deployment (NVIDIA, Docker)
 
@@ -140,6 +153,22 @@ uvicorn (honoring `BACKEND_RELOAD`) after the database is reachable.
 | Local ASR model weights | `DATA_DIR/asr-models/` (downloaded on first use) |
 | Credentials master key | `DATA_DIR/master.key` (unless `CREDENTIALS_MASTER_KEY` is set) |
 | VAD / speaker-embedding models | `backend/models/*.onnx` (baked into the image / fetched by `scripts/download_models.py`) |
+
+## Desktop deployment
+
+The desktop bundle is the no-Docker deployment: a PyInstaller launcher runs
+the same backend with an embedded per-user PostgreSQL and serves the built
+frontend, keeping everything under a per-user data root
+(`%LOCALAPPDATA%\Backchannel` on Windows,
+`~/Library/Application Support/Backchannel` on macOS,
+`~/.local/share/backchannel` on Linux). Update downloads and state live in
+the data root's `updates/` directory; staged bundles sit next to the install
+root so the final swap is a same-filesystem rename. `BACKCHANNEL_DESKTOP=1`
+gates the desktop-only behavior: it enables `TrustedHostMiddleware`
+(loopback hosts only) and activates the `/api/updates` routes, whose
+mutating endpoints additionally require an `X-Backchannel-Instance` header
+matching the launcher's `BACKCHANNEL_INSTANCE_TOKEN`
+(`backend/app/routers/updates.py`).
 
 ## Cloudflare release-access deployment gate
 

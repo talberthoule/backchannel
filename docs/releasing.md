@@ -190,7 +190,9 @@ clean `master` synchronized with `origin/master`.
 ### Genesis key and stage-three cutover
 
 `v0.4.0` is the genesis release of the update channel. After stage-two review
-and before creating its tag, complete stage three:
+and before its tag was created, the one-time stage-three ceremony below was
+completed. It is recorded here as the audit trail; later releases inherit the
+established trust root and do not repeat it:
 
 1. Provision the dedicated Access application and service-token policy,
    Secrets Store, and `signing.backchannel.page` custom domain.
@@ -233,8 +235,8 @@ returned `401`; an authenticated canonical descriptor with SHA-256
 was signed as `ed25519-2026-07b` and verified locally against the checked-in
 public key. The proof performed zero R2 operations and published no release.
 
-Publish every `v0.4.0` platform through remote mode. All normal and planned
-production publishing, including the current cutover, uses remote mode.
+Every `v0.4.0` platform was published through remote mode. All normal and
+planned production publishing uses remote mode.
 Deleting the never-used old laptop-held private-key file is a separate ALP-170
 operator action.
 
@@ -320,9 +322,10 @@ is reserved for the later approved CI phase. Configure the remote publisher
 URL and Access service-token credentials in the protected production
 environment before allowing that publication job to proceed.
 
-ALP-150's current phase ends after local verification and local merge. Do not
-push, publish, configure production secrets, or start CI/CD/scanning until the
-user explicitly approves the final release phase.
+Historical note: ALP-150's staged hold -- no push, publication, production
+secrets, or CI/CD until the user explicitly approved the final release phase
+-- applied through the `v0.4.0` genesis release and is now closed; `v0.4.0`
+is tagged and published.
 
 ## Release checklist
 
@@ -355,9 +358,9 @@ user explicitly approves the final release phase.
    powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/test_release_desktop.ps1
    ```
 
-5. For `v0.4.0`, complete the reviewed stage-three genesis ceremony and
-   cutover above before tagging. Commit release metadata, then create and push
-   an annotated canonical tag:
+5. Commit release metadata, then create and push an annotated canonical tag
+   (`v0.4.0` completed the one-time reviewed stage-three genesis ceremony and
+   cutover above before its tag; later releases skip that ceremony):
 
    ```powershell
    git tag -a vX.Y.Z -m "Backchannel vX.Y.Z"

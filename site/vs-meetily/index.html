@@ -28,7 +28,7 @@
         "url": "https://backchannel.page/vs-meetily/",
         "name": "Backchannel vs Meetily: Open-Source Meeting Assistants Compared",
         "description": "Backchannel vs Meetily: both MIT and bot-free. Meetily gates diarization behind Pro; Backchannel ships it and live agents free. An honest comparison.",
-        "dateModified": "2026-07-24",
+        "dateModified": "2026-07-29",
         "isPartOf": {
           "@id": "https://backchannel.page/#website"
         },
@@ -76,7 +76,7 @@
             "name": "What does Meetily do better than Backchannel?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Community size (26.4k GitHub stars and 369.8K claimed downloads as of 2026-07-24), polished native installers for macOS and Windows, ungated downloads, and the stronger fully-offline story: Ollama-first summarization means nothing has to call a cloud LLM. Backchannel's insight agents currently need a Gemini or OpenAI API key."
+              "text": "Community size (26.4k GitHub stars and 369.8K claimed downloads as of 2026-07-24), polished native installers for macOS and Windows, ungated downloads, and the simpler out-of-the-box offline story: Ollama-first summarization means nothing has to call a cloud LLM by default. Backchannel's insight agents run on Gemini, OpenAI, or any self-hosted OpenAI-compatible server."
             }
           },
           {
@@ -177,7 +177,7 @@
             <tr>
               <td>Fully-offline analysis</td>
               <td>Yes -- Ollama-first local summarization</td>
-              <td>Yes -- local ONNX transcription plus any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM) for the agents</td>
+              <td>Yes -- local ONNX transcription plus any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, LiteLLM) for the agents</td>
             </tr>
             <tr>
               <td>Install experience</td>
@@ -244,13 +244,16 @@
         </p>
         <h3>The offline story</h3>
         <p>
-          Meetily wins here, honestly. Its Ollama-first design means
-          transcription and summarization can run with zero external calls.
-          Backchannel's diarization is always local and transcription can run
-          fully offline with local ONNX models, but the insight agents --
-          the feature you probably came for -- currently require a Gemini or
-          OpenAI API key. If air-gapped is a hard requirement, Meetily fits
-          better today.
+          Both clear the air-gap bar now. Meetily's Ollama-first design means
+          transcription and summarization can run with zero external calls,
+          out of the box. Backchannel gets to the same place with one more
+          moving part: diarization is always local, transcription runs
+          offline with local ONNX models, the insight agents can point at any
+          OpenAI-compatible server you host (Ollama, LM Studio, vLLM,
+          LiteLLM), and interim captions can run on-device -- so an
+          air-gapped Backchannel runs end to end with Privacy First on.
+          Meetily's setup is simpler; Backchannel asks you to run a model
+          server but keeps the live agents in the deal.
         </p>
         <h3>Free vs open-core</h3>
         <p>
@@ -305,7 +308,8 @@
           Meetily: download an installer, pick a Whisper model, optionally
           point it at Ollama. Backchannel: git clone,
           <code>docker compose up --build</code>, add a Gemini API key (or a
-          local ONNX transcription model), open localhost in a browser -- or
+          local ONNX transcription model and a self-hosted endpoint for the
+          agents), open localhost in a browser -- or
           use a desktop bundle for Windows, macOS, or Linux, which needs an
           approved Backchannel account where Meetily's installers are
           ungated. The <a href="/docs/quickstart/">quickstart</a> is honest
@@ -331,7 +335,7 @@
         </div>
         <div class="card">
           <h3>What does Meetily do better than Backchannel?</h3>
-          <p>Community size (26.4k GitHub stars and 369.8K claimed downloads as of 2026-07-24), polished native installers for macOS and Windows, ungated downloads, and the stronger fully-offline story: Ollama-first summarization means nothing has to call a cloud LLM. Backchannel's insight agents currently need a Gemini or OpenAI API key.</p>
+          <p>Community size (26.4k GitHub stars and 369.8K claimed downloads as of 2026-07-24), polished native installers for macOS and Windows, ungated downloads, and the simpler out-of-the-box offline story: Ollama-first summarization means nothing has to call a cloud LLM by default. Backchannel's insight agents run on Gemini, OpenAI, or any self-hosted OpenAI-compatible server.</p>
         </div>
         <div class="card">
           <h3>Are Backchannel and Meetily both free?</h3>

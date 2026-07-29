@@ -28,7 +28,7 @@
         "url": "https://backchannel.page/fathom-alternative/",
         "name": "Open-Source, Self-Hosted Fathom Alternative | Backchannel",
         "description": "An open-source, self-hosted Fathom alternative: your meetings never reach a vendor cloud, and live agents work the call instead of summarizing it. MIT licensed.",
-        "dateModified": "2026-07-24",
+        "dateModified": "2026-07-29",
         "isPartOf": {
           "@id": "https://backchannel.page/#website"
         },
@@ -84,7 +84,7 @@
             "name": "What does Fathom do better than Backchannel?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "A great deal. Fathom offers zero-setup onboarding, unlimited transcription in 38 languages, a polished native desktop app, CRM sync with HubSpot, Salesforce, and Close, clips, playlists, search across every call, ChatGPT and Claude integrations, and SOC 2 Type II, GDPR, and HIPAA compliance with SSO and SCIM. Backchannel has no language matrix, no CRM sync, no compliance certifications, and asks you to run Docker and supply your own API key."
+              "text": "A great deal. Fathom offers zero-setup onboarding, unlimited transcription in 38 languages, a polished native desktop app, CRM sync with HubSpot, Salesforce, and Close, clips, playlists, search across every call, ChatGPT and Claude integrations, and SOC 2 Type II, GDPR, and HIPAA compliance with SSO and SCIM. Backchannel has no language matrix, no CRM sync, no compliance certifications, and asks you to run Docker and supply your own API key, or your own model server."
             }
           }
         ]
@@ -190,8 +190,8 @@
           With Backchannel there is no vendor in that position. Audio is
           captured in your browser, diarized on your server, and stored on
           your disk. With a local transcription model, even the speech-to-text
-          runs offline. The only outbound calls are the ones you configure to
-          the model provider whose key you supply.
+          runs offline. The only outbound calls are the ones you configure --
+          and with a self-hosted endpoint there are none.
         </p>
       </div>
       <div class="cta-row" style="justify-content: flex-start; margin-top: 24px;">
@@ -219,7 +219,7 @@
             <tr>
               <td>Where audio is processed</td>
               <td>Fathom's cloud; services hosted in the United States</td>
-              <td>Your server; diarization always local, transcription can run fully offline</td>
+              <td>Your server; diarization always local, transcription and analysis can run fully offline</td>
             </tr>
             <tr>
               <td>Training on your meetings</td>
@@ -324,15 +324,17 @@
         <h3>The fully local path</h3>
         <p>
           Backchannel's analysis agents can run against a self-hosted
-          OpenAI-compatible server (Ollama, LM Studio, vLLM), so with local
-          ONNX transcription the whole pipeline works with the network off
-          and no key from anyone. Our Privacy First switch now knows that too:
+          OpenAI-compatible server (Ollama, LM Studio, vLLM, LiteLLM) -- add
+          as many endpoints as you like, and every served model appears by
+          name in the pickers -- so with local ONNX transcription the whole
+          pipeline works with the network off and no key from anyone. Our Privacy First switch now knows that too:
           it judges the destination rather than the vendor, so agents pointed
           at an endpoint on your own machine or LAN keep running with the
           switch on while only cloud providers stay blocked. A fully local
-          Backchannel now runs end to end with Privacy First on -- the one
-          caveat left is that interim live captions still come from the cloud
-          audio gateway. To compare other zero-cloud setups, see
+          Backchannel now runs end to end with Privacy First on -- interim
+          live captions default to the cloud audio gateway, but they can also
+          run on-device through the local Parakeet captioner, so there is no
+          cloud caveat left. To compare other zero-cloud setups, see
           <a href="/open-source-meeting-assistants/">the other open-source options</a>.
         </p>
       </div>
@@ -349,7 +351,7 @@
         </div>
         <div class="card">
           <h3>Switch to Backchannel if you...</h3>
-          <p>Cannot have meeting audio on a vendor's infrastructure at any price, do not want an opt-out training arrangement, want tactical suggestions during the call rather than a live summary of it, want to edit the agents' prompts and models yourself, and can run docker compose with your own API key.</p>
+          <p>Cannot have meeting audio on a vendor's infrastructure at any price, do not want an opt-out training arrangement, want tactical suggestions during the call rather than a live summary of it, want to edit the agents' prompts and models yourself, and can run docker compose, with your own API key or your own model server.</p>
         </div>
       </div>
     </div>
@@ -361,8 +363,8 @@
       <div class="prose">
         <p>
           Setup is a git clone and <code>docker compose up --build</code>,
-          plus a Gemini or OpenAI API key (or a local ONNX Whisper/Parakeet
-          model for fully offline transcription). The
+          plus a Gemini or OpenAI API key (or local ONNX transcription plus
+          a self-hosted model for a fully offline stack). The
           <a href="/docs/quickstart/">quickstart</a> is honest about the
           friction: first start builds images and downloads models, so give
           it a few minutes, not seconds. Compared with installing Fathom,
@@ -398,7 +400,7 @@
         </div>
         <div class="card">
           <h3>What does Fathom do better than Backchannel?</h3>
-          <p>A great deal. Fathom offers zero-setup onboarding, unlimited transcription in 38 languages, a polished native desktop app, CRM sync with HubSpot, Salesforce, and Close, clips, playlists, search across every call, ChatGPT and Claude integrations, and SOC 2 Type II, GDPR, and HIPAA compliance with SSO and SCIM. Backchannel has no language matrix, no CRM sync, no compliance certifications, and asks you to run Docker and supply your own API key.</p>
+          <p>A great deal. Fathom offers zero-setup onboarding, unlimited transcription in 38 languages, a polished native desktop app, CRM sync with HubSpot, Salesforce, and Close, clips, playlists, search across every call, ChatGPT and Claude integrations, and SOC 2 Type II, GDPR, and HIPAA compliance with SSO and SCIM. Backchannel has no language matrix, no CRM sync, no compliance certifications, and asks you to run Docker and supply your own API key, or your own model server.</p>
         </div>
       </div>
     </div>

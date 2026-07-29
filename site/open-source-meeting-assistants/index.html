@@ -28,7 +28,7 @@
         "url": "https://backchannel.page/open-source-meeting-assistants/",
         "name": "Best Open-Source, Self-Hosted AI Meeting Assistants (2026) | Backchannel",
         "description": "An honest guide to open-source, self-hosted AI meeting assistants in 2026: Meetily, Anarlog, Backchannel, Amurex, Vibe, and Buzz -- what each one is actually for.",
-        "dateModified": "2026-07-24",
+        "dateModified": "2026-07-29",
         "isPartOf": {
           "@id": "https://backchannel.page/#website"
         },
@@ -60,7 +60,7 @@
             "name": "What is the best open-source AI meeting assistant in 2026?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "There is no single winner, because these tools solve different problems. Meetily is the best choice if you want notes and summaries with no cloud calls at all, since it pairs local Whisper or Parakeet transcription with local Ollama summarization. Anarlog is the best choice if you want a polished, Granola-style notepad on a Mac and do not want to run a server. Backchannel is the best choice if you want AI agents that surface questions, objections, and opportunities while the call is still happening, and you can run Docker and supply an API key."
+              "text": "There is no single winner, because these tools solve different problems. Meetily is the best choice if you want notes and summaries with no cloud calls at all, since it pairs local Whisper or Parakeet transcription with local Ollama summarization. Anarlog is the best choice if you want a polished, Granola-style notepad on a Mac and do not want to run a server. Backchannel is the best choice if you want AI agents that surface questions, objections, and opportunities while the call is still happening, and you can run Docker and either supply an API key or point the agents at your own model server."
             }
           },
           {
@@ -68,7 +68,7 @@
             "name": "Can an open-source meeting assistant run completely offline?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Several can, end to end. Meetily transcribes locally with Whisper or Parakeet and summarizes locally through Ollama, so no part of the pipeline needs the internet. Backchannel can now do the same: capture, voice activity detection, speaker diarization, and transcription run locally with ONNX models, and its analysis agents can target a self-hosted OpenAI-compatible server such as Ollama, LM Studio, or vLLM. Its Privacy First switch now judges the destination rather than the vendor, so agents pointed at a self-hosted endpoint on your own machine or LAN keep running with the switch on while only cloud providers stay blocked. A fully local Backchannel runs end to end with Privacy First on; the one caveat is that interim live captions still come from the cloud audio gateway."
+              "text": "Several can, end to end. Meetily transcribes locally with Whisper or Parakeet and summarizes locally through Ollama, so no part of the pipeline needs the internet. Backchannel can now do the same: capture, voice activity detection, speaker diarization, and transcription run locally with ONNX models, and its analysis agents can target a self-hosted OpenAI-compatible server such as Ollama, LM Studio, or vLLM. Its Privacy First switch now judges the destination rather than the vendor, so agents pointed at a self-hosted endpoint on your own machine or LAN keep running with the switch on while only cloud providers stay blocked. A fully local Backchannel runs end to end with Privacy First on; interim live captions default to the cloud audio gateway, but they too can run on-device with the local Parakeet captioner, so a fully local deployment has no cloud dependency left."
             }
           },
           {
@@ -198,7 +198,7 @@
               <td><strong>Backchannel</strong></td>
               <td>MIT</td>
               <td>Self-hosted web app (Docker Compose) plus desktop builds</td>
-              <td>No -- transcription and diarization run locally, but the agents need a cloud API key</td>
+              <td>Yes -- local ONNX transcription and diarization, self-hosted models (Ollama, LM Studio, vLLM, LiteLLM) for the agents, on-device interim captions</td>
               <td>Yes, always local and always included</td>
               <td>Yes -- five live insight agents</td>
               <td>Active, but by far the youngest and smallest project here</td>
@@ -387,7 +387,9 @@
           local endpoints are no longer a gap. What remains:
           <strong>we are the heaviest thing here to install</strong>,
           a Docker Compose stack with PostgreSQL rather than a signed
-          download. <strong>Our prebuilt desktop downloads require an approved
+          download -- though once it is on your machine, the desktop app now
+          updates itself in place, with signed updates and rollback if an
+          update fails. <strong>Our prebuilt desktop downloads require an approved
           Backchannel account</strong>, where most peers are a direct download.
           And <strong>we are the youngest and smallest project on this page</strong>
           by a wide margin -- Meetily has roughly 26,000 GitHub stars and we
@@ -419,7 +421,7 @@
         </div>
         <div class="card">
           <h3>Choose Backchannel if...</h3>
-          <p>You want questions, objection responses, and opportunities pushed to you while the call is still happening, you want every line speaker-attributed for free, and you can run Docker and bring a Gemini or OpenAI key.</p>
+          <p>You want questions, objection responses, and opportunities pushed to you while the call is still happening, you want every line speaker-attributed for free, and you can run Docker and bring a Gemini or OpenAI key -- or no key at all, with a self-hosted endpoint.</p>
         </div>
       </div>
     </div>
@@ -431,11 +433,11 @@
       <div class="grid">
         <div class="card">
           <h3>What is the best open-source AI meeting assistant in 2026?</h3>
-          <p>There is no single winner, because these tools solve different problems. Meetily is the best choice if you want notes and summaries with no cloud calls at all, since it pairs local Whisper or Parakeet transcription with local Ollama summarization. Anarlog is the best choice if you want a polished, Granola-style notepad on a Mac and do not want to run a server. Backchannel is the best choice if you want AI agents that surface questions, objections, and opportunities while the call is still happening, and you can run Docker and supply an API key.</p>
+          <p>There is no single winner, because these tools solve different problems. Meetily is the best choice if you want notes and summaries with no cloud calls at all, since it pairs local Whisper or Parakeet transcription with local Ollama summarization. Anarlog is the best choice if you want a polished, Granola-style notepad on a Mac and do not want to run a server. Backchannel is the best choice if you want AI agents that surface questions, objections, and opportunities while the call is still happening, and you can run Docker and either supply an API key or point the agents at your own model server.</p>
         </div>
         <div class="card">
           <h3>Can an open-source meeting assistant run completely offline?</h3>
-          <p>Several can, end to end. Meetily transcribes locally with Whisper or Parakeet and summarizes locally through Ollama, so no part of the pipeline needs the internet. Backchannel can now do the same: capture, voice activity detection, speaker diarization, and transcription run locally with ONNX models, and its analysis agents can target a self-hosted OpenAI-compatible server such as Ollama, LM Studio, or vLLM. Its Privacy First switch now judges the destination rather than the vendor, so agents pointed at a self-hosted endpoint on your own machine or LAN keep running with the switch on while only cloud providers stay blocked. A fully local Backchannel runs end to end with Privacy First on; the one caveat is that interim live captions still come from the cloud audio gateway.</p>
+          <p>Several can, end to end. Meetily transcribes locally with Whisper or Parakeet and summarizes locally through Ollama, so no part of the pipeline needs the internet. Backchannel can now do the same: capture, voice activity detection, speaker diarization, and transcription run locally with ONNX models, and its analysis agents can target a self-hosted OpenAI-compatible server such as Ollama, LM Studio, or vLLM. Its Privacy First switch now judges the destination rather than the vendor, so agents pointed at a self-hosted endpoint on your own machine or LAN keep running with the switch on while only cloud providers stay blocked. A fully local Backchannel runs end to end with Privacy First on; interim live captions default to the cloud audio gateway, but they too can run on-device with the local Parakeet captioner, so a fully local deployment has no cloud dependency left.</p>
         </div>
         <div class="card">
           <h3>Do any open-source meeting assistants give advice during the call?</h3>

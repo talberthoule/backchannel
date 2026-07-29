@@ -1,7 +1,9 @@
 # WebSocket Protocol
 
 Endpoint: `ws://<host>/ws/{session_id}`
-(`backend/app/ws/audio_handler.py`; the frontend client is
+(handler `backend/app/ws/audio_handler.py`, which delegates client JSON
+messages to `backend/app/ws/audio_messages.py` and binary audio frame
+decoding to `backend/app/ws/audio_runtime.py`; the frontend client is
 `frontend/src/hooks/useWebSocket.ts`).
 
 Connecting starts a call: the backend opens a new call segment, marks the
@@ -91,10 +93,25 @@ pass counters against the lifetime total).
 {"type": "status", "data": {"state": "active", "message": "Listening..."}}
 ```
 
+### `agent_activity`
+
+A coalesced snapshot of live agent status, emitted by the orchestrator's
+activity registry (`backend/app/services/agents/activity.py`) at most every
+~2 seconds, immediately on errors, blocks, and degradation changes. `data`
+carries `session_id`, `at`, an `agents` array (per agent: `slug`, `state`,
+`blocked_reason` / `remedy`, last run timing, `next_due_at`, `last_outcome`,
+`last_error`, and cumulative `counts` of runs, insights, deduped items, and
+errors), and a `call` health block: `privacy_first`, `degraded`,
+`degraded_reasons`, plus `gateway` (`ok` / `reconnecting` / `off` with
+detail), `transcription` (job and failure stats), and `diarization`
+(queued and shed frame counts).
+
 ### `interim_transcript`
 
-Low-latency unattributed text from the audio gateway (Gemini Live or OpenAI
-Realtime). Display-only; superseded by `transcript` messages.
+Low-latency unattributed text from the audio gateway (Gemini Live, OpenAI
+Realtime, or the on-device local captioner selected as `local-parakeet-live`,
+`backend/app/services/local_live_captioner.py`). Display-only; superseded by
+`transcript` messages.
 
 ```json
 {"type": "interim_transcript", "data": {"text": "so in terms of timeline we were hoping"}}
@@ -141,6 +158,16 @@ matches). `data` is the updated insight.
 
 The synthesizer elevated an item to a different type (for example an
 observation reclassified as an opportunity). `data` is the updated insight.
+
+### `synthesis_updated`
+
+The session synthesis was regenerated: by the strategic signals agent during
+the call (this is how live Strategic Signals card updates reach the browser)
+or by briefing synthesis at call end
+(`_send_synthesis_update` in `backend/app/services/agents/orchestrator.py`).
+`data` is the full persisted synthesis, the same shape
+`GET /api/sessions/{id}/synthesis` returns (`SessionSynthesis` in
+`frontend/src/types/index.ts`).
 
 ## Ordering and delivery notes
 

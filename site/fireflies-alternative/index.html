@@ -28,7 +28,7 @@
         "url": "https://backchannel.page/fireflies-alternative/",
         "name": "Fireflies.ai Alternative Without the Bot | Backchannel",
         "description": "An open-source Fireflies.ai alternative: real-time meeting insights with no bot joining your calls and no audio in anyone's cloud. MIT licensed.",
-        "dateModified": "2026-07-24",
+        "dateModified": "2026-07-29",
         "isPartOf": {
           "@id": "https://backchannel.page/#website"
         },
@@ -177,8 +177,9 @@
           <a href="/docs/audio-pipeline/">speaker diarization run locally</a>,
           producing a live speaker-attributed transcript. A crew of
           <a href="/docs/agents/">insight agents</a> -- an analyst, a
-          low-latency objection handler, a synthesizer, and an opportunity
-          specialist -- reads it as it grows and pushes questions, objection
+          low-latency objection handler, a synthesizer, an opportunity
+          specialist, and a strategic-signals scanner -- reads it as it
+          grows and pushes questions, objection
           responses, opportunities, and action items mid-call. No AI credits,
           no storage meter, no per-seat fee: the whole pipeline is
           MIT-licensed.
@@ -187,8 +188,9 @@
           The honest trade: Fireflies wins on language coverage (100+
           languages), CRM and workflow integrations, team analytics, and
           compliance paperwork. Backchannel asks you to run Docker and bring
-          an API key, and its integration surface is exports and a REST API,
-          not a Salesforce sync.
+          an API key -- or your own self-hosted model server -- and its
+          integration surface is exports and a REST API, not a Salesforce
+          sync.
         </p>
       </div>
       <div class="cta-row" style="justify-content: flex-start; margin-top: 24px;">
@@ -216,12 +218,12 @@
             <tr>
               <td>Where audio is processed</td>
               <td>Fireflies' cloud; private storage only at Enterprise ($39/user/mo)</td>
-              <td>Your server; diarization always local, transcription can run fully offline</td>
+              <td>Your server; diarization always local, transcription and analysis can run fully offline</td>
             </tr>
             <tr>
               <td>Real-time in-call insights</td>
               <td>Live Assist: real-time suggestions and coaching (cloud)</td>
-              <td>Live agents: questions, objection responses, opportunities, action items -- free</td>
+              <td>Live agents: questions, objection responses, opportunities, action items, strategic signal cards -- free</td>
             </tr>
             <tr>
               <td>Speaker diarization</td>
@@ -231,7 +233,7 @@
             <tr>
               <td>Languages</td>
               <td>100+ languages, auto detection</td>
-              <td>Depends on the model you route (Gemini, OpenAI, or local Whisper); no marketed language matrix</td>
+              <td>Depends on the model you route (Gemini, OpenAI, local ONNX Whisper/Parakeet, or a self-hosted model); no marketed language matrix</td>
             </tr>
             <tr>
               <td>Usage limits</td>
@@ -277,8 +279,10 @@
           their cloud as a paid feature; Backchannel runs it on your server
           as free, inspectable code -- each
           <a href="/docs/agents/">agent's model, prompt, and trigger</a> is
-          configurable, and you can route agents to Gemini or OpenAI on your
-          own keys. If the reason you want live assistance is sales calls
+          configurable, and you can route agents to Gemini, OpenAI, or a
+          self-hosted OpenAI-compatible server (Ollama, LM Studio, vLLM,
+          LiteLLM) -- on your own keys or no key at all. If the reason you
+          want live assistance is sales calls
           with sensitive customers, "real-time" and "self-hosted" belong
           together.
         </p>
@@ -324,8 +328,8 @@
       <div class="prose">
         <p>
           Setup is a git clone and <code>docker compose up --build</code>,
-          plus a Gemini API key (or a local ONNX Whisper/Parakeet model for
-          fully offline transcription). The
+          plus a Gemini API key (or local ONNX transcription plus a
+          self-hosted model for a fully offline deployment). The
           <a href="/docs/quickstart/">quickstart</a> is upfront about the
           friction: first start builds images and downloads models, so plan
           for a few minutes, not seconds.

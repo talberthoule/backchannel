@@ -8,7 +8,7 @@ You only need one key to start:
 
 | Provider | Needed for | Cost to start |
 | --- | --- | --- |
-| Google (Gemini) | Batch transcription, live interim transcription, and the default analysis agents -- start here | Free tier, no credit card |
+| Google (Gemini) | Batch transcription, live interim transcription, and the default analysis agents -- start here, unless you want the fully local no-key setup described below | Free tier, no credit card |
 | OpenAI | Optional; only for agents you point at OpenAI models (for example the audio gateway on OpenAI Realtime) | Prepaid credit, minimum $5 |
 
 Prefer not to use a cloud provider at all? You do not have to. Under
@@ -23,8 +23,9 @@ needs no key from anyone. See
 
 Endpoints on your own machine or network also satisfy the
 [Privacy First switch](configuration.md#privacy-first-local-only-mode), so you
-can leave it on and keep the analysis agents running. Only live interim
-captions stay off, because no local model can do that job yet.
+can leave it on and keep the analysis agents running. Live interim captions
+default to a cloud streaming gateway, but the experimental on-device
+`local-parakeet-live` captioner can carry them under Privacy First too.
 
 ## Google Gemini key (about 2 minutes, free)
 

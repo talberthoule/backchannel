@@ -227,7 +227,7 @@
       <div class="feature-row">
         <div class="feature-copy">
           <h3>Provider-routed models, on your keys</h3>
-          <p>Mix Google Gemini and OpenAI per agent, transcribe fully offline with local ONNX Whisper and Parakeet, or point the agents at your own OpenAI-compatible server -- Ollama, LM Studio, vLLM -- and run the whole pipeline with no key from anyone. Privacy First judges the destination, so an endpoint on your own machine or LAN keeps the agents running with the switch on; only cloud providers stay blocked.</p>
+          <p>Mix Google Gemini and OpenAI per agent, transcribe fully offline with local ONNX Whisper and Parakeet, or point the agents at any number of your own OpenAI-compatible servers -- Ollama, LM Studio, vLLM, LiteLLM -- where every model an endpoint serves appears by name in each agent's picker, and run the whole pipeline with no key from anyone. Privacy First judges the destination, so an endpoint on your own machine or LAN keeps the agents running with the switch on; only cloud providers stay blocked.</p>
         </div>
         <div class="feature-visual">
           <picture>
@@ -248,8 +248,8 @@
           <p>Bring in existing transcripts or audio files, and replay any recorded call through a different model later.</p>
         </div>
         <div>
-          <h3>Exports and chat</h3>
-          <p>Transcript, insight, and summary exports, plus cross-session chat over your past meetings.</p>
+          <h3>Exports, chat, and token accounting</h3>
+          <p>Transcript, insight, and summary exports, cross-session chat over your past meetings, and a per-session Tokens tab that breaks usage down by agent and model.</p>
         </div>
       </div>
     </div>
@@ -295,7 +295,7 @@
   <section id="results">
     <div class="wrap">
       <h2>The briefing does the reading for you</h2>
-      <p class="sub">A 46-minute call produced 24 grounded signals. You never wade through them. Backchannel distills the whole conversation into one briefing of outcomes and objectives, so you start from the point instead of the pile.</p>
+      <p class="sub">A 46-minute call produced 24 grounded signals. You never wade through them. Backchannel distills the whole conversation into one briefing that opens with an at-a-glance strip and leads with the top outcomes &mdash; risks, actions, and open questions each color-coded, owners and status shown as chips &mdash; so you start from the point instead of the pile.</p>
       <div class="proof-line">
         <span class="big">24</span>
         <span class="arrow">&rarr;</span>
@@ -396,7 +396,7 @@
         <article class="setup-panel featured">
           <span class="kicker">Desktop app</span>
           <h3>Download, unzip, run</h3>
-          <p>Windows, macOS, and Linux builds bundle the app, backend, and per-user database. Backchannel sits in your system tray or menu bar, opens in your browser, and needs no Docker. Downloads require an approved Backchannel account; no GitHub identity or repository membership is required.</p>
+          <p>Windows, macOS, and Linux builds bundle the app, backend, and per-user database. Backchannel sits in your system tray or menu bar, opens in your browser, and needs no Docker. From v0.4.0 the app updates itself in place: it verifies the new build's signature before applying it, rolls back if the swap fails, and waits for recording and post-processing to finish first. Downloads require an approved Backchannel account; no GitHub identity or repository membership is required.</p>
           <ul class="setup-list">
             <li><strong>Windows x64:</strong> unzip <code>Backchannel-windows-x64.zip</code> and run <code>Backchannel.exe</code>.</li>
             <li><strong>macOS Apple Silicon:</strong> unzip <code>Backchannel-macos-arm64.zip</code> and open <code>Backchannel.app</code>.</li>
@@ -476,7 +476,7 @@ docker compose up --build
             <tr>
               <td><strong>Audio Bridge</strong><br /><code>audio_gateway</code></td>
               <td>Continuous audio stream</td>
-              <td>Listens silently via Gemini Live or OpenAI Realtime and streams interim transcription</td>
+              <td>Listens silently via Gemini Live, OpenAI Realtime, or the on-device Parakeet captioner and streams interim transcription</td>
             </tr>
             <tr>
               <td><strong>Consolidated Analyst</strong><br /><code>consolidated_analyst</code></td>
