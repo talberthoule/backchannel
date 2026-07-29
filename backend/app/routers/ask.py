@@ -6,7 +6,6 @@ single-session, stateless, small-budget and newest-first, and it persists its
 answer as an insight instead of returning a chat reply.
 """
 
-import logging
 import time
 import uuid
 
@@ -28,8 +27,6 @@ from app.services.llm import generate_text, provider_for, registry_entry
 from app.services.privacy import LocalOnlyModeError, allows_local_only, is_local_only
 from app.services.provider_errors import PROVIDER_ERROR_TYPES, provider_error_to_http
 from app.services.session_manager import get_active_directives
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/sessions", tags=["ask"])
 
@@ -105,9 +102,18 @@ async def load_live_context(session_id: uuid.UUID, db: AsyncSession) -> dict:
         )
     )
     signals_row = signals_result.scalar_one_or_none()
-    signals = "\n".join(
-        f"- {s}" for s in (getattr(signals_row, "strategic_signals", None) or [])
-    )
+    signal_rows = getattr(signals_row, "strategic_signals", None) or []
+    signal_lines = []
+    for item in signal_rows:
+        if isinstance(item, dict):
+            title = (item.get("title") or "").strip()
+            summary = (item.get("summary") or "").strip()
+            text = f"{title}: {summary}" if title and summary else (title or summary)
+        else:
+            text = str(item).strip()
+        if text:
+            signal_lines.append(f"- {text}")
+    signals = "\n".join(signal_lines)
 
     documents_result = await db.execute(
         select(Document.filename).where(Document.session_id == session_id)
@@ -132,9 +138,7 @@ async def ask(session_id: uuid.UUID, body: AskIn, db: AsyncSession = Depends(get
         raise HTTPException(400, f"Model {body.model_id} does not support text generation")
 
     if await is_local_only() and not await allows_local_only(body.model_id):
-        raise HTTPException(
-            400, str(LocalOnlyModeError("asking the call a question", body.model_id))
-        )
+        raise LocalOnlyModeError("asking the call a question", body.model_id)
 
     context = await load_live_context(session_id, db)
     prompt = build_live_prompt(context, body.question)
@@ -154,6 +158,9 @@ async def ask(session_id: uuid.UUID, body: AskIn, db: AsyncSession = Depends(get
         raise provider_error_to_http(
             provider_for(body.model_id), e, context="Ask failed"
         ) from e
+
+    if not answer.strip():
+        raise HTTPException(502, "The model returned an empty answer. Try again or pick another model.")
 
     row = build_asked_row(
         session_id,

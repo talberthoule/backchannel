@@ -1,8 +1,12 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
+from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app.routers.ask import ASK_AGENT_SOURCE, ASK_ITEM_TYPE, AskIn, build_asked_row
+from app.routers.ask import ASK_AGENT_SOURCE, ASK_ITEM_TYPE, AskIn, ask, build_asked_row
 
 
 class AskInTests(unittest.TestCase):
@@ -47,6 +51,31 @@ class AskedRowTests(unittest.TestCase):
         self.assertEqual(self.row.question, "what budget did they mention?")
         self.assertEqual(self.row.answer_summary, "They said 180K.")
         self.assertTrue(self.row.answered)
+
+
+def _db_mock():
+    db = AsyncMock()
+    db.get.return_value = SimpleNamespace(
+        name="Session",
+        meeting_type="discovery",
+        meeting_context="",
+    )
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = []
+    result.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(return_value=result)
+    return db
+
+
+class AskEmptyAnswerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_empty_model_reply_is_rejected_instead_of_saved(self):
+        body = AskIn(model_id="gemini-3.5-flash", question="what budget did they mention?")
+        with patch("app.routers.ask.is_local_only", new=AsyncMock(return_value=False)), \
+                patch("app.routers.ask.generate_text", new=AsyncMock(return_value="")):
+            with self.assertRaises(HTTPException) as ctx:
+                await ask(uuid4(), body, db=_db_mock())
+        self.assertEqual(ctx.exception.status_code, 502)
+        self.assertIn("empty answer", ctx.exception.detail)
 
 
 if __name__ == "__main__":
