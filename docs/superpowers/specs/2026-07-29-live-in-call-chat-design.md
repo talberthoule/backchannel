@@ -123,9 +123,15 @@ Behavior:
 5. Persist a `Question` row: `item_type="asked"`, `agent_source="live_chat"`,
    `starred=True`, `question` = the operator's text, `answer_summary` = the
    reply, `answered=True`.
-6. Broadcast it to the session's websocket clients as a `question` message,
-   the same path agent-produced insights already use, so the card appears
-   through the existing subscription rather than a bespoke channel.
+6. Return the created row as `QuestionOut`, the schema the questions router
+   already uses.
+
+No websocket broadcast. The orchestrator publishes insights through
+`self.websocket.send_json` - a direct reference held by the live call handler -
+and there is no session-to-socket registry a REST handler could reach. Building
+one to notify the single client that just made the request would be pure
+overhead: the asking client is the only client, and the response body already
+carries the card it needs to render.
 
 A new endpoint rather than an extension of `/api/chat`: the two differ in
 scope, budget, ordering, persistence, and response shape, and overloading one
@@ -189,20 +195,30 @@ focus returns to the chip on close.
 
 ### Frontend: the answer card
 
-Rendered by the existing `QuestionCard` through the new type's metadata, with
-a pending state while the request is in flight:
+Rendered by the existing `QuestionCard`, which already draws the type badge
+from `BUILTIN_TYPE_META`, the `rationale` block, the `answer_summary` block
+when `answered` is true, and star/dismiss/vote controls. The question text goes
+in `question` and the answer in `answer_summary`, so the card body needs no new
+rendering.
 
-- Eyebrow: `You asked`, a filled star, and the elapsed call clock at the time
-  the question was asked - not a wall time, because elapsed position is what
-  the operator remembers afterwards.
-- The question text at card-title weight, the answer below it.
-- Footer: `Make directive`, `Unstar`, `Dismiss`, and the latency and model in
-  the mono face at tertiary contrast.
-- Pending state: the question with a progress indicator, replaced in place
-  when the answer arrives.
+Three additions:
 
-`Make directive` posts the question text to the existing directives endpoint.
-It never fires on its own.
+- `AGENT_LABELS` gains `live_chat`, so the source badge reads `You asked`
+  rather than the raw slug.
+- A `Make directive` action, shown only on `asked` cards, posting the question
+  text to the existing directives endpoint. It never fires on its own.
+- A pending card in `ActiveCallView` while the request is in flight, showing
+  the question and a progress line, replaced by the real card on arrival.
+
+The answering model and elapsed time are written into `rationale` at creation
+(`Answered by <model> in <n.n>s`), which the card already renders. This avoids
+a schema change for what is a caption.
+
+The card keeps `QuestionCard`'s existing wall-clock timestamp. An elapsed
+call-clock reads better in principle, but it would mean threading the call
+segment start through `QuestionList` into `QuestionCard` and giving one card
+type a different time format from every other card in the same feed. Not worth
+either cost.
 
 ## Error Handling
 
@@ -216,9 +232,9 @@ It never fires on its own.
   says the transcript window was unavailable.
 - Call ends mid-question: the request is awaited and saved rather than
   abandoned, matching how a final agent pass is treated.
-- Websocket disconnected: the response body already carries the created
-  insight, so the card renders from the HTTP response and the broadcast is
-  a redundant path, not the only one.
+- Websocket disconnected: asking is a plain HTTP request and does not depend
+  on the live socket, so a question asked during a reconnect still works. The
+  bar's disabled state follows post-processing, not socket status.
 
 ## Testing
 
