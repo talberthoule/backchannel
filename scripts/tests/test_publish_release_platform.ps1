@@ -33,7 +33,7 @@ $Commit = "a" * 40
 $PublishedAt = "2026-07-15T18:00:00Z"
 $validSignature = "A" * 86
 $invalidSignature = "B" * 86
-$expectedSigningRequest = '{"asset":{"filename":"Backchannel-windows-x64.zip","id":"windows-x64","platform":"Windows x64","sha256":"1e6ed65d77d6364eeaed5a745ba5c4985ae2b700dd85d7cf7f027bdf294a33fc","size":6},"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","key_id":"ed25519-2026-07","published_at":"2026-07-15T18:00:00Z","release_notes":"test notes","schema":1,"version":"v1.2.3"}'
+$expectedSigningRequest = '{"asset":{"filename":"Backchannel-windows-x64.zip","id":"windows-x64","platform":"Windows x64","sha256":"1e6ed65d77d6364eeaed5a745ba5c4985ae2b700dd85d7cf7f027bdf294a33fc","size":6},"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","key_id":"ed25519-2026-07b","published_at":"2026-07-15T18:00:00Z","release_notes":"test notes","schema":1,"version":"v1.2.3"}'
 
 $temporary = Join-Path ([IO.Path]::GetTempPath()) "backchannel-platform-publish-test-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Path $temporary | Out-Null
@@ -54,6 +54,7 @@ $oldSigningSecret = $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY
 $oldSigningUrl = $env:BACKCHANNEL_RELEASE_SIGNING_URL
 $oldAccessClientId = $env:CLOUDFLARE_ACCESS_CLIENT_ID
 $oldAccessClientSecret = $env:CLOUDFLARE_ACCESS_CLIENT_SECRET
+$oldLocalAppData = $env:LOCALAPPDATA
 $credentialNames = @(
     "R2_ACCESS_KEY_ID",
     "R2_SECRET_ACCESS_KEY",
@@ -128,7 +129,7 @@ function Platform-Json {
     $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $AssetPath).Hash.ToLowerInvariant()
     $size = (Get-Item -LiteralPath $AssetPath).Length
     $signature = "A" * 86
-    '{{"asset":{{"content_type":"{0}","filename":"{1}","id":"{2}","key":"releases/{3}/{1}","platform":"{4}","sha256":"{5}","size":{6}}},"commit":"{7}","published_at":"{8}","release_notes":"test notes","update":{{"key_id":"ed25519-2026-07","schema":1,"signature":"{9}"}},"version":"{3}"}}' -f $info[2], $info[1], $PlatformId, $VersionValue, $info[0], $sha, $size, $CommitValue, $PublishedAt, $signature
+    '{{"asset":{{"content_type":"{0}","filename":"{1}","id":"{2}","key":"releases/{3}/{1}","platform":"{4}","sha256":"{5}","size":{6}}},"commit":"{7}","published_at":"{8}","release_notes":"test notes","update":{{"key_id":"ed25519-2026-07b","schema":1,"signature":"{9}"}},"version":"{3}"}}' -f $info[2], $info[1], $PlatformId, $VersionValue, $info[0], $sha, $size, $CommitValue, $PublishedAt, $signature
 }
 
 function Reset-FakeR2 {
@@ -302,7 +303,6 @@ function Invoke-Publisher {
         PlatformId = $PlatformId
         AssetPath = $AssetPath
         ReleaseNotesPath = $releaseNotes
-        SigningPrivateKeyPath = $privateKey
         SigningTimeoutSeconds = $SigningTimeoutSeconds
         Confirm = $false
     }
@@ -378,7 +378,8 @@ try {
     $fakePython = Join-Path $temporary "python.cmd"
     $fakePythonScript = Join-Path $temporary "fake-python.ps1"
     $releaseNotes = Join-Path $temporary "release-notes.md"
-    $privateKey = Join-Path $temporary "release-signing.private"
+    $env:LOCALAPPDATA = Join-Path $temporary "local-appdata"
+    $privateKey = Join-Path $env:LOCALAPPDATA "Backchannel/release-signing/ed25519-2026-07b.private"
     Write-Utf8 $releaseNotes "test notes"
     Write-Utf8 $privateKey "fixture-private-value"
     $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $null
@@ -491,7 +492,7 @@ $platformId = $options["platform-id"]
 $info = Info $platformId
 $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash.ToLowerInvariant()
 $size = (Get-Item -LiteralPath $asset).Length
-$request = '{{"asset":{{"filename":"{0}","id":"{1}","platform":"{2}","sha256":"{3}","size":{4}}},"commit":"{5}","key_id":"ed25519-2026-07","published_at":"{6}","release_notes":"test notes","schema":1,"version":"{7}"}}' -f $info[1], $platformId, $info[0], $sha, $size, $commit, $publishedAt, $tag
+$request = '{{"asset":{{"filename":"{0}","id":"{1}","platform":"{2}","sha256":"{3}","size":{4}}},"commit":"{5}","key_id":"ed25519-2026-07b","published_at":"{6}","release_notes":"test notes","schema":1,"version":"{7}"}}' -f $info[1], $platformId, $info[0], $sha, $size, $commit, $publishedAt, $tag
 if ($options.ContainsKey("signing-request-out")) {
     WriteExactUtf8 $options["signing-request-out"] $request
     if ($env:R2_FAKE_SIGNING_REQUEST_FAILURE) {
@@ -500,7 +501,7 @@ if ($options.ContainsKey("signing-request-out")) {
     exit 0
 }
 if ($options.ContainsKey("detached-key-id")) {
-    if ($options["detached-key-id"] -cne "ed25519-2026-07" -or
+    if ($options["detached-key-id"] -cne "ed25519-2026-07b" -or
         $options["detached-signature"] -cne ("A" * 86)) {
         [Console]::Error.WriteLine("detached verification failed")
         exit 2
@@ -514,7 +515,7 @@ if ($options.ContainsKey("detached-key-id")) {
     $signature = "A" * 86
 }
 WriteUtf8 $options["release-out"] ('{{"commit":"{0}","published_at":"{1}","version":"{2}"}}' -f $commit, $publishedAt, $tag)
-WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename":"{1}","id":"{2}","key":"releases/{3}/{1}","platform":"{4}","sha256":"{5}","size":{6}}},"commit":"{7}","published_at":"{8}","release_notes":"test notes","update":{{"key_id":"ed25519-2026-07","schema":1,"signature":"{9}"}},"version":"{3}"}}' -f $info[2], $info[1], $platformId, $tag, $info[0], $sha, $size, $commit, $publishedAt, $signature)
+WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename":"{1}","id":"{2}","key":"releases/{3}/{1}","platform":"{4}","sha256":"{5}","size":{6}}},"commit":"{7}","published_at":"{8}","release_notes":"test notes","update":{{"key_id":"ed25519-2026-07b","schema":1,"signature":"{9}"}},"version":"{3}"}}' -f $info[2], $info[1], $platformId, $tag, $info[0], $sha, $size, $commit, $publishedAt, $signature)
 '@
 
     $env:R2_FAKE_SCRIPT = $fakeNodeScript
@@ -527,7 +528,7 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
     $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = "fixture-private-value"
     $env:CLOUDFLARE_ACCESS_CLIENT_ID = "fixture-client-id"
     $env:CLOUDFLARE_ACCESS_CLIENT_SECRET = "fixture-client-secret"
-    $validResponse = '{{"key_id":"ed25519-2026-07","signature":"{0}"}}' -f $validSignature
+    $validResponse = '{{"key_id":"ed25519-2026-07b","signature":"{0}"}}' -f $validSignature
     $remote = Invoke-RemotePublisher `
         -StatusCode 200 `
         -ResponseBody $validResponse `
@@ -574,14 +575,14 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
         @{
             Label = "extra response field"
             Status = 200
-            Body = ('{{"extra":"no","key_id":"ed25519-2026-07","signature":"{0}"}}' -f $validSignature)
+            Body = ('{{"extra":"no","key_id":"ed25519-2026-07b","signature":"{0}"}}' -f $validSignature)
             Delay = 0
             Timeout = 30
         },
         @{
             Label = "top-level array"
             Status = 200
-            Body = ('[{{"key_id":"ed25519-2026-07","signature":"{0}"}}]' -f $validSignature)
+            Body = ('[{{"key_id":"ed25519-2026-07b","signature":"{0}"}}]' -f $validSignature)
             Delay = 0
             Timeout = 30
         },
@@ -595,7 +596,7 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
         @{
             Label = "invalid signature"
             Status = 200
-            Body = ('{{"key_id":"ed25519-2026-07","signature":"{0}"}}' -f $invalidSignature)
+            Body = ('{{"key_id":"ed25519-2026-07b","signature":"{0}"}}' -f $invalidSignature)
             Delay = 0
             Timeout = 30
         }
@@ -798,6 +799,7 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
     $env:BACKCHANNEL_RELEASE_SIGNING_URL = $oldSigningUrl
     $env:CLOUDFLARE_ACCESS_CLIENT_ID = $oldAccessClientId
     $env:CLOUDFLARE_ACCESS_CLIENT_SECRET = $oldAccessClientSecret
+    $env:LOCALAPPDATA = $oldLocalAppData
     foreach ($name in $credentialNames) {
         [Environment]::SetEnvironmentVariable($name, $oldCredentials[$name])
     }

@@ -216,7 +216,7 @@ try {
                 if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
                     throw "Missing required release signing private key"
                 }
-                $SigningPrivateKeyPath = Join-Path $env:LOCALAPPDATA "Backchannel/release-signing/ed25519-2026-07.private"
+                $SigningPrivateKeyPath = Join-Path $env:LOCALAPPDATA "Backchannel/release-signing/ed25519-2026-07b.private"
             }
             if (-not (Test-Path -LiteralPath $SigningPrivateKeyPath -PathType Leaf)) {
                 throw "Missing required release signing private key"

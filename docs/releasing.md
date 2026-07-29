@@ -171,6 +171,11 @@ must provide `BACKCHANNEL_RELEASE_SIGNING_URL`,
 protected job uses `-SigningMode Remote`; never expose those credentials to the
 credential-free build or cleanup jobs.
 
+The Access application allows only the dedicated release publisher service
+token. The signing Worker verifies the Access issuer and audience, then
+requires the JWT `common_name` to exactly match that token's client ID before
+it reads the request body or signing secret.
+
 The local coordinator also requires `CLOUDFLARE_ACCOUNT_ID`,
 `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_RELEASES_BUCKET` as
 user-scoped environment variables. Set the signer URL to the exact endpoint
@@ -237,10 +242,13 @@ documented compatibility window.
 rotation and is the sole possible exception to remote production publishing.
 Stage two exercises Local only in tests. There is no stored local production
 key and no automatic fallback from remote mode. An emergency operator must
-supply newly generated matching key material explicitly, publish a new patch
-release, and communicate directly with affected users. An offline client cannot
-receive an emergency revocation; the persisted greatest-seen version/time only
-limits replay after a client has observed the replacement.
+supply newly generated matching key material explicitly. If no path is passed,
+the publisher checks
+`%LOCALAPPDATA%\Backchannel\release-signing\ed25519-2026-07b.private`.
+Afterward, publish a new patch release, clean up the transient key, and
+communicate directly with affected users. An offline client cannot receive an
+emergency revocation; the persisted greatest-seen version/time only limits
+replay after a client has observed the replacement.
 
 The checked-in `scripts/r2-object.mjs` client calls Cloudflare R2 directly and
 is the only release object transport. `AWS4-HMAC-SHA256` and `x-amz-*` are the
