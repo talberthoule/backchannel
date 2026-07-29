@@ -226,6 +226,13 @@ and before creating its tag, complete stage three:
 5. Rerun the signing and release gates, commit the exact public-only trust-file
    change, complete stage-three review, and only then create the `v0.4.0` tag.
 
+Stage three was proven on 2026-07-28 with Worker version
+`cd26d9da-4d07-47f2-b966-332577273337`. An unauthenticated signing request
+returned `401`; an authenticated canonical descriptor with SHA-256
+`23ebb3b8529859f7cf39272dc3ed6e16f3abe2e60439af2cd53c472bafbda179`
+was signed as `ed25519-2026-07b` and verified locally against the checked-in
+public key. The proof performed zero R2 operations and published no release.
+
 Publish every `v0.4.0` platform through remote mode. All normal and planned
 production publishing, including the current cutover, uses remote mode.
 Deleting the never-used old laptop-held private-key file is a separate ALP-170
