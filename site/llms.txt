@@ -39,8 +39,9 @@ Key facts:
   90s, synthesizer, opportunity specialist, strategic signals every 45s), and
   a three-agent post-call briefing pass (meeting lens, discovery lens,
   arbiter) -- each with a configurable model, prompt, and trigger
-- Works with any meeting app: captures mic plus tab/system audio in the
-  browser, so Zoom, Meet, and Teams need no bot or integration
+- Works with any meeting, digital or in person: captures mic plus tab/system
+  audio in the browser, so Zoom, Meet, and Teams need no bot or integration,
+  and a conference-room conversation needs only the microphone
 
 ## Docs
 

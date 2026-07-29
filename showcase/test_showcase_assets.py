@@ -56,8 +56,21 @@ class ShowcaseFixtureTests(unittest.TestCase):
                     "question": 6,
                 }
             ),
+            Counter(row[0] for row in seed_demo.CURATED_INSIGHTS),
+        )
+        self.assertEqual(
+            Counter(
+                {
+                    "action_item": 24,
+                    "objection": 16,
+                    "opportunity": 18,
+                    "observation": 31,
+                    "question": 34,
+                }
+            ),
             Counter(row[0] for row in seed_demo.INSIGHTS),
         )
+        self.assertEqual(123, len(seed_demo.INSIGHTS))
 
         current_story = repr(
             (

@@ -139,7 +139,7 @@ LINES = [
 
 # item_type, agent_source, question, rationale, context, speaker, starred,
 # answered, answer_summary, needs_followup, followup, offering_match, enhanced
-INSIGHTS = [
+CURATED_INSIGHTS = [
     ("action_item", "action_tracker", "Send the fixed recovery pilot scope by Thursday noon", "Owen can sponsor the pilot once the stated guardrails and commercial boundary are in writing.", "I will send the fixed pilot scope, separate managed-operations option, and operating boundary by Thursday noon", "Me", False, False, "", False, "", "Recovery Implementation Pilot", True),
     ("action_item", "action_tracker", "Open the identity change request on day one", "The ten-working-day approval clock must run in parallel with discovery to protect the September evidence date.", "the change request opens on day one, in parallel with discovery", "Me", False, False, "", False, "", "", True),
     ("action_item", "action_tracker", "Confirm accountable clinical owners and their validation window", "Clinical sign-off is required for the evidence pack, but the role list is not complete yet.", "I can send the names tomorrow", "Owen", False, False, "", True, "Which accountable role will sign the medication reconciliation validation?", "", False),
@@ -165,6 +165,87 @@ INSIGHTS = [
     ("question", "question_hunter", "Who owns exceptions when the two-hour objective is missed?", "Unowned remediation would weaken both the board decision and insurer evidence.", "Who owns the exception list", "Maya", False, True, "Infrastructure owns technical exceptions, security owns risk acceptance, and the integrator owns remediation recommendations.", False, "", "", True),
     ("question", "question_hunter", "What evidence cadence will be required after September?", "A recurring requirement changes the managed-service scope and operating cost.", "The board and insurer need evidence of a tested recovery plan", "Maya", False, False, "", True, "Will quarterly validation satisfy both governance groups?", "Managed Recovery Operations", False),
 ]
+
+# Volume filler beyond the curated rows: a dense 46-minute call plausibly
+# yields ~123 insights at the agents' 10-40s cadences, and the marketing copy
+# quotes that total. Filler rows are seeded with earlier timestamps than every
+# curated row, so the cards visible in screenshots stay the hand-written ones;
+# filler only raises the per-type counts. Every phrase stays inside the
+# fictional Alderwake story (see the Curation rules in screenshots/README.md).
+_FILLER_TOPICS = [
+    ("identity change approval", "the ten-working-day clock gates the validation window", "Owen"),
+    ("interface engine restore order", "dependent applications restore in strict sequence", "Leah"),
+    ("medication reconciliation feed", "the accountable clinical role signs the restored feed", "Owen"),
+    ("synthetic transaction set", "no patient or employee records enter the test", "Maya"),
+    ("evidence pack format", "timings, owners, and exceptions belong in one artifact", "Me"),
+    ("emergency account authority", "the after-hours delegate is still unnamed", "Maya"),
+    ("runbook sequencing", "the last exercise lost hours to ordering, not data loss", "Leah"),
+    ("insurer pre-clearance", "the evidence outline is reviewed before the test runs", "Maya"),
+    ("board risk committee date", "September 18 fixes the last defensible evidence date", "Maya"),
+    ("procurement threshold", "the fixed pilot stays below single-source review", "Owen"),
+    ("remote staffing model", "five of the seven infrastructure engineers are remote", "Owen"),
+    ("data residency language", "recovery evidence remains in the customer tenant", "Maya"),
+    ("isolated recovery network", "restores never touch production services", "Leah"),
+    ("reseller agreement", "software procurement can reuse an existing vehicle", "Owen"),
+    ("contingency validation window", "a reserved second window absorbs a failed first run", "Leah"),
+    ("exception ownership split", "infrastructure, risk, and remediation have separate owners", "Me"),
+    ("quarterly validation cadence", "governance evidence must be repeatable after September", "Maya"),
+    ("recovery vault integrity", "the data restore already meets its timing objective", "Owen"),
+    ("internal RACI", "personal names stay out of every external artifact", "Me"),
+    ("tier-zero service list", "identity, the interface engine, and the reconciliation feed", "Leah"),
+]
+
+_FILLER_FRAMES = {
+    "question": ("question_hunter", 28, 0, [
+        ("What is the current state of the {t}?", "The answer shapes how much pilot time the {t} consumes."),
+        ("Who is accountable for the {t} during the pilot?", "Unowned work on the {t} would surface as an exception in the evidence pack."),
+        ("Does the {t} change before or after the September test?", "Sequencing the {t} against the board date protects the contingency window."),
+        ("What does the insurer expect to see for the {t}?", "Governance reviewers will ask how the {t} was validated."),
+    ]),
+    "observation": ("observer", 26, 7, [
+        ("The {t} shapes the pilot more than the tooling does", "In the fixture story, {d}."),
+        ("The {t} was raised without prompting", "Unprompted detail on the {t} signals real internal attention: {d}."),
+        ("The team already has a working position on the {t}", "As stated in the call, {d}."),
+        ("The {t} connects the pilot to the managed-operations option", "Recurring ownership matters because {d}."),
+    ]),
+    "action_item": ("action_tracker", 19, 3, [
+        ("Document the {t} in the pilot plan", "The written plan must reflect that {d}."),
+        ("Review the {t} in the Tuesday working session", "The working session is the agreed forum; {d}."),
+        ("Confirm the {t} before the scope freeze", "Thursday's package should state plainly that {d}."),
+    ]),
+    "objection": ("objection_handler", 12, 11, [
+        ("The {t} could slip the September date", "Raised as a delivery concern: {d}."),
+        ("The {t} is not yet approved internally", "Approval risk, because {d}."),
+        ("The {t} may not satisfy the auditors", "Evidence concern raised in passing: {d}."),
+    ]),
+    "opportunity": ("opportunity_scout", 14, 15, [
+        ("Fold the {t} into the recovery evidence pack", "Packaging the {t} strengthens the board narrative: {d}."),
+        ("Extend the pilot to cover the {t}", "A bounded extension is credible because {d}."),
+    ]),
+}
+
+
+def _filler_insights():
+    rows = []
+    for item_type, (source, count, offset, frames) in _FILLER_FRAMES.items():
+        for index in range(count):
+            topic, detail, who = _FILLER_TOPICS[(offset + index) % len(_FILLER_TOPICS)]
+            title_frame, rationale_frame = frames[index % len(frames)]
+            rows.append((
+                item_type,
+                source,
+                title_frame.format(t=topic),
+                rationale_frame.format(t=topic, d=detail),
+                detail,
+                who,
+                False, False, "", False, "", "",
+                index % 2 == 0,
+            ))
+    return rows
+
+
+FILLER_INSIGHTS = _filler_insights()
+INSIGHTS = CURATED_INSIGHTS + FILLER_INSIGHTS
 
 OTHERS = [
     ("Alderwake Health Network - identity recovery workshop", "client_sales", "Technical follow-up on emergency identity authority and isolated validation.", True),
@@ -407,7 +488,15 @@ def main():
         "speaker_mapping_revision_id"
     )
     insight_rows = []
-    insight_start = start + timedelta(minutes=6)
+    # Curated rows take the newest window (minutes 20-43) so they top every
+    # newest-first section; filler spreads across minutes 2-20 underneath.
+    curated_count = len(CURATED_INSIGHTS)
+
+    def insight_timestamp(index):
+        if index < curated_count:
+            return start + timedelta(minutes=20 + index)
+        return start + timedelta(seconds=120 + (index - curated_count) * 11)
+
     for index, insight in enumerate(INSIGHTS):
         (
             item_type,
@@ -443,7 +532,7 @@ def main():
                     q(answer_summary),
                     str(needs_followup).lower(),
                     q(followup),
-                    q((insight_start + timedelta(minutes=index)).isoformat()),
+                    q(insight_timestamp(index).isoformat()),
                     "NULL",
                     q(""),
                     "0",
@@ -466,7 +555,8 @@ def main():
     )
     print(
         f"seeded: 1 group, {1 + len(OTHERS)} sessions, {len(speakers)} speakers, "
-        f"{len(LINES)} transcript lines, {len(INSIGHTS)} canned insights, "
+        f"{len(LINES)} transcript lines, {len(CURATED_INSIGHTS)} curated + "
+        f"{len(FILLER_INSIGHTS)} filler insights, "
         f"{len(KNOWLEDGE_RECORDS)} knowledge records"
     )
 
