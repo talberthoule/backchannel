@@ -197,8 +197,7 @@ def _public_from_manifest(manifest: dict, *, include_signature: bool) -> dict:
     return descriptor
 
 
-def sign_platform_manifest(manifest: dict, key_id: str, private_key: bytes) -> dict:
-    """Validate and sign one immutable progressive platform manifest."""
+def _validated_platform_manifest(manifest: dict) -> dict:
     source = _exact_dict(
         manifest,
         {"version", "commit", "published_at", "release_notes", "asset"},
@@ -212,18 +211,48 @@ def sign_platform_manifest(manifest: dict, key_id: str, private_key: bytes) -> d
     _validate_timestamp(source["published_at"])
     _validate_notes(source["release_notes"])
     _validate_asset(source["asset"], source["version"], private=True)
+    return source
+
+
+def platform_signing_request(manifest: dict, key_id: str) -> tuple[dict, bytes]:
+    """Build the public descriptor and bytes for detached signing."""
+    unsigned = _validated_platform_manifest(manifest)
     if not isinstance(key_id, str) or not KEY_ID_RE.fullmatch(key_id):
         raise ValueError("invalid key id")
+
+    signed = copy.deepcopy(unsigned)
+    signed["update"] = {"key_id": key_id, "schema": 1}
+    descriptor = _public_from_manifest(signed, include_signature=False)
+    return descriptor, canonical_update_bytes(descriptor)
+
+
+def attach_platform_signature(
+    manifest: dict, key_id: str, signature: str, public_key: bytes
+) -> dict:
+    """Validate and attach a detached Ed25519 signature."""
+    _, request = platform_signing_request(manifest, key_id)
+    try:
+        Ed25519PublicKey.from_public_bytes(public_key).verify(
+            _decode_signature(signature), request
+        )
+    except InvalidSignature as error:
+        raise ValueError("invalid update signature") from error
+
+    signed = copy.deepcopy(manifest)
+    signed["update"] = {"key_id": key_id, "schema": 1, "signature": signature}
+    return signed
+
+
+def sign_platform_manifest(manifest: dict, key_id: str, private_key: bytes) -> dict:
+    """Validate and sign one immutable progressive platform manifest."""
     if not isinstance(private_key, bytes) or len(private_key) != 32:
         raise ValueError("invalid private key")
 
-    signed = copy.deepcopy(source)
+    _, request = platform_signing_request(manifest, key_id)
+    signed = copy.deepcopy(manifest)
     signed["update"] = {"key_id": key_id, "schema": 1}
-    descriptor = _public_from_manifest(signed, include_signature=False)
     signed["update"]["signature"] = _encode_signature(
-        Ed25519PrivateKey.from_private_bytes(private_key).sign(
-            canonical_update_bytes(descriptor)
-        )
+        Ed25519PrivateKey.from_private_bytes(private_key).sign(request)
     )
     return signed
 
