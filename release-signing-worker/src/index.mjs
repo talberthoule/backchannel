@@ -98,15 +98,17 @@ export async function authorizeAccess(
     typeof env.ACCESS_TEAM_DOMAIN !== "string" ||
     !env.ACCESS_TEAM_DOMAIN.trim() ||
     typeof env.ACCESS_AUD !== "string" ||
-    !env.ACCESS_AUD.trim()
+    !env.ACCESS_AUD.trim() ||
+    typeof env.ACCESS_COMMON_NAME !== "string" ||
+    !env.ACCESS_COMMON_NAME.trim()
   ) {
     return 503;
   }
   const token = request.headers.get("cf-access-jwt-assertion");
   if (!token) return 401;
   try {
-    await verify(token, env);
-    return 0;
+    const payload = await verify(token, env);
+    return payload?.common_name === env.ACCESS_COMMON_NAME ? 0 : 401;
   } catch {
     return 401;
   }

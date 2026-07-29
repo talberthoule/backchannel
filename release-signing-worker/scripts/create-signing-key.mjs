@@ -106,6 +106,31 @@ export async function runCeremony({
     throw ceremonyError("Cloudflare authentication failed");
   }
 
+  let preflight;
+  try {
+    const response = await fetchImpl(
+      `${url}?search=${KEY_ID}&per_page=100`,
+      {
+        method: "GET",
+        redirect: "error",
+        headers,
+        signal: createTimeoutSignal(30_000),
+      },
+    );
+    if (!response?.ok) {
+      throw ceremonyError("Cloudflare secret preflight failed");
+    }
+    preflight = await response.json();
+  } catch {
+    throw ceremonyError("Cloudflare secret preflight failed");
+  }
+  if (preflight?.success !== true || !Array.isArray(preflight.result)) {
+    throw ceremonyError("Cloudflare secret preflight failed");
+  }
+  if (preflight.result.some(secret => secret?.name === KEY_ID)) {
+    throw ceremonyError("Signing key already exists");
+  }
+
   let bodyBytes;
   let bodyText;
   let pair;

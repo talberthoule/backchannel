@@ -16,7 +16,7 @@ const REQUEST_URL =
 const FILESYSTEM_MODULE = /(["'`])(?:node:)?fs(?:\/promises)?\1/g;
 let streamCaptureTail = Promise.resolve();
 
-function successResponse() {
+function creationSuccessResponse() {
   return new Response(JSON.stringify({
     success: true,
     errors: [],
@@ -31,6 +31,21 @@ function successResponse() {
       scopes: ["workers"],
     }],
   }));
+}
+
+function listResponse(result = []) {
+  return new Response(JSON.stringify({
+    success: true,
+    errors: [],
+    messages: [],
+    result,
+  }));
+}
+
+function afterEmptyPreflight(fetchImpl) {
+  return async (url, init) => (
+    init.method === "GET" ? listResponse() : fetchImpl(url, init)
+  );
 }
 
 async function keyFixture() {
@@ -64,10 +79,10 @@ async function runSuccess(auth) {
         storeId: STORE_ID,
         authToken: async () => auth,
         generateKeyPair: async () => fixture.pair,
-        fetchImpl: async (url, init) => {
+        fetchImpl: afterEmptyPreflight(async (url, init) => {
           captured = {url, init};
-          return successResponse();
-        },
+          return creationSuccessResponse();
+        }),
         writeOutput: value => output.push(value),
       }),
     );
@@ -167,7 +182,7 @@ test("posts the PKCS8 key over HTTPS and prints only the public key", async () =
           return timeoutSignal;
         },
         generateKeyPair: async () => fixture.pair,
-        fetchImpl: async (url, init) => {
+        fetchImpl: afterEmptyPreflight(async (url, init) => {
           captured = {
             url,
             headers: init.headers,
@@ -177,8 +192,8 @@ test("posts the PKCS8 key over HTTPS and prints only the public key", async () =
             body: JSON.parse(Buffer.from(init.body).toString()),
             mutableBody: init.body,
           };
-          return successResponse();
-        },
+          return creationSuccessResponse();
+        }),
         writeOutput: value => output.push(value),
       }),
     );
@@ -219,6 +234,95 @@ test("posts the PKCS8 key over HTTPS and prints only the public key", async () =
   } finally {
     fixture.wipe();
     if (captured?.body?.[0]) captured.body[0].value = "";
+  }
+});
+
+test("preflight lists by exact key name before generation and creation", async () => {
+  const fixture = await keyFixture();
+  const events = [];
+  const timeouts = [];
+  try {
+    await runCeremony({
+      accountId: ACCOUNT_ID,
+      storeId: STORE_ID,
+      authToken: async () => ({type: "api_token", token: "fixture-token"}),
+      createTimeoutSignal: milliseconds => {
+        timeouts.push(milliseconds);
+        return {};
+      },
+      generateKeyPair: async () => {
+        events.push("generate");
+        return fixture.pair;
+      },
+      fetchImpl: async (url, init) => {
+        events.push(init.method);
+        if (init.method === "GET") {
+          assert.equal(
+            url,
+            `${REQUEST_URL}?search=${KEY_ID}&per_page=100`,
+          );
+          assert.deepEqual(init.headers, {
+            Authorization: "Bearer fixture-token",
+          });
+          assert.equal(init.redirect, "error");
+          assert.equal(init.body, undefined);
+          return listResponse([{name: `${KEY_ID}-backup`}]);
+        }
+        assert.equal(url, REQUEST_URL);
+        return creationSuccessResponse();
+      },
+      writeOutput: () => {},
+    });
+  } finally {
+    fixture.wipe();
+  }
+  assert.deepEqual(events, ["GET", "generate", "POST"]);
+  assert.deepEqual(timeouts, [30_000, 30_000]);
+});
+
+test("preflight hard-stops an existing exact key before generation", async () => {
+  let generated = false;
+  const error = await captureFailure(() => runCeremony({
+    accountId: ACCOUNT_ID,
+    storeId: STORE_ID,
+    authToken: async () => ({type: "api_token", token: "fixture-token"}),
+    generateKeyPair: async () => {
+      generated = true;
+      assert.fail("must not generate when the signing key exists");
+    },
+    fetchImpl: async (url, init) => {
+      assert.equal(init.method, "GET");
+      assert.equal(url, `${REQUEST_URL}?search=${KEY_ID}&per_page=100`);
+      return listResponse([
+        {name: `${KEY_ID}-backup`},
+        {name: KEY_ID},
+      ]);
+    },
+    writeOutput: () => {},
+  }));
+  assert.equal(error.message, "Signing key already exists");
+  assert.equal(generated, false);
+});
+
+test("preflight rejects invalid list metadata before generation", async () => {
+  for (const body of [
+    JSON.stringify({success: false, result: []}),
+    JSON.stringify({success: true, result: {name: KEY_ID}}),
+    "not-json",
+  ]) {
+    let generated = false;
+    const error = await captureFailure(() => runCeremony({
+      accountId: ACCOUNT_ID,
+      storeId: STORE_ID,
+      authToken: async () => ({type: "api_token", token: "fixture-token"}),
+      generateKeyPair: async () => {
+        generated = true;
+      },
+      fetchImpl: async () => new Response(body),
+      writeOutput: () => {},
+    }));
+    assert.equal(error.message, "Cloudflare secret preflight failed");
+    assert.equal(generated, false);
   }
 });
 
@@ -378,7 +482,9 @@ test("fails generically on non-success responses without printing the body", asy
         storeId: STORE_ID,
         authToken: async () => ({type: "api_token", token: "fixture-token"}),
         generateKeyPair: async () => fixture.pair,
-        fetchImpl: async () => new Response(marker, {status: 403}),
+        fetchImpl: afterEmptyPreflight(
+          async () => new Response(marker, {status: 403}),
+        ),
         writeOutput: value => output.push(value),
       }),
     ));
@@ -408,7 +514,9 @@ test("fails generically on invalid success metadata", async () => {
           storeId: STORE_ID,
           authToken: async () => ({type: "api_token", token: "fixture-token"}),
           generateKeyPair: async () => fixture.pair,
-          fetchImpl: async () => new Response(body),
+          fetchImpl: afterEmptyPreflight(
+            async () => new Response(body),
+          ),
           writeOutput: value => output.push(value),
         }),
       ));

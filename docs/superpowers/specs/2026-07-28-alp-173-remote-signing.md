@@ -98,7 +98,8 @@ The final Wrangler configuration will:
 - disable `workers.dev` and preview URLs;
 - route only `signing.backchannel.page`;
 - set the public `SIGNING_KEY_ID` variable to `ed25519-2026-07b`;
-- set `ACCESS_TEAM_DOMAIN` and the dedicated Access application audience;
+- set `ACCESS_TEAM_DOMAIN`, the dedicated Access application audience, and
+  `ACCESS_COMMON_NAME` to the release publisher service-token client ID;
 - declare one `secrets_store_secrets` binding named
   `RELEASE_SIGNING_PRIVATE_KEY`;
 - contain the Secrets Store ID and secret name, never the secret value.
@@ -120,17 +121,21 @@ The signing Worker copies the exact security pattern already used by
 `docs-site/worker.js`:
 
 1. Require a syntactically valid `*.cloudflareaccess.com`
-   `ACCESS_TEAM_DOMAIN` and a non-empty dedicated `ACCESS_AUD`.
+   `ACCESS_TEAM_DOMAIN`, a non-empty dedicated `ACCESS_AUD`, and a non-empty
+   `ACCESS_COMMON_NAME`.
 2. Read `cf-access-jwt-assertion`; fail closed when it is absent.
 3. Cache a remote JWK set from
    `https://<team-domain>/cdn-cgi/access/certs`.
 4. Call `jwtVerify` with the exact issuer and audience.
-5. Return a generic unauthorized response for every verification failure.
+5. Require the verified payload's `common_name` to exactly equal
+   `ACCESS_COMMON_NAME`.
+6. Return a generic unauthorized response for every verification or claim
+   failure.
 
 The Access application has a Service Auth policy that allows only the release
 publisher service token. Unlike the admin host, the Worker does not require an
-email claim: the dedicated audience and exact service-token policy are the
-identity boundary.
+email claim: the dedicated audience, exact service-token policy, and exact
+`common_name` claim are the identity boundary.
 
 The publisher sends the service-token client ID and client secret in
 `CF-Access-Client-Id` and `CF-Access-Client-Secret`. Cloudflare Access turns a
@@ -181,15 +186,18 @@ The stage-three ceremony will:
 
 1. Capture `wrangler auth token --json` through a child-process pipe and parse
    it in memory. Neither stdout nor stderr is inherited by the terminal.
-2. Generate one Ed25519 keypair in memory.
-3. Export the public key as 32 raw bytes and the private key as PKCS#8.
-4. Encode both with unpadded base64url.
-5. POST the private value over HTTPS to the Cloudflare Secrets Store API with
+2. Before key generation, list Secrets Store metadata with the exact fixed
+   query `?search=ed25519-2026-07b&per_page=100`; hard-stop if a result name
+   exactly equals `ed25519-2026-07b`, and fail closed on invalid list metadata.
+3. Generate one Ed25519 keypair in memory.
+4. Export the public key as 32 raw bytes and the private key as PKCS#8.
+5. Encode both with unpadded base64url.
+6. POST the private value over HTTPS to the Cloudflare Secrets Store API with
    the fixed secret name for `ed25519-2026-07b` and scope `workers`.
-6. Treat the API response as metadata only and never print its body.
-7. After confirmed creation, print exactly one JSON object containing only
+7. Treat the API response as metadata only and never print its body.
+8. After confirmed creation, print exactly one JSON object containing only
    `key_id` and `public_key`.
-8. Best-effort zero mutable byte buffers and clear references in `finally`.
+9. Best-effort zero mutable byte buffers and clear references in `finally`.
 
 The script never writes `.env`, `.dev.vars`, a temporary file, a command-line
 argument containing the private key, or the private value to stdout/stderr.
@@ -324,7 +332,8 @@ Stage three starts only after shepherd approval of stages one and two.
 1. Confirm the reviewed source revision and authenticated Wrangler account
    without printing credentials.
 2. Create or identify the account Secrets Store and dedicated secret name.
-3. Run the ceremony and capture only the public JSON output.
+3. Run the mandatory exact-name preflight, then the ceremony, and capture only
+   the public JSON output.
 4. Replace `desktop/release_signing_keys.json` with the real public key as the
    only entry and set `active` to `ed25519-2026-07b`; run the focused and full
    release gates and commit that exact public-only change.
@@ -354,7 +363,8 @@ private material has been removed.
 ## Failure handling
 
 - Missing Access configuration or Secrets Store binding: generic 503; no sign.
-- Missing or invalid Access assertion: generic 401; no body or secret read.
+- Missing or invalid Access assertion, or missing/mismatched `common_name`:
+  generic 401; no body or secret read.
 - Wrong path or method: generic 404/405; no body or secret read.
 - Oversized, malformed, non-canonical, wrong-schema, or wrong-key request:
   generic 400/413; no secret read.

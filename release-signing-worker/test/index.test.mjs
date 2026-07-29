@@ -162,7 +162,7 @@ test("verifyAccessToken caches the remote JWK set by exact issuer", async () => 
   assert.equal(keySets[0], keySets[1]);
 });
 
-test("Access authorization accepts a verified service token without an email", async () => {
+test("Access authorization accepts the exact verified common_name without an email", async () => {
   const result = await authorizeAccess(
     new Request("https://signing.example/v1/sign", {
       headers: { "cf-access-jwt-assertion": "fixture-jwt" },
@@ -170,8 +170,12 @@ test("Access authorization accepts a verified service token without an email", a
     {
       ACCESS_TEAM_DOMAIN: "example.cloudflareaccess.com",
       ACCESS_AUD: "dedicated-audience",
+      ACCESS_COMMON_NAME: "release-publisher-token",
     },
-    async () => ({ sub: "service-token" }),
+    async () => ({
+      sub: "service-token",
+      common_name: "release-publisher-token",
+    }),
   );
   assert.equal(result, 0);
 });
@@ -185,10 +189,21 @@ test("Access configuration and assertion failures are generic and do not read th
       status: 503,
     },
     {
+      name: "missing common_name configuration",
+      env: {
+        ACCESS_TEAM_DOMAIN: "example.cloudflareaccess.com",
+        ACCESS_AUD: "aud",
+      },
+      headers: { "cf-access-jwt-assertion": "jwt" },
+      status: 503,
+      verify: async () => ({common_name: "release-publisher-token"}),
+    },
+    {
       name: "missing assertion",
       env: {
         ACCESS_TEAM_DOMAIN: "example.cloudflareaccess.com",
         ACCESS_AUD: "aud",
+        ACCESS_COMMON_NAME: "release-publisher-token",
       },
       headers: {},
       status: 401,
@@ -198,12 +213,35 @@ test("Access configuration and assertion failures are generic and do not read th
       env: {
         ACCESS_TEAM_DOMAIN: "example.cloudflareaccess.com",
         ACCESS_AUD: "aud",
+        ACCESS_COMMON_NAME: "release-publisher-token",
       },
       headers: { "cf-access-jwt-assertion": SECRET_FIXTURE },
       status: 401,
       verify: async () => {
         throw new Error(SECRET_FIXTURE);
       },
+    },
+    {
+      name: "missing common_name claim",
+      env: {
+        ACCESS_TEAM_DOMAIN: "example.cloudflareaccess.com",
+        ACCESS_AUD: "aud",
+        ACCESS_COMMON_NAME: "release-publisher-token",
+      },
+      headers: {"cf-access-jwt-assertion": "jwt"},
+      status: 401,
+      verify: async () => ({sub: "service-token"}),
+    },
+    {
+      name: "different common_name claim",
+      env: {
+        ACCESS_TEAM_DOMAIN: "example.cloudflareaccess.com",
+        ACCESS_AUD: "aud",
+        ACCESS_COMMON_NAME: "release-publisher-token",
+      },
+      headers: {"cf-access-jwt-assertion": "jwt"},
+      status: 401,
+      verify: async () => ({common_name: "other-token"}),
     },
   ];
 
