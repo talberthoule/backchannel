@@ -955,16 +955,27 @@ export default function App() {
       setAskError(null);
       try {
         const created = await api.askSession(sessionId, askModelId, question);
-        // The runtime session moved on (End Call + a new session started)
-        // while this was in flight: this answer belongs to session
-        // `sessionId`, not whatever session is live now, so drop it rather
-        // than injecting it into the wrong session's live insight list.
-        if (runtimeSessionIdRef.current !== sessionId) return;
+        // The runtime session moved on (End Call + a new session started,
+        // or this tab never attached one at all - a refresh or a second tab
+        // leaves runtimeSessionId null while session.state is still
+        // "active"): this answer belongs to session `sessionId`, not
+        // whatever session is live now. It is already saved there, so clear
+        // pendingAsk rather than leaving it stuck forever and silently
+        // eating every later question (ALP-178).
+        if (runtimeSessionIdRef.current !== sessionId) {
+          setPendingAsk(null);
+          setAskError("Saved to the call it was asked on, not the one shown here.");
+          return;
+        }
         setLiveQuestions((prev) => [created, ...prev]);
         setPendingAsk(null);
         setAskError(null);
       } catch (err) {
-        if (runtimeSessionIdRef.current !== sessionId) return;
+        if (runtimeSessionIdRef.current !== sessionId) {
+          setPendingAsk(null);
+          setAskError("Saved to the call it was asked on, not the one shown here.");
+          return;
+        }
         // Keep the question visible next to the error: it must not vanish
         // silently, only a fresh ask (handleAsk) clears it.
         setAskError(errorMessage(err, "Ask failed"));

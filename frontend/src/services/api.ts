@@ -203,10 +203,18 @@ export const chat = (modelId: string, sessionIds: string[], messages: { role: st
     body: JSON.stringify({ model_id: modelId, session_ids: sessionIds, messages }),
   });
 
+// A self-hosted endpoint can hang for LLM_SELF_HOSTED_TIMEOUT_SECONDS (900s)
+// and the cloud path has no explicit timeout either; the live ask bar's
+// target is 4 seconds, so a client-side abort keeps a stuck request from
+// blocking every later ask for minutes (ALP-178). request() already forwards
+// any RequestInit field, including signal, so no change there is needed.
+const ASK_TIMEOUT_MS = 60_000;
+
 export const askSession = (sessionId: string, modelId: string, question: string) =>
   request<Question>(`/sessions/${sessionId}/ask`, {
     method: "POST",
     body: JSON.stringify({ model_id: modelId, question }),
+    signal: AbortSignal.timeout(ASK_TIMEOUT_MS),
   });
 
 // Credentials (workspace API keys)
