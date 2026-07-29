@@ -206,6 +206,55 @@ class SpeakerContextEnhancerFailureTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mapping_revision_id, question.speaker_mapping_revision_id)
         self.assertEqual(1, result["processed_entries"])
 
+    async def test_batch_query_excludes_asked_rows(self):
+        """ALP-178: Enhance Insights runs the same mutation handlers as the
+        synthesizer (dismiss, adjust, enrich, elevate), so the operator's own
+        live-chat Q&A must be excluded from its candidate set too. The fake
+        session here does not evaluate the query, so the exclusion is checked
+        by compiling the real select() statement with literal binds.
+        """
+        question_id = uuid4()
+        mapping_revision_id = uuid4()
+        session = SimpleNamespace(meeting_type="general", meeting_context="")
+        captured = {}
+        call_count = {"n": 0}
+
+        async def _execute(query):
+            call_count["n"] += 1
+            if call_count["n"] == 2:
+                captured["questions"] = query
+            return _ListResult([])
+
+        load_db = SimpleNamespace(get=AsyncMock(return_value=session), execute=_execute)
+        apply_db = SimpleNamespace(get=AsyncMock(return_value=None))
+
+        with (
+            patch(
+                "app.services.speaker_context_enhancer.async_session",
+                return_value=_AsyncContext(load_db),
+            ),
+            patch(
+                "app.services.speaker_context_enhancer.agent_model_id",
+                new=AsyncMock(return_value="endpoint:lm-studio:antares-1b"),
+            ),
+            patch(
+                "app.services.speaker_context_enhancer.generate_text",
+                new=AsyncMock(return_value="[]"),
+            ),
+            patch(
+                "app.services.speaker_context_enhancer._apply_operations_in_db",
+                new=AsyncMock(return_value=[]),
+            ),
+        ):
+            await run_speaker_context_batch(
+                uuid4(), [question_id], mapping_revision_id, apply_db
+            )
+
+        compiled = str(
+            captured["questions"].compile(compile_kwargs={"literal_binds": True})
+        )
+        self.assertIn("questions.item_type != 'asked'", compiled)
+
 
 class SpeakerContextEnhancementRouteTests(unittest.IsolatedAsyncioTestCase):
     async def test_unchanged_context_skips_all_ai_work(self):

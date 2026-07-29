@@ -33,11 +33,24 @@ router = APIRouter(prefix="/api/sessions", tags=["ask"])
 ASK_ITEM_TYPE = "asked"
 ASK_AGENT_SOURCE = "live_chat"
 MAX_QUESTION_CHARS = 2000
+MAX_ANSWER_CHARS = 4000
+ANSWER_TRUNCATION_MARKER = "\n\n[Answer truncated at 4000 characters.]"
 
 
 class AskIn(BaseModel):
     model_id: str
     question: str = Field(min_length=1, max_length=MAX_QUESTION_CHARS)
+
+
+def clamp_answer(answer: str) -> str:
+    """Cap a persisted answer so one runaway reply cannot fill the live feed.
+
+    The system prompt asks for under 80 words; this is the backstop for a
+    model that ignores it or a self-hosted server that loops.
+    """
+    if len(answer) <= MAX_ANSWER_CHARS:
+        return answer
+    return answer[:MAX_ANSWER_CHARS] + ANSWER_TRUNCATION_MARKER
 
 
 def build_asked_row(
@@ -159,8 +172,10 @@ async def ask(session_id: uuid.UUID, body: AskIn, db: AsyncSession = Depends(get
             provider_for(body.model_id), e, context="Ask failed"
         ) from e
 
-    if not answer.strip():
+    answer = answer.strip()
+    if not answer:
         raise HTTPException(502, "The model returned an empty answer. Try again or pick another model.")
+    answer = clamp_answer(answer)
 
     row = build_asked_row(
         session_id,

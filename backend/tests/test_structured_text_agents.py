@@ -188,5 +188,43 @@ class SynthesizerStructuredOutputTests(unittest.IsolatedAsyncioTestCase):
         )
 
 
+class SynthesizerExcludesAskedRowsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_query_excludes_the_operators_asked_rows(self):
+        """ALP-178: the operator's own live-chat Q&A must never reach the
+        Principal Agent, which can dismiss, adjust, or elevate whatever this
+        query returns. _Session (above) stubs execute() without touching the
+        query, so the exclusion is checked by compiling the real select()
+        statement with literal binds rather than trusting a canned result.
+        """
+        session_id = uuid.uuid4()
+        captured_query = {}
+
+        class _CapturingSession:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
+            async def get(self, _model, _item_id):
+                return SimpleNamespace()
+
+            async def execute(self, query):
+                captured_query["questions"] = query
+                return _Result([])
+
+        with patch(
+            "app.services.agents.synthesizer.async_session",
+            return_value=_CapturingSession(),
+        ):
+            result = await run_synthesizer_cycle(session_id)
+
+        self.assertEqual([], result)
+        compiled = str(
+            captured_query["questions"].compile(compile_kwargs={"literal_binds": True})
+        )
+        self.assertIn("questions.item_type != 'asked'", compiled)
+
+
 if __name__ == "__main__":
     unittest.main()

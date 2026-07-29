@@ -23,6 +23,10 @@ from app.services.meeting_context import build_meeting_context_text, format_prom
 
 logger = logging.getLogger(__name__)
 
+# Mirrors ASK_ITEM_TYPE in app.routers.ask (ALP-178). Redeclared here rather
+# than imported to avoid a services -> routers dependency for one string.
+ASKED_ITEM_TYPE = "asked"
+
 
 class SynthesizerOperation(BaseModel):
     op: str
@@ -110,6 +114,10 @@ async def run_synthesizer_cycle(session_id: uuid.UUID, model_override: str | Non
             select(Question).where(
                 Question.session_id == session_id,
                 Question.dismissed.is_(False),
+                # The operator's own live-chat Q&A is a private read, not
+                # agent material: excluded so the Principal Agent cannot
+                # dismiss, adjust, or elevate an answer it did not produce.
+                Question.item_type != ASKED_ITEM_TYPE,
             ).options(selectinload(Question.speaker))
         )
         questions = list(result.scalars().all())
