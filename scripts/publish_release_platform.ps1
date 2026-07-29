@@ -20,7 +20,15 @@ param(
 
     [string]$SigningKeysPath,
 
-    [string]$SigningPrivateKeyPath
+    [string]$SigningPrivateKeyPath,
+
+    [ValidateSet("Remote", "Local")]
+    [string]$SigningMode = "Remote",
+
+    [ValidateRange(1, 300)]
+    [int]$SigningTimeoutSeconds = 30,
+
+    [switch]$AllowTestLoopbackSigningUrl
 )
 
 . (Join-Path $PSScriptRoot "r2-release-common.ps1")
@@ -174,26 +182,6 @@ foreach ($requiredFile in @($ReleaseNotesPath, $SigningKeysPath)) {
         throw "Required release signing file is missing: $requiredFile"
     }
 }
-$signingPrivateKey = $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY
-if ([string]::IsNullOrWhiteSpace($signingPrivateKey)) {
-    if (-not $SigningPrivateKeyPath) {
-        if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-            throw "Missing required release signing private key"
-        }
-        $SigningPrivateKeyPath = Join-Path $env:LOCALAPPDATA "Backchannel/release-signing/ed25519-2026-07.private"
-    }
-    if (-not (Test-Path -LiteralPath $SigningPrivateKeyPath -PathType Leaf)) {
-        throw "Missing required release signing private key"
-    }
-    $privateFile = Get-Item -LiteralPath $SigningPrivateKeyPath
-    if (($privateFile.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "Release signing private key must be a regular file"
-    }
-    $signingPrivateKey = (Get-Content -Raw -LiteralPath $SigningPrivateKeyPath).Trim()
-}
-if ([string]::IsNullOrWhiteSpace($signingPrivateKey)) {
-    throw "Missing required release signing private key"
-}
 $script:R2Client = Join-Path $repoRoot "scripts/r2-object.mjs"
 if (-not (Test-Path -LiteralPath $script:R2Client -PathType Leaf)) {
     throw "R2 client not found: $script:R2Client"
@@ -208,25 +196,160 @@ $currentReleasePath = Join-Path $temporary "current-release.json"
 $currentPlatformPath = Join-Path $temporary "current-platform.json"
 $currentAssetPath = Join-Path $temporary "current-asset"
 $currentLatestPath = Join-Path $temporary "current-latest.json"
+$signingRequestPath = Join-Path $temporary "signing-request.json"
 New-Item -ItemType Directory -Path $temporary | Out-Null
 
 try {
-    $oldSigningPrivateKey = $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY
-    try {
-        $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $signingPrivateKey
-        & python $metadataHelper `
-            --asset $AssetPath `
-            --platform-id $PlatformId `
-            --tag $Version `
-            --commit $Commit `
-            --published-at $PublishedAt `
-            --keys-file $SigningKeysPath `
-            --release-notes-file $ReleaseNotesPath `
-            --release-out $releasePath `
-            --platform-out $platformPath
+    $metadataArguments = @(
+        "--asset", $AssetPath,
+        "--platform-id", $PlatformId,
+        "--tag", $Version,
+        "--commit", $Commit,
+        "--published-at", $PublishedAt,
+        "--keys-file", $SigningKeysPath,
+        "--release-notes-file", $ReleaseNotesPath
+    )
+    if ($SigningMode -eq "Local") {
+        $signingPrivateKey = $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY
+        if ([string]::IsNullOrWhiteSpace($signingPrivateKey)) {
+            if (-not $SigningPrivateKeyPath) {
+                if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+                    throw "Missing required release signing private key"
+                }
+                $SigningPrivateKeyPath = Join-Path $env:LOCALAPPDATA "Backchannel/release-signing/ed25519-2026-07b.private"
+            }
+            if (-not (Test-Path -LiteralPath $SigningPrivateKeyPath -PathType Leaf)) {
+                throw "Missing required release signing private key"
+            }
+            $privateFile = Get-Item -LiteralPath $SigningPrivateKeyPath
+            if (($privateFile.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Release signing private key must be a regular file"
+            }
+            $signingPrivateKey = (Get-Content -Raw -LiteralPath $SigningPrivateKeyPath).Trim()
+        }
+        if ([string]::IsNullOrWhiteSpace($signingPrivateKey)) {
+            throw "Missing required release signing private key"
+        }
+        $oldSigningPrivateKey = $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY
+        try {
+            $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $signingPrivateKey
+            & python $metadataHelper @metadataArguments `
+                --release-out $releasePath `
+                --platform-out $platformPath
+            $metadataExitCode = $LASTEXITCODE
+        } finally {
+            $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $oldSigningPrivateKey
+        }
+    } else {
+        foreach ($name in @(
+            "BACKCHANNEL_RELEASE_SIGNING_URL",
+            "CLOUDFLARE_ACCESS_CLIENT_ID",
+            "CLOUDFLARE_ACCESS_CLIENT_SECRET"
+        )) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+                throw "Missing required environment variable: $name"
+            }
+        }
+        $signingUri = $null
+        if (-not [Uri]::TryCreate(
+            $env:BACKCHANNEL_RELEASE_SIGNING_URL,
+            [UriKind]::Absolute,
+            [ref]$signingUri
+        )) {
+            throw "Remote release signing configuration is invalid"
+        }
+        $productionSigningUri = (
+            $signingUri.AbsoluteUri -ceq "https://signing.backchannel.page/v1/sign"
+        )
+        $testLoopbackSigningUri = (
+            $AllowTestLoopbackSigningUrl -and
+            $signingUri.Scheme -ceq [Uri]::UriSchemeHttp -and
+            $signingUri.IsLoopback -and
+            $signingUri.AbsolutePath -ceq "/v1/sign" -and
+            [string]::IsNullOrEmpty($signingUri.UserInfo) -and
+            [string]::IsNullOrEmpty($signingUri.Query) -and
+            [string]::IsNullOrEmpty($signingUri.Fragment)
+        )
+        if (-not ($productionSigningUri -or $testLoopbackSigningUri)) {
+            throw "Remote release signing configuration is invalid"
+        }
+
+        & python $metadataHelper @metadataArguments `
+            --signing-request-out $signingRequestPath 2>$null | Out-Null
         $metadataExitCode = $LASTEXITCODE
-    } finally {
-        $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $oldSigningPrivateKey
+        if ($metadataExitCode -ne 0) {
+            throw "Platform metadata validation failed"
+        }
+
+        $handler = $null
+        $client = $null
+        $content = $null
+        $response = $null
+        try {
+            Add-Type -AssemblyName System.Net.Http
+            $requestBytes = [IO.File]::ReadAllBytes($signingRequestPath)
+            $requestDocument = (
+                [Text.Encoding]::UTF8.GetString($requestBytes) | ConvertFrom-Json
+            )
+            $handler = [Net.Http.HttpClientHandler]::new()
+            $handler.AllowAutoRedirect = $false
+            $client = [Net.Http.HttpClient]::new($handler, $false)
+            $client.Timeout = [TimeSpan]::FromSeconds($SigningTimeoutSeconds)
+            $client.DefaultRequestHeaders.Add(
+                "CF-Access-Client-Id",
+                $env:CLOUDFLARE_ACCESS_CLIENT_ID
+            )
+            $client.DefaultRequestHeaders.Add(
+                "CF-Access-Client-Secret",
+                $env:CLOUDFLARE_ACCESS_CLIENT_SECRET
+            )
+            $content = [Net.Http.ByteArrayContent]::new($requestBytes)
+            $content.Headers.ContentType = [Net.Http.Headers.MediaTypeHeaderValue]::new(
+                "application/json"
+            )
+            $response = $client.PostAsync($signingUri, $content).GetAwaiter().GetResult()
+            if (-not $response.IsSuccessStatusCode) {
+                throw "Remote release signing failed"
+            }
+            $responseText = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            if (-not $responseText.TrimStart().StartsWith(
+                "{",
+                [StringComparison]::Ordinal
+            )) {
+                throw "Remote release signing failed"
+            }
+            $signingResponse = $responseText | ConvertFrom-Json
+            if ($signingResponse -isnot [pscustomobject]) {
+                throw "Remote release signing failed"
+            }
+            $responseProperties = @($signingResponse.PSObject.Properties.Name)
+            if ($responseProperties.Count -ne 2 -or
+                @($responseProperties | Where-Object { $_ -ceq "key_id" }).Count -ne 1 -or
+                @($responseProperties | Where-Object { $_ -ceq "signature" }).Count -ne 1 -or
+                $signingResponse.key_id -isnot [string] -or
+                $signingResponse.signature -isnot [string] -or
+                [string]::IsNullOrWhiteSpace($signingResponse.key_id) -or
+                [string]::IsNullOrWhiteSpace($signingResponse.signature) -or
+                $signingResponse.key_id -cne $requestDocument.key_id) {
+                throw "Remote release signing failed"
+            }
+            $detachedKeyId = $signingResponse.key_id
+            $detachedSignature = $signingResponse.signature
+        } catch {
+            throw "Remote release signing failed"
+        } finally {
+            if ($response) { $response.Dispose() }
+            if ($content) { $content.Dispose() }
+            if ($client) { $client.Dispose() }
+            if ($handler) { $handler.Dispose() }
+        }
+
+        & python $metadataHelper @metadataArguments `
+            --detached-key-id $detachedKeyId `
+            --detached-signature $detachedSignature `
+            --release-out $releasePath `
+            --platform-out $platformPath 2>$null | Out-Null
+        $metadataExitCode = $LASTEXITCODE
     }
     if ($metadataExitCode -ne 0) {
         throw "Platform metadata validation failed"

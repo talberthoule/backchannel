@@ -87,6 +87,16 @@ function Test-ExactProperties {
     return @(Compare-Object $actual $expected).Count -eq 0
 }
 
+function Read-ReleaseJson {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $text = Get-Content -Raw -LiteralPath $Path
+    if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey("DateKind")) {
+        return $text | ConvertFrom-Json -DateKind String
+    }
+    return $text | ConvertFrom-Json
+}
+
 function Resolve-ReleaseTag {
     param(
         [Parameter(Mandatory = $true)][string]$Version,
@@ -178,7 +188,7 @@ function Get-ReleasePublicationState {
         }
         if ($identityExists) {
             try {
-                $identity = Get-Content -Raw -LiteralPath $identityPath | ConvertFrom-Json
+                $identity = Read-ReleaseJson $identityPath
             } catch {
                 throw "Existing release identity is invalid"
             }
@@ -209,15 +219,22 @@ function Get-ReleasePublicationState {
                 continue
             }
             try {
-                $manifest = Get-Content -Raw -LiteralPath $platformPath | ConvertFrom-Json
+                $manifest = Read-ReleaseJson $platformPath
                 $asset = $manifest.asset
+                $update = $manifest.update
                 $trusted = $platforms[$platformId]
-                $valid = (Test-ExactProperties $manifest @("asset", "commit", "version")) -and
+                $valid = (Test-ExactProperties $manifest @(
+                        "asset", "commit", "published_at", "release_notes", "update", "version"
+                    )) -and
                     (Test-ExactProperties $asset @(
                         "content_type", "filename", "id", "key", "platform", "sha256", "size"
                     )) -and
+                    (Test-ExactProperties $update @("key_id", "schema", "signature")) -and
                     $manifest.version -ceq $Version -and
                     $manifest.commit -ceq $Commit -and
+                    $manifest.published_at -ceq $PublishedAt -and
+                    $manifest.release_notes -is [string] -and
+                    -not [string]::IsNullOrEmpty($manifest.release_notes) -and
                     $asset.id -ceq $platformId -and
                     $asset.platform -ceq $trusted[0] -and
                     $asset.filename -ceq $trusted[1] -and
@@ -227,7 +244,14 @@ function Get-ReleasePublicationState {
                     $asset.sha256 -cmatch '^[0-9a-f]{64}$' -and
                     $asset.size -is [ValueType] -and
                     [long]$asset.size -gt 0 -and
-                    [double]$asset.size -eq [long]$asset.size
+                    [double]$asset.size -eq [long]$asset.size -and
+                    $update.key_id -is [string] -and
+                    $update.key_id -cmatch '^[a-z0-9][a-z0-9-]{0,39}$' -and
+                    $update.schema -is [ValueType] -and
+                    [long]$update.schema -eq 1 -and
+                    [double]$update.schema -eq [long]$update.schema -and
+                    $update.signature -is [string] -and
+                    $update.signature -cmatch '^[A-Za-z0-9_-]{86}$'
             } catch {
                 $valid = $false
             }
@@ -433,9 +457,12 @@ function Resolve-Python312 {
     throw "Python 3.12 is required"
 }
 
-$releaseCredentialNames = @(
+$r2CredentialNames = @(
     "CLOUDFLARE_ACCOUNT_ID", "R2_ACCESS_KEY_ID",
     "R2_SECRET_ACCESS_KEY", "R2_RELEASES_BUCKET"
+)
+$releaseCredentialNames = @($r2CredentialNames) + @(
+    "CLOUDFLARE_ACCESS_CLIENT_ID", "CLOUDFLARE_ACCESS_CLIENT_SECRET"
 )
 $releaseCredentials = $null
 $hasNativeErrorPreference = Test-Path Variable:PSNativeCommandUseErrorActionPreference
@@ -447,6 +474,10 @@ if ($hasNativeErrorPreference) {
     $PSNativeCommandUseErrorActionPreference = $false
 }
 $releaseCredentials = Get-AndClearR2Credentials -Names $releaseCredentialNames
+$r2Credentials = @{}
+foreach ($name in $r2CredentialNames) {
+    $r2Credentials[$name] = $releaseCredentials[$name]
+}
 if (-not [Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
         [Runtime.InteropServices.OSPlatform]::Windows
     ) -or
@@ -507,7 +538,7 @@ try {
             throw "Required release file is missing: $path"
         }
     }
-    $state = Invoke-WithR2Credentials -Credentials $releaseCredentials -Command {
+    $state = Invoke-WithR2Credentials -Credentials $r2Credentials -Command {
         Get-ReleasePublicationState `
             -Version $Version -Commit $tag.Commit -PublishedAt $tag.PublishedAt `
             -Bucket $env:R2_RELEASES_BUCKET -Client $r2Client

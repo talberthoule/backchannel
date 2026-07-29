@@ -82,11 +82,16 @@ class ReleaseContractTests(unittest.TestCase):
             "CLOUDFLARE_ACCOUNT_ID",
             "R2_ACCESS_KEY_ID",
             "R2_SECRET_ACCESS_KEY",
-            "BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY",
+            "BACKCHANNEL_RELEASE_SIGNING_URL",
+            "CLOUDFLARE_ACCESS_CLIENT_ID",
+            "CLOUDFLARE_ACCESS_CLIENT_SECRET",
         ):
             with self.subTest(name=name):
                 self.assertNotIn(name, build)
                 self.assertIn(name, publish)
+        self.assertNotIn("BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY", build)
+        self.assertNotIn("BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY", publish)
+        self.assertIn("-SigningMode Remote", publish)
         self.assertIn("environment: production", publish)
         self.assertIn("runs-on: macos-latest", publish)
         self.assertNotIn("actions: write", publish)
@@ -121,6 +126,9 @@ class ReleaseContractTests(unittest.TestCase):
             "CLOUDFLARE_ACCOUNT_ID",
             "R2_ACCESS_KEY_ID",
             "R2_SECRET_ACCESS_KEY",
+            "BACKCHANNEL_RELEASE_SIGNING_URL",
+            "CLOUDFLARE_ACCESS_CLIENT_ID",
+            "CLOUDFLARE_ACCESS_CLIENT_SECRET",
             "BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY",
         ):
             self.assertNotIn(name, cleanup)
@@ -252,6 +260,16 @@ class ReleaseContractTests(unittest.TestCase):
             "platforms/$PlatformId.json",
             "--if-match",
             "Updating Latest",
+            'ValidateSet("Remote", "Local")',
+            'SigningMode = "Remote"',
+            "ValidateRange(1, 300)",
+            "SigningTimeoutSeconds = 30",
+            "BACKCHANNEL_RELEASE_SIGNING_URL",
+            "CF-Access-Client-Id",
+            "CF-Access-Client-Secret",
+            "--signing-request-out",
+            "--detached-key-id",
+            "--detached-signature",
             "BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY",
             "--keys-file",
             "--release-notes-file",
