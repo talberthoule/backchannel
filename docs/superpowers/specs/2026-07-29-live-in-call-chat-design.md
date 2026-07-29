@@ -144,8 +144,10 @@ built-in plural.
 ### Frontend: insight type registration
 
 Add `asked` to `BUILTIN_TYPE_META` with label `You asked`, plural `Asked`, and
-the graphite value. Add it to `BUILTIN_TYPE_ORDER` at the front, so the filter
-chip sits before the agent types and reads as the operator's own row.
+color `#475569` - a mid slate that holds contrast on both the light and dark
+grounds, chosen because it is not a category hue. Add it to
+`BUILTIN_TYPE_ORDER` at the front, so the filter chip sits before the agent
+types and reads as the operator's own row.
 
 Without this the hashed custom-type color would collide with the existing
 palette, and the chip would read `Asked` only by slug humanization.
