@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "test": "node --test src/hooks/useAudioCapture.test.mjs src/hooks/useWebSocket.test.mjs src/lib/callRefusal.test.mjs src/lib/modelPricing.test.mjs src/lib/postProcessingSummary.test.mjs src/lib/providerOnboarding.test.mjs src/components/SpeakerNameMapper.test.mjs src/components/Layout.test.mjs src/components/DesktopUpdate.test.mjs src/components/ActiveCall/AgentActivityPanel.test.mjs src/components/ActiveCall/ActiveCallView.test.mjs",
+    "test": "node --test src/hooks/useAudioCapture.test.mjs src/hooks/useWebSocket.test.mjs src/lib/callRefusal.test.mjs src/lib/modelPricing.test.mjs src/lib/postProcessingSummary.test.mjs src/lib/providerOnboarding.test.mjs src/utils/insightTypes.test.mjs src/components/SpeakerNameMapper.test.mjs src/components/Layout.test.mjs src/components/DesktopUpdate.test.mjs src/components/ActiveCall/AgentActivityPanel.test.mjs src/components/ActiveCall/ActiveCallView.test.mjs src/components/ActiveCall/ModelChip.test.mjs src/components/ActiveCall/DirectiveBar.test.mjs src/components/ActiveCall/QuestionCard.test.mjs",
     "test:pwa": "node scripts/verify-pwa-assets.mjs",
     "preview": "vite preview"
   },
