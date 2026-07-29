@@ -69,9 +69,10 @@ are addressed explicitly below.
 
 For the active session, at request time, the live assembler loads:
 
-1. every non-dismissed `Question` for the session, in full - type, text,
-   rationale, source context, resolved speaker, answered and follow-up state,
-   and offering match;
+1. every non-dismissed `Question` for the session, excluding prior `asked`
+   rows so the model is grounded in the meeting rather than its own earlier
+   answers - type, text, rationale, source context, resolved speaker,
+   answered and follow-up state, and offering match;
 2. the `live`-mode `SessionSynthesis` strategic signals when present;
 3. active directive text via the existing `get_active_directives`;
 4. session metadata: name, meeting type, and meeting context;
@@ -87,6 +88,14 @@ exchange is the most likely subject of the question.
 The rendered transcript stays chronological even though admission is
 newest-first, and a truncation marker states that earlier transcript was
 omitted so the model does not treat the window as the whole call.
+
+The exclusion also runs the other way: the synthesizer
+(`app/services/agents/synthesizer.py`) and the post-call Enhance Insights pass
+(`app/services/speaker_context_enhancer.py`) both exclude `asked` rows from
+their own candidate queries, so no agent can dismiss, adjust, enrich, or
+elevate the operator's own question and answer. `POST /api/chat`
+(`app/routers/chat.py`) is unaffected - that path is read-only and legitimately
+benefits from knowing what the operator asked.
 
 ### Budget and latency
 
@@ -167,8 +176,11 @@ palette, and the chip would read `Asked` only by slug humanization.
 - An always-open text input. Enter submits. The submit hint appears only when
   the field has content.
 - In `Directive` mode the existing directive behavior is unchanged.
-- While a question is in flight the input stays usable; a second question
-  queues behind the first rather than cancelling it.
+- While a question is in flight the input stays usable, but a second
+  submission is refused rather than queued or cancelling the first;
+  `DirectiveBar` and `handleAsk` both guard on this. Refusing was chosen over
+  queueing: it is the smaller mechanism and it cannot answer two questions
+  out of order.
 
 The bar keeps its existing disabled behavior during post-processing.
 
@@ -223,7 +235,9 @@ either cost.
 ## Error Handling
 
 - Provider failure: the pending card becomes an error card carrying the
-  provider message, with a retry. The question text is preserved.
+  question text and the provider message; both are preserved rather than
+  vanishing silently. No retry action ships in v1 - the operator can just ask
+  again - and retry is deliberately deferred rather than cut for cause.
 - Privacy First violation: the model chip locks cloud rows before a request
   can be made; a server-side rejection reuses the existing error shape.
 - Empty transcript: the request still works against insights and directives,
