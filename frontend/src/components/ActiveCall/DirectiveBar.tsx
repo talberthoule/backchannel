@@ -64,7 +64,7 @@ export default function DirectiveBar({
     const trimmed = text.trim();
     if (!trimmed || disabled) return;
     if (chatMode) {
-      if (!modelId) return;
+      if (!modelId || asking) return;
       onAsk(trimmed);
     } else {
       onAddDirective(trimmed);

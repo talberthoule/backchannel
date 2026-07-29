@@ -945,20 +945,32 @@ export default function App() {
 
   const handleAsk = useCallback(
     async (question: string) => {
-      if (!session) return;
+      // "asking" mirrors the same derived value ActiveCallView passes to
+      // DirectiveBar: pendingAsk survives a failure (deviation a) so it is
+      // not on its own proof an ask is still in flight; askError is.
+      const asking = Boolean(pendingAsk) && !askError;
+      if (!session || asking) return;
+      const sessionId = session.id;
       setPendingAsk(question);
       setAskError(null);
       try {
-        const created = await api.askSession(session.id, askModelId, question);
+        const created = await api.askSession(sessionId, askModelId, question);
+        // The runtime session moved on (End Call + a new session started)
+        // while this was in flight: this answer belongs to session
+        // `sessionId`, not whatever session is live now, so drop it rather
+        // than injecting it into the wrong session's live insight list.
+        if (runtimeSessionIdRef.current !== sessionId) return;
         setLiveQuestions((prev) => [created, ...prev]);
         setPendingAsk(null);
+        setAskError(null);
       } catch (err) {
+        if (runtimeSessionIdRef.current !== sessionId) return;
         // Keep the question visible next to the error: it must not vanish
-        // silently, only handleAsk (a fresh submit) clears it.
+        // silently, only a fresh ask (handleAsk) clears it.
         setAskError(errorMessage(err, "Ask failed"));
       }
     },
-    [session, askModelId]
+    [session, askModelId, pendingAsk, askError]
   );
 
   const handleAskModelChange = useCallback((id: string) => {

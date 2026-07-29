@@ -25,3 +25,7 @@ test("both modes are reachable", () => {
 test("the model chip is rendered", () => {
   assert.match(src, /<ModelChip/);
 });
+
+test("a second submit is ignored while an ask is already in flight", () => {
+  assert.match(src, /if\s*\(!modelId\s*\|\|\s*asking\)\s*return;/);
+});
