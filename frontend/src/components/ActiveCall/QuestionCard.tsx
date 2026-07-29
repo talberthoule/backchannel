@@ -13,6 +13,7 @@ const AGENT_LABELS: Record<string, string> = {
   consolidated_analyst: "Analyst",
   objection_handler: "Objection Handler",
   general: "General",
+  live_chat: "You asked",
 };
 
 interface QuestionCardProps {
@@ -23,13 +24,14 @@ interface QuestionCardProps {
   onStar: (starred: boolean) => void;
   onDismiss: () => void;
   onVote: (vote: number) => void;
+  onMakeDirective?: () => void;
 }
 
 function speakerLabel(speaker: Speaker): string {
   return speaker.display_name && speaker.display_name_enabled ? speaker.display_name : speaker.name;
 }
 
-export default function QuestionCard({ question, speakers, isStrategicSignal = false, showEnhanced = false, onStar, onDismiss, onVote }: QuestionCardProps) {
+export default function QuestionCard({ question, speakers, isStrategicSignal = false, showEnhanced = false, onStar, onDismiss, onVote, onMakeDirective }: QuestionCardProps) {
   const [dismissing, setDismissing] = useState(false);
   const [showEnrichment, setShowEnrichment] = useState(false);
   const currentVote = question.vote ?? 0;
@@ -212,6 +214,16 @@ export default function QuestionCard({ question, speakers, isStrategicSignal = f
 
       {/* Actions row */}
       <div className="mt-3 flex items-center justify-end gap-0.5">
+          {itemType === "asked" && onMakeDirective && (
+            <button
+              type="button"
+              onClick={onMakeDirective}
+              title="Turn this question into a directive for the agents"
+              className="rounded px-2 py-1 font-body text-xs font-medium text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal"
+            >
+              Make directive
+            </button>
+          )}
           <button
             onClick={() => onVote(currentVote === 1 ? 0 : 1)}
             className={`rounded p-1 transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal ${

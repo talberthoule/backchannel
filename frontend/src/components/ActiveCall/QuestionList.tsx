@@ -18,9 +18,10 @@ interface QuestionListProps {
   onStar: (id: string, starred: boolean) => void;
   onDismiss: (id: string) => void;
   onVote: (id: string, vote: number) => void;
+  onMakeDirective?: (question: Question) => void;
 }
 
-export default function QuestionList({ questions, speakers, strategicSignalQuestionIds = [], showEnhanced = false, emptyMessage, onStar, onDismiss, onVote }: QuestionListProps) {
+export default function QuestionList({ questions, speakers, strategicSignalQuestionIds = [], showEnhanced = false, emptyMessage, onStar, onDismiss, onVote, onMakeDirective }: QuestionListProps) {
   const [activeFilters, setActiveFilters] = useState<Set<Filter>>(new Set(["all"]));
   const strategicSignalIdSet = useMemo(
     () => new Set(strategicSignalQuestionIds),
@@ -144,6 +145,7 @@ export default function QuestionList({ questions, speakers, strategicSignalQuest
               onStar={(starred) => onStar(q.id, starred)}
               onDismiss={() => onDismiss(q.id)}
               onVote={(vote) => onVote(q.id, vote)}
+              onMakeDirective={onMakeDirective ? () => onMakeDirective(q) : undefined}
             />
           ))
         )}
