@@ -57,7 +57,13 @@ failures that used to end a call quietly.
   and a long post-processing run no longer looks like a lost connection.
 - When nothing is happening, the app says why. A runtime diagnosis surface
   reports what is running, what is blocked, and what to change, and editing a
-  self-hosted endpoint no longer silently orphans the agents pointing at it.""",
+  self-hosted endpoint no longer silently orphans the agents pointing at it.
+- The post-call Briefing reads like a briefing. An at-a-glance strip sums up
+  the meeting in five seconds, the top outcomes lead the page, and every
+  section carries its own color and icon so risks, actions, and open
+  questions can be found by scanning instead of reading. Owners and status
+  show as chips, supporting rationale tucks behind a toggle, and strategic
+  signals from the call now appear in the briefing.""",
     },
     {
         "version": "0.3.8",
