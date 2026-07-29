@@ -150,6 +150,10 @@ async function runCompleted(colorScheme, suffix) {
       await page.getByText("Not configured", { exact: true }).first().waitFor();
       await page.getByText("No self-hosted endpoints yet.", { exact: true }).waitFor();
     }
+    if (asset === "admin-about") {
+      await page.getByText("Current", { exact: true }).first().waitFor({ timeout: 20000 });
+      await page.getByText("Loading model pricing...", { exact: true }).waitFor({ state: "detached", timeout: 20000 });
+    }
     await page.waitForTimeout(700);
     await shot(asset, asset === "admin-api-keys" ? "clean Connections fixture" : "admin tab");
   }
