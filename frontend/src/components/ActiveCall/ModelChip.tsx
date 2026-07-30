@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { ModelInfo } from "../../types";
-import { groupModels, optionLabel, optionState, runsLocally } from "../../lib/modelOptions";
+import { groupModels, optionLabel, optionState, recommendationFor, runsLocally } from "../../lib/modelOptions";
 
 interface ModelChipProps {
   models: ModelInfo[];
   value: string;
   localOnly: boolean;
   onChange: (id: string) => void;
+  role?: string;
 }
 
 /** Model selection for the ask bar.
@@ -16,7 +17,7 @@ interface ModelChipProps {
  * and while open. The admission rules come from lib/modelOptions so this agrees
  * with every other picker in the app about what Privacy First allows.
  */
-export default function ModelChip({ models, value, localOnly, onChange }: ModelChipProps) {
+export default function ModelChip({ models, value, localOnly, onChange, role }: ModelChipProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -64,6 +65,11 @@ export default function ModelChip({ models, value, localOnly, onChange }: ModelC
           aria-hidden="true"
         />
         {selected?.name || "Select model"}
+        {selected && recommendationFor(selected, role) && (
+          <span className="rounded bg-brand-teal/10 px-1 font-body text-[9px] font-semibold text-brand-teal">
+            Recommended
+          </span>
+        )}
         <span aria-hidden="true">&#9662;</span>
       </button>
 
@@ -72,6 +78,23 @@ export default function ModelChip({ models, value, localOnly, onChange }: ModelC
           role="listbox"
           className="absolute bottom-full right-0 z-30 mb-2 max-h-72 w-64 overflow-y-auto rounded-lg border border-brand-light-gray-1 bg-surface p-1 shadow-lg"
         >
+          <button
+            type="button"
+            role="option"
+            aria-selected={!value}
+            onClick={() => {
+              onChange("");
+              setOpen(false);
+              buttonRef.current?.focus();
+            }}
+            className={`flex w-full items-center rounded px-2 py-1.5 text-left font-body text-xs ${
+              !value
+                ? "bg-brand-light-gray-2 font-semibold text-brand-dark-gray"
+                : "text-brand-dark-gray hover:bg-brand-light-gray-2"
+            }`}
+          >
+            Not selected
+          </button>
           {groupModels(models).map((group) => (
             <div key={group.provider}>
               <div className="px-2 py-1.5 font-mono text-[9px] uppercase tracking-wider text-brand-mid-gray">
@@ -86,7 +109,7 @@ export default function ModelChip({ models, value, localOnly, onChange }: ModelC
                     role="option"
                     aria-selected={model.id === value}
                     disabled={locked}
-                    title={locked ? `${optionLabel(model)}${suffix}` : optionLabel(model)}
+                    title={locked ? `${optionLabel(model, role)}${suffix}` : optionLabel(model, role)}
                     onClick={() => {
                       onChange(model.id);
                       setOpen(false);
@@ -111,8 +134,13 @@ export default function ModelChip({ models, value, localOnly, onChange }: ModelC
                       aria-hidden="true"
                     />
                     <span className="min-w-0 truncate">{model.name}</span>
+                    {recommendationFor(model, role) && (
+                      <span className="ml-auto flex-shrink-0 rounded bg-brand-teal/10 px-1 font-mono text-[9px] uppercase text-brand-teal">
+                        Recommended
+                      </span>
+                    )}
                     {locked && (
-                      <span className="ml-auto flex-shrink-0 font-mono text-[9px] uppercase text-brand-mid-gray">
+                      <span className="flex-shrink-0 font-mono text-[9px] uppercase text-brand-mid-gray">
                         {suffix.includes("api key") ? "no key" : "cloud"}
                       </span>
                     )}

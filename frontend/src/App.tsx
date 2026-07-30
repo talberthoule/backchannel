@@ -14,6 +14,7 @@ import { useAppUpdates } from "./hooks/useAppUpdates";
 import { useConfirm } from "./components/ConfirmProvider";
 import * as api from "./services/api";
 import { parseSavedDrainSummary } from "./lib/postProcessingSummary";
+import { resolveStoredAskModel } from "./lib/askModelSelection";
 import type { AgentActivitySnapshot, ModelInfo, PostProcessingProgress, Question, Session, SessionGroup, SessionSynthesis, StopDrainMode, TranscriptEntry, WSStatusData } from "./types";
 
 function idlePostProcessing(): PostProcessingProgress {
@@ -432,29 +433,20 @@ export default function App() {
     }
   }, [messages, activeSessionId, speakers, refreshSpeakers, stopCapture, disconnect, savedTranscripts.length, refreshSession]);
 
-  // Seed the in-call ask model from a per-session localStorage choice, falling
-  // back to the objection handler's model (it already runs on a ten-second
-  // loop, so it is the session's known-fast choice), then the analyst, then
-  // the first available text model.
+  // Live Ask is its own explicit choice. Preserve a valid per-session choice,
+  // but never borrow an agent row or silently pick the first text model.
   useEffect(() => {
     if (!session) return;
     const storageKey = `backchannel:ask-model:${session.id}`;
-    Promise.all([api.listModels(), api.listAgents()])
-      .then(([allModels, agents]) => {
-        const textModels = allModels.filter((m) => m.supports_text && m.key_available !== false);
+    api.listModels()
+      .then((allModels) => {
+        const textModels = allModels.filter((m) => m.supports_text);
         setAskModels(textModels);
         const stored = window.localStorage.getItem(storageKey);
-        if (stored && textModels.some((m) => m.id === stored)) {
-          setAskModelId(stored);
-          return;
-        }
-        const bySlug = (slug: string) => agents.find((a) => a.slug === slug)?.model_id;
-        const preferred = [bySlug("objection_handler"), bySlug("consolidated_analyst")]
-          .find((id) => id && textModels.some((m) => m.id === id));
-        setAskModelId(preferred || textModels[0]?.id || "");
+        setAskModelId(resolveStoredAskModel(stored, textModels));
       })
       .catch(() => {});
-  }, [session?.id]);
+  }, [session?.id, showAdmin]);
 
   // Fetched once at mount: a stale value only affects which rows the model
   // chip greys out, since the backend enforces Privacy First regardless.
@@ -950,6 +942,10 @@ export default function App() {
       // not on its own proof an ask is still in flight; askError is.
       const asking = Boolean(pendingAsk) && !askError;
       if (!session || asking) return;
+      if (!askModelId) {
+        setAskError("Choose a model in the Live Ask model picker before submitting.");
+        return;
+      }
       const sessionId = session.id;
       setPendingAsk(question);
       setAskError(null);

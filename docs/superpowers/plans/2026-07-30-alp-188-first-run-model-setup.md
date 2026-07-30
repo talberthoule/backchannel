@@ -168,17 +168,17 @@ git commit -m "feat: expose provider-aware model recommendations (ALP-188)"
 - Credential/endpoint refresh updates available models and guidance without changing any saved model id.
 - Collapsed activity adds `N need setup` while retaining ALP-189 summary counts.
 
-- [ ] **Step 1: Add failing model-option and readiness tests**
+- [x] **Step 1: Add failing model-option and readiness tests**
 
 Cover Not selected, structured badges, provider grouping, endpoint labels, blank-agent readiness, privacy impact, and credential refresh preservation.
 
-- [ ] **Step 2: Run Node tests and verify RED**
+- [x] **Step 2: Run Node tests and verify RED**
 
 ```powershell
 node --test src/lib/modelOptions.test.ts src/lib/providerOnboarding.test.ts
 ```
 
-- [ ] **Step 3: Extend the existing presentation/readiness owners**
+- [x] **Step 3: Extend the existing presentation/readiness owners**
 
 Keep native controls and the existing popover; do not introduce a new picker abstraction.
 
@@ -211,13 +211,13 @@ git commit -m "feat: guide explicit agent model selection (ALP-188)"
 - Submitting without a model keeps draft text and shows an actionable error.
 - Live Ask does not count toward first-run completion.
 
-- [ ] **Step 1: Add failing stored-selection and empty-submit tests**
+- [x] **Step 1: Add failing stored-selection and empty-submit tests**
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
-- [ ] **Step 3: Remove fallback selection and expose explicit picker/error state**
+- [x] **Step 3: Remove fallback selection and expose explicit picker/error state**
 
-- [ ] **Step 4: Run focused tests and build, then verify GREEN**
+- [x] **Step 4: Run focused tests and build, then verify GREEN**
 
 - [ ] **Step 5: Commit**
 

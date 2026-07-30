@@ -14,8 +14,11 @@ export interface ReadinessTranscription {
 export interface ReadinessAgentModel {
   agentName: string;
   enabled: boolean;
+  modelId: string;
   provider: string;
   keyAvailable: boolean;
+  available: boolean;
+  runsLocally: boolean;
 }
 
 // Minimal structural slices of AgentConfig and ModelInfo, so callers pass
@@ -30,10 +33,9 @@ export interface ReadinessModelSource {
   id: string;
   provider: string;
   key_available?: boolean;
+  runs_locally?: boolean;
 }
 
-// A model missing from the registry never blocks readiness: provider stays
-// unknown and the key is treated as available.
 export function toReadinessAgentModels(
   agents: ReadinessAgentSource[],
   models: ReadinessModelSource[]
@@ -43,8 +45,11 @@ export function toReadinessAgentModels(
     return {
       agentName: a.name,
       enabled: a.enabled,
+      modelId: a.model_id,
       provider: model?.provider ?? "",
       keyAvailable: model?.key_available !== false,
+      available: Boolean(model),
+      runsLocally: model?.runs_locally ?? model?.provider === "Local",
     };
   });
 }
@@ -57,15 +62,12 @@ export interface SetupReadiness {
 
 // A workspace is ready only when the currently selected transcription and
 // agent configuration can actually run -- not merely when some provider key
-// exists. An OpenAI-only key with the seeded Gemini defaults must come back
-// not-ready with an explanation instead of falsely reporting readiness.
+// exists.
 export function setupReadiness(input: {
   localOnly: boolean;
   transcription: ReadinessTranscription | null;
   agentModels: ReadinessAgentModel[];
 }): SetupReadiness {
-  if (input.localOnly) return { ready: true, reason: "" };
-
   const t = input.transcription;
   if (!t) return { ready: false, reason: "Checking transcription setup..." };
   if (!t.ready) {
@@ -77,8 +79,42 @@ export function setupReadiness(input: {
     return { ready: false, reason };
   }
 
+  const unselected = input.agentModels.filter((a) => a.enabled && !a.modelId);
+  if (unselected.length > 0) {
+    return {
+      ready: false,
+      reason:
+        `${agentNames(unselected)} need a model. Choose one under ` +
+        "Administration -> Agents; Recommended marks a good starting point.",
+    };
+  }
+
+  const unavailable = input.agentModels.filter(
+    (a) => a.enabled && a.modelId && !a.available
+  );
+  if (unavailable.length > 0) {
+    return {
+      ready: false,
+      reason:
+        `${agentNames(unavailable)} use models that are no longer available. ` +
+        "Choose replacements under Administration -> Agents.",
+    };
+  }
+
+  const privacyBlocked = input.agentModels.filter(
+    (a) => a.enabled && input.localOnly && !a.runsLocally
+  );
+  if (privacyBlocked.length > 0) {
+    return {
+      ready: false,
+      reason:
+        `Privacy First blocks the selected models for ${agentNames(privacyBlocked)}. ` +
+        "Choose Local models under Administration -> Agents or turn off Privacy First.",
+    };
+  }
+
   const blocked = input.agentModels.filter(
-    (a) => a.enabled && a.provider !== "Local" && !a.keyAvailable
+    (a) => a.enabled && !a.runsLocally && !a.keyAvailable
   );
   if (blocked.length > 0) {
     const names = blocked
@@ -96,6 +132,11 @@ export function setupReadiness(input: {
   }
 
   return { ready: true, reason: "" };
+}
+
+function agentNames(agents: ReadinessAgentModel[]): string {
+  const names = agents.slice(0, 3).map((agent) => agent.agentName).join(", ");
+  return agents.length > 3 ? `${names} and ${agents.length - 3} more` : names;
 }
 
 // Which contextual state the onboarding setup card is in. "choose" shows the

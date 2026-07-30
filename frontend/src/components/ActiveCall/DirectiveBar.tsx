@@ -53,11 +53,13 @@ export default function DirectiveBar({
     return initial;
   });
   const [text, setText] = useState("");
+  const [modelError, setModelError] = useState("");
 
   const chatMode = mode === "chat";
 
   function selectMode(next: Mode) {
     setMode(next);
+    setModelError("");
     try {
       window.localStorage.setItem(MODE_STORAGE_KEY, next);
     } catch {
@@ -71,7 +73,12 @@ export default function DirectiveBar({
     if (!trimmed || disabled) return;
     if (chatMode) {
       if (askDisabled) return;
-      if (!modelId || asking) return;
+      if (asking) return;
+      if (!modelId) {
+        setModelError("Choose a model to ask this call. Recommended marks a good starting point.");
+        return;
+      }
+      setModelError("");
       onAsk(trimmed);
     } else {
       onAddDirective(trimmed);
@@ -139,10 +146,24 @@ export default function DirectiveBar({
             </span>
           )}
           {chatMode && (
-            <ModelChip models={models} value={modelId} localOnly={localOnly} onChange={onModelChange} />
+            <ModelChip
+              models={models}
+              value={modelId}
+              localOnly={localOnly}
+              onChange={(id) => {
+                setModelError("");
+                onModelChange(id);
+              }}
+              role="live_ask"
+            />
           )}
         </div>
       </form>
+      {modelError && (
+        <p role="alert" className="px-4 pb-2 font-body text-xs text-amber-800">
+          {modelError}
+        </p>
+      )}
     </div>
   );
 }

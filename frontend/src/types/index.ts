@@ -273,6 +273,16 @@ export interface ModelInfo {
   runs_locally?: boolean;
   /** Set when the model is served by a saved self-hosted endpoint. */
   endpoint_id?: string | null;
+  recommendations?: ModelRecommendation[];
+}
+
+export interface ModelRecommendation {
+  role: string;
+  provider: string;
+  recommended: boolean;
+  source: "provider_default" | "local_fit";
+  interval_seconds?: number | null;
+  reasoning_effort?: string | null;
 }
 
 /** A self-hosted OpenAI-compatible server (LM Studio, Ollama, vLLM, LiteLLM). */

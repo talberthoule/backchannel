@@ -1,7 +1,9 @@
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 from app.config import MODEL_REGISTRY, Settings, settings
+from app.services import transcription_runtime
 from app.services.transcription_runtime import (
     SETTING_BATCH_TRANSCRIBER_MODEL,
     get_transcription_runtime_config,
@@ -54,6 +56,34 @@ class TranscriptionRuntimeSelectionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("not-a-model", runtime.batch_model_id)
         self.assertEqual("", runtime.live_preview_model_id)
+
+    async def test_transcription_pickers_can_explicitly_clear_a_selection(self):
+        db = SimpleNamespace(commit=mock.AsyncMock())
+        runtime = transcription_runtime.TranscriptionRuntimeConfig("", "", "")
+        gateway = SimpleNamespace(model_id="gemini-3.1-flash-live-preview")
+        with (
+            mock.patch.object(
+                transcription_runtime,
+                "set_app_setting",
+                mock.AsyncMock(),
+            ) as set_setting,
+            mock.patch.object(
+                transcription_runtime,
+                "get_transcription_runtime_config",
+                mock.AsyncMock(return_value=runtime),
+            ),
+            mock.patch.object(
+                transcription_runtime,
+                "_get_audio_gateway_config",
+                mock.AsyncMock(return_value=gateway),
+            ),
+        ):
+            await transcription_runtime.set_batch_transcriber_model(db, "")
+            await transcription_runtime.set_live_preview_model(db, "")
+
+        set_setting.assert_awaited_once_with(db, SETTING_BATCH_TRANSCRIBER_MODEL, "")
+        self.assertEqual("", gateway.model_id)
+        self.assertEqual(2, db.commit.await_count)
 
 
 class _RuntimeDB:

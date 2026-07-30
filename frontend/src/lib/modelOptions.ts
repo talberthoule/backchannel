@@ -16,9 +16,10 @@ export interface ModelGroup {
 export function groupModels(models: ModelInfo[]): ModelGroup[] {
   const groups: ModelGroup[] = [];
   for (const model of models) {
-    const existing = groups.find((g) => g.provider === model.provider);
+    const provider = runsLocally(model) ? "Local" : model.provider;
+    const existing = groups.find((g) => g.provider === provider);
     if (existing) existing.models.push(model);
-    else groups.push({ provider: model.provider, models: [model] });
+    else groups.push({ provider, models: [model] });
   }
   return groups;
 }
@@ -28,10 +29,20 @@ export function runsLocally(model: ModelInfo): boolean {
   return model.runs_locally ?? model.provider === "Local";
 }
 
-export function optionLabel(model: ModelInfo): string {
+export function recommendationFor(model: ModelInfo, role?: string) {
+  if (!role) return undefined;
+  return model.recommendations?.find(
+    (recommendation) => recommendation.role === role && recommendation.recommended
+  );
+}
+
+export function optionLabel(model: ModelInfo, role?: string): string {
   // An endpoint model's id ("endpoint:<slug>:<name>") is plumbing; its group
-  // heading already names the server it comes from.
-  return model.endpoint_id ? model.name : `${model.name} (${model.id})`;
+  // is Local for an on-prem server, so keep the endpoint name in the row.
+  const label = model.endpoint_id
+    ? `${model.name} (${model.provider})`
+    : `${model.name} (${model.id})`;
+  return recommendationFor(model, role) ? `${label} - Recommended` : label;
 }
 
 /**

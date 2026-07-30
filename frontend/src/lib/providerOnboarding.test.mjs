@@ -12,8 +12,24 @@ const geminiTranscription = (ready, reason = "") => ({
 });
 
 const geminiAgents = (keyAvailable) => [
-  { agentName: "Consolidated Analyst", enabled: true, provider: "Google", keyAvailable },
-  { agentName: "Objection Handler", enabled: true, provider: "Google", keyAvailable },
+  {
+    agentName: "Consolidated Analyst",
+    enabled: true,
+    modelId: "gemini-3.6-flash",
+    provider: "Google",
+    keyAvailable,
+    available: true,
+    runsLocally: false,
+  },
+  {
+    agentName: "Objection Handler",
+    enabled: true,
+    modelId: "gemini-3.5-flash-lite",
+    provider: "Google",
+    keyAvailable,
+    available: true,
+    runsLocally: false,
+  },
 ];
 
 test("an OpenAI-only key with the seeded Gemini defaults is not ready and explains why", async () => {
@@ -58,15 +74,31 @@ test("disabled and local agent models never block readiness", async () => {
     localOnly: false,
     transcription: geminiTranscription(true),
     agentModels: [
-      { agentName: "Off Agent", enabled: false, provider: "OpenAI", keyAvailable: false },
-      { agentName: "Local Agent", enabled: true, provider: "Local", keyAvailable: false },
+      {
+        agentName: "Off Agent",
+        enabled: false,
+        modelId: "",
+        provider: "",
+        keyAvailable: false,
+        available: false,
+        runsLocally: false,
+      },
+      {
+        agentName: "Local Agent",
+        enabled: true,
+        modelId: "endpoint:box:qwen",
+        provider: "Box",
+        keyAvailable: true,
+        available: true,
+        runsLocally: true,
+      },
     ],
   });
   assert.equal(result.ready, true);
   assert.equal(result.reason, "");
 });
 
-test("agent/model join treats registry gaps as non-blocking", async () => {
+test("agent/model join retains explicit unselected and unavailable states", async () => {
   const { toReadinessAgentModels } = await load();
   const result = toReadinessAgentModels(
     [
@@ -76,19 +108,70 @@ test("agent/model join treats registry gaps as non-blocking", async () => {
     [{ id: "gemini-2.5-flash", provider: "Google", key_available: false }]
   );
   assert.deepEqual(result, [
-    { agentName: "Analyst", enabled: true, provider: "Google", keyAvailable: false },
-    { agentName: "Ghost", enabled: true, provider: "", keyAvailable: true },
+    {
+      agentName: "Analyst",
+      enabled: true,
+      modelId: "gemini-2.5-flash",
+      provider: "Google",
+      keyAvailable: false,
+      available: true,
+      runsLocally: false,
+    },
+    {
+      agentName: "Ghost",
+      enabled: true,
+      modelId: "not-in-registry",
+      provider: "",
+      keyAvailable: true,
+      available: false,
+      runsLocally: false,
+    },
   ]);
 });
 
-test("Privacy First local mode is ready regardless of credentials", async () => {
+test("an enabled unselected agent blocks readiness", async () => {
   const { setupReadiness } = await load();
   const result = setupReadiness({
+    localOnly: false,
+    transcription: { ready: true, model_id: "local-whisper-base", provider: "Local", reason: "" },
+    agentModels: [{
+      agentName: "Consolidated Analyst",
+      enabled: true,
+      modelId: "",
+      provider: "",
+      keyAvailable: true,
+      available: false,
+      runsLocally: false,
+    }],
+  });
+  assert.equal(result.ready, false);
+  assert.match(result.reason, /Consolidated Analyst/);
+  assert.match(result.reason, /Administration -> Agents/);
+});
+
+test("Privacy First still requires ready local transcription and agent choices", async () => {
+  const { setupReadiness } = await load();
+  const checking = setupReadiness({
     localOnly: true,
     transcription: null,
-    agentModels: geminiAgents(false),
+    agentModels: [],
   });
-  assert.equal(result.ready, true);
+  assert.equal(checking.ready, false);
+
+  const ready = setupReadiness({
+    localOnly: true,
+    transcription: { ready: true, model_id: "local-whisper-base", provider: "Local", reason: "" },
+    agentModels: [{
+      agentName: "Local Analyst",
+      enabled: true,
+      modelId: "endpoint:box:qwen",
+      provider: "Box",
+      keyAvailable: true,
+      available: true,
+      runsLocally: true,
+    }],
+  });
+  assert.equal(ready.ready, true);
 });
 
 // Contextual onboarding card state: no key -> the two-path choice; a saved
@@ -114,6 +197,10 @@ test("onboarding stage walks choose -> partial -> ready", async () => {
   });
   assert.equal(onboardingStage({ anyKeySaved: true, readiness: googleReady }), "ready");
 
-  const privacyReady = setupReadiness({ localOnly: true, transcription: null, agentModels: [] });
+  const privacyReady = setupReadiness({
+    localOnly: true,
+    transcription: { ready: true, model_id: "local-whisper-base", provider: "Local", reason: "" },
+    agentModels: [],
+  });
   assert.equal(onboardingStage({ anyKeySaved: false, readiness: privacyReady }), "ready");
 });

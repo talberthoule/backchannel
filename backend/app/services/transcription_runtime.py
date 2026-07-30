@@ -70,9 +70,9 @@ async def get_transcription_runtime_config(db: AsyncSession) -> TranscriptionRun
 
 
 async def set_batch_transcriber_model(db: AsyncSession, model_id: str) -> TranscriptionRuntimeConfig:
-    if not is_supported_transcription_model(model_id):
+    if model_id and not is_supported_transcription_model(model_id):
         raise ValueError("Selected model is not available for batch audio transcription.")
-    if not is_local_model(model_id) and await get_local_only(db):
+    if model_id and not is_local_model(model_id) and await get_local_only(db):
         raise ValueError(
             "Privacy First mode is on: only local transcription models can be selected."
         )
@@ -82,9 +82,9 @@ async def set_batch_transcriber_model(db: AsyncSession, model_id: str) -> Transc
 
 
 async def set_live_preview_model(db: AsyncSession, model_id: str) -> TranscriptionRuntimeConfig:
-    if not is_supported_live_model(model_id):
+    if model_id and not is_supported_live_model(model_id):
         raise ValueError("Selected model is not available for live interim transcription.")
-    if not is_local_model(model_id) and await get_local_only(db):
+    if model_id and not is_local_model(model_id) and await get_local_only(db):
         raise ValueError(
             "Privacy First mode is on: the live audio gateway is disabled and only "
             "local models can be selected."

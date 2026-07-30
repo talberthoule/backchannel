@@ -51,7 +51,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
   // Under Privacy First a local live model (the experimental on-device captioner)
   // is still usable; only a cloud gateway is off.
   const liveIsLocal = liveModel ? runsLocally(liveModel) : false;
-  const livePreviewOff = localOnly && !liveIsLocal;
+  const livePreviewOff = Boolean(config?.live_preview_model_id && localOnly && !liveIsLocal);
   const hasLocalLiveModel = liveModels.some((model) => runsLocally(model));
 
   const update = async (data: { batch_model_id?: string; live_preview_model_id?: string }) => {
@@ -68,19 +68,27 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
     }
   };
 
-  const renderOptions = (available: ModelInfo[], currentId: string | undefined) =>
-    groupModels(available).map((group) => (
-      <optgroup key={group.provider} label={group.provider}>
-        {group.models.map((model) => {
-          const { locked, suffix } = optionState(model, currentId, localOnly);
-          return (
-            <option key={model.id} value={model.id} disabled={locked}>
-              {optionLabel(model)}{suffix}
-            </option>
-          );
-        })}
-      </optgroup>
-    ));
+  const renderOptions = (
+    available: ModelInfo[],
+    currentId: string | undefined,
+    role: "batch_transcription" | "audio_gateway",
+  ) => (
+    <>
+      <option value="">Not selected</option>
+      {groupModels(available).map((group) => (
+        <optgroup key={group.provider} label={group.provider}>
+          {group.models.map((model) => {
+            const { locked, suffix } = optionState(model, currentId, localOnly);
+            return (
+              <option key={model.id} value={model.id} disabled={locked}>
+                {optionLabel(model, role)}{suffix}
+              </option>
+            );
+          })}
+        </optgroup>
+      ))}
+    </>
+  );
 
   return (
     <div className={`rounded-xl bg-surface p-5 shadow-sm transition-opacity ${saving ? "opacity-70" : ""}`}>
@@ -109,14 +117,14 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
         <div className="rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 p-3">
           <p className="font-body text-[10px] uppercase text-brand-mid-gray">Batch model</p>
           <p className="mt-1 truncate font-display text-sm font-bold text-brand-dark-gray" title={config?.batch_model_id ?? ""}>
-            {selectedModel?.name ?? config?.batch_model_id ?? "Loading"}
+            {selectedModel?.name || config?.batch_model_id || "Not selected"}
           </p>
           <p className="mt-1 truncate font-mono text-[10px] text-brand-mid-gray">{config?.batch_model_id}</p>
         </div>
         <div className="rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 p-3">
           <p className="font-body text-[10px] uppercase text-brand-mid-gray">Live preview model</p>
           <p className="mt-1 truncate font-display text-sm font-bold text-brand-dark-gray" title={config?.live_preview_model_id ?? ""}>
-            {livePreviewOff ? "Off (Privacy First)" : liveModel?.name ?? config?.live_preview_model_id ?? "Loading"}
+            {livePreviewOff ? "Off (Privacy First)" : liveModel?.name || config?.live_preview_model_id || "Not selected"}
           </p>
           <p className="mt-1 truncate font-mono text-[10px] text-brand-mid-gray">{config?.live_preview_model_id}</p>
         </div>
@@ -131,7 +139,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
             onChange={(event) => void update({ batch_model_id: event.target.value })}
             className="w-full rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 text-sm text-brand-dark-gray transition-colors focus:border-brand-teal disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
           >
-            {renderOptions(batchModels, config?.batch_model_id)}
+            {renderOptions(batchModels, config?.batch_model_id, "batch_transcription")}
           </select>
         </div>
         <div>
@@ -142,7 +150,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
             onChange={(event) => void update({ live_preview_model_id: event.target.value })}
             className="w-full rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 text-sm text-brand-dark-gray transition-colors focus:border-brand-teal disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
           >
-            {renderOptions(liveModels, config?.live_preview_model_id)}
+            {renderOptions(liveModels, config?.live_preview_model_id, "audio_gateway")}
           </select>
         </div>
       </div>
