@@ -115,6 +115,37 @@ function StatChip({
   );
 }
 
+// Summary counts for the collapsed row; the expanded table keeps the
+// per-agent detail. Exported for tests.
+export function summarizeAgents(agents: AgentActivityRecord[], now: number) {
+  const analyst = agents.find((agent) => agent.slug === "consolidated_analyst");
+  return {
+    active: agents.filter(
+      (agent) => agent.state === "running" || agent.state === "waiting",
+    ).length,
+    anyRunning: agents.some((agent) => agent.state === "running"),
+    lenses:
+      analyst && analyst.lens_count != null
+      && (analyst.state === "running" || analyst.state === "waiting")
+        ? analyst.lens_count
+        : null,
+    runs: agents.reduce((sum, agent) => sum + agent.counts.runs, 0),
+    productive: agents.reduce(
+      (sum, agent) => sum + (agent.counts.productive ?? 0),
+      0,
+    ),
+    // Privacy First keeps its own dedicated chip; every other blocked reason
+    // (missing meeting type, future no-model states) surfaces here.
+    blocked: agents.filter(
+      (agent) => agent.state === "blocked" && agent.blocked_reason !== "privacy_first",
+    ).length,
+    // Current state, not history: a transient error that the agent recovered
+    // from must not read as an ongoing failure for the rest of the call.
+    failed: agents.filter((agent) => agent.state === "failing").length,
+    late: agents.filter((agent) => isRunningLate(agent, now)).length,
+  };
+}
+
 export default function AgentActivityPanel({
   snapshot,
 }: {
@@ -128,31 +159,10 @@ export default function AgentActivityPanel({
     return () => window.clearInterval(timer);
   }, []);
 
-  // Summary counts for the collapsed row; the expanded table keeps the
-  // per-agent detail.
-  const stats = useMemo(() => {
-    const agents = snapshot?.agents || [];
-    const live = agents.filter(
-      (agent) => agent.state === "running" || agent.state === "waiting",
-    );
-    const analyst = agents.find((agent) => agent.slug === "consolidated_analyst");
-    return {
-      active: live.length,
-      anyRunning: agents.some((agent) => agent.state === "running"),
-      lenses:
-        analyst && analyst.lens_count != null
-        && (analyst.state === "running" || analyst.state === "waiting")
-          ? analyst.lens_count
-          : null,
-      runs: agents.reduce((sum, agent) => sum + agent.counts.runs, 0),
-      productive: agents.reduce(
-        (sum, agent) => sum + (agent.counts.productive ?? 0),
-        0,
-      ),
-      failed: agents.reduce((sum, agent) => sum + agent.counts.errors, 0),
-      late: agents.filter((agent) => isRunningLate(agent, now)).length,
-    };
-  }, [snapshot, now]);
+  const stats = useMemo(
+    () => summarizeAgents(snapshot?.agents || [], now),
+    [snapshot, now],
+  );
   const privacyBlocked = snapshot?.agents.filter(
     (agent) => agent.blocked_reason === "privacy_first",
   ).length || 0;
@@ -187,6 +197,7 @@ export default function AgentActivityPanel({
             {stats.lenses != null && <StatChip value={stats.lenses} label="lenses" />}
             <StatChip value={stats.runs} label="runs" />
             <StatChip value={stats.productive} label="with insights" />
+            <StatChip value={stats.blocked} label="blocked" tone="warn" />
             <StatChip value={stats.late} label="late" tone="warn" />
             <StatChip value={stats.failed} label="failed" tone="bad" />
           </>

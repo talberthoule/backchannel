@@ -14,7 +14,7 @@ const outputPath = join(outputDir, "bundle.cjs");
 await build({
   stdin: {
     contents: `
-      export { activityEmptyMessage, isRunningLate } from "./AgentActivityPanel.tsx";
+      export { activityEmptyMessage, isRunningLate, summarizeAgents } from "./AgentActivityPanel.tsx";
     `,
     resolveDir: dirname(componentPath),
     sourcefile: "agent-activity-test-entry.tsx",
@@ -26,7 +26,7 @@ await build({
   outfile: outputPath,
 });
 
-const { activityEmptyMessage, isRunningLate } =
+const { activityEmptyMessage, isRunningLate, summarizeAgents } =
   createRequire(import.meta.url)(outputPath);
 
 after(async () => {
@@ -111,4 +111,55 @@ test("an expected meeting-type block preserves the healthy cadence message", () 
     message,
     "Agents are listening. Consolidated Analyst checks every 40s - first insights expected in about 30s.",
   );
+});
+
+test("blocked chip counts non-privacy blocked agents only (ALP-193)", () => {
+  const now = Date.parse("2026-07-28T12:00:00.000Z");
+  const stats = summarizeAgents(
+    [
+      waitingAgent,
+      {
+        ...waitingAgent,
+        slug: "opportunity_specialist",
+        state: "blocked",
+        blocked_reason: "meeting_type",
+        next_due_at: null,
+      },
+      {
+        ...waitingAgent,
+        slug: "objection_handler",
+        state: "blocked",
+        blocked_reason: "privacy_first",
+        next_due_at: null,
+      },
+      {
+        ...waitingAgent,
+        slug: "synthesizer",
+        state: "off",
+        blocked_reason: "disabled",
+        next_due_at: null,
+      },
+    ],
+    now,
+  );
+
+  assert.equal(stats.blocked, 1);
+});
+
+test("failed chip reflects current failing state, not cumulative errors (ALP-193)", () => {
+  const now = Date.parse("2026-07-28T12:00:00.000Z");
+  const recovered = {
+    ...waitingAgent,
+    slug: "objection_handler",
+    counts: { runs: 12, insights: 3, deduped: 0, errors: 2 },
+  };
+  const failing = {
+    ...waitingAgent,
+    slug: "strategic_signals",
+    state: "failing",
+    counts: { runs: 4, insights: 1, deduped: 0, errors: 1 },
+  };
+
+  assert.equal(summarizeAgents([recovered], now).failed, 0);
+  assert.equal(summarizeAgents([recovered, failing], now).failed, 1);
 });
