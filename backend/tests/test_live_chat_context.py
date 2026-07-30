@@ -1,6 +1,8 @@
+import json
 import unittest
 
 from app.services.live_chat_context import (
+    LIVE_INSIGHTS_BUDGET_CHARS,
     LIVE_SYSTEM_PROMPT,
     build_live_prompt,
     format_live_insights,
@@ -68,6 +70,14 @@ class LivePromptTests(unittest.TestCase):
         prompt = build_live_prompt(context([]), "what did we agree?")
         self.assertIn("what did we agree?", prompt)
 
+    def test_recent_transcript_survives_a_flood_of_insights(self):
+        # Production repro (ALP-178 follow-up): a long call accumulates an
+        # insights layer larger than the whole budget; the transcript must not
+        # be starved to nothing, or every transcript-grounded ask fails.
+        lines = [("Leah", "I want a ninety-minute technical working session.")]
+        prompt = build_live_prompt(context(lines, insights="x" * 40000), "how long?")
+        self.assertIn("ninety-minute technical working session", prompt)
+
 
 class LiveInsightFormatTests(unittest.TestCase):
     def test_empty_list_is_empty_string(self):
@@ -91,6 +101,29 @@ class LiveInsightFormatTests(unittest.TestCase):
         self.assertIn("objection", out)
         self.assertIn("No bandwidth until Q2", out)
         self.assertIn("Sarah", out)
+
+    def test_caps_newest_first_and_stays_valid_json(self):
+        def item(i):
+            class Item:
+                item_type = "observation"
+                question = f"insight number {i} " + "pad" * 40
+                rationale = "r" * 120
+                source_context = "s" * 120
+                speaker_id = None
+                answered = False
+                answer_summary = ""
+                needs_followup = False
+                followup_question = ""
+                offering_match = ""
+
+            return Item()
+
+        out = format_live_insights([item(i) for i in range(200)], {})
+        self.assertLessEqual(len(out), LIVE_INSIGHTS_BUDGET_CHARS)
+        parsed = json.loads(out)
+        texts = [p["text"] for p in parsed]
+        self.assertIn("insight number 199", texts[-1])
+        self.assertNotIn("insight number 0", " ".join(texts))
 
 
 if __name__ == "__main__":

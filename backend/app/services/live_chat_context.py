@@ -10,6 +10,9 @@ enough to answer in a few seconds.
 import json
 
 LIVE_CONTEXT_BUDGET_CHARS = 18000
+# A long call accumulates well over 100 insights (~40k chars serialized), so
+# this layer is bounded like the transcript: newest admitted first.
+LIVE_INSIGHTS_BUDGET_CHARS = 6000
 
 LIVE_SYSTEM_PROMPT = (
     "You are assisting someone who is in a live meeting right now. Answer from "
@@ -26,11 +29,14 @@ LIVE_SYSTEM_PROMPT = (
 TRUNCATION_MARKER = "[earlier transcript omitted]"
 
 
-def format_live_insights(items, speaker_names: dict[str, str]) -> str:
-    if not items:
-        return ""
-    content = [
-        {
+def format_live_insights(
+    items, speaker_names: dict[str, str], budget: int = LIVE_INSIGHTS_BUDGET_CHARS
+) -> str:
+    """Admit newest-first under the budget, render oldest-first, as valid JSON."""
+    kept: list[dict] = []
+    remaining = budget - 2  # the enclosing brackets
+    for item in reversed(items):
+        entry = {
             "type": item.item_type,
             "text": item.question,
             "rationale": item.rationale,
@@ -42,9 +48,14 @@ def format_live_insights(items, speaker_names: dict[str, str]) -> str:
             "followup_question": item.followup_question,
             "offering_match": item.offering_match,
         }
-        for item in items
-    ]
-    return json.dumps(content, ensure_ascii=False, separators=(",", ":"))
+        cost = len(json.dumps(entry, ensure_ascii=False, separators=(",", ":"))) + 1
+        if cost > remaining:
+            break
+        kept.insert(0, entry)
+        remaining -= cost
+    if not kept:
+        return ""
+    return json.dumps(kept, ensure_ascii=False, separators=(",", ":"))
 
 
 def _transcript_block(lines: list[tuple[str, str]], remaining: int) -> str:
@@ -95,9 +106,11 @@ def build_live_prompt(context: dict, question: str, budget: int = LIVE_CONTEXT_B
         sections.append(f"# Live insights so far\n{insights}")
 
     # Everything above is bounded and always admitted. The transcript takes
-    # what is left, which is why it is measured against the running total.
+    # what is left, but never less than a third of the budget: it is the only
+    # ground truth, so an oversized layer above (a pasted meeting context, a
+    # flood of insights) may stretch the prompt but must not starve it.
     used = sum(len(s) + 2 for s in sections)
-    transcript = _transcript_block(context.get("lines") or [], max(0, budget - used))
+    transcript = _transcript_block(context.get("lines") or [], max(budget - used, budget // 3))
     if transcript:
         sections.append(f"# Transcript so far\n{transcript}")
 
