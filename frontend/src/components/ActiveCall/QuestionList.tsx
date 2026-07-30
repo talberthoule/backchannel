@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Question, Speaker } from "../../types";
+import type { Question } from "../../types";
 import QuestionCard from "./QuestionCard";
 import { sortQuestionsForLiveDisplay } from "./questionOrdering";
 import { BUILTIN_TYPE_META, BUILTIN_TYPE_ORDER, presentTypes, typeGroupLabel } from "../../utils/insightTypes";
@@ -11,7 +11,6 @@ const STATUS_KEYS = new Set(["starred", "answered", "prioritized", "enhanced"]);
 
 interface QuestionListProps {
   questions: Question[];
-  speakers: Speaker[];
   strategicSignalQuestionIds?: string[];
   showEnhanced?: boolean;
   emptyMessage?: string;
@@ -21,7 +20,7 @@ interface QuestionListProps {
   onMakeDirective?: (question: Question) => void;
 }
 
-export default function QuestionList({ questions, speakers, strategicSignalQuestionIds = [], showEnhanced = false, emptyMessage, onStar, onDismiss, onVote, onMakeDirective }: QuestionListProps) {
+export default function QuestionList({ questions, strategicSignalQuestionIds = [], showEnhanced = false, emptyMessage, onStar, onDismiss, onVote, onMakeDirective }: QuestionListProps) {
   const [activeFilters, setActiveFilters] = useState<Set<Filter>>(new Set(["all"]));
   const strategicSignalIdSet = useMemo(
     () => new Set(strategicSignalQuestionIds),
@@ -101,27 +100,55 @@ export default function QuestionList({ questions, speakers, strategicSignalQuest
     ...(showEnhanced ? [{ key: "enhanced", label: "Enhanced" }] : []),
   ];
 
+  // Per-chip counts over the live (non-dismissed) items, so every tab shows
+  // where the insights are before the user clicks it.
+  const filterCounts = useMemo(() => {
+    const counts = new Map<Filter, number>();
+    const live = questions.filter((q) => !q.dismissed);
+    counts.set("all", live.length);
+    const bump = (key: Filter) => counts.set(key, (counts.get(key) || 0) + 1);
+    for (const q of live) {
+      bump(q.item_type || "question");
+      if (q.starred) bump("starred");
+      if (q.answered) bump("answered");
+      if ((q.vote ?? 0) > 0) bump("prioritized");
+      if (q.enhanced) bump("enhanced");
+    }
+    return counts;
+  }, [questions]);
+
   return (
     <div className="flex h-full flex-col">
-      {/* Filter controls */}
-      <div className="flex flex-wrap items-center gap-1 border-b border-brand-light-gray-1 px-4 pb-3">
-        {filters.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => toggleFilter(key)}
-            className={`rounded-full px-3 py-1 font-body text-sm font-medium transition-colors ${
-              activeFilters.has(key)
-                ? "bg-brand-teal text-white"
-                : "text-brand-gray hover:bg-brand-light-gray-2"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-
-        <span className="ml-auto font-body text-xs text-brand-mid-gray">
-          {filtered.length} item{filtered.length !== 1 ? "s" : ""}
-        </span>
+      {/* Filter controls: one consistent chip design for every tab; the
+          selected tabs fill teal while the rest stay quiet outlines. */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-brand-light-gray-1 px-4 pb-3">
+        {filters.map(({ key, label }) => {
+          const active = activeFilters.has(key);
+          const count = filterCounts.get(key) || 0;
+          return (
+            <button
+              key={key}
+              onClick={() => toggleFilter(key)}
+              aria-pressed={active}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-body text-sm font-medium transition-colors ${
+                active
+                  ? "border-brand-teal bg-brand-teal text-white"
+                  : count === 0
+                    ? "border-brand-light-gray-1 bg-surface text-brand-mid-gray hover:border-brand-teal/40 hover:text-brand-gray"
+                    : "border-brand-light-gray-1 bg-surface text-brand-gray hover:border-brand-teal/40 hover:text-brand-dark-gray"
+              }`}
+            >
+              {label}
+              <span
+                className={`font-mono text-xs tabular-nums ${
+                  active ? "text-white/80" : "text-brand-mid-gray"
+                }`}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Scrollable list */}
@@ -139,7 +166,6 @@ export default function QuestionList({ questions, speakers, strategicSignalQuest
             <QuestionCard
               key={q.id}
               question={q}
-              speakers={speakers}
               isStrategicSignal={strategicSignalIdSet.has(q.id)}
               showEnhanced={showEnhanced}
               onStar={(starred) => onStar(q.id, starred)}

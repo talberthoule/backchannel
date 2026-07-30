@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 from app.services.agents.activity import ActivityRegistry, saved_outcome
 from app.services.agents.orchestrator import AgentOrchestrator
+from app.services.agents.prompts import DEFAULT_ANALYST_LENSES
 from app.ws.audio_pipeline import (
     _AudioPipelineState,
     _cancel_gateway_reconnect,
@@ -62,6 +63,7 @@ class ActivityRegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("insights", record["last_outcome"]["kind"])
         self.assertEqual(1, record["counts"]["runs"])
         self.assertEqual(2, record["counts"]["insights"])
+        self.assertEqual(1, record["counts"]["productive"])
         self.assertIsNotNone(record["last_run_started_at"])
         self.assertIsNotNone(record["last_run_ms"])
         self.assertIsNotNone(record["next_due_at"])
@@ -156,6 +158,12 @@ class ActivityRegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             "meeting_type",
             records["opportunity_specialist"]["blocked_reason"],
+        )
+        # The analyst record carries its active lens count for the live summary
+        # (empty lenses column falls back to the default lens set).
+        self.assertEqual(
+            len(DEFAULT_ANALYST_LENSES),
+            records["consolidated_analyst"]["lens_count"],
         )
 
     def test_saved_outcome_distinguishes_insights_dedup_and_model_silence(self):

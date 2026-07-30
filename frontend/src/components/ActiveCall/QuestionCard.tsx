@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Question, Speaker } from "../../types";
+import type { Question } from "../../types";
 import { typeColor, typeLabel } from "../../utils/insightTypes";
 
 const AGENT_LABELS: Record<string, string> = {
@@ -18,7 +18,6 @@ const AGENT_LABELS: Record<string, string> = {
 
 interface QuestionCardProps {
   question: Question;
-  speakers: Speaker[];
   isStrategicSignal?: boolean;
   showEnhanced?: boolean;
   onStar: (starred: boolean) => void;
@@ -27,13 +26,10 @@ interface QuestionCardProps {
   onMakeDirective?: () => void;
 }
 
-function speakerLabel(speaker: Speaker): string {
-  return speaker.display_name && speaker.display_name_enabled ? speaker.display_name : speaker.name;
-}
-
-export default function QuestionCard({ question, speakers, isStrategicSignal = false, showEnhanced = false, onStar, onDismiss, onVote, onMakeDirective }: QuestionCardProps) {
+export default function QuestionCard({ question, isStrategicSignal = false, showEnhanced = false, onStar, onDismiss, onVote, onMakeDirective }: QuestionCardProps) {
   const [dismissing, setDismissing] = useState(false);
   const [showEnrichment, setShowEnrichment] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const currentVote = question.vote ?? 0;
 
   function handleDismiss() {
@@ -44,11 +40,14 @@ export default function QuestionCard({ question, speakers, isStrategicSignal = f
   const itemType = question.item_type || "question";
   const badgeColor = typeColor(itemType);
   const badgeLabel = typeLabel(itemType, question.lens_label);
+  const showTypeBadge = itemType !== "question" || Boolean(question.lens_label && question.lens_label.trim());
+  const agentLabel =
+    question.agent_source && question.agent_source !== "general"
+      ? AGENT_LABELS[question.agent_source] || question.agent_source
+      : null;
   const isRefined = (question.revision_count ?? 0) > 0;
   const surfacedAt = formatTimestamp(question.created_at);
-  const attributedSpeaker = question.speaker_id
-    ? speakers.find((speaker) => speaker.id === question.speaker_id)
-    : null;
+  const hasDetails = Boolean(question.rationale || question.source_context);
 
   return (
     <div
@@ -71,11 +70,6 @@ export default function QuestionCard({ question, speakers, isStrategicSignal = f
           {question.directive_id && (
             <span className="inline-flex items-center rounded-full bg-[#f59e0b]/15 px-2 py-0.5 font-body text-xs font-medium text-[#f59e0b]">
               Directive
-            </span>
-          )}
-          {question.answered && (
-            <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 font-body text-xs font-medium text-green-700">
-              Answered
             </span>
           )}
           {showEnhanced && question.enhanced && (
@@ -111,25 +105,15 @@ export default function QuestionCard({ question, speakers, isStrategicSignal = f
             {surfacedAt}
           </span>
 
-          {/* Agent source badge */}
-          {question.agent_source && question.agent_source !== "general" && (
+          {/* Agent source badge; skipped when the type badge already says it */}
+          {agentLabel && !(showTypeBadge && agentLabel === badgeLabel) && (
             <span className="inline-flex items-center rounded-full bg-brand-light-gray-2 px-2 py-0.5 font-body text-[10px] font-medium text-brand-mid-gray">
-              {AGENT_LABELS[question.agent_source] || question.agent_source}
-            </span>
-          )}
-
-          {attributedSpeaker && (
-            <span
-              className="inline-flex max-w-32 items-center rounded-full px-2 py-0.5 font-body text-[10px] font-semibold text-white"
-              style={{ backgroundColor: attributedSpeaker.color }}
-              title={`Attributed to ${speakerLabel(attributedSpeaker)}`}
-            >
-              <span className="truncate">{speakerLabel(attributedSpeaker)}</span>
+              {agentLabel}
             </span>
           )}
 
           {/* Type badge — shows the producing lens's heading when available */}
-          {(itemType !== "question" || (question.lens_label && question.lens_label.trim())) && (
+          {showTypeBadge && (
             <span
               className="inline-flex items-center rounded-full px-2 py-0.5 font-body text-xs font-medium"
               style={{ backgroundColor: `${badgeColor}15`, color: badgeColor }}
@@ -145,18 +129,39 @@ export default function QuestionCard({ question, speakers, isStrategicSignal = f
         {question.question}
       </p>
 
-      {/* Rationale */}
-      {question.rationale && (
-        <p className="mt-2 font-body text-sm leading-relaxed text-brand-gray">
-          {question.rationale}
-        </p>
+      {/* Supporting detail (rationale + source context), collapsed by default */}
+      {hasDetails && (
+        <button
+          type="button"
+          onClick={() => setShowDetails((v) => !v)}
+          aria-expanded={showDetails}
+          className="mt-1.5 inline-flex items-center gap-1 font-body text-xs font-medium text-brand-mid-gray transition-colors hover:text-brand-teal"
+        >
+          <svg
+            className={`h-3 w-3 transition-transform ${showDetails ? "rotate-90" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+          </svg>
+          Details
+        </button>
       )}
-
-      {/* Source context */}
-      {question.source_context && (
-        <blockquote className="mt-3 border-l-2 border-brand-light-gray-1 pl-3 font-body text-xs italic text-brand-mid-gray">
-          {question.source_context}
-        </blockquote>
+      {hasDetails && showDetails && (
+        <div className="mt-2">
+          {question.rationale && (
+            <p className="font-body text-sm leading-relaxed text-brand-gray">
+              {question.rationale}
+            </p>
+          )}
+          {question.source_context && (
+            <blockquote className="mt-2 border-l-2 border-brand-light-gray-1 pl-3 font-body text-xs italic text-brand-mid-gray">
+              {question.source_context}
+            </blockquote>
+          )}
+        </div>
       )}
 
       {/* Offering match (for opportunities) */}
@@ -189,12 +194,17 @@ export default function QuestionCard({ question, speakers, isStrategicSignal = f
         </div>
       )}
 
-      {/* Answer summary (shown when answered) */}
-      {question.answered && question.answer_summary && (
-        <div className="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2">
-          <p className="font-body text-sm text-green-800">
-            {question.answer_summary}
-          </p>
+      {/* Answered tag + answer, grouped on one row */}
+      {question.answered && (
+        <div className="mt-3 flex items-start gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2">
+          <span className="inline-flex flex-shrink-0 items-center rounded-full bg-green-100 px-2 py-0.5 font-body text-xs font-medium text-green-700">
+            Answered
+          </span>
+          {question.answer_summary && (
+            <p className="min-w-0 font-body text-sm text-green-800">
+              {question.answer_summary}
+            </p>
+          )}
         </div>
       )}
 

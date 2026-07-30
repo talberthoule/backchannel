@@ -290,6 +290,44 @@ class AgentOrchestrator:
         self._get_interval = _get_interval
         self._get_knowledge_source_ids = _get_knowledge_source_ids
 
+        # Consolidated text analyst (includes question generation). Built before
+        # the activity roster so its active lens count rides in the snapshot.
+        enabled_types: set[str] = set()
+        ca_cfg = self._agent_configs.get("consolidated_analyst")
+        if ca_cfg and ca_cfg.sub_types:
+            enabled_types = {t.strip() for t in ca_cfg.sub_types.split(",") if t.strip()}
+        else:
+            # Fallback to config.py settings
+            enabled_types.add("question")
+            if settings.AGENT_OBSERVER_ENABLED:
+                enabled_types.add("observation")
+            if settings.AGENT_OPPORTUNITY_SCOUT_ENABLED:
+                enabled_types.add("opportunity")
+            if settings.AGENT_ACTION_TRACKER_ENABLED:
+                enabled_types.add("action_item")
+
+        # Configurable lens definitions (JSON column); None falls back to the
+        # defaults filtered by the legacy sub_types selection above.
+        ca_lenses: list | None = None
+        raw_lenses = (getattr(ca_cfg, "lenses", "") or "") if ca_cfg else ""
+        if raw_lenses.strip():
+            try:
+                parsed = json.loads(raw_lenses)
+                if isinstance(parsed, list):
+                    ca_lenses = parsed
+            except json.JSONDecodeError:
+                logger.warning("[orchestrator] invalid lenses JSON on consolidated_analyst; using defaults")
+
+        ca_model = _get_model("consolidated_analyst", settings.REFINEMENT_MODEL)
+        self.consolidated_agent = ConsolidatedAnalystAgent(
+            enabled_types=enabled_types or None,
+            model_override=ca_model,
+            prompt_override=_get_prompt("consolidated_analyst") or None,
+            meeting_context_text=self.meeting_context_text,
+            lenses=ca_lenses,
+            session_id=session_id,
+        )
+
         activity_agents = []
         for slug, fallback_name, trigger, fallback_interval, fallback_enabled in _ACTIVITY_AGENTS:
             cfg = self._agent_configs.get(slug)
@@ -339,18 +377,19 @@ class AgentOrchestrator:
                 state = "waiting"
                 blocked_reason = ""
                 remedy = ""
-            activity_agents.append(
-                {
-                    "slug": slug,
-                    "name": getattr(cfg, "name", "") or fallback_name,
-                    "trigger": trigger,
-                    "state": state,
-                    "enabled": configured_enabled,
-                    "blocked_reason": blocked_reason,
-                    "remedy": remedy,
-                    "interval_seconds": interval,
-                }
-            )
+            record = {
+                "slug": slug,
+                "name": getattr(cfg, "name", "") or fallback_name,
+                "trigger": trigger,
+                "state": state,
+                "enabled": configured_enabled,
+                "blocked_reason": blocked_reason,
+                "remedy": remedy,
+                "interval_seconds": interval,
+            }
+            if slug == "consolidated_analyst":
+                record["lens_count"] = self.consolidated_agent.lens_count
+            activity_agents.append(record)
         self.activity = ActivityRegistry(
             session_id,
             websocket,
@@ -367,43 +406,6 @@ class AgentOrchestrator:
             self.audio_gateway = OpenAIRealtimeSession(model_override=gw_model, session_id=session_id)
         else:
             self.audio_gateway = GeminiLiveSession(model_override=gw_model, session_id=session_id)
-
-        # Consolidated text analyst (includes question generation)
-        enabled_types: set[str] = set()
-        ca_cfg = self._agent_configs.get("consolidated_analyst")
-        if ca_cfg and ca_cfg.sub_types:
-            enabled_types = {t.strip() for t in ca_cfg.sub_types.split(",") if t.strip()}
-        else:
-            # Fallback to config.py settings
-            enabled_types.add("question")
-            if settings.AGENT_OBSERVER_ENABLED:
-                enabled_types.add("observation")
-            if settings.AGENT_OPPORTUNITY_SCOUT_ENABLED:
-                enabled_types.add("opportunity")
-            if settings.AGENT_ACTION_TRACKER_ENABLED:
-                enabled_types.add("action_item")
-
-        # Configurable lens definitions (JSON column); None falls back to the
-        # defaults filtered by the legacy sub_types selection above.
-        ca_lenses: list | None = None
-        raw_lenses = (getattr(ca_cfg, "lenses", "") or "") if ca_cfg else ""
-        if raw_lenses.strip():
-            try:
-                parsed = json.loads(raw_lenses)
-                if isinstance(parsed, list):
-                    ca_lenses = parsed
-            except json.JSONDecodeError:
-                logger.warning("[orchestrator] invalid lenses JSON on consolidated_analyst; using defaults")
-
-        ca_model = _get_model("consolidated_analyst", settings.REFINEMENT_MODEL)
-        self.consolidated_agent = ConsolidatedAnalystAgent(
-            enabled_types=enabled_types or None,
-            model_override=ca_model,
-            prompt_override=_get_prompt("consolidated_analyst") or None,
-            meeting_context_text=self.meeting_context_text,
-            lenses=ca_lenses,
-            session_id=session_id,
-        )
 
         # Objection handler (fast scan loop over the freshest transcript)
         self.objection_agent = ObjectionHandlerAgent(
