@@ -1,0 +1,100 @@
+name: Security
+
+# Dependency and static-analysis checks (ALP-187).
+#
+# Deliberately a SEPARATE workflow from Tests. A dependency advisory published
+# overnight must not turn an unrelated code PR red, and this workflow is expected
+# to fail whenever a new CVE lands upstream - that is the signal, not a defect.
+# Whether a red run here blocks a merge is a branch-protection setting, not
+# something this file decides.
+#
+# EXPECTED RED ON ITS FIRST RUN. Verified locally on 2026-07-30:
+#   backend/requirements.txt  15 known CVEs (python-multipart 0.0.18 x6,
+#                             starlette 0.41.3 x9) - tracked in ALP-186
+#   frontend                  1 high (postcss)
+#   docs-site                 6 (5 high: miniflare/wrangler chain, svgo)
+# Do not "fix" that by loosening the thresholds; fix the dependencies.
+#
+# Not included on purpose: bandit and semgrep. An uncurated SAST run over this
+# codebase produces more noise than signal, and nobody owns the rule set yet.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    # Weekly, so a CVE published against unchanged code still surfaces.
+    - cron: "17 6 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required to upload results to the Security tab.
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # The repository is public, so CodeQL is available at no cost.
+        language: [python, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          language: ${{ matrix.language }}
+      # No build step: both languages are interpreted, so CodeQL's default
+      # extraction covers them without a compile.
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  python-deps:
+    name: pip-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          # Matches backend/Dockerfile. See tests.yml for why this is pinned.
+          python-version: "3.12"
+      - run: pip install pip-audit
+      # Audited from the requirements files rather than an installed
+      # environment, so the report names the pinned versions the images
+      # actually ship.
+      - name: Backend dependencies
+        run: pip-audit -r backend/requirements.txt
+      # Separate step so a desktop-only finding is attributable at a glance.
+      - name: Desktop dependencies
+        if: always()
+        run: pip-audit -r desktop/requirements.txt
+
+  node-deps:
+    name: npm audit (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [frontend, docs-site]
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # npm audit resolves from the committed lockfile and the registry, so no
+      # install is needed. This is also the one place the lockfile is read as
+      # committed rather than regenerated - see tests.yml for why the test jobs
+      # deliberately do not.
+      - run: npm audit --audit-level=high

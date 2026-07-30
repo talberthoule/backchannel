@@ -1,0 +1,104 @@
+name: Structure
+
+# Sentrux structural gate in CI (ALP-187).
+#
+# WHY THIS GATES AGAINST THE PR's BASE, NOT THE COMMITTED BASELINE.
+# `.sentrux/baseline.json` is stale: `sentrux gate .` reports DEGRADED on a clean
+# master today (ALP-183 - an undeclared custom_endpoints/privacy cycle, a second
+# god file, and 9 extra complex functions). Gating against that file would fail
+# every PR for inherited debt the PR did not cause, which is noise, not a gate.
+# So this builds a throwaway baseline from the PR's base commit and compares the
+# head against it. The question it answers is the useful one: "does this PR make
+# the structure worse than what it branched from?"
+#
+# THIS JOB IS NON-BLOCKING (continue-on-error) FOR TWO INDEPENDENT REASONS:
+#   1. It has never run on Linux. Sentrux is verified only on the maintainer's
+#      Windows machine; plugin installation and path-argument handling on a
+#      hosted runner are unverified. Treat the first run as a probe.
+#   2. `sentrux check` is red on master regardless of any PR (ALP-183).
+# Promote it to blocking by deleting `continue-on-error` below, once the first
+# runs are green and ALP-183 has landed.
+
+on:
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: structure-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned, not "latest": the baseline records the version that produced it, and
+  # a different analyzer version can move the metrics on unchanged code.
+  SENTRUX_VERSION: v0.5.7
+
+jobs:
+  sentrux:
+    name: Sentrux structural gate
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Check out the head
+        uses: actions/checkout@v4
+        with:
+          path: head
+
+      - name: Check out the base
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      - name: Install Sentrux
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/sentrux \
+            "https://github.com/sentrux/sentrux/releases/download/${SENTRUX_VERSION}/sentrux-linux-x86_64"
+          chmod +x /tmp/sentrux
+          sudo mv /tmp/sentrux /usr/local/bin/sentrux
+          sentrux --version
+
+      - name: Install language plugins
+        run: |
+          set -euo pipefail
+          sentrux plugin add-standard
+          # Logged because .sentrux/baseline.json pins plugin versions and the
+          # registry can move: if the metrics ever shift unexpectedly, compare
+          # this list against plugin_versions in the baseline first.
+          sentrux plugin list
+
+      - name: Rules check
+        working-directory: head
+        run: sentrux check .
+
+      - name: Gate the head against its base
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          # --save writes base/.sentrux/baseline.json, replacing the committed
+          # one in this throwaway checkout only.
+          sentrux gate --save base
+          cp base/.sentrux/baseline.json head/.sentrux/baseline.json
+          cd head && sentrux gate .
+
+      - name: Note the known-red state in the run summary
+        if: failure()
+        run: |
+          {
+            echo "### Sentrux reported a problem"
+            echo
+            echo "This job is non-blocking. Two known causes, both unrelated to most PRs:"
+            echo
+            echo "- \`sentrux check\` is red on a clean \`master\` (ALP-183): an undeclared"
+            echo "  \`custom_endpoints\` <-> \`privacy\` cycle, a second god file, and 9 extra"
+            echo "  complex functions."
+            echo "- This job had never run on Linux before, so an install or"
+            echo "  argument-handling failure here is a workflow bug, not a code regression."
+            echo
+            echo "The gate step compares this PR against its base commit, so a failure"
+            echo "*there* is a genuine structural regression introduced by the PR."
+          } >> "$GITHUB_STEP_SUMMARY"
