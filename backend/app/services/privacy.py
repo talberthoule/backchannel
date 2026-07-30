@@ -8,15 +8,11 @@ persisted app setting so it survives restarts and applies to all sessions.
 import logging
 from typing import Iterable
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.config import MODEL_REGISTRY
-from app.services.app_settings import get_app_setting, set_app_setting
 from app.services.custom_endpoints import EndpointError, is_endpoint_model, resolve_target_standalone
+from app.services.privacy_state import get_local_only, set_local_only
 
 logger = logging.getLogger(__name__)
-
-PRIVACY_LOCAL_ONLY_KEY = "privacy.local_only"
 
 # Preferred fallback when the configured batch transcriber is a cloud model.
 DEFAULT_LOCAL_BATCH_MODEL = "local-whisper-base"
@@ -117,21 +113,12 @@ def local_models(capability: str) -> list[dict]:
     ]
 
 
-async def get_local_only(db: AsyncSession) -> bool:
-    return await get_app_setting(db, PRIVACY_LOCAL_ONLY_KEY, "false") == "true"
-
-
 async def is_local_only() -> bool:
     """Read the flag with a standalone session (for call sites without a db)."""
     from app.database import async_session
 
     async with async_session() as db:
         return await get_local_only(db)
-
-
-async def set_local_only(db: AsyncSession, enabled: bool) -> None:
-    await set_app_setting(db, PRIVACY_LOCAL_ONLY_KEY, "true" if enabled else "false")
-    logger.info(f"Privacy First (local-only) mode {'enabled' if enabled else 'disabled'}")
 
 
 def privacy_impact(on_prem_text_models: list[dict] | None = None) -> dict:

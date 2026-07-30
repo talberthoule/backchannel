@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import CustomEndpoint
+from app.services.privacy_state import get_local_only
 from app.services.secrets import decrypt_value, encrypt_value
 
 logger = logging.getLogger(__name__)
@@ -289,8 +290,6 @@ async def update_endpoint(
         # Reaching a different server invalidates the recorded test outcome.
         if new_url != endpoint.base_url:
             if is_on_prem(endpoint.base_url) and not is_on_prem(new_url):
-                from app.services.privacy import get_local_only
-
                 if await get_local_only(db):
                     raise EndpointError(
                         "Privacy First is on; this endpoint cannot move from on-prem "
