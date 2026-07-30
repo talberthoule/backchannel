@@ -291,6 +291,83 @@ class BriefingProviderRoutingTests(ProviderRoutingTestCase):
         # The status must carry the actionable remedy, not a raw JSON blob.
         self.assertNotIn("{", message)
 
+    async def test_lenses_receive_raw_context_while_arbiter_stays_isolated(self):
+        context = SimpleNamespace(
+            meeting_context_text="OPERATOR MEETING CONTEXT",
+            transcript_text="transcript_id=RAW_TRANSCRIPT_MARKER",
+            directives_text="RAW_DIRECTIVE_MARKER",
+            document_summaries="RAW_DOCUMENT_MARKER",
+            speakers_text="RAW_SPEAKER_MARKER",
+            insights_text=(
+                '{"question":"ASKED_QUERY_MARKER",'
+                '"answer_summary":"ASKED_RESPONSE_MARKER"}\n'
+                "Live strategic signal history: SIGNAL_HISTORY_MARKER"
+            ),
+        )
+        persist = AsyncMock(return_value=SimpleNamespace())
+
+        async def generate(model_id, prompt, schema, **kwargs):
+            del model_id, prompt, schema
+            if kwargs["source"] == BRIEF_ARBITER_SLUG:
+                return BriefArbiterOutput(arbiter_notes="settled")
+            return BriefLensOutput(notes=f'{kwargs["source"]}_OUTPUT_MARKER')
+
+        with (
+            patch(
+                "app.services.privacy.is_local_only",
+                new=AsyncMock(return_value=False),
+            ),
+            patch.object(
+                briefing_synthesis,
+                "_build_context",
+                new=AsyncMock(return_value=context),
+            ),
+            patch.object(
+                briefing_synthesis,
+                "generate_json",
+                new=AsyncMock(side_effect=generate),
+            ) as generate_json,
+            patch.object(
+                briefing_synthesis,
+                "_persist_synthesis",
+                persist,
+            ),
+        ):
+            await run_session_synthesis(
+                uuid.uuid4(),
+                mode="post_call",
+                agent_configs=_briefing_configs(GOOGLE_MODEL),
+            )
+
+        prompts = {
+            call.kwargs["source"]: call.args[1]
+            for call in generate_json.await_args_list
+        }
+        for slug in (BRIEF_MEETING_LENS_SLUG, BRIEF_DISCOVERY_LENS_SLUG):
+            prompt = prompts[slug]
+            self.assertIn("RAW_TRANSCRIPT_MARKER", prompt)
+            self.assertIn("RAW_DIRECTIVE_MARKER", prompt)
+            self.assertIn("RAW_DOCUMENT_MARKER", prompt)
+            self.assertIn("RAW_SPEAKER_MARKER", prompt)
+            self.assertIn("ASKED_QUERY_MARKER", prompt)
+            self.assertIn("ASKED_RESPONSE_MARKER", prompt)
+            self.assertIn("SIGNAL_HISTORY_MARKER", prompt)
+
+        arbiter_prompt = prompts[BRIEF_ARBITER_SLUG]
+        self.assertIn("OPERATOR MEETING CONTEXT", arbiter_prompt)
+        self.assertIn("brief_meeting_lens_OUTPUT_MARKER", arbiter_prompt)
+        self.assertIn("brief_discovery_lens_OUTPUT_MARKER", arbiter_prompt)
+        for raw_marker in (
+            "RAW_TRANSCRIPT_MARKER",
+            "RAW_DIRECTIVE_MARKER",
+            "RAW_DOCUMENT_MARKER",
+            "RAW_SPEAKER_MARKER",
+            "ASKED_QUERY_MARKER",
+            "ASKED_RESPONSE_MARKER",
+            "SIGNAL_HISTORY_MARKER",
+        ):
+            self.assertNotIn(raw_marker, arbiter_prompt)
+
 
 class StrategicSignalsProviderRoutingTests(ProviderRoutingTestCase):
     def _patch_signals(self):
