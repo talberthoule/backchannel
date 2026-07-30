@@ -71,7 +71,9 @@ protected publication.
 `desktop/` contains a PyInstaller launcher that runs the backend with an
 embedded zonky.io PostgreSQL and serves the built frontend via
 `FRONTEND_DIST`. Desktop tests: run `python -m unittest discover -s tests`
-from `desktop/`. Local build: `pyinstaller desktop/backchannel.spec`. The
+from `desktop/` with the repository root on `PYTHONPATH` - two modules import
+`desktop.*`, so without it discovery silently drops them and reports 94 tests
+instead of 111. Local build: `pyinstaller desktop/backchannel.spec`. The
 release coordinator creates the Windows x64 zip natively and the Linux x64
 tarball through Docker; `.github/workflows/desktop-release.yml` builds only the
 macOS arm64 zip (unsigned; Sortformer and ffmpeg are not bundled).

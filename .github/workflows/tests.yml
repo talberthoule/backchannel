@@ -1,0 +1,100 @@
+name: Tests
+
+# The repository's test gate (ALP-184). Before this existed nothing in CI ran a
+# suite, which is how four new frontend test files sat unregistered in
+# package.json's hardcoded "test" list and silently skipped 15 tests (ALP-178).
+#
+# Deliberately not here: security scanners belong in their own workflow so a new
+# CVE advisory cannot block an unrelated code PR, and the Sentrux structural gate
+# is red on a clean master today (ALP-183).
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Backend and desktop suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          # Must be 3.12, matching backend/Dockerfile (python:3.12-slim).
+          # onnxruntime==1.21.1 has no wheel for 3.13+, so a newer interpreter
+          # fails during dependency resolution rather than in any test.
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+
+      # scripts/download_models.py is deliberately NOT run: the suite reports
+      # zero errors without the ONNX weights, so pulling them would add minutes
+      # of download for no coverage.
+      - name: Backend suite
+        working-directory: backend
+        run: python -m unittest discover -s tests
+
+      # The repo root has to be importable: two modules import `desktop.*`, and
+      # without this discovery drops them and reports 94 tests instead of 111.
+      - name: Desktop suite
+        working-directory: desktop
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m unittest discover -s tests
+
+  frontend:
+    name: Frontend tests and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # Not npm ci, for the same reason deploy-site.yml avoids it: the lockfile
+      # is generated on Windows and npm omits other platforms' optional native
+      # packages from it, then npm install trusts the incomplete lock
+      # (npm/cli#4828). Rollup's Linux binary is the usual casualty. Resolve fresh.
+      - run: rm -f package-lock.json && npm install
+      # npm test is a hardcoded file list. A new *.test.mjs file must be added to
+      # it or it will not run here (ALP-178).
+      - run: npm test
+      # This is also the repository's only typecheck: build runs tsc.
+      - run: npm run build
+
+  docs-site:
+    name: Docs site suites
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs-site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      # See the frontend job: same Windows-lockfile hazard, same workaround as
+      # deploy-site.yml.
+      - run: rm -f package-lock.json && npm install
+      # The aggregate run of the six focused suites (worker, admin, download,
+      # release-access, migration, site).
+      - run: node --test *.test.js
+      # docs-site is only built on pushes that touch its paths (deploy-site.yml),
+      # so building here is what catches a docs change breaking it on a PR.
+      - run: npm run build
