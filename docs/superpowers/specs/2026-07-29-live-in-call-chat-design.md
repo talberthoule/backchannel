@@ -80,10 +80,16 @@ For the active session, at request time, the live assembler loads:
 6. transcript entries with resolved speaker names, most recent first, admitted
    until the budget is exhausted.
 
-Layers 1 through 5 are small and bounded and are always admitted in full.
-Layer 6 consumes whatever budget remains. This inverts the post-call ordering,
-where transcript is admitted last and oldest-first: mid-call, the recent
-exchange is the most likely subject of the question.
+Layers 2 through 5 are small and bounded and are always admitted in full.
+Layer 1 is not: a long call accumulates well over 100 live insights (~40k
+chars serialized), so insights get their own sub-budget
+(`LIVE_INSIGHTS_BUDGET_CHARS`, a third of the total) and are admitted
+newest-first within it. Layer 6 consumes whatever budget remains, but never
+less than a third of the total: the transcript is the only ground truth, so an
+oversized layer above may stretch the prompt but must not starve it. This
+inverts the post-call ordering, where transcript is admitted last and
+oldest-first: mid-call, the recent exchange is the most likely subject of the
+question.
 
 The rendered transcript stays chronological even though admission is
 newest-first, and a truncation marker states that earlier transcript was
@@ -242,8 +248,11 @@ either cost.
   can be made; a server-side rejection reuses the existing error shape.
 - Empty transcript: the request still works against insights and directives,
   and the prompt forbids inventing quotations.
-- Budget exhausted by insights alone: transcript is omitted and the answer
-  says the transcript window was unavailable.
+- Budget pressure from insights: insights are capped newest-first at their
+  sub-budget and the transcript keeps a guaranteed floor, so neither layer can
+  push the other out entirely. (The original design admitted insights
+  unbounded; on a real call this starved the transcript to nothing and every
+  transcript-grounded ask failed.)
 - Call ends mid-question: the request is awaited and saved rather than
   abandoned, matching how a final agent pass is treated.
 - Websocket disconnected: asking is a plain HTTP request and does not depend
@@ -267,6 +276,8 @@ Backend, as stdlib `unittest` under `backend/tests/`:
 - Transcript admission is newest-first and rendered chronologically.
 - Bounded-layer test: insights and directives survive when the transcript is
   large enough to exhaust the budget.
+- Starvation test: recent transcript survives an insights layer larger than
+  the whole budget, and the insights cap keeps valid JSON, newest-first.
 - Truncation marker present when transcript is dropped.
 - The persisted row has `item_type="asked"`, `starred=True`,
   `agent_source="live_chat"`, and `answered=True`.
