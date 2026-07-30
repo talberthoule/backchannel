@@ -268,7 +268,7 @@ git commit -m "docs: explain explicit provider model setup (ALP-188)"
 - Modify only test fixes required by observed ALP-188 regressions
 - Update: `docs/superpowers/plans/2026-07-30-alp-188-first-run-model-setup.md`
 
-- [ ] **Step 1: Run the complete backend suite**
+- [x] **Step 1: Run the complete backend suite**
 
 ```powershell
 C:\Users\Houle\.venvs\backchannel312\Scripts\python.exe -m unittest discover -s tests
@@ -276,14 +276,19 @@ C:\Users\Houle\.venvs\backchannel312\Scripts\python.exe -m unittest discover -s 
 
 The known Windows-only `test_master_key_file_created_private` `0o600`/`0o666` mismatch may remain only if it is the sole failure.
 
-- [ ] **Step 2: Run frontend tests and build**
+Verification: 882 tests ran with 2 skips and only the documented Windows
+`0o600`/`0o666` failure.
+
+- [x] **Step 2: Run frontend tests and build**
 
 ```powershell
 npm test
 npm run build
 ```
 
-- [ ] **Step 3: Run coupled docs-site tests**
+Verification: 93 tests passed; production build passed.
+
+- [x] **Step 3: Run coupled docs-site tests**
 
 ```powershell
 npm run test:site
@@ -291,18 +296,26 @@ node --test *.test.js
 npm run build
 ```
 
-- [ ] **Step 4: Run structural checks**
+Verification: focused suites passed 27 + 8 + 82 + 19 + 13 + 14 tests,
+aggregate passed 202 tests, and production build passed.
+
+- [x] **Step 4: Run structural checks**
 
 ```powershell
 C:\Users\thoule\.local\bin\sentrux.exe check .
 C:\Users\thoule\.local\bin\sentrux.exe gate .
 ```
 
-- [ ] **Step 5: Review the diff and confirm clean worktree**
+Verification: both commands reproduce the same inherited failure on untouched
+master `0f3c33c`: the approved generated-lockfile exceptions plus the
+`custom_endpoints.py` / `privacy.py` cycle and stale-baseline drift. ALP-188
+adds no cycle; measured quality is 5628 versus master 5625.
+
+- [x] **Step 5: Review the diff and confirm clean worktree**
 
 Check that no existing nonempty choice is rewritten, no credential change saves agent ids, no implicit cloud fallback remains, and no migration was added.
 
-- [ ] **Step 6: Commit final test/plan evidence**
+- [x] **Step 6: Commit final test/plan evidence**
 
 - [ ] **Step 7: Post Linear verification evidence and set ALP-188 to In Review**
 
