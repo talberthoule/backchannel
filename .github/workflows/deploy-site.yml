@@ -39,7 +39,13 @@ jobs:
           command: deploy
           # The action's bundled default (wrangler 3.x) predates wrangler.jsonc
           # support and dies with "Missing entry-point". Match docs-site/package.json.
-          wranglerVersion: "4.107.0"
+          #
+          # Must stay outside the miniflare -> sharp libvips advisory range, which
+          # covers wrangler 4.16.0-4.113.0 (ALP-190). 4.114.0 is the lowest release
+          # that clears it, but package.json's caret resolves to 4.115.0 and the
+          # build step above deletes the lockfile, so CI tests 4.115.0. Pinning the
+          # deploy lower than what the suites run would be skew for no benefit.
+          wranglerVersion: "4.115.0"
       # Ping the Bing/IndexNow index (feeds Copilot citations) with every URL
       # from both sitemaps. The key file is served from the site root; failed
       # pings never fail the deploy.
