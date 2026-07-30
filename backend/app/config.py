@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://callhelper:changeme@db:5432/callhelper"
     FRONTEND_DIST: str = ""  # path to built frontend; empty = nginx serves it (Docker)
     GEMINI_MODEL: str = "gemini-3.1-flash-live-preview"
-    BATCH_TRANSCRIBER_MODEL: str = "gemini-3.5-flash-lite"
+    BATCH_TRANSCRIBER_MODEL: str = "local-whisper-base"
     REFINEMENT_MODEL: str = "gemini-3.5-flash"
     REFINEMENT_INTERVAL_SECONDS: int = 45
 
@@ -74,6 +74,33 @@ settings = Settings()
 # --- Model Registry ---
 # Central catalog of available models and their capabilities.
 # Add new models here as they become available.
+
+DEFAULT_MODEL_RECOMMENDATION_ROLES: dict[str, tuple[str, ...]] = {
+    "gemini-3.1-flash-live-preview": ("audio_gateway",),
+    "gemini-3.6-flash": (
+        "consolidated_analyst",
+        "synthesizer",
+        "opportunity_specialist",
+        "strategic_signals",
+        "brief_meeting_lens",
+        "brief_discovery_lens",
+        "brief_arbiter",
+        "live_ask",
+    ),
+    "gemini-3.5-flash-lite": ("objection_handler", "batch_transcription"),
+    "gpt-realtime-whisper": ("audio_gateway",),
+    "gpt-5.6-terra": (
+        "consolidated_analyst",
+        "synthesizer",
+        "strategic_signals",
+        "brief_meeting_lens",
+        "brief_discovery_lens",
+        "live_ask",
+    ),
+    "gpt-5.6-luna": ("objection_handler", "opportunity_specialist"),
+    "gpt-5.6-sol": ("brief_arbiter",),
+    "gpt-4o-mini-transcribe": ("batch_transcription",),
+}
 
 MODEL_REGISTRY: list[dict] = [
     {

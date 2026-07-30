@@ -98,6 +98,15 @@ class LLMKeyMissing(ValueError):
         self.provider = provider
 
 
+class LLMModelNotSelected(ValueError):
+    def __init__(self, source: str = ""):
+        subject = source or "This feature"
+        super().__init__(
+            f"{subject} has no model selected; choose one in Admin -> Agents."
+        )
+        self.source = source
+
+
 def registry_entry(model_id: str) -> dict | None:
     return next((m for m in MODEL_REGISTRY if m["id"] == model_id), None)
 
@@ -140,6 +149,8 @@ async def _prepare_call(model_id: str, feature: str, source: str = "") -> _CallT
     that something is off. Every caller of this module gets that for free,
     which is why the naming lives here rather than at each call site.
     """
+    if not model_id.strip():
+        raise LLMModelNotSelected(source)
     provider = provider_for(model_id)
     if provider != "local" and await is_local_only() and not await allows_local_only(model_id):
         raise LocalOnlyModeError(feature, model_id, source)
@@ -385,11 +396,14 @@ async def _openai_json(
     key: str,
     session_id,
     source: str,
+    reasoning_effort: str | None,
 ):
     contract = _contract_prompt(prompt, schema_hint)
 
     async def post(messages: list[dict], mode: str) -> str:
         payload: dict = {"model": endpoint.model, "messages": messages}
+        if reasoning_effort is not None:
+            payload["reasoning_effort"] = reasoning_effort
         response_format = _response_format(mode, response_schema)
         if response_format is not None:
             payload["response_format"] = response_format
@@ -479,6 +493,7 @@ async def generate_json(
     schema_hint: str | None = None,
     session_id: object | None = None,
     source: str = "",
+    reasoning_effort: str | None = None,
 ):
     """Provider-routed structured generation validated against a Pydantic schema.
 
@@ -494,7 +509,15 @@ async def generate_json(
     hint = schema_hint or _default_schema_hint(response_schema)
     if target.endpoint is not None:
         return await _openai_json(
-            model_id, target.endpoint, prompt, response_schema, hint, target.key, session_id, source
+            model_id,
+            target.endpoint,
+            prompt,
+            response_schema,
+            hint,
+            target.key,
+            session_id,
+            source,
+            reasoning_effort,
         )
     return await _google_json(
         model_id, prompt, response_schema, hint, target.key, session_id, source

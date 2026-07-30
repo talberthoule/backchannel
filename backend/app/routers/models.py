@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import MODEL_REGISTRY
+from app.config import DEFAULT_MODEL_RECOMMENDATION_ROLES, MODEL_REGISTRY
 from app.database import get_db
 from app.services.custom_endpoints import endpoint_models
 from app.services.llm_endpoint import OPENAI_COMPATIBLE_MODEL, legacy_endpoint_configured
 from app.services.model_pricing import MODEL_PRICING, PRICING_AS_OF
+from app.services.local_fit import local_model_recommendations
 from app.services.provider_health import provider_key_availability
 
 router = APIRouter(prefix="/api/models", tags=["models"])
@@ -19,6 +20,15 @@ class ModelPricing(BaseModel):
     output_per_million: float | None = None
     cached_input_per_million: float | None = None
     audio_input_per_million: float | None = None
+
+
+class ModelRecommendation(BaseModel):
+    role: str
+    provider: str
+    recommended: bool = True
+    source: str
+    interval_seconds: int | None = None
+    reasoning_effort: str | None = None
 
 
 class ModelOut(BaseModel):
@@ -38,6 +48,7 @@ class ModelOut(BaseModel):
     runs_locally: bool = False
     # Set for models served by a saved custom endpoint.
     endpoint_id: str | None = None
+    recommendations: list[ModelRecommendation] = Field(default_factory=list)
 
 
 class ModelPricingOut(BaseModel):
@@ -56,6 +67,7 @@ async def list_models(db: AsyncSession = Depends(get_db)):
     """
     key_available = await provider_key_availability(db)
     show_legacy = await legacy_endpoint_configured(db)
+    local_recommendations = await local_model_recommendations(db)
     registry = [
         {
             **model,
@@ -63,11 +75,31 @@ async def list_models(db: AsyncSession = Depends(get_db)):
             if model["requires_key"]
             else True,
             "runs_locally": model["provider"].lower() == "local",
+            "recommendations": [
+                {
+                    "role": role,
+                    "provider": model["requires_key"] or model["provider"].lower(),
+                    "recommended": True,
+                    "source": "provider_default",
+                    **(
+                        {"reasoning_effort": "high"}
+                        if model["id"] == "gpt-5.6-sol" and role == "brief_arbiter"
+                        else {}
+                    ),
+                }
+                for role in DEFAULT_MODEL_RECOMMENDATION_ROLES.get(model["id"], ())
+            ],
         }
         for model in MODEL_REGISTRY
         if model["id"] != OPENAI_COMPATIBLE_MODEL or show_legacy
     ]
-    return registry + await endpoint_models(db)
+    endpoints = await endpoint_models(db)
+    for model in registry + endpoints:
+        model["recommendations"] = (
+            model.get("recommendations", [])
+            + local_recommendations.get(model["id"], [])
+        )
+    return registry + endpoints
 
 
 @router.get("/pricing", response_model=ModelPricingOut)

@@ -633,9 +633,6 @@ class EnhanceInsightsWithFallbackTests(unittest.IsolatedAsyncioTestCase):
                 "app.services.speaker_revalidation.asyncio.sleep",
                 new=sleep or AsyncMock(),
             ))
-            stack.enter_context(patch.object(
-                speaker_revalidation.settings, "REFINEMENT_MODEL", "cloud-primary",
-            ))
             return await _enhance_insights_with_fallback(
                 SimpleNamespace(), uuid.uuid4(), [], uuid.uuid4()
             )
@@ -654,7 +651,7 @@ class EnhanceInsightsWithFallbackTests(unittest.IsolatedAsyncioTestCase):
         await self._enhance(batch, [], resolve=resolve)
 
         self.assertEqual("synthesizer", resolve.await_args.args[0])
-        self.assertEqual("cloud-primary", resolve.await_args.args[1])
+        self.assertEqual(1, len(resolve.await_args.args))
         self.assertEqual("endpoint:lab:qwen", batch.await_args.kwargs["model_id"])
 
     async def test_primary_success_never_touches_a_fallback(self):
@@ -843,9 +840,6 @@ class RetryFailedBatchesEndToEndTests(unittest.IsolatedAsyncioTestCase):
             ))
             stack.enter_context(patch(
                 "app.services.speaker_revalidation.asyncio.sleep", new=AsyncMock(),
-            ))
-            stack.enter_context(patch.object(
-                speaker_revalidation.settings, "REFINEMENT_MODEL", "cloud-primary",
             ))
             await speaker_revalidation._run_batch(db, run, batch)
 

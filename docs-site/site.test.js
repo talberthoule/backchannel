@@ -62,8 +62,12 @@ test('public agent crew matches the shipped defaults and triggers', () => {
   const section = html.split('<section id="agents"')[1].split('</section>')[0];
   const slugs = [...section.matchAll(/<code>([^<]+)<\/code>/g)].map((match) => match[1]);
   const defaults = [...seededAgents.matchAll(/"slug": "([^"]+)"/g)].map((match) => match[1]);
+  const modelIds = [...seededAgents.matchAll(/"model_id": "([^"]*)"/g)]
+    .map((match) => match[1]);
 
   assert.deepEqual(slugs, defaults);
+  assert.equal(modelIds.length, defaults.length);
+  assert.ok(modelIds.every((modelId) => modelId === ''));
   assert.match(section, /consolidated_analyst[\s\S]*Every 40s \+ final pass/);
   assert.match(section, /objection_handler[\s\S]*Every 10s over the last 90s/);
   assert.match(section, /synthesizer[\s\S]*New or updated insights; 75s cooldown, 120s fallback/);
@@ -72,6 +76,13 @@ test('public agent crew matches the shipped defaults and triggers', () => {
   for (const slug of ['brief_meeting_lens', 'brief_discovery_lens', 'brief_arbiter']) {
     assert.match(section, new RegExp(`${slug}[\\s\\S]*At call end or on demand`));
   }
+});
+
+test('first-run copy describes explicit provider-aware model selection', () => {
+  assert.doesNotMatch(html, /By default, transcription and analysis use the Gemini API/i);
+  assert.doesNotMatch(html, /add a Gemini API key in Admin/i);
+  assert.match(html, /agents start as Not selected/i);
+  assert.match(html, /Recommended/i);
 });
 
 test('network failures keep the email valid and show an actionable retry', async () => {

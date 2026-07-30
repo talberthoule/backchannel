@@ -166,6 +166,68 @@ class ActivityRegistryTests(unittest.IsolatedAsyncioTestCase):
             records["consolidated_analyst"]["lens_count"],
         )
 
+    async def test_unselected_model_blocks_before_privacy_or_meeting_type(self):
+        def config(slug):
+            return SimpleNamespace(
+                slug=slug,
+                name=slug.replace("_", " ").title(),
+                model_id="",
+                enabled=True,
+                sub_types="",
+                lenses="",
+                prompt="",
+                interval_seconds=20,
+                model_intervals="",
+                knowledge_source_ids="",
+                _session_override=None,
+            )
+
+        slugs = (
+            "audio_gateway",
+            "consolidated_analyst",
+            "objection_handler",
+            "synthesizer",
+            "opportunity_specialist",
+            "strategic_signals",
+            "brief_meeting_lens",
+            "brief_discovery_lens",
+            "brief_arbiter",
+        )
+        with patch("app.services.agents.orchestrator.GeminiLiveSession") as gateway:
+            orchestrator = AgentOrchestrator(
+                session_id=uuid.uuid4(),
+                websocket=_WebSocket(),
+                directives=[],
+                doc_summaries="",
+                active_questions=[],
+                speakers=[],
+                agent_configs={slug: config(slug) for slug in slugs},
+                meeting_type="general",
+                local_only=True,
+                admitted_models=set(),
+            )
+
+        gateway.assert_not_called()
+        self.assertIsNone(orchestrator.audio_gateway)
+        records = {
+            record["slug"]: record
+            for record in orchestrator.activity.snapshot()["agents"]
+        }
+        for slug in slugs:
+            self.assertEqual("blocked", records[slug]["state"], slug)
+            self.assertEqual("no_model", records[slug]["blocked_reason"], slug)
+            self.assertIn("Admin -> Agents", records[slug]["remedy"], slug)
+            self.assertFalse(orchestrator._is_enabled(slug), slug)
+
+        await orchestrator.start()
+        self.assertIsNone(orchestrator._gateway_task)
+        self.assertIsNone(orchestrator._consolidated_task)
+        self.assertIsNone(orchestrator._objection_task)
+        self.assertIsNone(orchestrator._synth_subscriber)
+        self.assertIsNone(orchestrator._opp_specialist_subscriber)
+        self.assertIsNone(orchestrator._strategic_signals_task)
+        await orchestrator.close_all()
+
     def test_saved_outcome_distinguishes_insights_dedup_and_model_silence(self):
         partial = saved_outcome(
             {"kind": "insights", "items": 3},

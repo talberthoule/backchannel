@@ -108,13 +108,14 @@ class TranscribeModelSelectionTests(unittest.TestCase):
         session = OpenAIRealtimeSession(model_override="gpt-realtime-whisper")
         self.assertEqual("gpt-realtime-whisper", session._transcribe_model)
 
-    def test_session_defaults_for_unknown_or_missing_override(self):
+    def test_session_defaults_only_for_missing_override(self):
         self.assertEqual(
             DEFAULT_TRANSCRIBE_MODEL,
             OpenAIRealtimeSession()._transcribe_model,
         )
+        self.assertEqual("", OpenAIRealtimeSession(model_override="")._transcribe_model)
         self.assertEqual(
-            DEFAULT_TRANSCRIBE_MODEL,
+            "something-else",
             OpenAIRealtimeSession(model_override="something-else")._transcribe_model,
         )
 

@@ -228,6 +228,41 @@ class BriefingProviderRoutingTests(ProviderRoutingTestCase):
         self.enterContext(patch.object(briefing_synthesis, "_persist_synthesis", persist))
         return persist
 
+    async def test_unselected_enabled_role_persists_setup_block_before_privacy(self):
+        persist = AsyncMock(return_value=SimpleNamespace(status="error"))
+        build_context = AsyncMock()
+        with (
+            patch(
+                "app.services.privacy.is_local_only",
+                new=AsyncMock(return_value=True),
+            ),
+            patch(
+                "app.services.privacy.allows_local_only",
+                new=AsyncMock(return_value=False),
+            ),
+            patch.object(
+                briefing_synthesis,
+                "_build_context",
+                build_context,
+            ),
+            patch.object(
+                briefing_synthesis,
+                "_persist_error_synthesis",
+                persist,
+            ),
+        ):
+            result = await run_session_synthesis(
+                uuid.uuid4(),
+                mode="post_call",
+                agent_configs=_briefing_configs(""),
+            )
+
+        self.assertEqual("error", result.status)
+        build_context.assert_not_awaited()
+        persist.assert_awaited_once()
+        self.assertIn("Admin -> Agents", persist.await_args.args[2])
+        self.assertIn("brief_arbiter", persist.await_args.args[2])
+
     async def test_openai_lenses_and_arbiter_use_openai_path(self):
         persist = self._patch_briefing()
         lens_json = '{"notes": "lens ok"}'
@@ -252,6 +287,28 @@ class BriefingProviderRoutingTests(ProviderRoutingTestCase):
         kwargs = persist.await_args.kwargs
         self.assertEqual("completed", kwargs["status"])
         self.assertEqual("settled", kwargs["arbiter_output"].arbiter_notes)
+
+    async def test_only_sol_arbiter_uses_high_reasoning_effort(self):
+        persist = self._patch_briefing()
+        fake = FakeHTTPX([
+            _chat_response('{"notes": "lens"}'),
+            _chat_response('{"notes": "lens"}'),
+            _chat_response('{"arbiter_notes": "settled"}'),
+        ])
+        self._patch_openai(fake)
+        configs = _briefing_configs("gpt-5.6-terra")
+        configs[BRIEF_ARBITER_SLUG].model_id = "gpt-5.6-sol"
+
+        await run_session_synthesis(
+            uuid.uuid4(),
+            mode="post_call",
+            agent_configs=configs,
+        )
+
+        self.assertNotIn("reasoning_effort", fake.posts[0]["json"])
+        self.assertNotIn("reasoning_effort", fake.posts[1]["json"])
+        self.assertEqual("high", fake.posts[2]["json"]["reasoning_effort"])
+        persist.assert_awaited_once()
 
     async def test_gemini_lenses_and_arbiter_use_google_native_schema(self):
         persist = self._patch_briefing()

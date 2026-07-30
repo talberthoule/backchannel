@@ -12,7 +12,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
-from app.config import settings
 from app.services.briefing_synthesis import agent_model_id
 from app.services.llm import generate_text
 from app.services.privacy import LocalOnlyModeError, privacy_impact
@@ -25,12 +24,12 @@ def _row(model_id: str, enabled: bool = True):
 
 
 class AgentModelIdTests(unittest.IsolatedAsyncioTestCase):
-    async def _resolve(self, configs, slug="synthesizer", default="fallback-model"):
+    async def _resolve(self, configs, slug="synthesizer"):
         with patch(
             "app.services.briefing_synthesis.load_agent_configs",
             new=AsyncMock(return_value=configs),
         ):
-            return await agent_model_id(slug, default)
+            return await agent_model_id(slug)
 
     async def test_returns_the_configured_row_model(self):
         self.assertEqual(
@@ -38,14 +37,11 @@ class AgentModelIdTests(unittest.IsolatedAsyncioTestCase):
             await self._resolve({"synthesizer": _row(ON_PREM_MODEL)}),
         )
 
-    async def test_missing_row_falls_back_to_the_default(self):
-        self.assertEqual("fallback-model", await self._resolve({}))
+    async def test_missing_row_is_unselected(self):
+        self.assertEqual("", await self._resolve({}))
 
-    async def test_blank_model_falls_back_to_the_default(self):
-        self.assertEqual(
-            "fallback-model",
-            await self._resolve({"synthesizer": _row("")}),
-        )
+    async def test_blank_model_stays_unselected(self):
+        self.assertEqual("", await self._resolve({"synthesizer": _row("")}))
 
     async def test_a_disabled_agent_still_supplies_its_model(self):
         """Only model_id is borrowed.
@@ -129,12 +125,12 @@ class SpeakerContextEnhancerModelTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(ON_PREM_MODEL, generate.await_args.args[0])
         self.assertEqual("synthesizer", resolve.await_args.args[0])
-        self.assertEqual(settings.REFINEMENT_MODEL, resolve.await_args.args[1])
+        self.assertEqual(1, len(resolve.await_args.args))
 
-    async def test_falls_back_to_the_refinement_setting(self):
-        _, generate = await self._run_batch_with(settings.REFINEMENT_MODEL)
+    async def test_unselected_model_reaches_the_shared_guard(self):
+        _, generate = await self._run_batch_with("")
 
-        self.assertEqual(settings.REFINEMENT_MODEL, generate.await_args.args[0])
+        self.assertEqual("", generate.await_args.args[0])
 
 
 class AnalyzeModelTests(unittest.IsolatedAsyncioTestCase):
@@ -175,12 +171,12 @@ class AnalyzeModelTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(ON_PREM_MODEL, generate.await_args.args[0])
         self.assertEqual("consolidated_analyst", resolve.await_args.args[0])
-        self.assertEqual(settings.REFINEMENT_MODEL, resolve.await_args.args[1])
+        self.assertEqual(1, len(resolve.await_args.args))
 
-    async def test_falls_back_to_the_refinement_setting(self):
-        _, generate = await self._analyze_with(settings.REFINEMENT_MODEL)
+    async def test_unselected_model_reaches_the_shared_guard(self):
+        _, generate = await self._analyze_with("")
 
-        self.assertEqual(settings.REFINEMENT_MODEL, generate.await_args.args[0])
+        self.assertEqual("", generate.await_args.args[0])
 
 
 class RefusalMessageTests(unittest.IsolatedAsyncioTestCase):

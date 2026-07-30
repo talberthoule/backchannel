@@ -78,7 +78,7 @@
             "name": "Does my meeting audio leave my machine?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API. You can route agents to OpenAI instead, transcribe fully offline with local ONNX Whisper or Parakeet models, or point the agents at a self-hosted OpenAI-compatible server such as Ollama or LM Studio -- which makes the whole pipeline local, with no key from anyone. Recordings and transcripts stay on your server."
+              "text": "Only where you route it. Voice activity detection and speaker diarization always run locally, and a fresh install uses built-in local batch transcription. Agent models stay unselected until you choose Google, OpenAI, or a self-hosted OpenAI-compatible server such as Ollama or LM Studio. Recordings and transcripts stay on your server."
             }
           },
           {
@@ -110,7 +110,7 @@
             "name": "What do I need to run it?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Use the desktop app for the easiest start: download the build for Windows, macOS, or Linux, unpack it, run the app, and add a Gemini API key in Admin. Use Docker Compose when you want the full self-hosted stack, local development, or GPU diarization. An OpenAI key is optional for OpenAI-routed agents, and local ONNX transcription needs no key at all."
+              "text": "Use the desktop app for the easiest start: download the build for Windows, macOS, or Linux, unpack it, and run the app. Built-in local batch transcription needs no API key. Agents start as Not selected: connect Google, OpenAI, or a self-hosted service if you want its models, then choose explicit models in Admin. Recommended marks a good starting point. Use Docker Compose when you want the full self-hosted stack, local development, or GPU diarization."
             }
           }
         ]
@@ -428,10 +428,10 @@ docker compose up --build
       </div>
 
       <p class="quickstart-note">
-        Prefer zero API keys for transcription? Switch batch transcription to
-        a local ONNX Whisper or Parakeet model: transcription and diarization
-        run fully offline, and only the insight agents still need a Gemini or
-        OpenAI key.
+        Built-in local batch transcription and diarization need no API key.
+        For insight agents, connect Google, OpenAI, or a self-hosted
+        OpenAI-compatible service, then choose explicit models under Admin.
+        Local recommendations appear after the connected model passes Local Fit.
       </p>
     </div>
   </section>
@@ -443,7 +443,7 @@ docker compose up --build
       <ol class="steps">
         <li><span><strong>Capture.</strong> The browser records mic (and optionally tab) audio and streams PCM16 16 kHz chunks over a WebSocket.</span></li>
         <li><span><strong>Diarize.</strong> Voice activity detection cuts speech into segments; speaker embeddings assign each segment to a voice.</span></li>
-        <li><span><strong>Transcribe.</strong> Each segment is transcribed by Gemini Flash or a local ONNX model, filtered, and saved in speaking order.</span></li>
+        <li><span><strong>Transcribe.</strong> Each segment is transcribed by the selected Google, OpenAI, or local ONNX model, filtered, and saved in speaking order.</span></li>
         <li><span><strong>Analyze.</strong> Text agents read the growing transcript on their own schedules and propose questions, objections, opportunities, and action items.</span></li>
         <li><span><strong>Deliver.</strong> Deduplicated insights stream to the call view instantly; a synthesizer refines them as the conversation evolves.</span></li>
       </ol>
@@ -466,7 +466,7 @@ docker compose up --build
   <section id="agents" class="alt">
     <div class="wrap">
       <h2>A crew, not a monolith</h2>
-      <p class="sub">Each agent has one job, its own trigger, and a configurable model and prompt.</p>
+      <p class="sub">Each agent has one job, its own trigger, and a configurable model and prompt. Agents start as Not selected; provider-aware Recommended tags offer starting points without forcing a choice.</p>
       <div class="table-scroll" tabindex="0" role="region" aria-label="Agent roster table, scrollable">
         <table>
           <thead>
@@ -535,7 +535,7 @@ docker compose up --build
         </div>
         <div class="faq-item">
           <h3>Does my meeting audio leave my machine?</h3>
-          <p>Only where you route it. Voice activity detection and speaker diarization always run locally. By default, transcription and analysis use the Gemini API. You can route agents to OpenAI instead, transcribe fully offline with local ONNX Whisper or Parakeet models, or point the agents at a self-hosted OpenAI-compatible server such as Ollama or LM Studio -- which makes the whole pipeline local, with no key from anyone. Recordings and transcripts stay on your server.</p>
+          <p>Only where you route it. Voice activity detection and speaker diarization always run locally, and a fresh install uses built-in local batch transcription. Agent models stay unselected until you choose Google, OpenAI, or a self-hosted OpenAI-compatible server such as Ollama or LM Studio. Recordings and transcripts stay on your server.</p>
         </div>
         <div class="faq-item">
           <h3>Does it work with Zoom, Google Meet, Teams, and in-person meetings?</h3>
@@ -551,7 +551,7 @@ docker compose up --build
         </div>
         <div class="faq-item">
           <h3>What do I need to run it?</h3>
-          <p>Use the desktop app for the easiest start: download the build for Windows, macOS, or Linux, unpack it, run the app, and add a Gemini API key in Admin. Use Docker Compose when you want the full self-hosted stack, local development, or GPU diarization. An OpenAI key is optional for OpenAI-routed agents, and local ONNX transcription needs no key at all.</p>
+          <p>Use the desktop app for the easiest start: download the build for Windows, macOS, or Linux, unpack it, and run the app. Built-in local batch transcription needs no API key. Agents start as Not selected: connect Google, OpenAI, or a self-hosted service if you want its models, then choose explicit models in Admin. Recommended marks a good starting point. Use Docker Compose when you want the full self-hosted stack, local development, or GPU diarization.</p>
         </div>
       </div>
     </div>

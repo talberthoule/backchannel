@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.config import settings
 from app.services.llm import generate_text
 from app.database import async_session
 from app.models import Question, Session, Speaker, TranscriptEntry
@@ -187,7 +186,8 @@ async def run_speaker_context_batch(
     # An explicit override wins and skips the lookup entirely: the caller has
     # already decided which model this attempt uses, and re-resolving would
     # hand back the very model it is falling back from.
-    model_id = model_id or await agent_model_id("synthesizer", settings.REFINEMENT_MODEL)
+    if model_id is None:
+        model_id = await agent_model_id("synthesizer")
 
     raw = await generate_text(
         model_id,

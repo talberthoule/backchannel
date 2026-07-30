@@ -80,7 +80,14 @@ test("the model chip is rendered", () => {
 });
 
 test("a second submit is ignored while an ask is already in flight", () => {
-  assert.match(src, /if\s*\(!modelId\s*\|\|\s*asking\)\s*return;/);
+  assert.match(src, /if\s*\(asking\)\s*return;/);
+});
+
+test("submitting without a model keeps the draft and shows setup guidance", () => {
+  assert.match(src, /Choose a model to ask this call/);
+  const guard = src.indexOf("if (!modelId)");
+  const clear = src.indexOf('setText("")');
+  assert.ok(guard >= 0 && clear > guard, "the no-model return must precede draft clearing");
 });
 
 test("askDisabled blocks the chat input and never reaches onAsk (ALP-178)", () => {

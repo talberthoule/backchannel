@@ -8,7 +8,7 @@ import type {
   PrivacyConfig,
 } from "../types";
 import * as api from "../services/api";
-import { groupModels, optionLabel, optionState, runsLocally } from "../lib/modelOptions";
+import { groupModels, optionLabel, optionState, recommendationFor, runsLocally } from "../lib/modelOptions";
 import { useConfirm } from "./ConfirmProvider";
 import DiarizationCapabilityCard from "./DiarizationCapabilityCard";
 import BatchTranscriptionCard from "./BatchTranscriptionCard";
@@ -381,7 +381,9 @@ function AgentCard({
     }
   })();
   const selectedModel = modelOptions.find((m) => m.id === agent.model_id);
-  const blockedByPrivacy = localOnly && !(selectedModel && runsLocally(selectedModel));
+  const blockedByPrivacy = Boolean(
+    localOnly && agent.model_id && !(selectedModel && runsLocally(selectedModel))
+  );
   const hasLocalAlternative = modelOptions.some(runsLocally);
 
   return (
@@ -398,6 +400,11 @@ function AgentCard({
             {!agent.enabled && (
               <span className="inline-flex rounded-full bg-brand-light-gray-1/80 px-2 py-0.5 text-[10px] font-medium text-brand-gray">
                 Disabled
+              </span>
+            )}
+            {agent.enabled && !agent.model_id && (
+              <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                Needs model
               </span>
             )}
             {agent.enabled && blockedByPrivacy && (
@@ -459,13 +466,14 @@ function AgentCard({
             onChange={(e) => onUpdate(agent.slug, "model_id", e.target.value)}
             className="w-full rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 text-sm text-brand-dark-gray focus:border-brand-teal"
           >
+            <option value="">Not selected</option>
             {groupModels(modelOptions).map((group) => (
               <optgroup key={group.provider} label={group.provider}>
                 {group.models.map((m) => {
                   const { locked, suffix } = optionState(m, agent.model_id, localOnly);
                   return (
                     <option key={m.id} value={m.id} disabled={locked}>
-                      {optionLabel(m)}{suffix}
+                      {optionLabel(m, agent.slug)}{suffix}
                     </option>
                   );
                 })}
@@ -664,7 +672,22 @@ export default function AdminPanel({ onBack, desktopUpdate, initialTab, highligh
   const handleUpdate = async (slug: string, field: string, value: string | boolean | number | null) => {
     setSaving(slug);
     try {
-      const updated = await api.updateAgent(slug, { [field]: value });
+      let updated = await api.updateAgent(slug, { [field]: value });
+      if (field === "model_id" && typeof value === "string") {
+        const selected = models.find((model) => model.id === value);
+        const recommendation = selected
+          ? recommendationFor(selected, slug)
+          : undefined;
+        if (
+          recommendation?.source === "local_fit"
+          && recommendation.interval_seconds
+        ) {
+          await api.applyLocalFitIntervals(value, [
+            { slug, interval_seconds: recommendation.interval_seconds },
+          ]);
+          updated = (await api.listAgents()).find((agent) => agent.slug === slug) ?? updated;
+        }
+      }
       setAgents((prev) => prev.map((a) => (a.slug === slug ? updated : a)));
     } catch (err) {
       console.error("Update failed", err);

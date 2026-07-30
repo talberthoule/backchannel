@@ -133,7 +133,7 @@ class ConsolidatedAnalystAgent:
         lenses: list[dict] | None = None,
         session_id: uuid.UUID | None = None,
     ):
-        self._model = model_override or settings.REFINEMENT_MODEL
+        self._model = settings.REFINEMENT_MODEL if model_override is None else model_override
         prompt_template = prompt_override or CONSOLIDATED_ANALYST_BASE_PROMPT
 
         self._lens_sections = ""

@@ -46,9 +46,11 @@ LEGACY_MODEL_ALIASES = {
 
 
 def resolve_transcribe_model(model_override: str | None) -> str:
+    if model_override is None:
+        return DEFAULT_TRANSCRIBE_MODEL
     if model_override in TRANSCRIBE_MODEL_IDS:
         return model_override
-    return LEGACY_MODEL_ALIASES.get(model_override or "", DEFAULT_TRANSCRIBE_MODEL)
+    return LEGACY_MODEL_ALIASES.get(model_override, model_override)
 
 
 def _resample_16k_to_24k(pcm_bytes: bytes) -> bytes:

@@ -82,7 +82,7 @@ class ObjectionHandlerAgent:
         meeting_context_text: str | None = None,
         session_id: uuid.UUID | None = None,
     ):
-        self._model = model_override or DEFAULT_OBJECTION_MODEL
+        self._model = DEFAULT_OBJECTION_MODEL if model_override is None else model_override
         self._prompt_template = prompt_override or OBJECTION_HANDLER_PROMPT
         self.meeting_context_text = meeting_context_text or build_meeting_context_text()
         self._recent_objections: deque[str] = deque(maxlen=_MAX_RECENT_OBJECTIONS)
