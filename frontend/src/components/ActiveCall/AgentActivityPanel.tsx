@@ -81,28 +81,38 @@ export function activityEmptyMessage(
   );
 }
 
-function chipTone(agent: AgentActivityRecord, now: number): string {
-  if (agent.state === "failing") return "bg-red-100 text-red-700";
-  if (agent.state === "blocked" || isRunningLate(agent, now)) {
-    return "bg-amber-100 text-amber-800";
-  }
-  if (agent.state === "running") return "bg-emerald-100 text-emerald-700";
-  return "bg-brand-light-gray-2 text-brand-gray";
-}
-
-function dotTone(agent: AgentActivityRecord, now: number): string {
-  if (agent.state === "failing") return "bg-red-500";
-  if (agent.state === "blocked" || isRunningLate(agent, now)) return "bg-amber-500";
-  if (agent.state === "running") return "animate-pulse bg-emerald-500";
-  return "bg-brand-mid-gray";
-}
-
 function nextLabel(agent: AgentActivityRecord, now: number): string {
   if (isRunningLate(agent, now)) return "running late";
   if (agent.trigger === "event") return "event-driven";
   if (agent.trigger === "stream") return agent.state;
   if (agent.trigger === "post_call") return "at call end";
   return `next ${countdown(agent.next_due_at, now)}`;
+}
+
+function StatChip({
+  value,
+  label,
+  tone = "neutral",
+}: {
+  value: number;
+  label: string;
+  tone?: "neutral" | "warn" | "bad";
+}) {
+  const tones = {
+    neutral: "bg-brand-light-gray-2 text-brand-gray",
+    warn: "bg-amber-100 text-amber-800",
+    bad: "bg-red-100 text-red-700",
+  };
+  return (
+    <span
+      className={`flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-1 font-body text-xs ${
+        tones[value > 0 ? tone : "neutral"]
+      } ${value === 0 ? "opacity-70" : ""}`}
+    >
+      <span className="font-mono font-semibold tabular-nums">{value}</span>
+      {label}
+    </span>
+  );
 }
 
 export default function AgentActivityPanel({
@@ -118,18 +128,34 @@ export default function AgentActivityPanel({
     return () => window.clearInterval(timer);
   }, []);
 
-  const liveAgents = useMemo(
-    () => snapshot?.agents.filter(
-      (agent) => agent.trigger !== "post_call" && agent.state !== "off",
-    ) || [],
-    [snapshot],
-  );
+  // Summary counts for the collapsed row; the expanded table keeps the
+  // per-agent detail.
+  const stats = useMemo(() => {
+    const agents = snapshot?.agents || [];
+    const live = agents.filter(
+      (agent) => agent.state === "running" || agent.state === "waiting",
+    );
+    const analyst = agents.find((agent) => agent.slug === "consolidated_analyst");
+    return {
+      active: live.length,
+      anyRunning: agents.some((agent) => agent.state === "running"),
+      lenses:
+        analyst && analyst.lens_count != null
+        && (analyst.state === "running" || analyst.state === "waiting")
+          ? analyst.lens_count
+          : null,
+      runs: agents.reduce((sum, agent) => sum + agent.counts.runs, 0),
+      productive: agents.reduce(
+        (sum, agent) => sum + (agent.counts.productive ?? 0),
+        0,
+      ),
+      failed: agents.reduce((sum, agent) => sum + agent.counts.errors, 0),
+      late: agents.filter((agent) => isRunningLate(agent, now)).length,
+    };
+  }, [snapshot, now]);
   const privacyBlocked = snapshot?.agents.filter(
     (agent) => agent.blocked_reason === "privacy_first",
   ).length || 0;
-  const briefingAvailable = snapshot?.agents.some(
-    (agent) => agent.trigger === "post_call" && agent.state !== "off",
-  );
 
   return (
     <section className="border-b border-brand-light-gray-1 bg-surface">
@@ -143,32 +169,31 @@ export default function AgentActivityPanel({
         <span className="flex-shrink-0 font-body text-[10px] font-semibold uppercase tracking-wide text-brand-mid-gray">
           Agent activity
         </span>
-        {!snapshot && (
+        {!snapshot ? (
           <span className="flex-shrink-0 rounded-full bg-brand-light-gray-2 px-2 py-1 font-body text-xs text-brand-mid-gray">
             Connecting...
           </span>
+        ) : (
+          <>
+            <span className="flex flex-shrink-0 items-center gap-1.5 rounded-full bg-brand-light-gray-2 px-2 py-1 font-body text-xs text-brand-gray">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  stats.anyRunning ? "animate-pulse bg-emerald-500" : "bg-brand-mid-gray"
+                }`}
+              />
+              <span className="font-mono font-semibold tabular-nums">{stats.active}</span>
+              agents
+            </span>
+            {stats.lenses != null && <StatChip value={stats.lenses} label="lenses" />}
+            <StatChip value={stats.runs} label="runs" />
+            <StatChip value={stats.productive} label="with insights" />
+            <StatChip value={stats.late} label="late" tone="warn" />
+            <StatChip value={stats.failed} label="failed" tone="bad" />
+          </>
         )}
         {privacyBlocked > 0 && (
           <span className="flex-shrink-0 rounded-full bg-amber-100 px-2 py-1 font-body text-xs font-medium text-amber-800">
             {privacyBlocked} agent{privacyBlocked === 1 ? "" : "s"} off: Privacy First
-          </span>
-        )}
-        {liveAgents.map((agent) => (
-          <span
-            key={agent.slug}
-            className={`flex flex-shrink-0 items-center gap-1.5 rounded-full px-2 py-1 font-body text-xs ${chipTone(agent, now)}`}
-          >
-            <span className={`h-2 w-2 rounded-full ${dotTone(agent, now)}`} />
-            <span>{agent.name}</span>
-            {agent.state === "waiting" && (
-              <span className="opacity-75">{nextLabel(agent, now)}</span>
-            )}
-          </span>
-        ))}
-        {briefingAvailable && (
-          <span className="flex flex-shrink-0 items-center gap-1.5 rounded-full bg-brand-light-gray-2 px-2 py-1 font-body text-xs text-brand-gray">
-            <span className="h-2 w-2 rounded-full bg-brand-mid-gray" />
-            Briefing: at call end
           </span>
         )}
         <span className="ml-auto flex-shrink-0 text-brand-mid-gray" aria-hidden="true">

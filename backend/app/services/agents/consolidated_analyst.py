@@ -162,11 +162,15 @@ class ConsolidatedAnalystAgent:
                     lens_types.append(itype)
             self.enabled_types = set(lens_types)
             self._item_type_values = "|".join(lens_types) or "observation"
+            self.lens_count = len(lens_list)
         else:
             # Legacy monolithic prompt (custom prompt from before configurable
             # lenses): run it as-is and filter output by the sub_types config.
             self.enabled_types = enabled_types or VALID_TYPES
             self._item_type_values = "|".join(t for t in TYPE_ORDER if t in self.enabled_types)
+            # No lens sections in a legacy prompt; the enabled types are the
+            # closest analog for the live activity summary.
+            self.lens_count = len(self.enabled_types)
 
         if "## Speaker Attribution Requirements" not in prompt_template:
             prompt_template = f"{prompt_template.rstrip()}{SPEAKER_ATTRIBUTION_APPENDIX}"

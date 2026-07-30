@@ -416,7 +416,6 @@ export default function ActiveCallView({
           <div className="flex-1 overflow-hidden">
             <QuestionList
               questions={displayQuestions}
-              speakers={speakers}
               strategicSignalQuestionIds={strategicSignalQuestionIds}
               showEnhanced={Boolean(session.speaker_context_enhanced_at)}
               emptyMessage={emptyInsightMessage}

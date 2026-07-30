@@ -111,7 +111,13 @@ class ActivityRegistry:
                 "next_due_at": None,
                 "last_outcome": None,
                 "last_error": None,
-                "counts": {"runs": 0, "insights": 0, "deduped": 0, "errors": 0},
+                "counts": {
+                    "runs": 0,
+                    "insights": 0,
+                    "productive": 0,
+                    "deduped": 0,
+                    "errors": 0,
+                },
             }
             interval = record.get("interval_seconds")
             if record["state"] == "waiting" and interval:
@@ -194,6 +200,8 @@ class ActivityRegistry:
             _iso(_now() + timedelta(seconds=interval)) if interval else None
         )
         record["counts"]["runs"] += 1
+        if outcome.get("kind") == "insights":
+            record["counts"]["productive"] += 1
         record["counts"]["insights"] += int(
             outcome.get("items", 0) if outcome.get("kind") == "insights" else 0
         )

@@ -640,9 +640,13 @@ export interface AgentActivityRecord {
   next_due_at: string | null;
   last_outcome: AgentActivityOutcome | null;
   last_error: AgentActivityError | null;
+  /** Active lens count; present only on the consolidated_analyst record. */
+  lens_count?: number;
   counts: {
     runs: number;
     insights: number;
+    /** Runs whose outcome saved new or adjusted insights. */
+    productive?: number;
     deduped: number;
     errors: number;
   };
