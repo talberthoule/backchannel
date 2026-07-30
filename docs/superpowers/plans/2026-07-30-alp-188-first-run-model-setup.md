@@ -317,10 +317,10 @@ Check that no existing nonempty choice is rewritten, no credential change saves 
 
 - [x] **Step 6: Commit final test/plan evidence**
 
-- [ ] **Step 7: Post Linear verification evidence and set ALP-188 to In Review**
+- [x] **Step 7: Post Linear verification evidence and set ALP-188 to In Review**
 
 Include commit SHA, exact test counts, known environmental exception if present, and scope preserved.
 
-- [ ] **Step 8: Send the coordinator the branch SHA and Linear comment id**
+- [x] **Step 8: Send the coordinator the branch SHA and Linear comment id**
 
 Use the Herdr audited wrapper and request review. Do not merge or push.
