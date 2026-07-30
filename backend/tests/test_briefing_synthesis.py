@@ -143,6 +143,47 @@ class BriefingSynthesisTests(unittest.TestCase):
         )
         self.assertNotIn('": ', rendered_history)
 
+    def test_single_oversized_item_is_clipped_instead_of_blank(self):
+        rendered_insight = _format_insights(
+            [
+                {
+                    "id": "newest-insight",
+                    "item_type": "observation",
+                    "question": "Newest insight",
+                    "source_context": "x" * 5000,
+                }
+            ],
+            budget=500,
+        )
+        insight_payload = json.loads(rendered_insight)
+
+        self.assertLessEqual(len(rendered_insight), 500)
+        self.assertTrue(insight_payload["truncated"])
+        self.assertEqual(1, len(insight_payload["items"]))
+        self.assertEqual("newest-insight", insight_payload["items"][0]["id"])
+        self.assertEqual("Newest insight", insight_payload["items"][0]["question"])
+        self.assertTrue(insight_payload["items"][0]["source_context"].endswith("..."))
+
+        rendered_history = _format_signal_history(
+            [
+                {
+                    "section": "strategic_signals",
+                    "title": "Newest signal",
+                    "summary": "y" * 5000,
+                    "last_seen": "2026-07-30T10:00:00+00:00",
+                    "count": 1,
+                }
+            ],
+            budget=400,
+        )
+        history_payload = json.loads(rendered_history)
+
+        self.assertLessEqual(len(rendered_history), 400)
+        self.assertTrue(history_payload["truncated"])
+        self.assertEqual(1, len(history_payload["items"]))
+        self.assertEqual("Newest signal", history_payload["items"][0]["title"])
+        self.assertTrue(history_payload["items"][0]["summary"].endswith("..."))
+
 
 class _ContextResult:
     def __init__(self, value):
@@ -257,7 +298,47 @@ class BriefingSynthesisAsyncTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertIn("Live strategic signal history", context.insights_text)
+        self.assertIn(
+            "count means observed card occurrences, not completed cycles",
+            context.insights_text,
+        )
         self.assertIn("Recurring signal", context.insights_text)
+
+    async def test_live_context_keeps_bounded_rich_insight_json(self):
+        db = _ContextSession([])
+
+        with patch.object(
+            briefing_synthesis,
+            "async_session",
+            return_value=_ContextManager(db),
+        ):
+            context = await _build_context(
+                uuid.uuid4(),
+                mode="live",
+                transcript_window="transcript",
+                directives=[],
+                doc_summaries="documents",
+                speakers=[],
+                active_questions=[
+                    {
+                        "id": "live-insight",
+                        "item_type": "question",
+                        "question": "What is the deadline?",
+                        "source_context": "Client timing discussion",
+                        "answered": False,
+                        "needs_followup": True,
+                    }
+                ],
+            )
+
+        payload = json.loads(context.insights_text)
+        self.assertFalse(payload["truncated"])
+        self.assertEqual("live-insight", payload["items"][0]["id"])
+        self.assertEqual(
+            "Client timing discussion",
+            payload["items"][0]["source_context"],
+        )
+        self.assertNotIn("Live strategic signal history", context.insights_text)
 
 
 if __name__ == "__main__":

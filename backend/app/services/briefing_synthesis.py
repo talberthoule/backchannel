@@ -370,11 +370,14 @@ async def _build_context(
         else:
             transcript_text = transcript_window
 
+    # Shared intentionally: the live strategic-signals prompt also gets bounded rich JSON.
     insights_text = _format_insights(active_questions or [])
     if mode == "post_call":
         insights_text = (
             f"Saved insights:\n{insights_text}\n\n"
-            f"Live strategic signal history:\n{_format_signal_history(signal_history)}"
+            "Live strategic signal history "
+            "(count means observed card occurrences, not completed cycles):\n"
+            f"{_format_signal_history(signal_history)}"
         )
 
     return SynthesisContext(
@@ -490,10 +493,56 @@ def _bounded_json(items: list[dict], budget: int) -> str:
             separators=(",", ":"),
         )
         if len(candidate_rendered) > budget:
+            if not kept:
+                rendered = _clip_newest_item(item, budget) or rendered
             break
         kept = candidate
         rendered = candidate_rendered
     return rendered
+
+
+def _clip_newest_item(item: dict, budget: int) -> str | None:
+    clipped = json.loads(json.dumps(item))
+    protected = {"id", "title", "question", "section", "last_seen", "count"}
+    while True:
+        rendered = json.dumps(
+            {"items": [clipped], "truncated": True},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        if len(rendered) <= budget:
+            return rendered
+
+        text_keys = [
+            key
+            for key, value in clipped.items()
+            if isinstance(value, str) and value and key not in protected
+        ]
+        if not text_keys:
+            collection_keys = [
+                key
+                for key, value in clipped.items()
+                if isinstance(value, (list, dict)) and value
+            ]
+            if collection_keys:
+                key = max(
+                    collection_keys,
+                    key=lambda name: len(json.dumps(clipped[name])),
+                )
+                clipped[key] = [] if isinstance(clipped[key], list) else {}
+                continue
+            text_keys = [
+                key
+                for key, value in clipped.items()
+                if isinstance(value, str) and value
+            ]
+        if not text_keys:
+            return None
+
+        key = max(text_keys, key=lambda name: len(clipped[name]))
+        value = clipped[key]
+        keep = max(0, len(value) - (len(rendered) - budget) - 3)
+        clipped[key] = f"{value[:keep]}..." if keep else ""
 
 
 def _merge_signal_history(
