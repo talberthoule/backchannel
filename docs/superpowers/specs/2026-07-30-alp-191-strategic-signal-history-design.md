@@ -58,7 +58,8 @@ Identity is `(section, normalized title)`. Normalization case-folds, collapses
 whitespace, and strips trailing punctuation. If the title is empty, normalized
 summary is the fallback. A matching entry keeps `first_seen`, increments
 `count`, updates `last_seen`, and replaces the body with the latest wording.
-A changed title creates a new entry.
+A changed title creates a new entry. `count` records observed card occurrences,
+not distinct completed cycles, so duplicate cards in one cycle each count.
 
 The history is capped at 200 entries. When the cap is exceeded, entries with
 the oldest `last_seen` are evicted. This represents every repeated observation
@@ -91,10 +92,11 @@ Insight and signal-history context have separate fixed character budgets:
 `BRIEF_SIGNAL_HISTORY_BUDGET_CHARS = 6000`. Both admit newest entries first,
 render admitted entries chronologically, use compact JSON separators, and
 include an explicit truncation marker when older entries are omitted. The
-newest entry is always eligible when it fits by itself. The formatted signal
-history is appended to the Existing Insights context consumed by both lenses,
-so existing custom lens prompts that retain `{insights_text}` receive it
-without a new placeholder.
+newest entry is clipped if necessary so the section never goes blank. The
+formatted signal history is appended to the Existing Insights context consumed
+by both lenses, so existing custom lens prompts that retain `{insights_text}`
+receive it without a new placeholder. The same bounded rich-insight JSON is
+intentionally used by the live Strategic Signals prompt.
 
 The history formatter exposes occurrence metadata so a lens can distinguish a
 one-off cue from a signal repeated across the call.
