@@ -39,62 +39,13 @@ DEFAULT_LENSES_BY_SLUG = {
     "consolidated_analyst": DEFAULT_ANALYST_LENSES,
 }
 
-# The old monolithic consolidated-analyst prompt hardcoded its lens sections;
-# this heading identifies stale copies that should migrate to the new base
-# prompt whose {lens_sections} placeholder is filled from the lenses config.
-LEGACY_LENS_HEADING_MARKER = "## Lens 1: Strategic Follow-Up Questions"
-
-OBSOLETE_MODEL_IDS = {
-    "gemini-2.0-flash",
-    "gemini-2.5-flash-preview-05-20",
-    "gemini-2.5-pro-preview-05-06",
-}
-
-DEFAULT_MODEL_VERSION_KEY = "defaults.models.version"
-DEFAULT_MODEL_VERSION = "v0.2.5"
-FORCED_DEFAULT_MODELS = {
-    "consolidated_analyst": "gemini-3.6-flash",
-    "opportunity_specialist": "gemini-3.6-flash",
-    "brief_meeting_lens": "gemini-3.6-flash",
-    "brief_discovery_lens": "gemini-3.6-flash",
-    "brief_arbiter": "gemini-3.6-flash",
-    "objection_handler": "gemini-3.5-flash-lite",
-}
-
-# Rows still on one of these old default intervals migrate to the new seeded
-# value; user-customized intervals are left alone.
-OLD_DEFAULT_INTERVALS = {
-    "consolidated_analyst": {15, 45},
-    "objection_handler": {5},
-    "synthesizer": {30, 60},
-    "opportunity_specialist": {5, 45},
-}
-
-# Stored prompts containing these placeholders are stale defaults from before
-# the knowledge-source generalization and get replaced with the new default.
-STALE_PLACEHOLDER_MARKERS = {
-    "opportunity_specialist": "{offerings_catalog}",
-}
-
-# Stored prompts still carrying the old Presidio branding are stale defaults
-# from before the de-branding and get replaced with the new generic default.
-LEGACY_BRAND_MARKER = "Presidio"
-
-CONTEXT_PROMPT_MARKERS = {
-    "consolidated_analyst": "supporting a live call for leading solutions providers",
-    "synthesizer": "Clusters of insights that together reveal a strategic initiative, project, or objective the client is pursuing",
-    "brief_meeting_lens": "Audience: internal seller/deal team.",
-    "brief_discovery_lens": "discovery and seller-insight lens",
-    "brief_arbiter": "internal seller/deal-team audience",
-}
-
 SEED_CONFIGS = [
     {
         "slug": "audio_gateway",
         "name": "Audio Bridge",
         "description": "Silent audio relay that streams live conversation audio to Gemini for real-time transcription. Does not analyze or generate insights — just listens and enables input transcription.",
         "agent_type": "audio",
-        "model_id": "gemini-3.1-flash-live-preview",
+        "model_id": "",
         "prompt": AUDIO_BRIDGE_PROMPT,
         "enabled": True,
         "sub_types": "",
@@ -105,7 +56,7 @@ SEED_CONFIGS = [
         "name": "Consolidated Analyst",
         "description": "Analyzes transcript through configurable lenses in a single call. Default lenses: strategic follow-up questions, observations, product & service opportunities, and action items. The model set here is also used by the post-import Analyze action.",
         "agent_type": "text",
-        "model_id": "gemini-3.6-flash",
+        "model_id": "",
         "prompt": CONSOLIDATED_ANALYST_BASE_PROMPT,
         "enabled": True,
         "sub_types": "question,observation,opportunity,action_item",
@@ -118,7 +69,7 @@ SEED_CONFIGS = [
         "name": "Objection Handler",
         "description": "Fast-cycle scanner that flags objections the moment they surface and pairs each with an immediate suggested response plus the underlying strategic concern. Runs on a short interval over only the freshest transcript with a low-latency model.",
         "agent_type": "text",
-        "model_id": "gemini-3.5-flash-lite",
+        "model_id": "",
         "prompt": OBJECTION_HANDLER_PROMPT,
         "enabled": True,
         "sub_types": "",
@@ -130,7 +81,7 @@ SEED_CONFIGS = [
         "name": "Principal Agent",
         "description": "Strategic oversight meta-agent that performs quality control on insights while also synthesizing the bigger picture — connecting disparate findings to reveal strategic objectives, initiatives, and cross-domain patterns. The model set here is also used by Enhance Insights after a speaker correction.",
         "agent_type": "meta",
-        "model_id": "gemini-3.1-pro-preview",
+        "model_id": "",
         "prompt": PRINCIPAL_AGENT_PROMPT,
         "enabled": True,
         "sub_types": "",
@@ -142,7 +93,7 @@ SEED_CONFIGS = [
         "name": "Opportunity Specialist",
         "description": "Enrichment agent that runs after the Consolidated Analyst: when a lens surfaces an Opportunity insight, it matches that insight against the configured knowledge sources (offerings catalog by default) and attaches the match to the card. It does not create new insights.",
         "agent_type": "db",
-        "model_id": "gemini-3.6-flash",
+        "model_id": "",
         "prompt": OPPORTUNITY_SPECIALIST_PROMPT,
         "enabled": True,
         "sub_types": "",
@@ -154,7 +105,7 @@ SEED_CONFIGS = [
         "name": "Strategic Signals",
         "description": "Single-pass live synthesis that surfaces the signal, risk, next question, opportunity, and action cue while linking supported cards to saved insights.",
         "agent_type": "meta",
-        "model_id": "gemini-3.6-flash",
+        "model_id": "",
         "prompt": STRATEGIC_SIGNALS_PROMPT,
         "enabled": True,
         "sub_types": "",
@@ -166,7 +117,7 @@ SEED_CONFIGS = [
         "name": "Briefing Meeting Lens",
         "description": "Independent briefing lens that captures the meeting record: outcomes, decisions, blockers, commitments, and follow-ups.",
         "agent_type": "meta",
-        "model_id": "gemini-3.6-flash",
+        "model_id": "",
         "prompt": BRIEF_MEETING_LENS_PROMPT,
         "enabled": True,
         "sub_types": "",
@@ -177,7 +128,7 @@ SEED_CONFIGS = [
         "name": "Briefing Discovery Lens",
         "description": "Independent briefing lens that captures the broader sensemaking signal: objectives, pains, learning gaps, opportunities, risks, and open discovery paths.",
         "agent_type": "meta",
-        "model_id": "gemini-3.6-flash",
+        "model_id": "",
         "prompt": BRIEF_DISCOVERY_LENS_PROMPT,
         "enabled": True,
         "sub_types": "",
@@ -188,7 +139,7 @@ SEED_CONFIGS = [
         "name": "Briefing Arbiter",
         "description": "Compares the two independent briefing lenses, reconciles agreement and conflict, and settles the live/post-call briefing.",
         "agent_type": "meta",
-        "model_id": "gemini-3.6-flash",
+        "model_id": "",
         "prompt": BRIEF_ARBITER_PROMPT,
         "enabled": True,
         "sub_types": "",
@@ -206,45 +157,14 @@ async def seed_agent_configs(db: AsyncSession):
         existing = result.scalar_one_or_none()
         if existing is None:
             db.add(AgentConfig(**cfg))
-        elif _should_refresh_seeded_model(existing, cfg):
-            existing.model_id = cfg["model_id"]
-        if existing is not None and _should_refresh_seeded_prompt(existing, cfg):
-            existing.prompt = cfg["prompt"]
         # Descriptions are seed-owned (no UI edits them): keep rows in sync
         if existing is not None and existing.description != cfg["description"]:
             existing.description = cfg["description"]
-        if (
-            existing is not None
-            and existing.slug in OLD_DEFAULT_INTERVALS
-            and existing.interval_seconds in OLD_DEFAULT_INTERVALS[existing.slug]
-        ):
-            existing.interval_seconds = cfg["interval_seconds"]
         if existing is not None:
             _seed_missing_lenses(existing)
+    if await get_app_setting(db, SETTING_BATCH_TRANSCRIBER_MODEL, None) is None:
+        await set_app_setting(db, SETTING_BATCH_TRANSCRIBER_MODEL, "local-whisper-base")
     await db.commit()
-    await apply_default_model_version(db)
-
-
-async def apply_default_model_version(db: AsyncSession) -> bool:
-    """Apply the v0.2.5 defaults once, then preserve later selections."""
-    current_version = await get_app_setting(db, DEFAULT_MODEL_VERSION_KEY, "")
-    if current_version == DEFAULT_MODEL_VERSION:
-        return False
-
-    result = await db.execute(
-        select(AgentConfig).where(AgentConfig.slug.in_(FORCED_DEFAULT_MODELS))
-    )
-    for agent in result.scalars():
-        agent.model_id = FORCED_DEFAULT_MODELS[agent.slug]
-
-    await set_app_setting(
-        db,
-        SETTING_BATCH_TRANSCRIBER_MODEL,
-        "gemini-3.5-flash-lite",
-    )
-    await set_app_setting(db, DEFAULT_MODEL_VERSION_KEY, DEFAULT_MODEL_VERSION)
-    await db.commit()
-    return True
 
 
 def _seed_missing_lenses(existing: AgentConfig):
@@ -261,29 +181,3 @@ def _seed_missing_lenses(existing: AgentConfig):
         for lens in lenses:
             lens["enabled"] = lens["item_type"] in selected
     existing.lenses = json.dumps(lenses)
-
-
-def _should_refresh_seeded_model(existing: AgentConfig, cfg: dict) -> bool:
-    if existing.model_id == cfg["model_id"]:
-        return False
-    return existing.model_id in OBSOLETE_MODEL_IDS
-
-
-def _should_refresh_seeded_prompt(existing: AgentConfig, cfg: dict) -> bool:
-    stale_marker = STALE_PLACEHOLDER_MARKERS.get(existing.slug)
-    if stale_marker and stale_marker in (existing.prompt or ""):
-        return True
-    if LEGACY_BRAND_MARKER in (existing.prompt or ""):
-        return True
-    if (
-        "{lens_sections}" in (cfg.get("prompt") or "")
-        and "{lens_sections}" not in (existing.prompt or "")
-        and LEGACY_LENS_HEADING_MARKER in (existing.prompt or "")
-    ):
-        # Old default monolithic prompt with hardcoded lens sections: replace
-        # with the new base prompt (lens bodies now live in the lenses column).
-        return True
-    if "{meeting_context_text}" in (existing.prompt or ""):
-        return False
-    marker = CONTEXT_PROMPT_MARKERS.get(existing.slug)
-    return bool(marker and marker in (existing.prompt or ""))

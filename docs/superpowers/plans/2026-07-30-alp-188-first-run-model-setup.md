@@ -34,23 +34,23 @@
 - Existing nonempty rows are never rewritten by a default-version migrator.
 - An absent batch transcription setting receives `local-whisper-base`; an explicit persisted value is preserved.
 
-- [ ] **Step 1: Add failing seed tests**
+- [x] **Step 1: Add failing seed tests**
 
 Cover fresh blank rows, missing-row insertion, preservation of existing rows, retirement of the force-default version writer, and keyless batch default behavior.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 ```powershell
 C:\Users\Houle\.venvs\backchannel312\Scripts\python.exe -m unittest tests.test_seed_agents
 ```
 
-- [ ] **Step 3: Make seed data blank and delete the force-default refresh path**
+- [x] **Step 3: Make seed data blank and delete the force-default refresh path**
 
 Use the existing seed loop and setting helpers. Do not add first-run flags or schema.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add backend/app/services/seed_agents.py backend/tests
