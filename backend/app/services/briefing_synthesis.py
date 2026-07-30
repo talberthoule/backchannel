@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from hashlib import blake2b
 from datetime import datetime, timezone
@@ -32,6 +33,14 @@ BRIEF_ARBITER_SLUG = "brief_arbiter"
 BRIEF_AGENT_SLUGS = {BRIEF_MEETING_LENS_SLUG, BRIEF_DISCOVERY_LENS_SLUG, BRIEF_ARBITER_SLUG}
 SYNTHESIS_MODES = {"live", "post_call"}
 SynthesisMode = Literal["live", "post_call"]
+SIGNAL_HISTORY_SECTIONS = (
+    "strategic_signals",
+    "risks_blockers",
+    "unresolved_discovery_questions",
+    "top_opportunities",
+    "action_plan",
+)
+SIGNAL_HISTORY_MAX_ENTRIES = 200
 
 
 class EvidenceRef(BaseModel):
@@ -415,6 +424,62 @@ def _format_insights(items: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _merge_signal_history(
+    existing: list[dict],
+    output: BriefArbiterOutput,
+    captured_at: datetime,
+    model_id: str,
+) -> list[dict]:
+    merged = [dict(item) for item in existing if isinstance(item, dict)]
+    captured = captured_at.isoformat()
+
+    for section in SIGNAL_HISTORY_SECTIONS:
+        for item in getattr(output, section):
+            body = item.model_dump()
+            identity = _signal_identity(body.get("title") or body.get("summary"))
+            if not identity:
+                continue
+            key = (section, identity)
+            index = next(
+                (
+                    index
+                    for index, saved in enumerate(merged)
+                    if (
+                        saved.get("section"),
+                        _signal_identity(saved.get("title") or saved.get("summary")),
+                    )
+                    == key
+                ),
+                None,
+            )
+            previous = merged[index] if index is not None else {}
+            saved = {
+                "section": section,
+                "title": body["title"],
+                "summary": body["summary"],
+                "rationale": body["rationale"],
+                "owner": body["owner"],
+                "status": body["status"],
+                "evidence_refs": body["evidence_refs"],
+                "first_seen": previous.get("first_seen", captured),
+                "last_seen": captured,
+                "count": int(previous.get("count", 0)) + 1,
+                "model_id": model_id,
+            }
+            if index is None:
+                merged.append(saved)
+            else:
+                merged[index] = saved
+
+    merged.sort(key=lambda item: item.get("last_seen", ""))
+    # ponytail: capped JSON history; use a snapshot table if raw or unbounded playback matters.
+    return merged[-SIGNAL_HISTORY_MAX_ENTRIES:]
+
+
+def _signal_identity(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").casefold()).strip().rstrip(" .,:;!?")
+
+
 def _failure_text(model_id: str, exc: Exception) -> str:
     """Actionable one-line failure text for briefing status strings."""
     if isinstance(exc, PROVIDER_ERROR_TYPES):
@@ -513,6 +578,14 @@ async def _persist_synthesis(
         if synthesis is None:
             synthesis = SessionSynthesis(session_id=session_id, mode=mode, created_at=now)
             db.add(synthesis)
+
+        if mode == "live" and status == "completed":
+            synthesis.signal_history = _merge_signal_history(
+                synthesis.signal_history or [],
+                arbiter_output,
+                now,
+                model_ids.get("strategic_signals", ""),
+            )
 
         synthesis.status = status
         synthesis.top_outcomes = _items_json(arbiter_output.top_outcomes)
