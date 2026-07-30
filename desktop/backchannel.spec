@@ -8,6 +8,17 @@ repo = Path(SPECPATH).parent
 
 # Make the backend package importable for collect_submodules on clean machines.
 sys.path.insert(0, str(repo / "backend"))
+sys.path.insert(0, str(repo / "desktop"))
+
+from app.release_notes import APP_VERSION  # noqa: E402
+from scripts.version_resource import write_resource  # noqa: E402
+
+
+def version_of(filename, description):
+    """Windows version resource path, or None on platforms without one."""
+    if sys.platform != "win32":
+        return None
+    return str(write_resource(workpath, APP_VERSION, filename, description))
 
 hidden = collect_submodules("app") + [
     "uvicorn.logging",
@@ -53,6 +64,7 @@ exe = EXE(
     icon=str(repo / "desktop" / "assets" / "icon.ico")
     if sys.platform == "win32"
     else None,
+    version=version_of("Backchannel.exe", "Backchannel"),
 )
 
 updater_a = Analysis(
@@ -71,6 +83,7 @@ updater_exe = EXE(
     icon=str(repo / "desktop" / "assets" / "icon.ico")
     if sys.platform == "win32"
     else None,
+    version=version_of("BackchannelUpdater.exe", "Backchannel Updater"),
 )
 
 coll = COLLECT(
