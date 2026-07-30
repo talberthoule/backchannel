@@ -103,6 +103,21 @@ class TranscriptionReadinessTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("google", result.provider)
         self.assertEqual(["google"], self.provider_status_calls)
 
+    async def test_unselected_or_unknown_model_needs_selection(self):
+        for model_id in ("", "not-a-model"):
+            with self.subTest(model_id=model_id):
+                self.runtime_result = _runtime(model_id)
+                self.provider_status_calls.clear()
+
+                result = await self.readiness.get_transcription_readiness(self.db)
+
+                self.assertFalse(result.ready)
+                self.assertEqual("", result.provider)
+                self.assertIn(
+                    "select a batch transcription model", result.reason.lower()
+                )
+                self.assertEqual([], self.provider_status_calls)
+
     async def test_cloud_model_blocked_without_any_key(self):
         self.runtime_result = _runtime("gemini-3.5-flash-lite")
         self.provider_status_result = _provider_status("google", key_available=False)
