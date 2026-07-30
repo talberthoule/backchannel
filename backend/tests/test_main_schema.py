@@ -5,6 +5,8 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from app.main import _add_missing_columns, _cleanup_orphan_audio
+from app.models import SessionSynthesis
+from app.schemas import SessionSynthesisOut
 
 
 class FakeInspector:
@@ -96,6 +98,24 @@ class StartupSchemaPatchTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("ADD COLUMN speaker_mapping_revision_id UUID", sql)
         self.assertEqual(2, sql.count("ADD COLUMN speaker_mapping_revision_id UUID"))
 
+    async def test_adds_signal_history_to_existing_database(self):
+        connection = FakeAsyncConnection()
+
+        with patch("sqlalchemy.inspect", return_value=FakeRevalidationInspector()):
+            await _add_missing_columns(connection)
+
+        sql = "\n".join(connection.sync.executed)
+        self.assertIn(
+            "ADD COLUMN signal_history JSON NOT NULL DEFAULT '[]'",
+            sql,
+        )
+
+
+class SessionSynthesisSchemaTests(unittest.TestCase):
+    def test_signal_history_is_server_only(self):
+        self.assertIn("signal_history", SessionSynthesis.__table__.columns)
+        self.assertNotIn("signal_history", SessionSynthesisOut.model_fields)
+
 
 class AlembicTrackPathRevisionTests(unittest.TestCase):
     def test_revision_016_upgrade_and_downgrade(self):
@@ -185,6 +205,40 @@ class AlembicSpeakerRevalidationRevisionTests(unittest.TestCase):
                 ("sessions", "speaker_context_version"),
             ],
             [call.args for call in revision.op.drop_column.call_args_list],
+        )
+
+
+class AlembicSignalHistoryRevisionTests(unittest.TestCase):
+    def test_revision_021_upgrade_and_downgrade(self):
+        path = (
+            Path(__file__).parents[1]
+            / "alembic"
+            / "versions"
+            / "021_add_signal_history.py"
+        )
+        spec = importlib.util.spec_from_file_location("alembic_revision_021", path)
+        self.assertIsNotNone(spec)
+        revision = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(revision)
+        revision.op = MagicMock()
+
+        self.assertEqual("021_signal_history", revision.revision)
+        self.assertEqual("020_endpoint_tombstones", revision.down_revision)
+
+        revision.upgrade()
+
+        added = revision.op.add_column.call_args
+        self.assertEqual("session_syntheses", added.args[0])
+        column = added.args[1]
+        self.assertEqual("signal_history", column.name)
+        self.assertFalse(column.nullable)
+        self.assertEqual("[]", str(column.server_default.arg))
+
+        revision.downgrade()
+
+        revision.op.drop_column.assert_called_once_with(
+            "session_syntheses",
+            "signal_history",
         )
 
 

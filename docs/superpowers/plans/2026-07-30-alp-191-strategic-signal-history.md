@@ -30,7 +30,7 @@
 
 **Interfaces:**
 - Produces: `SessionSynthesis.signal_history: list`, defaulting to `[]`.
-- Produces: Alembic revision `021`, down revision `020`.
+- Produces: Alembic revision `021_signal_history`, down revision `020_endpoint_tombstones`.
 - Preserves: `SessionSynthesisOut` has no `signal_history` field.
 
 - [ ] **Step 1: Write failing schema and migration tests**

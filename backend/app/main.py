@@ -186,6 +186,13 @@ async def _add_missing_columns(conn):
                 connection.execute(
                     text("ALTER TABLE session_syntheses ADD COLUMN speaker_mapping_revision_id UUID")
                 )
+            if "signal_history" not in columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE session_syntheses "
+                        "ADD COLUMN signal_history JSON NOT NULL DEFAULT '[]'"
+                    )
+                )
 
         if "custom_endpoints" in tables:
             columns = {c["name"] for c in inspector.get_columns("custom_endpoints")}
