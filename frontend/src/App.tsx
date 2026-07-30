@@ -1071,6 +1071,7 @@ export default function App() {
             localOnly={localOnly}
             pendingAsk={runtimeMatchesView ? pendingAsk : null}
             askError={runtimeMatchesView ? askError : null}
+            askDisabled={!runtimeMatchesView}
             onMakeDirective={handleMakeDirective}
             onUpdateSessionContext={handleUpdateSessionContext}
             audioLevel={audioLevel}

@@ -249,6 +249,14 @@ either cost.
 - Websocket disconnected: asking is a plain HTTP request and does not depend
   on the live socket, so a question asked during a reconnect still works. The
   bar's disabled state follows post-processing, not socket status.
+- Tab not attached to the runtime (a fresh page load or a second tab viewing
+  an `active` session before Resume Audio has run, so `runtimeSessionId`
+  does not match the viewed session): the chat input disables itself with a
+  `Resume audio to ask...` placeholder and submits nothing. The request
+  would still reach the server and would still be billed, but this tab
+  cannot confirm where the answer lands, so blocking beats firing a request
+  whose result might never display; Resume Audio is the existing way back in.
+  Directive mode is unaffected.
 
 ## Testing
 

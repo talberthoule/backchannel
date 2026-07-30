@@ -25,6 +25,7 @@ interface ActiveCallViewProps {
   localOnly: boolean;
   pendingAsk: string | null;
   askError: string | null;
+  askDisabled: boolean;
   onMakeDirective?: (question: Question) => void;
   onUpdateSessionContext: (data: { meeting_type?: MeetingType; meeting_context?: string }) => Promise<void>;
   audioLevel: number;
@@ -104,6 +105,7 @@ export default function ActiveCallView({
   localOnly,
   pendingAsk,
   askError,
+  askDisabled,
   onMakeDirective,
   onUpdateSessionContext,
   audioLevel,
@@ -442,6 +444,7 @@ export default function ActiveCallView({
         localOnly={localOnly}
         asking={Boolean(pendingAsk) && !askError}
         disabled={postProcessingActive}
+        askDisabled={askDisabled}
       />
     </div>
   );

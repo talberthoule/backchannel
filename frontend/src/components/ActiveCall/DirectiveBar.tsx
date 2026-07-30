@@ -15,6 +15,11 @@ interface DirectiveBarProps {
   localOnly: boolean;
   asking?: boolean;
   disabled?: boolean;
+  /** True when this tab is not attached to the live runtime (ALP-178): a
+   * refresh or a second tab can no longer confirm an ask reached the call
+   * it looks like it is asking. Chat-only; Directive is unaffected because
+   * sendDirective already no-ops off-runtime when the socket is closed. */
+  askDisabled?: boolean;
 }
 
 /** The call's command bar.
@@ -32,6 +37,7 @@ export default function DirectiveBar({
   localOnly,
   asking = false,
   disabled = false,
+  askDisabled = false,
 }: DirectiveBarProps) {
   const [mode, setMode] = useState<Mode>(() => {
     // ponytail: default-first so "chat" reads as the fallback in one glance;
@@ -64,6 +70,7 @@ export default function DirectiveBar({
     const trimmed = text.trim();
     if (!trimmed || disabled) return;
     if (chatMode) {
+      if (askDisabled) return;
       if (!modelId || asking) return;
       onAsk(trimmed);
     } else {
@@ -111,11 +118,13 @@ export default function DirectiveBar({
             placeholder={
               disabled
                 ? "Post-processing is running..."
-                : chatMode
-                  ? "Ask this call anything..."
-                  : "e.g. Ask about their cloud migration timeline..."
+                : chatMode && askDisabled
+                  ? "Resume audio to ask..."
+                  : chatMode
+                    ? "Ask this call anything..."
+                    : "e.g. Ask about their cloud migration timeline..."
             }
-            disabled={disabled}
+            disabled={disabled || (chatMode && askDisabled)}
             aria-label={chatMode ? "Ask this call a question" : "Add a directive"}
             className="min-w-0 flex-1 bg-transparent font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray focus:outline-none"
           />
