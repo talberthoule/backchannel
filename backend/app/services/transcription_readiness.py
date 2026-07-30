@@ -45,10 +45,21 @@ async def get_transcription_readiness(db: AsyncSession) -> TranscriptionReadines
     runtime = await get_transcription_runtime_config(db)
     model_id = runtime.batch_model_id
     entry = next((m for m in MODEL_REGISTRY if m["id"] == model_id), None)
-    # The runtime config only returns registry models; the transcriber factory
-    # routes by registry provider and sends unknown non-local ids to the
-    # Gemini transcriber, which needs a Google key.
-    required_key = entry.get("requires_key") if entry else "google"
+    if not entry or not entry.get("supports_batch_audio"):
+        detail = (
+            "No batch transcription model is selected."
+            if not model_id
+            else f"The selected batch transcription model '{model_id}' is not available."
+        )
+        return TranscriptionReadiness(
+            False,
+            model_id,
+            "",
+            f"Transcription cannot run: {detail} Select a batch transcription "
+            "model in Admin -> Transcription & Audio.",
+        )
+
+    required_key = entry.get("requires_key")
 
     if not required_key:
         if local_asr_available():
