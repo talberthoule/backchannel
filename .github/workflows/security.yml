@@ -93,8 +93,37 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # npm audit resolves from the committed lockfile and the registry, so no
-      # install is needed. This is also the one place the lockfile is read as
-      # committed rather than regenerated - see tests.yml for why the test jobs
-      # deliberately do not.
+      # AUDIT WHAT SHIPS (ALP-196). The two projects need OPPOSITE treatment,
+      # because their shipped artifacts come from different places.
+      #
+      # docs-site is never built from its committed lockfile. deploy-site.yml
+      # line 30 and tests.yml line 94 both `rm -f package-lock.json && npm
+      # install` - the Windows-lockfile workaround documented there - so the
+      # deployed Worker is always a fresh resolve. Auditing the committed
+      # lockfile gated an artifact nothing used: ALP-195's postcss/svgo/astro
+      # advisories were exactly that, stale findings a fresh resolve never
+      # contained. Hence the regenerate step below, docs-site only.
+      #
+      # frontend is the reverse: its committed lockfile IS the release
+      # artifact. Every desktop bundle installs from it with `npm ci`, which
+      # honours the lockfile exactly -
+      #   scripts/release_desktop.ps1:354          (Windows x64)
+      #   desktop/Dockerfile.release-linux:5       (Linux x64)
+      #   .github/workflows/desktop-release.yml:86 (macOS arm64)
+      # so the committed lockfile is precisely what must be audited. Only
+      # tests.yml line 72 regenerates it, and that is a test tree, not a
+      # shipped one. Do not "simplify" this job by regenerating both legs; that
+      # would stop auditing what users actually install.
+      #
+      # Known and NOT addressed here: frontend is therefore tested against a
+      # fresh resolve but ships the committed lockfile, and those two trees
+      # currently differ by ~350 lines. That is a real gap, in the opposite
+      # direction from the one this job fixes, and it needs its own decision.
+      #
+      # Regenerating makes the docs-site leg time-varying - a newly published
+      # advisory can turn it red with no repo change. That is intended, and is
+      # the same property the header describes for the whole workflow.
+      - name: Resolve dependencies the way builds do
+        if: matrix.project == 'docs-site'
+        run: rm -f package-lock.json && npm install --no-audit --no-fund
       - run: npm audit --audit-level=high
