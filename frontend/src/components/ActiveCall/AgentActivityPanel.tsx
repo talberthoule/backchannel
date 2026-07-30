@@ -134,10 +134,15 @@ export function summarizeAgents(agents: AgentActivityRecord[], now: number) {
       (sum, agent) => sum + (agent.counts.productive ?? 0),
       0,
     ),
-    // Privacy First keeps its own dedicated chip; every other blocked reason
-    // (missing meeting type, future no-model states) surfaces here.
+    needSetup: agents.filter(
+      (agent) => agent.state === "blocked" && agent.blocked_reason === "no_model",
+    ).length,
+    // Privacy First and missing-model states keep dedicated chips.
     blocked: agents.filter(
-      (agent) => agent.state === "blocked" && agent.blocked_reason !== "privacy_first",
+      (agent) =>
+        agent.state === "blocked"
+        && agent.blocked_reason !== "privacy_first"
+        && agent.blocked_reason !== "no_model",
     ).length,
     // Current state, not history: a transient error that the agent recovered
     // from must not read as an ongoing failure for the rest of the call.
@@ -197,6 +202,7 @@ export default function AgentActivityPanel({
             {stats.lenses != null && <StatChip value={stats.lenses} label="lenses" />}
             <StatChip value={stats.runs} label="runs" />
             <StatChip value={stats.productive} label="with insights" />
+            <StatChip value={stats.needSetup} label="need setup" tone="warn" />
             <StatChip value={stats.blocked} label="blocked" tone="warn" />
             <StatChip value={stats.late} label="late" tone="warn" />
             <StatChip value={stats.failed} label="failed" tone="bad" />

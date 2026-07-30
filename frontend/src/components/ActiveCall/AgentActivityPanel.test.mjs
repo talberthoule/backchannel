@@ -146,6 +146,31 @@ test("blocked chip counts non-privacy blocked agents only (ALP-193)", () => {
   assert.equal(stats.blocked, 1);
 });
 
+test("no-model blocks get their own setup count", () => {
+  const stats = summarizeAgents(
+    [
+      {
+        ...waitingAgent,
+        state: "blocked",
+        blocked_reason: "no_model",
+        remedy: "Choose a model under Administration -> Agents.",
+        next_due_at: null,
+      },
+      {
+        ...waitingAgent,
+        slug: "opportunity_specialist",
+        state: "blocked",
+        blocked_reason: "meeting_type",
+        next_due_at: null,
+      },
+    ],
+    Date.parse("2026-07-28T12:00:00.000Z"),
+  );
+
+  assert.equal(stats.needSetup, 1);
+  assert.equal(stats.blocked, 1);
+});
+
 test("failed chip reflects current failing state, not cumulative errors (ALP-193)", () => {
   const now = Date.parse("2026-07-28T12:00:00.000Z");
   const recovered = {

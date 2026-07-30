@@ -182,15 +182,15 @@ node --test src/lib/modelOptions.test.ts src/lib/providerOnboarding.test.ts
 
 Keep native controls and the existing popover; do not introduce a new picker abstraction.
 
-- [ ] **Step 4: Add failing activity-panel behavior coverage**
+- [x] **Step 4: Add failing activity-panel behavior coverage**
 
 Assert the collapsed no-model count and expanded actionable reason.
 
-- [ ] **Step 5: Render the setup count and actionable copy**
+- [x] **Step 5: Render the setup count and actionable copy**
 
-- [ ] **Step 6: Run focused Node tests and `npm run build`**
+- [x] **Step 6: Run focused Node tests and `npm run build`**
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add frontend
@@ -219,7 +219,7 @@ git commit -m "feat: guide explicit agent model selection (ALP-188)"
 
 - [x] **Step 4: Run focused tests and build, then verify GREEN**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add frontend/src
