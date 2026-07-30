@@ -288,6 +288,28 @@ class BriefingProviderRoutingTests(ProviderRoutingTestCase):
         self.assertEqual("completed", kwargs["status"])
         self.assertEqual("settled", kwargs["arbiter_output"].arbiter_notes)
 
+    async def test_only_sol_arbiter_uses_high_reasoning_effort(self):
+        persist = self._patch_briefing()
+        fake = FakeHTTPX([
+            _chat_response('{"notes": "lens"}'),
+            _chat_response('{"notes": "lens"}'),
+            _chat_response('{"arbiter_notes": "settled"}'),
+        ])
+        self._patch_openai(fake)
+        configs = _briefing_configs("gpt-5.6-terra")
+        configs[BRIEF_ARBITER_SLUG].model_id = "gpt-5.6-sol"
+
+        await run_session_synthesis(
+            uuid.uuid4(),
+            mode="post_call",
+            agent_configs=configs,
+        )
+
+        self.assertNotIn("reasoning_effort", fake.posts[0]["json"])
+        self.assertNotIn("reasoning_effort", fake.posts[1]["json"])
+        self.assertEqual("high", fake.posts[2]["json"]["reasoning_effort"])
+        persist.assert_awaited_once()
+
     async def test_gemini_lenses_and_arbiter_use_google_native_schema(self):
         persist = self._patch_briefing()
         client = FakeGoogleJSONClient()

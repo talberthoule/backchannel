@@ -75,6 +75,33 @@ settings = Settings()
 # Central catalog of available models and their capabilities.
 # Add new models here as they become available.
 
+DEFAULT_MODEL_RECOMMENDATION_ROLES: dict[str, tuple[str, ...]] = {
+    "gemini-3.1-flash-live-preview": ("audio_gateway",),
+    "gemini-3.6-flash": (
+        "consolidated_analyst",
+        "synthesizer",
+        "opportunity_specialist",
+        "strategic_signals",
+        "brief_meeting_lens",
+        "brief_discovery_lens",
+        "brief_arbiter",
+        "live_ask",
+    ),
+    "gemini-3.5-flash-lite": ("objection_handler", "batch_transcription"),
+    "gpt-realtime-whisper": ("audio_gateway",),
+    "gpt-5.6-terra": (
+        "consolidated_analyst",
+        "synthesizer",
+        "strategic_signals",
+        "brief_meeting_lens",
+        "brief_discovery_lens",
+        "live_ask",
+    ),
+    "gpt-5.6-luna": ("objection_handler", "opportunity_specialist"),
+    "gpt-5.6-sol": ("brief_arbiter",),
+    "gpt-4o-mini-transcribe": ("batch_transcription",),
+}
+
 MODEL_REGISTRY: list[dict] = [
     {
         "id": "gemini-3.5-flash-lite",

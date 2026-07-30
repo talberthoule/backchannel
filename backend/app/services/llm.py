@@ -396,11 +396,14 @@ async def _openai_json(
     key: str,
     session_id,
     source: str,
+    reasoning_effort: str | None,
 ):
     contract = _contract_prompt(prompt, schema_hint)
 
     async def post(messages: list[dict], mode: str) -> str:
         payload: dict = {"model": endpoint.model, "messages": messages}
+        if reasoning_effort is not None:
+            payload["reasoning_effort"] = reasoning_effort
         response_format = _response_format(mode, response_schema)
         if response_format is not None:
             payload["response_format"] = response_format
@@ -490,6 +493,7 @@ async def generate_json(
     schema_hint: str | None = None,
     session_id: object | None = None,
     source: str = "",
+    reasoning_effort: str | None = None,
 ):
     """Provider-routed structured generation validated against a Pydantic schema.
 
@@ -505,7 +509,15 @@ async def generate_json(
     hint = schema_hint or _default_schema_hint(response_schema)
     if target.endpoint is not None:
         return await _openai_json(
-            model_id, target.endpoint, prompt, response_schema, hint, target.key, session_id, source
+            model_id,
+            target.endpoint,
+            prompt,
+            response_schema,
+            hint,
+            target.key,
+            session_id,
+            source,
+            reasoning_effort,
         )
     return await _google_json(
         model_id, prompt, response_schema, hint, target.key, session_id, source

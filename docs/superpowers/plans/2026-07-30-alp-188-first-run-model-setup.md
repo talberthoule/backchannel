@@ -121,27 +121,27 @@ git commit -m "fix: block unselected agents before provider routing (ALP-188)"
 - Local recommendations require a current compatible green fit and choose lowest effective latency, breaking ties by model id.
 - Live local roles may include an optimized interval; post-call roles do not.
 
-- [ ] **Step 1: Add failing cloud recommendation response tests**
+- [x] **Step 1: Add failing cloud recommendation response tests**
 
 Assert the role/provider matrix, one recommendation per provider/role where applicable, and the Arbiter-only Sol/high-effort rule.
 
-- [ ] **Step 2: Run focused registry tests and verify RED**
+- [x] **Step 2: Run focused registry tests and verify RED**
 
-- [ ] **Step 3: Add the smallest static metadata mapping beside the existing registry**
+- [x] **Step 3: Add the smallest static metadata mapping beside the existing registry**
 
 Return structured fields through the current response schema; do not suffix display labels.
 
-- [ ] **Step 4: Add failing Local Fit recommendation tests**
+- [x] **Step 4: Add failing Local Fit recommendation tests**
 
 Cover current green admission, stale/fingerprint/config/model incompatibility rejection, contention-adjusted role verdicts, latency/tie ordering, interval inclusion, and ASR live feasibility.
 
-- [ ] **Step 5: Reuse existing Local Fit scoring to annotate eligible local models**
+- [x] **Step 5: Reuse existing Local Fit scoring to annotate eligible local models**
 
 Keep the current apply endpoint interval-only. Selecting a model remains a separate explicit agent update.
 
-- [ ] **Step 6: Run focused recommendation tests and verify GREEN**
+- [x] **Step 6: Run focused recommendation tests and verify GREEN**
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add backend/app/config.py backend/app/schemas.py backend/app/routers/models.py backend/app/services/local_fit.py backend/tests

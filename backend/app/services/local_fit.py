@@ -781,6 +781,124 @@ async def load_local_fit_result(db: AsyncSession) -> dict | None:
         )
     return stored
 
+
+async def local_model_recommendations(db: AsyncSession) -> dict[str, list[dict]]:
+    return local_recommendations_from_fit(await load_local_fit_result(db))
+
+
+def local_recommendations_from_fit(result: dict | None) -> dict[str, list[dict]]:
+    """Recommend only current green winners from the latest Local Fit run."""
+    if not result or (result.get("validity") or {}).get("status") != "current":
+        return {}
+
+    try:
+        contention = float(result.get("contention", DEFAULT_CONTENTION))
+    except (TypeError, ValueError):
+        contention = DEFAULT_CONTENTION
+    candidates: dict[str, list[tuple[float, str, RoleFit]]] = {}
+    for measurement in result.get("text_models") or []:
+        if (
+            measurement.get("status") != "ok"
+            or (measurement.get("validity") or {}).get("status") != "current"
+        ):
+            continue
+        try:
+            fit = TextModelFit(
+                model_id=measurement["model_id"],
+                model_name=measurement.get("model_name") or measurement["model_id"],
+                status="ok",
+                short=ProfileLatency(float(measurement["short"]["latency_seconds"]), 0, None),
+                long=ProfileLatency(float(measurement["long"]["latency_seconds"]), 0, None),
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+        budgets = {
+            role["slug"]: int(role["budget_seconds"])
+            for role in measurement.get("roles") or []
+            if role.get("slug") and isinstance(role.get("budget_seconds"), (int, float))
+        }
+        for role in score_text_model(fit, budgets, contention):
+            if role.verdict == GREEN:
+                candidates.setdefault(role.slug, []).append(
+                    (
+                        effective_latency(role.latency_seconds, contention),
+                        fit.model_id,
+                        role,
+                    )
+                )
+
+    recommendations: dict[str, list[dict]] = {}
+    for slug, choices in candidates.items():
+        _, model_id, role = min(choices, key=lambda choice: (choice[0], choice[1]))
+        recommendation = {
+            "role": slug,
+            "provider": "local",
+            "recommended": True,
+            "source": "local_fit",
+        }
+        if not role.post_call:
+            recommendation["interval_seconds"] = role.recommended_interval_seconds
+        recommendations.setdefault(model_id, []).append(recommendation)
+
+    asr_candidates: list[tuple[float, str, dict]] = []
+    for measurement in (result.get("asr") or {}).get("asr_models") or []:
+        if (
+            measurement.get("status") != "ok"
+            or (measurement.get("validity") or {}).get("status") != "current"
+        ):
+            continue
+        try:
+            effective_rtf = effective_latency(
+                float(measurement["real_time_factor"]),
+                contention,
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+        if classify_rtf(effective_rtf) == GREEN:
+            asr_candidates.append(
+                (effective_rtf, measurement["model_id"], measurement)
+            )
+
+    if asr_candidates:
+        _, model_id, _ = min(asr_candidates, key=lambda choice: (choice[0], choice[1]))
+        recommendations.setdefault(model_id, []).append(
+            {
+                "role": "batch_transcription",
+                "provider": "local",
+                "recommended": True,
+                "source": "local_fit",
+            }
+        )
+
+    live_measurement = next(
+        (
+            measurement
+            for _, model_id, measurement in asr_candidates
+            if model_id == "local-parakeet-tdt-0.6b"
+        ),
+        None,
+    )
+    if live_measurement is not None:
+        try:
+            live_rtf = effective_latency(
+                float(live_measurement["short_real_time_factor"]),
+                contention,
+            )
+        except (KeyError, TypeError, ValueError):
+            live_rtf = float("inf")
+        if classify_live_feasibility(live_rtf) == FEASIBLE:
+            recommendations["local-parakeet-live"] = [
+                {
+                    "role": "audio_gateway",
+                    "provider": "local",
+                    "recommended": True,
+                    "source": "local_fit",
+                }
+            ]
+
+    return recommendations
+
+
 def _drop_stored_judgments(payload: dict) -> None:
     for model in payload.get("text_models") or []:
         for role in model.get("roles") or []:

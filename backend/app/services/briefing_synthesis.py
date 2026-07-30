@@ -302,6 +302,9 @@ async def run_session_synthesis(
             schema_hint=_response_contract(BriefArbiterOutput),
             session_id=session_id,
             source=BRIEF_ARBITER_SLUG,
+            reasoning_effort=(
+                "high" if arbiter_cfg.model_id == "gpt-5.6-sol" else None
+            ),
         )
     except Exception as exc:
         logger.error("[brief_arbiter] failed: %s", exc)
