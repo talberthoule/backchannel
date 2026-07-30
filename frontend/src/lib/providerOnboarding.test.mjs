@@ -32,7 +32,7 @@ const geminiAgents = (keyAvailable) => [
   },
 ];
 
-test("an OpenAI-only key with the seeded Gemini defaults is not ready and explains why", async () => {
+test("an OpenAI-only key with saved Gemini selections is not ready and explains why", async () => {
   const { setupReadiness } = await load();
   // Backend transcription readiness fails because the Gemini batch model has
   // no Google key; the OpenAI credential alone must not flip readiness.
@@ -187,7 +187,7 @@ test("onboarding stage walks choose -> partial -> ready", async () => {
   });
   assert.equal(onboardingStage({ anyKeySaved: false, readiness: noKeys }), "choose");
 
-  // OpenAI key saved, Gemini defaults still unusable: partial, never ready.
+  // OpenAI key saved, existing Gemini selections still unusable: partial.
   assert.equal(onboardingStage({ anyKeySaved: true, readiness: noKeys }), "partial");
 
   const googleReady = setupReadiness({

@@ -43,7 +43,7 @@ SEED_CONFIGS = [
     {
         "slug": "audio_gateway",
         "name": "Audio Bridge",
-        "description": "Silent audio relay that streams live conversation audio to Gemini for real-time transcription. Does not analyze or generate insights — just listens and enables input transcription.",
+        "description": "Silent audio relay that streams live conversation audio to the selected cloud or local captioning model. Does not analyze or generate insights — just listens and enables input transcription.",
         "agent_type": "audio",
         "model_id": "",
         "prompt": AUDIO_BRIDGE_PROMPT,

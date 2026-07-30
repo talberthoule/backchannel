@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
-import type { PrivacyConfig } from "../types";
 import * as api from "../services/api";
-import type { CredentialInfo } from "../services/api";
 import { setupReadiness, toReadinessAgentModels, type SetupReadiness } from "../lib/providerOnboarding";
 
 interface WelcomeViewProps {
@@ -69,26 +67,22 @@ function StepCard({
 
 // Shown in the content area when no session is selected. For a brand-new
 // workspace (no sessions yet) it becomes a first-run checklist driven by real
-// setup state: provider credentials (or Privacy First local mode) and the
-// first session. Once sessions exist it stays a quiet empty state.
+// setup state and the first session. Once sessions exist it stays a quiet
+// empty state.
 export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }: WelcomeViewProps) {
-  const [credentials, setCredentials] = useState<CredentialInfo[] | null>(null);
-  const [privacy, setPrivacy] = useState<PrivacyConfig | null>(null);
   const [readiness, setReadiness] = useState<SetupReadiness | null>(null);
   const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hasSessions) {
-      api.listCredentials().then(setCredentials).catch(() => setCredentials([]));
       // Step 1 completes only when the currently selected transcription and
-      // agent configuration can actually run, not when any key merely exists.
+      // agent configuration can actually run.
       Promise.all([
         api.getPrivacyConfig().catch(() => null),
         api.getTranscriptionReadiness().catch(() => null),
         api.listAgents().catch(() => []),
         api.listModels().catch(() => []),
       ]).then(([p, transcription, agents, models]) => {
-        setPrivacy(p);
         setReadiness(
           setupReadiness({
             localOnly: p?.local_only === true,
@@ -117,13 +111,10 @@ export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }
     );
   }
 
-  const providerReady = readiness?.ready === true;
-  const anyKeySaved = credentials?.some((c) => c.configured || c.env_fallback) ?? false;
-  const checklistLoaded = credentials !== null && readiness !== null;
-  // A saved key that still cannot run the selected models (e.g. OpenAI-only
-  // with the seeded Gemini defaults) surfaces its explanation on the step.
-  const providerNotice =
-    checklistLoaded && anyKeySaved && !providerReady ? readiness?.reason : undefined;
+  const setupReady = readiness?.ready === true;
+  const checklistLoaded = readiness !== null;
+  const setupNotice =
+    checklistLoaded && !setupReady ? readiness.reason : undefined;
 
   return (
     <div className="flex h-full items-start justify-center overflow-auto bg-brand-light-gray-2 p-6">
@@ -140,11 +131,11 @@ export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }
         <div className="space-y-3">
           <StepCard
             step={1}
-            done={checklistLoaded && providerReady}
-            title="Connect an AI provider"
-            description="One provider is enough: a free Google (Gemini) key covers the built-in transcription and analysis models. Prefer to stay offline? Turn on Privacy First mode instead to use local models."
-            notice={providerNotice}
-            action={{ label: "Add API key", onClick: onOpenApiKeys }}
+            done={checklistLoaded && setupReady}
+            title="Choose your AI models"
+            description="Built-in local transcription works without a key. Connect Google, OpenAI, or a self-hosted service if you want its models, then choose a model for each enabled agent. Recommended marks a good starting point."
+            notice={setupNotice}
+            action={{ label: "Open AI settings", onClick: onOpenApiKeys }}
           />
           <StepCard
             step={2}

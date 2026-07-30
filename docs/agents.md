@@ -12,6 +12,13 @@ entries are saved.
 Every agent below is configurable from Admin -> Agents: its model, its system
 prompt, its trigger, and whether it runs at all.
 
+On a fresh install every agent model starts as **Not selected**. Backchannel
+does not silently assign a cloud provider or rewrite selections when a key or
+self-hosted endpoint is added. The initial batch transcription model is the
+built-in `local-whisper-base`, which needs no API key. Choose explicit models
+for enabled agents before starting a call; **Recommended** marks a sensible
+provider-specific starting point, not a forced choice.
+
 <picture>
   <source srcset="/assets/shots/admin-agents-dark.webp" media="(prefers-color-scheme: dark)" />
   <img src="/assets/shots/admin-agents.webp" width="1185" height="900" alt="Admin Agents tab: the Privacy First toggle above the agent lineup, each agent showing its type, slug, model selector, and system prompt control." />
@@ -36,6 +43,21 @@ with runtime fallbacks in `backend/app/config.py`
 `SYNTHESIZER_MAX_INTERVAL_SECONDS`,
 `OPPORTUNITY_SPECIALIST_COOLDOWN_SECONDS`) but the per-agent values stored in
 the database take precedence.
+
+Cloud recommendations are grouped by role:
+
+| Role | Google | OpenAI |
+| --- | --- | --- |
+| Audio gateway | `gemini-3.1-flash-live-preview` | `gpt-realtime-whisper` |
+| Consolidated Analyst, Principal Agent, Strategic Signals, meeting/discovery briefing lenses, Live Ask | `gemini-3.6-flash` | `gpt-5.6-terra` |
+| Objection Handler | `gemini-3.5-flash-lite` | `gpt-5.6-luna` |
+| Opportunity Specialist | `gemini-3.6-flash` | `gpt-5.6-luna` |
+| Briefing Arbiter | `gemini-3.6-flash` | `gpt-5.6-sol` (high effort) |
+| Batch transcription | `gemini-3.5-flash-lite` | `gpt-4o-mini-transcribe` |
+
+`gpt-5.6-sol` high effort is reserved for the Briefing Arbiter. Self-hosted
+recommendations come from the current Local Fit result instead of a static
+model name.
 
 The three briefing agents never run on the live interval. Normal **End Call**
 runs them; **End without briefing** skips them; **Generate Briefing** runs them
@@ -68,8 +90,9 @@ This is not an agent: nothing schedules it, and asking never steers the running
 agents. The card's `Make directive` action is the explicit way to turn a
 question into agent guidance.
 
-The answering model is chosen from the chip in the bar and defaults to the
-Objection Handler's model, which is already configured for low latency.
+The answering model is chosen from the chip in the bar. A valid saved choice
+is preserved; otherwise it stays **Not selected**. Asking without a selection
+keeps the draft and points the user to the model chip.
 
 ## Configuration and overrides
 
@@ -90,7 +113,9 @@ to the next call, not the current one.
 
 Model choice is per agent: each agent row references a model from the
 registry in `backend/app/config.py`, and text calls are routed to the right
-provider (Google or OpenAI) by `backend/app/services/llm.py`.
+provider (Google, OpenAI, or a self-hosted OpenAI-compatible endpoint) by
+`backend/app/services/llm.py`. An enabled row with a blank model is blocked as
+`no_model`; runtime provider fallbacks do not override that explicit state.
 
 **On-device live captions (experimental, ALP-147).** Setting the `audio_gateway`
 model to `local-parakeet-live` routes interim captions to
@@ -143,6 +168,13 @@ call end -- no live loop -- so they are judged on an acceptable end-of-call wait
 The audio gateway is not a text model, so it gets no cycle-budget score here;
 its on-device option (`local-parakeet-live`) is judged instead by the ASR
 section's live-caption feasibility projection described below.
+
+A local model is marked Recommended for a role only when the current endpoint
+and machine fit result is complete, current, and green for both the whole call
+and that role. When several pass, the lowest contention-adjusted latency wins
+(then model id for a stable tie-break). Selecting that recommendation is still
+an explicit user action; for live interval roles it also applies the fit
+result's recommended interval through the existing Local Fit apply route.
 
 **Per-model budgets.** A cycle budget is stored per agent *and per model* in
 `AgentConfig.model_intervals` (JSON `{model_id: seconds}`), so the analyst can
@@ -199,7 +231,8 @@ Analyze runs the model set on **Consolidated Analyst**, and Enhance Insights
 **Principal Agent**. Only the model is borrowed, never the enabled toggle: both
 are buttons the user presses, so disabling either agent does not turn them off.
 That also means Privacy First judges them by destination like any other agent
-model, and `REFINEMENT_MODEL` is reached only when the row has no model set.
+model. If the borrowed row is **Not selected**, the action reports that setup
+is required instead of falling back to a configured environment default.
 
 ## Runtime activity and call health
 
@@ -216,6 +249,9 @@ changes emit immediately. A snapshot carries:
   (classified as truncated, timeout, refusal, or API error, each with a
   suggested remedy), and cumulative counts of runs, insights, deduplicated
   items, and errors.
+- **Setup visibility** -- enabled agents with no model report
+  `blocked_reason=no_model`; the collapsed panel counts them as
+  **N need setup**, and the expanded row points to Admin -> Agents.
 - **Call health** -- the interim gateway state, transcription job and failure
   counts, the diarization queue depth and shed-frame count, and a `degraded`
   flag with plain-language `degraded_reasons` (failed transcription segments,

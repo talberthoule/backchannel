@@ -241,21 +241,21 @@ git commit -m "fix: require explicit Live Ask model selection (ALP-188)"
 - Copy does not demand Gemini or imply credentials automatically configure agents.
 - Public docs match blank seed defaults, provider recommendations, Local Fit gating, and explicit selection.
 
-- [ ] **Step 1: Re-check ALP-185 ownership before editing `site/index.html`**
+- [x] **Step 1: Re-check ALP-185 ownership before editing `site/index.html`**
 
 Use the Herdr audited wrapper. If ALP-185 still owns a line, coordinate the exact edit rather than overwriting it.
 
-- [ ] **Step 2: Add failing copy/docs assertions**
+- [x] **Step 2: Add failing copy/docs assertions**
 
-- [ ] **Step 3: Update the minimum coupled copy**
+- [x] **Step 3: Update the minimum coupled copy**
 
-- [ ] **Step 4: Run frontend copy tests and docs-site site tests**
+- [x] **Step 4: Run frontend copy tests and docs-site site tests**
 
 ```powershell
 node --test site.test.js
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add frontend docs site docs-site

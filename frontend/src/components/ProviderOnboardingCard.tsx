@@ -17,11 +17,9 @@ interface ProviderOnboardingCardProps {
   onContinue: () => void;
 }
 
-// Contextual first-run setup state shown above the API Keys card only when
-// the screen was entered from the welcome checklist's "Add API key" action.
-// Frames the one decision that matters -- one cloud provider key or Privacy
-// First -- and offers a continue action once the currently selected
-// configuration is actually usable.
+// Contextual first-run setup state shown above Connections when the screen was
+// entered from the welcome checklist. Credentials make models available;
+// explicit selections determine whether the configuration is usable.
 export default function ProviderOnboardingCard({
   privacy,
   onPrivacyChanged,
@@ -79,11 +77,12 @@ export default function ProviderOnboardingCard({
         First-time setup
       </p>
       <h3 className="mt-0.5 font-display text-base font-bold text-brand-dark-gray">
-        Choose how Backchannel runs
+        Connect services, then choose models
       </h3>
       <p className="mt-1 font-body text-xs leading-relaxed text-brand-gray">
-        You need one working setup path -- not a key for every provider. Pick
-        one of these and you are done:
+        Built-in local transcription is available without a key. Add only the
+        services you want, then choose models under Agents and Transcription
+        &amp; Audio. Recommended marks a good starting point.
       </p>
 
       <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -92,22 +91,20 @@ export default function ProviderOnboardingCard({
             Cloud AI
           </h4>
           <p className="mt-1.5 font-body text-xs leading-relaxed text-brand-gray">
-            Add an API key from Google (Gemini) or OpenAI. Either provider
-            powers the analysis agents and live captions; the saved transcript
-            comes from Gemini or the built-in local transcription models. Use
-            the <strong>Get a key</strong> link below, paste the key into that
-            provider's field, and click <strong>Save</strong> -- saving runs a
-            connection test automatically.
+            Add a Google or OpenAI key to make that provider's models
+            available for transcription, live captions, and agents. Saving
+            tests the connection; it does not change your model selections.
           </p>
         </div>
 
         <div className="rounded-lg border border-brand-light-gray-1 p-3.5">
           <h4 className="font-display text-sm font-bold text-brand-dark-gray">
-            Privacy First (no cloud)
+            Local AI and Privacy First
           </h4>
           <p className="mt-1.5 font-body text-xs leading-relaxed text-brand-gray">
-            No API key and no audio leaves this machine: transcription runs on
-            local models instead.
+            Local transcription needs no key. For local analysis, connect a
+            self-hosted service below, run Local Fit, and select a passing
+            recommendation under Agents. Privacy First blocks cloud routes.
             {disabledImpact.length > 0 && (
               <>
                 {" "}Trade-off: {disabledImpact.map((i) => i.feature).join(", ")}{" "}
@@ -147,8 +144,8 @@ export default function ProviderOnboardingCard({
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-teal/40 bg-brand-teal/5 px-3.5 py-2.5">
           <p className="font-body text-xs font-medium text-brand-dark-gray">
             {localOnly
-              ? "Privacy First is on -- local transcription is ready to go."
-              : "Setup complete -- your provider key covers the selected transcription and analysis models."}
+              ? "Setup complete -- your selected local transcription and agent models are ready."
+              : "Setup complete -- the selected transcription and agent models are ready."}
           </p>
           <button
             type="button"
