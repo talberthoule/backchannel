@@ -303,7 +303,7 @@ class StorageTests(_EncryptionCase):
         endpoint = await ce.create_endpoint(db, name="Box", base_url="http://localhost:1234/v1")
         with (
             mock.patch(
-                "app.services.privacy.get_local_only",
+                "app.services.custom_endpoints.get_local_only",
                 new=mock.AsyncMock(return_value=True),
             ),
             self.assertRaisesRegex(ce.EndpointError, "Privacy First"),
@@ -319,7 +319,7 @@ class StorageTests(_EncryptionCase):
         db = _FakeSession()
         endpoint = await ce.create_endpoint(db, name="Box", base_url="http://localhost:1234/v1")
         with mock.patch(
-            "app.services.privacy.get_local_only",
+            "app.services.custom_endpoints.get_local_only",
             new=mock.AsyncMock(return_value=False),
         ):
             with self.assertRaisesRegex(ce.EndpointError, "confirm_off_prem"):
@@ -445,7 +445,7 @@ class RouterTests(_EncryptionCase):
             confirm_off_prem=True,
         )
         with mock.patch(
-            "app.services.privacy.get_local_only",
+            "app.services.custom_endpoints.get_local_only",
             new=mock.AsyncMock(return_value=False),
         ):
             payload = await endpoint_router.edit("box", body, db)

@@ -275,43 +275,12 @@ def _effective_interval(row: AgentConfig, default: int) -> int | None:
     )
 
 
-async def assess_call_capacity(
-    db: AsyncSession,
-    track_count: int = 2,
-    budget: MachineBudget | None = None,
-) -> CapacityAssessment:
-    """Assess whether the configured live call fits this machine's budget.
-
-    track_count defaults to 2 (mic plus system audio) because dual-track is the
-    load-multiplying default and the conservative case; a mic-only caller passes
-    track_count=1.
-    """
-
-    if budget is None:
-        budget = detect_machine_budget()
-
-    diarizer = await get_diarizer_runtime_config(db)
-    runtime = await transcription_runtime.get_transcription_runtime_config(db)
-    fit_result = await local_fit.load_local_fit_result(db) or {}
-    agent_rows = list(
-        (
-            await db.execute(select(AgentConfig).order_by(AgentConfig.display_order))
-        ).scalars().all()
-    )
-    agents = {row.slug: row for row in agent_rows}
-    local_text_model_ids = {
-        model["id"]
-        for model in await local_fit.local_text_models(db)
-        if model.get("id")
-    }
-
-    diarization: DiarizationDemand | None = None
-    batch_asr: BatchAsrDemand | None = None
-    captioner: CaptionerDemand | None = None
-    text_agents: list[TextAgentDemand] = []
-    modelled: list[str] = ["machine_budget"]
+def _diarization_demand(
+    diarizer,
+    track_count: int,
+) -> tuple[DiarizationDemand | None, list[str], list[str]]:
+    modelled: list[str] = []
     not_modelled: list[str] = []
-    annotations: list[str] = []
 
     # The diarizer in effect decides which message is honest. A machine on the
     # lightweight diarizer needs no Sortformer benchmark at all, so reporting
@@ -323,20 +292,41 @@ async def assess_call_capacity(
         not_modelled.append(
             "diarization: the lightweight diarizer is not separately benchmarked"
         )
-    elif diarizer.benchmark_validity in ("incompatible", "superseded"):
+        return None, modelled, not_modelled
+    if diarizer.benchmark_validity in ("incompatible", "superseded"):
         not_modelled.append(
             f"diarization: {diarizer.benchmark_validity_reason}"
         )
-    else:
-        # A record that survived the validity gate carries all three numbers:
-        # ALP-160 classifies an incomplete one as incompatible, which the branch
-        # above already caught. No completeness re-check is reachable here.
-        diarization = DiarizationDemand(
-            track_count=track_count,
-            per_track_rtf=diarizer.benchmark_contention_adjusted_real_time_factor,
-            per_instance_memory_mb=diarizer.benchmark_peak_memory_mb,
-        )
-        modelled.append("diarization_sortformer")
+        return None, modelled, not_modelled
+
+    # A record that survived the validity gate carries all three numbers:
+    # ALP-160 classifies an incomplete one as incompatible, which the branch
+    # above already caught. No completeness re-check is reachable here.
+    demand = DiarizationDemand(
+        track_count=track_count,
+        per_track_rtf=diarizer.benchmark_contention_adjusted_real_time_factor,
+        per_instance_memory_mb=diarizer.benchmark_peak_memory_mb,
+    )
+    modelled.append("diarization_sortformer")
+    return demand, modelled, not_modelled
+
+
+def _transcription_demands(
+    fit_result: dict,
+    runtime,
+    agents: dict[str, AgentConfig],
+) -> tuple[
+    BatchAsrDemand | None,
+    CaptionerDemand | None,
+    list[str],
+    list[str],
+    list[str],
+]:
+    batch_asr: BatchAsrDemand | None = None
+    captioner: CaptionerDemand | None = None
+    modelled: list[str] = []
+    not_modelled: list[str] = []
+    annotations: list[str] = []
 
     batch_model_id = runtime.batch_model_id
     if batch_model_id in LOCAL_MODEL_MAP:
@@ -397,7 +387,20 @@ async def assess_call_capacity(
                 f"live_captioner:{live_model_id}: memory demand is not measured"
             )
 
+    return batch_asr, captioner, modelled, not_modelled, annotations
+
+
+def _text_agent_demands(
+    fit_result: dict,
+    agent_rows: list[AgentConfig],
+    local_text_model_ids: set[str],
+) -> tuple[list[TextAgentDemand], list[str], list[str], list[str]]:
+    text_agents: list[TextAgentDemand] = []
+    modelled: list[str] = []
+    not_modelled: list[str] = []
+    annotations: list[str] = []
     output_budget = settings.LLM_SELF_HOSTED_MAX_TOKENS
+
     for row in agent_rows:
         role = _ROLES_BY_SLUG.get(row.slug)
         if (
@@ -448,6 +451,56 @@ async def assess_call_capacity(
             f"text_agent:{row.slug}: served-model context window is not captured"
         )
 
+    return text_agents, modelled, not_modelled, annotations
+
+
+async def assess_call_capacity(
+    db: AsyncSession,
+    track_count: int = 2,
+    budget: MachineBudget | None = None,
+) -> CapacityAssessment:
+    """Assess whether the configured live call fits this machine's budget.
+
+    track_count defaults to 2 (mic plus system audio) because dual-track is the
+    load-multiplying default and the conservative case; a mic-only caller passes
+    track_count=1.
+    """
+
+    if budget is None:
+        budget = detect_machine_budget()
+
+    diarizer = await get_diarizer_runtime_config(db)
+    runtime = await transcription_runtime.get_transcription_runtime_config(db)
+    fit_result = await local_fit.load_local_fit_result(db) or {}
+    agent_rows = list(
+        (
+            await db.execute(select(AgentConfig).order_by(AgentConfig.display_order))
+        ).scalars().all()
+    )
+    agents = {row.slug: row for row in agent_rows}
+    local_text_model_ids = {
+        model["id"]
+        for model in await local_fit.local_text_models(db)
+        if model.get("id")
+    }
+
+    diarization, diarization_modelled, diarization_not_modelled = (
+        _diarization_demand(diarizer, track_count)
+    )
+    (
+        batch_asr,
+        captioner,
+        transcription_modelled,
+        transcription_not_modelled,
+        transcription_annotations,
+    ) = _transcription_demands(fit_result, runtime, agents)
+    (
+        text_agents,
+        text_modelled,
+        text_not_modelled,
+        text_annotations,
+    ) = _text_agent_demands(fit_result, agent_rows, local_text_model_ids)
+
     verdict = plan_capacity(
         budget,
         diarization=diarization,
@@ -458,7 +511,19 @@ async def assess_call_capacity(
     return CapacityAssessment(
         verdict=verdict,
         track_count=track_count,
-        modelled=tuple(modelled),
-        not_modelled=tuple(not_modelled),
-        annotations=tuple(annotations),
+        modelled=(
+            "machine_budget",
+            *diarization_modelled,
+            *transcription_modelled,
+            *text_modelled,
+        ),
+        not_modelled=(
+            *diarization_not_modelled,
+            *transcription_not_modelled,
+            *text_not_modelled,
+        ),
+        annotations=(
+            *transcription_annotations,
+            *text_annotations,
+        ),
     )

@@ -752,203 +752,41 @@ class AgentOrchestrator:
             "stage_errors": [],
         }
 
-        def _stage_failed(stage: str, error: Exception) -> None:
-            result["stage_errors"].append({"stage": stage, "detail": str(error)})
         stages = self.drain_stages(mode)
         drain_total_steps = 2 + len(stages)
         if "call_briefing" in stages:
             result["synthesis_generated"] = False
 
-        def _stage_step(stage: str) -> int:
-            # Step 1 (transcript flush) lives in the websocket handler.
-            return 2 + stages.index(stage)
-
         transcript_window = await self.transcript_buffer.get_window()
         transcript_available = transcript_window != "(No recent transcript)"
         result["transcript_available"] = transcript_available
 
-        if (
-            "final_insights" in stages
-            and transcript_available
-            and self._is_enabled("consolidated_analyst")
-            and self.consolidated_agent.enabled_types
-        ):
-            await _emit_progress(
-                progress_callback,
-                "final_insights",
-                "Running final insight pass...",
-                _stage_step("final_insights"),
-                drain_total_steps,
-                drain_progress_percent(_stage_step("final_insights"), drain_total_steps),
-            )
-            await self.activity.cycle_started("consolidated_analyst")
-            try:
-                insights = await self.consolidated_agent.run_cycle(
-                    transcript_window=transcript_window,
-                    directives=self.directives,
-                    doc_summaries=self.doc_summaries,
-                    speakers=self.speakers,
-                    active_questions=self.active_questions,
-                )
-
-                for insight in insights:
-                    agent_source = insight.get("agent_source", "consolidated_analyst")
-                    saved = await self._save_and_send_insight(insight, agent_source=agent_source)
-                    if saved:
-                        result["insights_saved"] = int(result["insights_saved"]) + 1
-
-                if insights:
-                    logger.info(f"[consolidated_analyst] final drain produced {len(insights)} insights")
-                last_outcome = self.consolidated_agent.last_outcome or {}
-                if last_outcome.get("kind") == "error":
-                    await self.activity.cycle_error(
-                        "consolidated_analyst",
-                        last_outcome["error"],
-                    )
-                else:
-                    await self.activity.cycle_finished(
-                        "consolidated_analyst",
-                        saved_outcome(
-                            last_outcome,
-                            produced=len(insights),
-                            saved=int(result["insights_saved"]),
-                        ),
-                    )
-            except Exception as e:
-                logger.error(f"Final consolidated analyst drain error: {e}")
-                _stage_failed("final_insights", e)
-                await self.activity.cycle_error(
-                    "consolidated_analyst",
-                    classify_error(e, self._get_model("consolidated_analyst")),
-                )
-
-        if "insight_reconciliation" in stages and self._is_enabled("synthesizer"):
-            await _emit_progress(
-                progress_callback,
-                "insight_reconciliation",
-                "Reconciling and enriching saved insights...",
-                _stage_step("insight_reconciliation"),
-                drain_total_steps,
-                drain_progress_percent(_stage_step("insight_reconciliation"), drain_total_steps),
-            )
-            await self.activity.cycle_started("synthesizer")
-            try:
-                applied_ops = await run_synthesizer_cycle(
-                    self.session_id,
-                    model_override=self._get_model("synthesizer"),
-                    prompt_override=self._get_prompt("synthesizer") or None,
-                )
-                result["synthesizer_ops"] = len(applied_ops)
-                await self._broadcast_operation_results(applied_ops)
-                await self.activity.cycle_finished(
-                    "synthesizer",
-                    {
-                        "kind": "insights" if applied_ops else "no_findings",
-                        "detail": (
-                            f"{len(applied_ops)} insight operations applied"
-                            if applied_ops
-                            else "No saved insight needed reconciliation."
-                        ),
-                        "items": len(applied_ops),
-                    },
-                )
-            except Exception as e:
-                logger.error(f"Final synthesizer drain error: {e}")
-                _stage_failed("insight_reconciliation", e)
-                await self.activity.cycle_error(
-                    "synthesizer",
-                    classify_error(e, self._get_model("synthesizer")),
-                )
-
-        if (
-            "opportunity_matching" in stages
-            and self._is_enabled("opportunity_specialist")
-            and self._offering_matching_enabled
-        ):
-            await _emit_progress(
-                progress_callback,
-                "opportunity_matching",
-                "Matching opportunities to the offerings catalog...",
-                _stage_step("opportunity_matching"),
-                drain_total_steps,
-                drain_progress_percent(_stage_step("opportunity_matching"), drain_total_steps),
-            )
-            await self.activity.cycle_started("opportunity_specialist")
-            try:
-                applied_ops = await run_opportunity_specialist_cycle(
-                    self.session_id,
-                    model_override=self._get_model("opportunity_specialist"),
-                    knowledge_source_ids=self._get_knowledge_source_ids("opportunity_specialist"),
-                )
-                result["opportunity_ops"] = len(applied_ops)
-                await self._broadcast_operation_results(applied_ops)
-                await self.activity.cycle_finished(
-                    "opportunity_specialist",
-                    {
-                        "kind": "insights" if applied_ops else "no_findings",
-                        "detail": (
-                            f"{len(applied_ops)} opportunity matches applied"
-                            if applied_ops
-                            else "No offering match was found."
-                        ),
-                        "items": len(applied_ops),
-                    },
-                )
-            except Exception as e:
-                logger.error(f"Final opportunity specialist drain error: {e}")
-                _stage_failed("opportunity_matching", e)
-                await self.activity.cycle_error(
-                    "opportunity_specialist",
-                    classify_error(e, self._get_model("opportunity_specialist")),
-                )
-
-        if "call_briefing" in stages:
-            await _emit_progress(
-                progress_callback,
-                "call_briefing",
-                "Settling the call briefing...",
-                _stage_step("call_briefing"),
-                drain_total_steps,
-                drain_progress_percent(_stage_step("call_briefing"), drain_total_steps),
-            )
-            briefing_slugs = [
-                record["slug"]
-                for record in self.activity.snapshot()["agents"]
-                if record["trigger"] == "post_call"
-                and record["state"] not in {"off", "blocked"}
-            ]
-            for slug in briefing_slugs:
-                await self.activity.cycle_started(slug)
-            try:
-                synthesis = await run_session_synthesis(
-                    self.session_id,
-                    mode="post_call",
-                    agent_configs=self._agent_configs,
-                )
-                result["synthesis_generated"] = synthesis is not None
-                if synthesis:
-                    await self._send_synthesis_update(synthesis)
-                for slug in briefing_slugs:
-                    await self.activity.cycle_finished(
-                        slug,
-                        {
-                            "kind": "insights" if synthesis else "no_findings",
-                            "detail": (
-                                "Call briefing generated."
-                                if synthesis
-                                else "No call briefing was generated."
-                            ),
-                            "items": 1 if synthesis else 0,
-                        },
-                    )
-            except Exception as e:
-                logger.error(f"Final briefing synthesis error: {e}")
-                _stage_failed("call_briefing", e)
-                for slug in briefing_slugs:
-                    await self.activity.cycle_error(
-                        slug,
-                        classify_error(e, self._get_model(slug)),
-                    )
+        await self._run_final_insights_stage(
+            stages,
+            progress_callback,
+            drain_total_steps,
+            transcript_window,
+            transcript_available,
+            result,
+        )
+        await self._run_insight_reconciliation_stage(
+            stages,
+            progress_callback,
+            drain_total_steps,
+            result,
+        )
+        await self._run_opportunity_matching_stage(
+            stages,
+            progress_callback,
+            drain_total_steps,
+            result,
+        )
+        await self._run_call_briefing_stage(
+            stages,
+            progress_callback,
+            drain_total_steps,
+            result,
+        )
 
         logger.info(
             "Graceful drain complete: "
@@ -958,6 +796,240 @@ class AgentOrchestrator:
             f"opp_ops={result['opportunity_ops']}"
         )
         return result
+
+    async def _run_final_insights_stage(
+        self,
+        stages: list[str],
+        progress_callback: ProgressCallback | None,
+        drain_total_steps: int,
+        transcript_window: str,
+        transcript_available: bool,
+        result: dict,
+    ) -> None:
+        if not (
+            "final_insights" in stages
+            and transcript_available
+            and self._is_enabled("consolidated_analyst")
+            and self.consolidated_agent.enabled_types
+        ):
+            return
+        stage_step = 2 + stages.index("final_insights")
+        await _emit_progress(
+            progress_callback,
+            "final_insights",
+            "Running final insight pass...",
+            stage_step,
+            drain_total_steps,
+            drain_progress_percent(stage_step, drain_total_steps),
+        )
+        await self.activity.cycle_started("consolidated_analyst")
+        try:
+            insights = await self.consolidated_agent.run_cycle(
+                transcript_window=transcript_window,
+                directives=self.directives,
+                doc_summaries=self.doc_summaries,
+                speakers=self.speakers,
+                active_questions=self.active_questions,
+            )
+
+            for insight in insights:
+                agent_source = insight.get("agent_source", "consolidated_analyst")
+                saved = await self._save_and_send_insight(insight, agent_source=agent_source)
+                if saved:
+                    result["insights_saved"] = int(result["insights_saved"]) + 1
+
+            if insights:
+                logger.info(f"[consolidated_analyst] final drain produced {len(insights)} insights")
+            last_outcome = self.consolidated_agent.last_outcome or {}
+            if last_outcome.get("kind") == "error":
+                await self.activity.cycle_error(
+                    "consolidated_analyst",
+                    last_outcome["error"],
+                )
+            else:
+                await self.activity.cycle_finished(
+                    "consolidated_analyst",
+                    saved_outcome(
+                        last_outcome,
+                        produced=len(insights),
+                        saved=int(result["insights_saved"]),
+                    ),
+                )
+        except Exception as e:
+            logger.error(f"Final consolidated analyst drain error: {e}")
+            result["stage_errors"].append(
+                {"stage": "final_insights", "detail": str(e)}
+            )
+            await self.activity.cycle_error(
+                "consolidated_analyst",
+                classify_error(e, self._get_model("consolidated_analyst")),
+            )
+
+    async def _run_insight_reconciliation_stage(
+        self,
+        stages: list[str],
+        progress_callback: ProgressCallback | None,
+        drain_total_steps: int,
+        result: dict,
+    ) -> None:
+        if (
+            "insight_reconciliation" not in stages
+            or not self._is_enabled("synthesizer")
+        ):
+            return
+        stage_step = 2 + stages.index("insight_reconciliation")
+        await _emit_progress(
+            progress_callback,
+            "insight_reconciliation",
+            "Reconciling and enriching saved insights...",
+            stage_step,
+            drain_total_steps,
+            drain_progress_percent(stage_step, drain_total_steps),
+        )
+        await self.activity.cycle_started("synthesizer")
+        try:
+            applied_ops = await run_synthesizer_cycle(
+                self.session_id,
+                model_override=self._get_model("synthesizer"),
+                prompt_override=self._get_prompt("synthesizer") or None,
+            )
+            result["synthesizer_ops"] = len(applied_ops)
+            await self._broadcast_operation_results(applied_ops)
+            await self.activity.cycle_finished(
+                "synthesizer",
+                {
+                    "kind": "insights" if applied_ops else "no_findings",
+                    "detail": (
+                        f"{len(applied_ops)} insight operations applied"
+                        if applied_ops
+                        else "No saved insight needed reconciliation."
+                    ),
+                    "items": len(applied_ops),
+                },
+            )
+        except Exception as e:
+            logger.error(f"Final synthesizer drain error: {e}")
+            result["stage_errors"].append(
+                {"stage": "insight_reconciliation", "detail": str(e)}
+            )
+            await self.activity.cycle_error(
+                "synthesizer",
+                classify_error(e, self._get_model("synthesizer")),
+            )
+
+    async def _run_opportunity_matching_stage(
+        self,
+        stages: list[str],
+        progress_callback: ProgressCallback | None,
+        drain_total_steps: int,
+        result: dict,
+    ) -> None:
+        if (
+            "opportunity_matching" not in stages
+            or not self._is_enabled("opportunity_specialist")
+            or not self._offering_matching_enabled
+        ):
+            return
+        stage_step = 2 + stages.index("opportunity_matching")
+        await _emit_progress(
+            progress_callback,
+            "opportunity_matching",
+            "Matching opportunities to the offerings catalog...",
+            stage_step,
+            drain_total_steps,
+            drain_progress_percent(stage_step, drain_total_steps),
+        )
+        await self.activity.cycle_started("opportunity_specialist")
+        try:
+            applied_ops = await run_opportunity_specialist_cycle(
+                self.session_id,
+                model_override=self._get_model("opportunity_specialist"),
+                knowledge_source_ids=self._get_knowledge_source_ids(
+                    "opportunity_specialist"
+                ),
+            )
+            result["opportunity_ops"] = len(applied_ops)
+            await self._broadcast_operation_results(applied_ops)
+            await self.activity.cycle_finished(
+                "opportunity_specialist",
+                {
+                    "kind": "insights" if applied_ops else "no_findings",
+                    "detail": (
+                        f"{len(applied_ops)} opportunity matches applied"
+                        if applied_ops
+                        else "No offering match was found."
+                    ),
+                    "items": len(applied_ops),
+                },
+            )
+        except Exception as e:
+            logger.error(f"Final opportunity specialist drain error: {e}")
+            result["stage_errors"].append(
+                {"stage": "opportunity_matching", "detail": str(e)}
+            )
+            await self.activity.cycle_error(
+                "opportunity_specialist",
+                classify_error(e, self._get_model("opportunity_specialist")),
+            )
+
+    async def _run_call_briefing_stage(
+        self,
+        stages: list[str],
+        progress_callback: ProgressCallback | None,
+        drain_total_steps: int,
+        result: dict,
+    ) -> None:
+        if "call_briefing" not in stages:
+            return
+        stage_step = 2 + stages.index("call_briefing")
+        await _emit_progress(
+            progress_callback,
+            "call_briefing",
+            "Settling the call briefing...",
+            stage_step,
+            drain_total_steps,
+            drain_progress_percent(stage_step, drain_total_steps),
+        )
+        briefing_slugs = [
+            record["slug"]
+            for record in self.activity.snapshot()["agents"]
+            if record["trigger"] == "post_call"
+            and record["state"] not in {"off", "blocked"}
+        ]
+        for slug in briefing_slugs:
+            await self.activity.cycle_started(slug)
+        try:
+            synthesis = await run_session_synthesis(
+                self.session_id,
+                mode="post_call",
+                agent_configs=self._agent_configs,
+            )
+            result["synthesis_generated"] = synthesis is not None
+            if synthesis:
+                await self._send_synthesis_update(synthesis)
+            for slug in briefing_slugs:
+                await self.activity.cycle_finished(
+                    slug,
+                    {
+                        "kind": "insights" if synthesis else "no_findings",
+                        "detail": (
+                            "Call briefing generated."
+                            if synthesis
+                            else "No call briefing was generated."
+                        ),
+                        "items": 1 if synthesis else 0,
+                    },
+                )
+        except Exception as e:
+            logger.error(f"Final briefing synthesis error: {e}")
+            result["stage_errors"].append(
+                {"stage": "call_briefing", "detail": str(e)}
+            )
+            for slug in briefing_slugs:
+                await self.activity.cycle_error(
+                    slug,
+                    classify_error(e, self._get_model(slug)),
+                )
 
     # ── Audio Gateway (silent listener) ──────────────────────────────────
 
