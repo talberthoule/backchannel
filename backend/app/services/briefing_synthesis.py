@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from hashlib import blake2b
 from datetime import datetime, timezone
@@ -32,6 +33,16 @@ BRIEF_ARBITER_SLUG = "brief_arbiter"
 BRIEF_AGENT_SLUGS = {BRIEF_MEETING_LENS_SLUG, BRIEF_DISCOVERY_LENS_SLUG, BRIEF_ARBITER_SLUG}
 SYNTHESIS_MODES = {"live", "post_call"}
 SynthesisMode = Literal["live", "post_call"]
+SIGNAL_HISTORY_SECTIONS = (
+    "strategic_signals",
+    "risks_blockers",
+    "unresolved_discovery_questions",
+    "top_opportunities",
+    "action_plan",
+)
+SIGNAL_HISTORY_MAX_ENTRIES = 200
+BRIEF_INSIGHTS_BUDGET_CHARS = 12000
+BRIEF_SIGNAL_HISTORY_BUDGET_CHARS = 6000
 
 
 class EvidenceRef(BaseModel):
@@ -313,6 +324,15 @@ async def _build_context(
     async with async_session() as db:
         session = await db.get(Session, session_id)
         meeting_context_text = build_meeting_context_text(session)
+        signal_history: list[dict] = []
+        if mode == "post_call":
+            result = await db.execute(
+                select(SessionSynthesis.signal_history).where(
+                    SessionSynthesis.session_id == session_id,
+                    SessionSynthesis.mode == "live",
+                )
+            )
+            signal_history = result.scalar_one_or_none() or []
 
         if directives is None:
             result = await db.execute(
@@ -350,13 +370,20 @@ async def _build_context(
         else:
             transcript_text = transcript_window
 
+    insights_text = _format_insights(active_questions or [])
+    if mode == "post_call":
+        insights_text = (
+            f"Saved insights:\n{insights_text}\n\n"
+            f"Live strategic signal history:\n{_format_signal_history(signal_history)}"
+        )
+
     return SynthesisContext(
         meeting_context_text=meeting_context_text,
         transcript_text=transcript_text,
         directives_text="\n".join(f"- {d}" for d in directives) if directives else "(No directives set)",
         document_summaries=doc_summaries or "(No documents uploaded)",
         speakers_text=format_speakers_list(speakers or []),
-        insights_text=_format_insights(active_questions or []),
+        insights_text=insights_text,
     )
 
 
@@ -379,9 +406,12 @@ def _question_dict(question: Question) -> dict:
         "rationale": question.rationale,
         "source_context": question.source_context,
         "answered": question.answered,
+        "answer_summary": question.answer_summary,
         "needs_followup": question.needs_followup,
+        "followup_question": question.followup_question,
         "offering_match": question.offering_match,
         "vote": question.vote,
+        "agent_source": question.agent_source,
     }
 
 
@@ -402,17 +432,124 @@ def _format_transcript_entries(entries: list[TranscriptEntry]) -> str:
     return "\n".join(lines)
 
 
-def _format_insights(items: list[dict]) -> str:
+def _format_insights(
+    items: list[dict],
+    budget: int = BRIEF_INSIGHTS_BUDGET_CHARS,
+) -> str:
     if not items:
         return "(No saved insights yet)"
-    lines = []
-    for item in items:
-        item_id = item.get("id", "")
-        item_type = item.get("item_type", "question")
-        text = item.get("question") or item.get("text") or ""
-        rationale = item.get("rationale") or ""
-        lines.append(f"- insight_id={item_id}; type={item_type}: {text} ({rationale})")
-    return "\n".join(lines)
+    fields = (
+        "id",
+        "item_type",
+        "question",
+        "rationale",
+        "source_context",
+        "answered",
+        "answer_summary",
+        "needs_followup",
+        "followup_question",
+        "offering_match",
+        "vote",
+        "agent_source",
+    )
+    normalized = [
+        {
+            field: item.get(
+                field,
+                False if field in {"answered", "needs_followup"} else 0 if field == "vote" else "",
+            )
+            for field in fields
+        }
+        for item in items
+    ]
+    return _bounded_json(normalized, budget)
+
+
+def _format_signal_history(
+    items: list[dict],
+    budget: int = BRIEF_SIGNAL_HISTORY_BUDGET_CHARS,
+) -> str:
+    if not items:
+        return "(No live strategic signal history yet)"
+    ordered = sorted(items, key=lambda item: item.get("last_seen", ""))
+    return _bounded_json(ordered, budget)
+
+
+def _bounded_json(items: list[dict], budget: int) -> str:
+    kept: list[dict] = []
+    rendered = json.dumps(
+        {"items": [], "truncated": bool(items)},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    for item in reversed(items):
+        candidate = [item, *kept]
+        candidate_rendered = json.dumps(
+            {"items": candidate, "truncated": len(candidate) < len(items)},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        if len(candidate_rendered) > budget:
+            break
+        kept = candidate
+        rendered = candidate_rendered
+    return rendered
+
+
+def _merge_signal_history(
+    existing: list[dict],
+    output: BriefArbiterOutput,
+    captured_at: datetime,
+    model_id: str,
+) -> list[dict]:
+    merged = [dict(item) for item in existing if isinstance(item, dict)]
+    captured = captured_at.isoformat()
+
+    for section in SIGNAL_HISTORY_SECTIONS:
+        for item in getattr(output, section):
+            body = item.model_dump()
+            identity = _signal_identity(body.get("title") or body.get("summary"))
+            if not identity:
+                continue
+            key = (section, identity)
+            index = next(
+                (
+                    index
+                    for index, saved in enumerate(merged)
+                    if (
+                        saved.get("section"),
+                        _signal_identity(saved.get("title") or saved.get("summary")),
+                    )
+                    == key
+                ),
+                None,
+            )
+            previous = merged[index] if index is not None else {}
+            saved = {
+                "section": section,
+                "title": body["title"],
+                "summary": body["summary"],
+                "rationale": body["rationale"],
+                "owner": body["owner"],
+                "status": body["status"],
+                "evidence_refs": body["evidence_refs"],
+                "first_seen": previous.get("first_seen", captured),
+                "last_seen": captured,
+                "count": int(previous.get("count", 0)) + 1,
+                "model_id": model_id,
+            }
+            if index is None:
+                merged.append(saved)
+            else:
+                merged[index] = saved
+
+    merged.sort(key=lambda item: item.get("last_seen", ""))
+    # ponytail: capped JSON history; use a snapshot table if raw or unbounded playback matters.
+    return merged[-SIGNAL_HISTORY_MAX_ENTRIES:]
+
+
+def _signal_identity(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").casefold()).strip().rstrip(" .,:;!?")
 
 
 def _failure_text(model_id: str, exc: Exception) -> str:
@@ -513,6 +650,14 @@ async def _persist_synthesis(
         if synthesis is None:
             synthesis = SessionSynthesis(session_id=session_id, mode=mode, created_at=now)
             db.add(synthesis)
+
+        if mode == "live" and status == "completed":
+            synthesis.signal_history = _merge_signal_history(
+                synthesis.signal_history or [],
+                arbiter_output,
+                now,
+                model_ids.get("strategic_signals", ""),
+            )
 
         synthesis.status = status
         synthesis.top_outcomes = _items_json(arbiter_output.top_outcomes)

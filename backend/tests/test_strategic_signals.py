@@ -1,11 +1,246 @@
+import json
 import unittest
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
+from sqlalchemy.orm import attributes
+
 from app.services.agents.prompts import STRATEGIC_SIGNALS_PROMPT
 from app.services.agents.strategic_signals import run_strategic_signals_cycle
-from app.services.briefing_synthesis import BriefArbiterOutput, BriefItem, EvidenceRef
+from app.models import SessionSynthesis
+from app.services.briefing_synthesis import (
+    BriefArbiterOutput,
+    BriefItem,
+    EvidenceRef,
+    _merge_signal_history,
+    _persist_synthesis,
+)
+
+
+class SignalHistoryMergeTests(unittest.TestCase):
+    def test_merges_normalized_title_and_keeps_latest_body(self):
+        first_at = datetime(2026, 7, 30, 10, 0, tzinfo=timezone.utc)
+        last_at = datetime(2026, 7, 30, 10, 1, tzinfo=timezone.utc)
+        first = BriefArbiterOutput(
+            risks_blockers=[
+                BriefItem(
+                    title="Budget Risk",
+                    summary="First wording",
+                    rationale="First rationale",
+                    evidence_refs=[EvidenceRef(insight_id="old")],
+                )
+            ]
+        )
+        latest = BriefArbiterOutput(
+            risks_blockers=[
+                BriefItem(
+                    title="  budget   risk. ",
+                    summary="Latest wording",
+                    rationale="Latest rationale",
+                    owner="Finance",
+                    status="open",
+                    evidence_refs=[EvidenceRef(insight_id="new")],
+                )
+            ]
+        )
+
+        history = _merge_signal_history([], first, first_at, "model-1")
+        merged = _merge_signal_history(
+            json.loads(json.dumps(history)),
+            latest,
+            last_at,
+            "model-2",
+        )
+
+        self.assertEqual(1, len(merged))
+        item = merged[0]
+        self.assertEqual("risks_blockers", item["section"])
+        self.assertEqual("  budget   risk. ", item["title"])
+        self.assertEqual("Latest wording", item["summary"])
+        self.assertEqual("Latest rationale", item["rationale"])
+        self.assertEqual("Finance", item["owner"])
+        self.assertEqual("open", item["status"])
+        self.assertEqual("model-2", item["model_id"])
+        self.assertEqual("old", history[0]["evidence_refs"][0]["insight_id"])
+        self.assertEqual("new", item["evidence_refs"][0]["insight_id"])
+        self.assertEqual(first_at.isoformat(), item["first_seen"])
+        self.assertEqual(last_at.isoformat(), item["last_seen"])
+        self.assertEqual(2, item["count"])
+
+    def test_changed_title_and_blank_title_fallback_remain_distinct(self):
+        captured_at = datetime(2026, 7, 30, 10, 0, tzinfo=timezone.utc)
+        output = BriefArbiterOutput(
+            strategic_signals=[
+                BriefItem(title="Budget", summary="Budget is constrained"),
+                BriefItem(title="Timeline", summary="Timeline is constrained"),
+                BriefItem(summary="Executive sponsor engaged"),
+                BriefItem(summary="Executive sponsor engaged"),
+            ]
+        )
+
+        merged = _merge_signal_history([], output, captured_at, "model")
+
+        self.assertEqual(3, len(merged))
+        self.assertEqual(["Budget", "Timeline", ""], [item["title"] for item in merged])
+        self.assertEqual(2, merged[-1]["count"])
+
+    def test_caps_history_at_newest_200_entries(self):
+        start = datetime(2026, 7, 30, 10, 0, tzinfo=timezone.utc)
+        existing = [
+            {
+                "section": "strategic_signals",
+                "title": f"Signal {index}",
+                "summary": "",
+                "rationale": "",
+                "owner": "",
+                "status": "",
+                "evidence_refs": [],
+                "first_seen": start.isoformat(),
+                "last_seen": start.replace(minute=index % 60).isoformat(),
+                "count": 1,
+                "model_id": "model",
+            }
+            for index in range(200)
+        ]
+        latest = BriefArbiterOutput(
+            strategic_signals=[BriefItem(title="Newest signal")]
+        )
+
+        merged = _merge_signal_history(
+            existing,
+            latest,
+            datetime(2026, 7, 31, 10, 0, tzinfo=timezone.utc),
+            "model",
+        )
+
+        self.assertEqual(200, len(merged))
+        self.assertNotIn("Signal 0", {item["title"] for item in merged})
+        self.assertIn("Newest signal", {item["title"] for item in merged})
+
+
+class _PersistenceResult:
+    def __init__(self, value):
+        self.value = value
+
+    def scalar_one_or_none(self):
+        return self.value
+
+    def scalar_one(self):
+        return self.value
+
+
+class _PersistenceSession:
+    def __init__(self, synthesis):
+        self.synthesis = synthesis
+        self.execute_count = 0
+
+    async def execute(self, statement):
+        del statement
+        self.execute_count += 1
+        return _PersistenceResult(
+            self.synthesis if self.execute_count in {1, 3} else None
+        )
+
+    def add(self, value):
+        del value
+
+    async def flush(self):
+        pass
+
+    async def commit(self):
+        pass
+
+
+class _PersistenceContext:
+    def __init__(self, db):
+        self.db = db
+
+    async def __aenter__(self):
+        return self.db
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        del exc_type, exc, traceback
+
+
+class SignalHistoryPersistenceTests(unittest.IsolatedAsyncioTestCase):
+    async def _persist(self, synthesis, mode, status, output):
+        db = _PersistenceSession(synthesis)
+        with (
+            patch(
+                "app.services.briefing_synthesis.async_session",
+                return_value=_PersistenceContext(db),
+            ),
+            patch(
+                "app.services.briefing_synthesis._lock_synthesis_scope",
+                new=AsyncMock(),
+            ),
+        ):
+            return await _persist_synthesis(
+                session_id=synthesis.session_id,
+                mode=mode,
+                status=status,
+                meeting_output=None,
+                discovery_output=None,
+                arbiter_output=output,
+                model_ids={"strategic_signals": "signal-model"},
+            )
+
+    async def test_completed_live_persistence_reassigns_round_tripped_history(self):
+        session_id = uuid4()
+        synthesis = SessionSynthesis(
+            id=uuid4(),
+            session_id=session_id,
+            mode="live",
+            signal_history=[],
+        )
+        output = BriefArbiterOutput(
+            strategic_signals=[BriefItem(title="Budget", summary="First")]
+        )
+
+        await self._persist(synthesis, "live", "completed", output)
+        first = json.loads(json.dumps(synthesis.signal_history))
+        attributes.set_committed_value(synthesis, "signal_history", first)
+        previous_list = synthesis.signal_history
+        output.strategic_signals[0].summary = "Latest"
+
+        await self._persist(synthesis, "live", "completed", output)
+
+        self.assertIsNot(previous_list, synthesis.signal_history)
+        self.assertEqual(1, len(synthesis.signal_history))
+        self.assertEqual(2, synthesis.signal_history[0]["count"])
+        self.assertEqual("Latest", synthesis.signal_history[0]["summary"])
+        self.assertTrue(
+            attributes.instance_state(synthesis)
+            .attrs.signal_history.history.has_changes()
+        )
+
+    async def test_other_modes_and_statuses_do_not_change_history(self):
+        for mode, status in (
+            ("post_call", "completed"),
+            ("live", "partial"),
+            ("live", "error"),
+        ):
+            with self.subTest(mode=mode, status=status):
+                original = [{"section": "strategic_signals", "title": "Existing"}]
+                synthesis = SessionSynthesis(
+                    id=uuid4(),
+                    session_id=uuid4(),
+                    mode=mode,
+                    signal_history=original,
+                )
+
+                await self._persist(
+                    synthesis,
+                    mode,
+                    status,
+                    BriefArbiterOutput(
+                        strategic_signals=[BriefItem(title="New signal")]
+                    ),
+                )
+
+                self.assertIs(original, synthesis.signal_history)
 
 
 class StrategicSignalsTests(unittest.IsolatedAsyncioTestCase):

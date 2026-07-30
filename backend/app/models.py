@@ -250,6 +250,7 @@ class SessionSynthesis(Base):
     action_plan: Mapped[list] = mapped_column(JSON, default=list)
     unresolved_discovery_questions: Mapped[list] = mapped_column(JSON, default=list)
     strategic_signals: Mapped[list] = mapped_column(JSON, default=list)
+    signal_history: Mapped[list] = mapped_column(JSON, default=list)
     evidence_refs: Mapped[list] = mapped_column(JSON, default=list)
     lens_meeting: Mapped[dict] = mapped_column(JSON, default=dict)
     lens_discovery: Mapped[dict] = mapped_column(JSON, default=dict)
