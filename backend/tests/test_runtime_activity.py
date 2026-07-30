@@ -10,6 +10,32 @@ from unittest.mock import patch
 from app.services import runtime_activity
 
 
+def _dependencies_by_path(routes) -> dict:
+    """Map each route path to the dependencies that actually apply to it.
+
+    FastAPI moved where router-level dependencies live. Through 0.115,
+    include_router() copied them onto every route, so route.dependencies
+    carried them. From 0.141 include_router() wraps the router in an
+    _IncludedRouter and keeps them on include_context instead, leaving the
+    routes themselves with an empty list. Both shapes are handled here so this
+    test asserts our wiring - the right tracker reason on the right paths -
+    rather than one framework version's storage layout.
+
+    The dependencies still run in both shapes; only the introspection differs.
+    """
+    found: dict = {}
+    for route in routes:
+        context = getattr(route, "include_context", None)
+        original = getattr(route, "original_router", None)
+        if context is not None and original is not None:
+            inherited = list(getattr(context, "dependencies", None) or [])
+            for path, own in _dependencies_by_path(original.routes).items():
+                found[path] = inherited + own
+        else:
+            found[getattr(route, "path", "")] = list(getattr(route, "dependencies", None) or [])
+    return found
+
+
 class RuntimeActivityTests(unittest.TestCase):
     def setUp(self):
         runtime_activity.release_shutdown()
@@ -67,15 +93,11 @@ class RuntimeActivityTests(unittest.TestCase):
             "/api/sessions/{session_id}/retranscribe": "retranscription",
             "/api/sessions/{session_id}/synthesis/refresh": "briefing synthesis",
         }
-        routes = {
-            route.path: route
-            for route in app.routes
-            if hasattr(route, "dependencies")
-        }
+        routes = _dependencies_by_path(app.routes)
 
         async def exercise():
             for path, reason in expected.items():
-                dependency = routes[path].dependencies[0].dependency()
+                dependency = routes[path][0].dependency()
                 await anext(dependency)
                 self.assertEqual(runtime_activity.busy_reason(), reason)
                 await dependency.aclose()
