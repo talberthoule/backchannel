@@ -128,8 +128,14 @@ async def load_live_context(session_id: uuid.UUID, db: AsyncSession) -> dict:
             signal_lines.append(f"- {text}")
     signals = "\n".join(signal_lines)
 
+    # Stored summaries only (ALP-181/ALP-192): a plain read, never a
+    # summarization call - this path answers in seconds and runs under
+    # Privacy First. Docs without one (never read since upload) list as
+    # names, exactly the ALP-178 behavior.
     documents_result = await db.execute(
-        select(Document.filename).where(Document.session_id == session_id)
+        select(Document.filename, Document.summary)
+        .where(Document.session_id == session_id)
+        .order_by(Document.uploaded_at)
     )
 
     return {
@@ -137,7 +143,7 @@ async def load_live_context(session_id: uuid.UUID, db: AsyncSession) -> dict:
         "meeting_type": session.meeting_type or "general",
         "meeting_context": session.meeting_context or "",
         "directives": await get_active_directives(session_id, db),
-        "document_filenames": list(documents_result.scalars().all()),
+        "documents": [(row.filename, row.summary or "") for row in documents_result.all()],
         "insights": format_live_insights(insights, speaker_names),
         "signals": signals,
         "lines": lines,
