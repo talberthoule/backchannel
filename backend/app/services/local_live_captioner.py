@@ -56,7 +56,8 @@ class LocalLiveCaptioner:
         commit_seconds: float = COMMIT_SECONDS,
         make_transcriber=LocalTranscriber,
     ):
-        self._asr_model_id = LOCAL_LIVE_MODEL_MAP.get(model_override or "", DEFAULT_LOCAL_LIVE_ASR)
+        selected = DEFAULT_LOCAL_LIVE_ASR if model_override is None else model_override
+        self._asr_model_id = LOCAL_LIVE_MODEL_MAP.get(selected, selected)
         self._session_id = session_id
         self._commit_seconds = commit_seconds
         self._make_transcriber = make_transcriber

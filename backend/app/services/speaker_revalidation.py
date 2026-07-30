@@ -11,7 +11,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.config import settings
 from app.database import async_session
 from app.models import (
     Question,
@@ -25,6 +24,7 @@ from app.models import (
     TranscriptEntry,
 )
 from app.services.briefing_synthesis import agent_model_id, run_session_synthesis
+from app.services.llm import LLMModelNotSelected
 from app.services.custom_endpoints import endpoint_models
 from app.services.privacy import (
     LocalOnlyModeError,
@@ -508,7 +508,9 @@ async def _enhance_insights_with_fallback(
     hand that default down as an override on every insights batch and quietly
     undo the selectable model.
     """
-    primary = await agent_model_id("synthesizer", settings.REFINEMENT_MODEL)
+    primary = await agent_model_id("synthesizer")
+    if not primary:
+        raise LLMModelNotSelected("synthesizer")
     local_only = await get_local_only(db)
     models = [primary, *await select_fallback_models(primary, db, local_only)]
     last_error: Exception | None = None

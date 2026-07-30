@@ -143,7 +143,7 @@ async def run_opportunity_specialist_cycle(
         opportunities_json=opportunities_json,
     )
 
-    model_id = model_override or settings.REFINEMENT_MODEL
+    model_id = settings.REFINEMENT_MODEL if model_override is None else model_override
 
     try:
         raw = await generate_text(model_id, prompt, session_id=session_id, source="opportunity_specialist")

@@ -40,6 +40,9 @@ class ComposeRationaleTests(unittest.TestCase):
 
 
 class ObjectionHandlerCycleTests(unittest.IsolatedAsyncioTestCase):
+    async def test_explicit_blank_model_is_not_replaced(self):
+        self.assertEqual("", ObjectionHandlerAgent(model_override="")._model)
+
     async def test_run_cycle_parses_and_tags_items(self):
         agent = ObjectionHandlerAgent()
         output = ObjectionHandlerOutput(items=[_model_item()])

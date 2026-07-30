@@ -121,7 +121,7 @@ async def load_agent_configs(session_id: uuid.UUID | None = None) -> dict[str, A
         return configs
 
 
-async def agent_model_id(slug: str, default: str) -> str:
+async def agent_model_id(slug: str) -> str:
     """The model an agent row is set to, for a feature that borrows it.
 
     Some user-initiated features are the on-demand form of work an agent
@@ -133,11 +133,11 @@ async def agent_model_id(slug: str, default: str) -> str:
     which is the one field this ignores, so there is no session to take into
     account and no query worth spending on one.
 
-    Falls back to default when the row is missing or blank, which keeps an
-    install that has never seeded behaving as it did before.
+    A missing or blank row stays unselected so the shared LLM boundary can
+    direct the user to the visible agent setting.
     """
     cfg = (await load_agent_configs()).get(slug)
-    return (cfg.model_id if cfg else "") or default
+    return cfg.model_id if cfg else ""
 
 
 def _agent_config_snapshot(agent: AgentConfig):
@@ -187,6 +187,30 @@ async def run_session_synthesis(
     if not agent_config_enabled(agent_configs, BRIEF_ARBITER_SLUG):
         logger.info("Briefing synthesis skipped: arbiter agent is disabled or missing")
         return None
+
+    model_ids = {
+        slug: getattr(agent_configs.get(slug), "model_id", "")
+        for slug in (
+            BRIEF_MEETING_LENS_SLUG,
+            BRIEF_DISCOVERY_LENS_SLUG,
+            BRIEF_ARBITER_SLUG,
+        )
+    }
+    unselected = [
+        slug
+        for slug, model_id in model_ids.items()
+        if agent_config_enabled(agent_configs, slug) and not model_id
+    ]
+    if unselected:
+        return await _persist_error_synthesis(
+            session_id,
+            mode,
+            (
+                f"{', '.join(unselected)} has no model selected. "
+                "Choose a model for each enabled briefing role in Admin -> Agents."
+            ),
+            model_ids,
+        )
 
     # Privacy First judges the arbiter's assigned model, not the mode itself: a
     # self-hosted model on this machine or LAN can settle the briefing without

@@ -221,9 +221,9 @@ class AgentOrchestrator:
         self.meeting_context = meeting_context
         self._derive_meeting_context()
 
-        def _get_model(slug: str, fallback: str = "") -> str:
+        def _get_model(slug: str) -> str:
             cfg = self._agent_configs.get(slug)
-            return cfg.model_id if cfg else fallback
+            return cfg.model_id if cfg else ""
 
         def _privacy_admits(model_id: str) -> bool:
             """Whether Privacy First lets this model run.
@@ -245,9 +245,13 @@ class AgentOrchestrator:
         def _is_enabled(slug: str, fallback: bool = True) -> bool:
             cfg = self._agent_configs.get(slug)
             enabled = cfg.enabled if cfg else fallback
-            if not enabled or not self.local_only:
-                return enabled
+            if not enabled:
+                return False
             model_id = _get_model(slug)
+            if not model_id:
+                return False
+            if not self.local_only:
+                return enabled
             if _privacy_admits(model_id):
                 return True
             if not any(b["agent"] == slug for b in self.privacy_blocked_agents):
@@ -318,7 +322,7 @@ class AgentOrchestrator:
             except json.JSONDecodeError:
                 logger.warning("[orchestrator] invalid lenses JSON on consolidated_analyst; using defaults")
 
-        ca_model = _get_model("consolidated_analyst", settings.REFINEMENT_MODEL)
+        ca_model = _get_model("consolidated_analyst")
         self.consolidated_agent = ConsolidatedAnalystAgent(
             enabled_types=enabled_types or None,
             model_override=ca_model,
@@ -332,12 +336,7 @@ class AgentOrchestrator:
         for slug, fallback_name, trigger, fallback_interval, fallback_enabled in _ACTIVITY_AGENTS:
             cfg = self._agent_configs.get(slug)
             configured_enabled = cfg.enabled if cfg else fallback_enabled
-            admitted = (
-                _is_enabled(slug, fallback_enabled)
-                if cfg is not None
-                else configured_enabled
-                and (not self.local_only or _privacy_admits(_get_model(slug)))
-            )
+            admitted = _is_enabled(slug, fallback_enabled)
             session_override = getattr(cfg, "_session_override", None) if cfg else None
             interval = (
                 _get_interval(slug, fallback_interval)
@@ -359,6 +358,10 @@ class AgentOrchestrator:
                     if blocked_reason == "session_override"
                     else "Enable it in Admin -> Agents."
                 )
+            elif not _get_model(slug):
+                state = "blocked"
+                blocked_reason = "no_model"
+                remedy = "Choose a model for this agent in Admin -> Agents."
             elif not admitted:
                 state = "blocked"
                 blocked_reason = "privacy_first"
@@ -399,17 +402,18 @@ class AgentOrchestrator:
 
         # Audio Gateway: a cloud streaming session (Gemini Live / OpenAI Realtime)
         # or the on-device local captioner, chosen by the gateway agent's model.
-        gw_model = _get_model("audio_gateway", settings.GEMINI_MODEL)
+        gw_model = _get_model("audio_gateway")
+        self.audio_gateway = None
         if is_local_live_model(gw_model):
             self.audio_gateway = LocalLiveCaptioner(model_override=gw_model, session_id=session_id)
         elif provider_for(gw_model) == "openai":
             self.audio_gateway = OpenAIRealtimeSession(model_override=gw_model, session_id=session_id)
-        else:
+        elif gw_model:
             self.audio_gateway = GeminiLiveSession(model_override=gw_model, session_id=session_id)
 
         # Objection handler (fast scan loop over the freshest transcript)
         self.objection_agent = ObjectionHandlerAgent(
-            model_override=_get_model("objection_handler", "") or None,
+            model_override=_get_model("objection_handler"),
             prompt_override=_get_prompt("objection_handler") or None,
             meeting_context_text=self.meeting_context_text,
             session_id=session_id,
@@ -441,6 +445,8 @@ class AgentOrchestrator:
         # briefing rather than cancelling it (see briefing_synthesis).
         if not agent_config_enabled(self._agent_configs, BRIEF_ARBITER_SLUG):
             return False
+        if not self._get_model(BRIEF_ARBITER_SLUG):
+            return True
         if not self.local_only:
             return True
         return self._privacy_admits(self._get_model(BRIEF_ARBITER_SLUG))
@@ -654,7 +660,8 @@ class AgentOrchestrator:
                 except (asyncio.CancelledError, Exception):
                     pass
 
-        await self.audio_gateway.close()
+        if self.audio_gateway:
+            await self.audio_gateway.close()
         await self.activity.close()
         logger.info("Orchestrator shut down")
 
@@ -828,7 +835,7 @@ class AgentOrchestrator:
             try:
                 applied_ops = await run_synthesizer_cycle(
                     self.session_id,
-                    model_override=self._get_model("synthesizer", None),
+                    model_override=self._get_model("synthesizer"),
                     prompt_override=self._get_prompt("synthesizer") or None,
                 )
                 result["synthesizer_ops"] = len(applied_ops)
@@ -870,7 +877,7 @@ class AgentOrchestrator:
             try:
                 applied_ops = await run_opportunity_specialist_cycle(
                     self.session_id,
-                    model_override=self._get_model("opportunity_specialist", None),
+                    model_override=self._get_model("opportunity_specialist"),
                     knowledge_source_ids=self._get_knowledge_source_ids("opportunity_specialist"),
                 )
                 result["opportunity_ops"] = len(applied_ops)
@@ -1265,7 +1272,7 @@ class AgentOrchestrator:
             logger.info(f"Running synthesizer (triggered by {len(events)} events)")
             applied_ops = await run_synthesizer_cycle(
                 self.session_id,
-                model_override=self._get_model("synthesizer", None),
+                model_override=self._get_model("synthesizer"),
                 prompt_override=self._get_prompt("synthesizer") or None,
             )
 
@@ -1303,7 +1310,7 @@ class AgentOrchestrator:
             logger.info(f"Running opportunity specialist (triggered by {len(events)} events)")
             applied_ops = await run_opportunity_specialist_cycle(
                 self.session_id,
-                model_override=self._get_model("opportunity_specialist", None),
+                model_override=self._get_model("opportunity_specialist"),
                 knowledge_source_ids=self._get_knowledge_source_ids("opportunity_specialist"),
             )
 
@@ -1357,6 +1364,8 @@ class AgentOrchestrator:
     # ── Reconnection ─────────────────────────────────────────────────────
 
     async def _reconnect_gateway(self) -> bool:
+        if self.audio_gateway is None:
+            return False
         try:
             if self._gateway_task and not self._gateway_task.done():
                 self._gateway_task.cancel()

@@ -109,7 +109,7 @@ class BatchTranscriber:
 
     def __init__(self, sample_rate: int = 16000, model_id: str | None = None, client=None, session_id=None):
         self._sample_rate = sample_rate
-        self._model_id = model_id or settings.BATCH_TRANSCRIBER_MODEL
+        self._model_id = settings.BATCH_TRANSCRIBER_MODEL if model_id is None else model_id
         self._client = client
         self._session_id = session_id
 

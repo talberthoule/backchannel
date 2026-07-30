@@ -74,31 +74,31 @@ git commit -m "fix: seed explicit unselected model defaults (ALP-188)"
 - End Call completes while unselected briefing roles persist an actionable blocked result.
 - Explicit `""` remains blank; constructor defaults may apply only when the caller passes `None`.
 
-- [ ] **Step 1: Add failing shared-boundary and explicit-empty tests**
+- [x] **Step 1: Add failing shared-boundary and explicit-empty tests**
 
 Test `provider_for`/call preparation, transcription runtime, agent constructors, borrowed-model helpers, analyze/speaker helpers, and briefing model resolution.
 
-- [ ] **Step 2: Run the focused modules and verify RED**
+- [x] **Step 2: Run the focused modules and verify RED**
 
 ```powershell
 C:\Users\Houle\.venvs\backchannel312\Scripts\python.exe -m unittest tests.test_llm_router tests.test_transcription_runtime tests.test_runtime_activity tests.test_briefing_provider_routing
 ```
 
-- [ ] **Step 3: Add the minimum shared guard and remove empty-string fallbacks**
+- [x] **Step 3: Add the minimum shared guard and remove empty-string fallbacks**
 
 Use `is None` where a true optional override needs a default. Keep empty strings intact everywhere else.
 
-- [ ] **Step 4: Add failing activity and lifecycle tests**
+- [x] **Step 4: Add failing activity and lifecycle tests**
 
 Cover no-model precedence, gateway non-construction, guarded close/reconnect paths, no loop startup, and blocked briefing persistence.
 
-- [ ] **Step 5: Implement the orchestrator and briefing blocked states**
+- [x] **Step 5: Implement the orchestrator and briefing blocked states**
 
 Extend existing activity records; do not create a parallel readiness object.
 
-- [ ] **Step 6: Run all focused runtime tests and verify GREEN**
+- [x] **Step 6: Run all focused runtime tests and verify GREEN**
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add backend/app backend/tests

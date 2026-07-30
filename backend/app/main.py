@@ -11,6 +11,7 @@ from app.models import Base
 from app.release_notes import APP_VERSION
 from app.routers import agents, analyze, artifacts, ask, chat, credentials, retranscribe, diagnostics, directives, documents, endpoints, groups, imports, knowledge, meta, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts, updates
 from app.services.privacy import LocalOnlyModeError
+from app.services.llm import LLMModelNotSelected
 from app.services.audio_store import cleanup_orphan_track_audio
 from app.services import runtime_activity
 from app.ws import audio_handler
@@ -338,6 +339,11 @@ app.include_router(audio_handler.router)
 
 @app.exception_handler(LocalOnlyModeError)
 async def local_only_mode_handler(request: Request, exc: LocalOnlyModeError):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(LLMModelNotSelected)
+async def model_not_selected_handler(request: Request, exc: LLMModelNotSelected):
     return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 

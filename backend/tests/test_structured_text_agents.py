@@ -15,6 +15,9 @@ from app.services.agents.synthesizer import (
 
 
 class ConsolidatedAnalystStructuredOutputTests(unittest.IsolatedAsyncioTestCase):
+    async def test_explicit_blank_model_is_not_replaced(self):
+        self.assertEqual("", ConsolidatedAnalystAgent(model_override="")._model)
+
     async def test_cycle_uses_structured_output_without_changing_insight_shape(self):
         output = ConsolidatedAnalystOutput(
             items=[
@@ -133,6 +136,41 @@ class _Session:
 
 
 class SynthesizerStructuredOutputTests(unittest.IsolatedAsyncioTestCase):
+    async def test_explicit_blank_model_reaches_the_shared_llm_guard(self):
+        session_id = uuid.uuid4()
+        question = SimpleNamespace(
+            id=uuid.uuid4(),
+            item_type="observation",
+            question="Existing insight",
+            rationale="",
+            source_context="",
+            speaker=None,
+            speaker_id=None,
+            answered=False,
+            answer_summary="",
+            starred=False,
+            enrichment_notes="",
+            agent_source="observer",
+        )
+
+        with (
+            patch(
+                "app.services.agents.synthesizer.async_session",
+                return_value=_Session(question),
+            ),
+            patch(
+                "app.services.agents.synthesizer.build_meeting_context_text",
+                return_value="",
+            ),
+            patch(
+                "app.services.agents.synthesizer.generate_json",
+                new=AsyncMock(side_effect=ValueError("blocked")),
+            ) as generate,
+        ):
+            await run_synthesizer_cycle(session_id, model_override="")
+
+        self.assertEqual("", generate.await_args.args[0])
+
     async def test_cycle_passes_structured_operations_to_existing_applier(self):
         session_id = uuid.uuid4()
         question = SimpleNamespace(

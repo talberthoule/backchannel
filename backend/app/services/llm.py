@@ -98,6 +98,15 @@ class LLMKeyMissing(ValueError):
         self.provider = provider
 
 
+class LLMModelNotSelected(ValueError):
+    def __init__(self, source: str = ""):
+        subject = source or "This feature"
+        super().__init__(
+            f"{subject} has no model selected; choose one in Admin -> Agents."
+        )
+        self.source = source
+
+
 def registry_entry(model_id: str) -> dict | None:
     return next((m for m in MODEL_REGISTRY if m["id"] == model_id), None)
 
@@ -140,6 +149,8 @@ async def _prepare_call(model_id: str, feature: str, source: str = "") -> _CallT
     that something is off. Every caller of this module gets that for free,
     which is why the naming lives here rather than at each call site.
     """
+    if not model_id.strip():
+        raise LLMModelNotSelected(source)
     provider = provider_for(model_id)
     if provider != "local" and await is_local_only() and not await allows_local_only(model_id):
         raise LocalOnlyModeError(feature, model_id, source)

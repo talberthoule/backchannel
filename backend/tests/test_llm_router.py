@@ -60,6 +60,26 @@ class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("openai", str(ctx.exception))
         self.assertIn("Admin -> Connections", str(ctx.exception))
 
+    async def test_unselected_model_fails_before_provider_or_key_resolution(self):
+        with mock.patch.object(llm, "_resolve_key", mock.AsyncMock()) as resolve:
+            with self.assertRaises(llm.LLMModelNotSelected) as ctx:
+                await llm.generate_text("", "hello", source="consolidated_analyst")
+
+        self.assertIn("consolidated_analyst", str(ctx.exception))
+        self.assertIn("Admin -> Agents", str(ctx.exception))
+        resolve.assert_not_awaited()
+
+    async def test_unselected_model_http_handler_returns_actionable_conflict(self):
+        from app.main import model_not_selected_handler
+
+        response = await model_not_selected_handler(
+            None,
+            llm.LLMModelNotSelected("analyze"),
+        )
+
+        self.assertEqual(409, response.status_code)
+        self.assertIn(b"Admin -> Agents", response.body)
+
     def test_provider_for(self):
         self.assertEqual("openai", llm.provider_for("gpt-5.5"))
         self.assertEqual("google", llm.provider_for("gemini-3.5-flash"))

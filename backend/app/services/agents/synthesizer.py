@@ -146,7 +146,7 @@ async def run_synthesizer_cycle(session_id: uuid.UUID, model_override: str | Non
         transcript_text=transcript_text,
     )
 
-    model_id = model_override or settings.REFINEMENT_MODEL
+    model_id = settings.REFINEMENT_MODEL if model_override is None else model_override
 
     try:
         output = await generate_json(

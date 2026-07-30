@@ -1,7 +1,10 @@
 import unittest
+from types import SimpleNamespace
 
 from app.config import MODEL_REGISTRY, Settings, settings
 from app.services.transcription_runtime import (
+    SETTING_BATCH_TRANSCRIBER_MODEL,
+    get_transcription_runtime_config,
     is_supported_live_model,
     is_supported_transcription_model,
 )
@@ -38,6 +41,34 @@ class TranscriptionRuntimeTests(unittest.TestCase):
         for model_id in ("gemini-3.6-flash", "gemini-3.5-flash-lite"):
             self.assertTrue(is_supported_transcription_model(model_id))
             self.assertFalse(is_supported_live_model(model_id))
+
+
+class TranscriptionRuntimeSelectionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_explicit_invalid_or_blank_choices_do_not_fall_back_to_cloud(self):
+        db = _RuntimeDB(
+            settings={SETTING_BATCH_TRANSCRIBER_MODEL: "not-a-model"},
+            gateway=SimpleNamespace(model_id=""),
+        )
+
+        runtime = await get_transcription_runtime_config(db)
+
+        self.assertEqual("not-a-model", runtime.batch_model_id)
+        self.assertEqual("", runtime.live_preview_model_id)
+
+
+class _RuntimeDB:
+    def __init__(self, *, settings, gateway):
+        self.settings = {
+            key: SimpleNamespace(value=value)
+            for key, value in settings.items()
+        }
+        self.gateway = gateway
+
+    async def get(self, _model, key):
+        return self.settings.get(key)
+
+    async def execute(self, _query):
+        return SimpleNamespace(scalar_one_or_none=lambda: self.gateway)
 
 
 if __name__ == "__main__":

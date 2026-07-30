@@ -6,7 +6,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
-from app.config import settings
 from app.services.llm import generate_text
 from app.database import get_db
 from app.models import Directive, Question, Session, TranscriptEntry
@@ -91,7 +90,7 @@ Output the JSON array:"""
     # live: same transcript in, same four item types out. It runs whatever
     # model that agent is set to, so Privacy First judges it by destination and
     # the choice is visible in Admin -> Agents instead of being implicit.
-    model_id = await agent_model_id("consolidated_analyst", settings.REFINEMENT_MODEL)
+    model_id = await agent_model_id("consolidated_analyst")
 
     raw = await generate_text(
         model_id, prompt, session_id=session_id, source="analyze"

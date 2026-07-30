@@ -228,6 +228,41 @@ class BriefingProviderRoutingTests(ProviderRoutingTestCase):
         self.enterContext(patch.object(briefing_synthesis, "_persist_synthesis", persist))
         return persist
 
+    async def test_unselected_enabled_role_persists_setup_block_before_privacy(self):
+        persist = AsyncMock(return_value=SimpleNamespace(status="error"))
+        build_context = AsyncMock()
+        with (
+            patch(
+                "app.services.privacy.is_local_only",
+                new=AsyncMock(return_value=True),
+            ),
+            patch(
+                "app.services.privacy.allows_local_only",
+                new=AsyncMock(return_value=False),
+            ),
+            patch.object(
+                briefing_synthesis,
+                "_build_context",
+                build_context,
+            ),
+            patch.object(
+                briefing_synthesis,
+                "_persist_error_synthesis",
+                persist,
+            ),
+        ):
+            result = await run_session_synthesis(
+                uuid.uuid4(),
+                mode="post_call",
+                agent_configs=_briefing_configs(""),
+            )
+
+        self.assertEqual("error", result.status)
+        build_context.assert_not_awaited()
+        persist.assert_awaited_once()
+        self.assertIn("Admin -> Agents", persist.await_args.args[2])
+        self.assertIn("brief_arbiter", persist.await_args.args[2])
+
     async def test_openai_lenses_and_arbiter_use_openai_path(self):
         persist = self._patch_briefing()
         lens_json = '{"notes": "lens ok"}'

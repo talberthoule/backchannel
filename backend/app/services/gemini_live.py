@@ -24,7 +24,7 @@ class GeminiLiveSession:
         self.client = None
         self.session = None
         self._context_manager = None
-        self._model = model_override or settings.GEMINI_MODEL
+        self._model = settings.GEMINI_MODEL if model_override is None else model_override
         self._session_id = session_id
         self._last_usage = (0, 0, 0)
 

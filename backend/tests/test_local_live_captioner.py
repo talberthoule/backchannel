@@ -33,6 +33,9 @@ class LocalLiveCaptionerTests(unittest.IsolatedAsyncioTestCase):
             make_transcriber=FakeTranscriber,
         )
 
+    async def test_explicit_blank_model_is_not_replaced(self):
+        self.assertEqual("", LocalLiveCaptioner(model_override="")._asr_model_id)
+
     async def test_send_audio_trims_to_max(self):
         cap = self._captioner()
         over = cap._max_pending_bytes + 5000
