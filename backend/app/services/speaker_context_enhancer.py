@@ -26,6 +26,10 @@ from app.services.speaker_name_rewriter import (
 
 CONTEXT_CHANGE_FIELDS = {"name", "display_name", "display_name_enabled", "speaker_type", "is_user"}
 
+# Mirrors ASK_ITEM_TYPE in app.routers.ask (ALP-178). Redeclared here rather
+# than imported to avoid a services -> routers dependency for one string.
+ASKED_ITEM_TYPE = "asked"
+
 ENHANCEMENT_PROMPT_TEMPLATE = """You are re-evaluating a completed conversation after speaker context was corrected.
 
 The user may have renamed speakers, merged duplicate detected speakers, or corrected whether a speaker is an internal participant or an external participant.
@@ -148,7 +152,14 @@ async def run_speaker_context_batch(
         speakers = [_speaker_dict(speaker) for speaker in speakers_result.scalars().all()]
         questions_result = await db.execute(
             select(Question)
-            .where(Question.session_id == session_id, Question.id.in_(question_ids))
+            .where(
+                Question.session_id == session_id,
+                Question.id.in_(question_ids),
+                # Enhance Insights runs the same mutation handlers as the
+                # synthesizer; the operator's own live-chat Q&A must not be
+                # rewritten by it either (ALP-178).
+                Question.item_type != ASKED_ITEM_TYPE,
+            )
             .options(selectinload(Question.speaker))
             .order_by(Question.created_at)
         )

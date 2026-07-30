@@ -4,6 +4,10 @@ import type { Question } from "../types";
 // palette color hashed from their slug and labels derived from the producing
 // lens (lens_label) or a humanized slug.
 export const BUILTIN_TYPE_META: Record<string, { label: string; plural: string; color: string }> = {
+  // The operator's own questions. Deliberately a neutral rather than a sixth
+  // hue: the five agent types already hold teal, amber, violet, emerald and
+  // red, and an answer to your own question is not another finding category.
+  asked: { label: "You asked", plural: "Asked", color: "#475569" },
   question: { label: "Question", plural: "Questions", color: "#0d9488" },
   objection: { label: "Objection", plural: "Objections", color: "#f59e0b" },
   observation: { label: "Observation", plural: "Observations", color: "#7c3aed" },
@@ -12,7 +16,7 @@ export const BUILTIN_TYPE_META: Record<string, { label: string; plural: string; 
 };
 
 // Display order for type groupings; custom types sort after built-ins.
-export const BUILTIN_TYPE_ORDER = ["action_item", "objection", "opportunity", "observation", "question"];
+export const BUILTIN_TYPE_ORDER = ["asked", "action_item", "objection", "opportunity", "observation", "question"];
 
 const CUSTOM_TYPE_COLORS = ["#0284c7", "#c026d3", "#ea580c", "#4f46e5", "#0891b2", "#65a30d", "#be185d", "#7c2d12"];
 

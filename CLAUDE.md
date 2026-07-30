@@ -244,6 +244,7 @@ Primary route modules:
 - Re-transcription: `POST /api/sessions/{id}/retranscribe` replays stored segment audio through any batch-capable model (destructive to existing transcript entries); `GET /api/sessions/{id}/segments/{n}/audio` serves the recorded WAV
 - Token usage: `GET /api/sessions/{id}/token-usage` returns session totals with per-source and per-model input/output breakdowns; the post-call Tokens tab renders this persisted data and shows zero cleanly for sessions without captured usage
 - Chat: `POST /api/chat` answers questions over selected sessions' transcripts via the provider-routed text LLM
+- Ask (live): `POST /api/sessions/{id}/ask` answers one question against the running call's transcript, live insights, strategic signals, directives, and document filenames, then saves the answer as a starred `asked` insight. Separate from `/api/chat`: single-session, stateless, small recency-first budget. Document contents are not included (see ALP-181)
 - Meta: `GET /api/meta` (current app version) and `GET /api/meta/release-notes` (in-app release notes); both read `backend/app/release_notes.py`, the version's single source of truth, which every release must update
 
 ## Frontend Structure

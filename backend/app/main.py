@@ -9,7 +9,7 @@ from app.config import settings
 from app.database import engine
 from app.models import Base
 from app.release_notes import APP_VERSION
-from app.routers import agents, analyze, artifacts, chat, credentials, retranscribe, diagnostics, directives, documents, endpoints, groups, imports, knowledge, meta, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts, updates
+from app.routers import agents, analyze, artifacts, ask, chat, credentials, retranscribe, diagnostics, directives, documents, endpoints, groups, imports, knowledge, meta, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts, updates
 from app.services.privacy import LocalOnlyModeError
 from app.services.audio_store import cleanup_orphan_track_audio
 from app.services import runtime_activity
@@ -322,6 +322,7 @@ app.include_router(
     dependencies=[Depends(runtime_activity.request_tracker("retranscription"))],
 )
 app.include_router(chat.router)
+app.include_router(ask.router)
 app.include_router(diagnostics.router)
 app.include_router(privacy.router)
 app.include_router(updates.router)

@@ -1,70 +1,148 @@
 import { useState } from "react";
+import type { ModelInfo } from "../../types";
+import ModelChip from "./ModelChip";
+
+type Mode = "chat" | "directive";
+
+const MODE_STORAGE_KEY = "backchannel:call-bar-mode";
 
 interface DirectiveBarProps {
   onAddDirective: (text: string) => void;
+  onAsk: (question: string) => void;
+  models: ModelInfo[];
+  modelId: string;
+  onModelChange: (id: string) => void;
+  localOnly: boolean;
+  asking?: boolean;
   disabled?: boolean;
+  /** True when this tab is not attached to the live runtime (ALP-178): a
+   * refresh or a second tab can no longer confirm an ask reached the call
+   * it looks like it is asking. Chat-only; Directive is unaffected because
+   * sendDirective already no-ops off-runtime when the socket is closed. */
+  askDisabled?: boolean;
 }
 
-export default function DirectiveBar({ onAddDirective, disabled = false }: DirectiveBarProps) {
-  const [expanded, setExpanded] = useState(false);
+/** The call's command bar.
+ *
+ * Chat is the default because asking is the more frequent act and it should
+ * cost zero clicks; the input is always open for the same reason. Directive
+ * keeps its previous behavior, one toggle away.
+ */
+export default function DirectiveBar({
+  onAddDirective,
+  onAsk,
+  models,
+  modelId,
+  onModelChange,
+  localOnly,
+  asking = false,
+  disabled = false,
+  askDisabled = false,
+}: DirectiveBarProps) {
+  const [mode, setMode] = useState<Mode>(() => {
+    // ponytail: default-first so "chat" reads as the fallback in one glance;
+    // functionally identical to a loadMode() helper (defaults to chat, only
+    // "directive" is ever read back from storage), inlined so a browser that
+    // refuses storage still yields chat with zero indirection.
+    let initial: Mode = "chat";
+    try {
+      if (window.localStorage.getItem(MODE_STORAGE_KEY) === "directive") initial = "directive";
+    } catch {
+      // A browser refusing storage is not a reason to break the bar.
+    }
+    return initial;
+  });
   const [text, setText] = useState("");
+
+  const chatMode = mode === "chat";
+
+  function selectMode(next: Mode) {
+    setMode(next);
+    try {
+      window.localStorage.setItem(MODE_STORAGE_KEY, next);
+    } catch {
+      // A browser refusing storage is not a reason to break the bar.
+    }
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = text.trim();
-    if (!trimmed) return;
-    onAddDirective(trimmed);
+    if (!trimmed || disabled) return;
+    if (chatMode) {
+      if (askDisabled) return;
+      if (!modelId || asking) return;
+      onAsk(trimmed);
+    } else {
+      onAddDirective(trimmed);
+    }
     setText("");
-    setExpanded(false);
   }
+
+  const modeButton = (value: Mode, label: string) => (
+    <button
+      type="button"
+      onClick={() => selectMode(value)}
+      aria-pressed={mode === value}
+      className={`px-2.5 py-1 font-body text-xs font-semibold transition-colors ${
+        mode === value
+          ? value === "chat"
+            ? "bg-brand-gray text-white"
+            : "bg-brand-teal text-white"
+          : "text-brand-mid-gray hover:bg-brand-light-gray-2"
+      }`}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div className="border-t border-brand-light-gray-1 bg-surface/95 backdrop-blur-sm">
-      {expanded ? (
-        <form onSubmit={handleSubmit} className="flex items-center gap-3 px-4 py-3">
+      <form onSubmit={handleSubmit} className="flex items-center gap-2 px-4 py-2">
+        <div className="flex flex-shrink-0 overflow-hidden rounded-lg border border-brand-light-gray-1">
+          {modeButton("chat", "Chat")}
+          {modeButton("directive", "Directive")}
+        </div>
+
+        <div
+          className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${
+            chatMode
+              ? "border-brand-light-gray-1 bg-brand-light-gray-2 focus-within:border-brand-gray"
+              : "border-brand-light-gray-1 bg-surface focus-within:border-brand-teal"
+          }`}
+        >
           <input
             type="text"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={disabled ? "Post-processing is running..." : "e.g. Ask about their cloud migration timeline..."}
-            autoFocus
-            disabled={disabled}
-            className="flex-1 rounded-lg border border-brand-light-gray-1 px-3 py-2 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray focus:border-brand-teal focus:ring-1 focus:ring-brand-teal"
+            placeholder={
+              disabled
+                ? "Post-processing is running..."
+                : chatMode && askDisabled
+                  ? "Resume audio to ask..."
+                  : chatMode
+                    ? "Ask this call anything..."
+                    : "e.g. Ask about their cloud migration timeline..."
+            }
+            disabled={disabled || (chatMode && askDisabled)}
+            aria-label={chatMode ? "Ask this call a question" : "Add a directive"}
+            className="min-w-0 flex-1 bg-transparent font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray focus:outline-none"
           />
-          <button
-            type="submit"
-            disabled={disabled || !text.trim()}
-            className="rounded-lg bg-brand-teal px-4 py-2 font-body text-sm font-medium text-white transition-colors hover:bg-brand-teal-dark disabled:opacity-40"
-          >
-            Add
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setExpanded(false);
-              setText("");
-            }}
-            className="rounded-lg px-3 py-2 font-body text-sm text-brand-gray transition-colors hover:bg-brand-light-gray-2"
-          >
-            Cancel
-          </button>
-        </form>
-      ) : (
-        <div className="flex items-center px-4 py-2">
-          <button
-            onClick={() => {
-              if (!disabled) setExpanded(true);
-            }}
-            disabled={disabled}
-            className="flex items-center gap-2 rounded-lg px-3 py-1.5 font-body text-sm font-medium text-brand-teal transition-colors hover:bg-brand-light-gray-2 disabled:cursor-not-allowed disabled:text-brand-mid-gray disabled:hover:bg-transparent"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            Add Directive
-          </button>
+          {asking && (
+            <span className="flex-shrink-0 font-mono text-[10px] uppercase tracking-wider text-brand-mid-gray">
+              Reading the call...
+            </span>
+          )}
+          {text.trim() && !asking && (
+            <span className="flex-shrink-0 font-mono text-[10px] text-brand-mid-gray" aria-hidden="true">
+              &#8629;
+            </span>
+          )}
+          {chatMode && (
+            <ModelChip models={models} value={modelId} localOnly={localOnly} onChange={onModelChange} />
+          )}
         </div>
-      )}
+      </form>
     </div>
   );
 }

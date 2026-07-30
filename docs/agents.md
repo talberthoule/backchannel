@@ -55,6 +55,22 @@ enabled lens of `consolidated_analyst`. The `question_hunter` label only
 survives as a backward-compatible `agent_source` value on exported/saved
 question items.
 
+## Asking during a call
+
+The call's command bar opens in Chat mode. A question goes to
+`POST /api/sessions/{id}/ask`, which answers from the session's current
+transcript, live insights, strategic signals, directives, and attached document
+filenames. The answer is saved as an `asked` insight, starred automatically so
+it pins to the top of the live feed and stays findable afterwards, and it is
+exported with every other insight.
+
+This is not an agent: nothing schedules it, and asking never steers the running
+agents. The card's `Make directive` action is the explicit way to turn a
+question into agent guidance.
+
+The answering model is chosen from the chip in the bar and defaults to the
+Objection Handler's model, which is already configured for low latency.
+
 ## Configuration and overrides
 
 Agent behavior is driven by database rows, not code constants:
