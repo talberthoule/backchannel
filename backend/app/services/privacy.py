@@ -214,9 +214,11 @@ def privacy_impact(on_prem_text_models: list[dict] | None = None) -> dict:
     disabled.append({
         "feature": "Document upload & summarization",
         "detail": (
-            "Session documents are uploaded to the Gemini Files API, which has "
-            "no self-hosted equivalent. Configuring a local text model does not "
-            "enable it."
+            "Full summarization uploads documents to the Gemini Files API, "
+            "which has no self-hosted equivalent. Text documents (.txt, .md, "
+            ".docx) can still be attached: a bounded excerpt is extracted on "
+            "this machine instead. Configuring a local text model does not "
+            "enable the cloud path."
         ),
     })
     if not local_text:

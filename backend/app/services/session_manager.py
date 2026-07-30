@@ -18,6 +18,13 @@ async def get_active_directives(session_id: uuid.UUID, db: AsyncSession) -> list
 
 
 async def get_document_summaries(session_id: uuid.UUID, db: AsyncSession) -> str:
+    """Session document context, summarized at most once per document.
+
+    Stored summaries (cloud-generated or Privacy First local extracts) are
+    plain reads. A cloud-uploaded document without one is summarized via
+    Gemini on first use and the result persisted (ALP-181); failures are not
+    persisted, so a transient error retries on the next read.
+    """
     result = await db.execute(
         select(Document).where(Document.session_id == session_id)
     )
@@ -26,14 +33,26 @@ async def get_document_summaries(session_id: uuid.UUID, db: AsyncSession) -> str
         return ""
 
     summaries = []
+    filled = False
     for doc in docs:
-        if doc.gemini_file_uri:
-            try:
-                summary = await summarize_document(doc.gemini_file_uri, session_id=session_id)
-                summaries.append(f"### {doc.filename}\n{summary}")
-            except Exception as e:
-                logger.error(f"Failed to summarize {doc.filename}: {e}")
-                summaries.append(f"### {doc.filename}\n(Summary unavailable)")
+        if doc.summary:
+            summaries.append(f"### {doc.filename}\n{doc.summary}")
+            continue
+        if not doc.gemini_file_uri:
+            continue
+        try:
+            summary = await summarize_document(doc.gemini_file_uri, session_id=session_id)
+        except Exception as e:
+            logger.error(f"Failed to summarize {doc.filename}: {e}")
+            summaries.append(f"### {doc.filename}\n(Summary unavailable)")
+            continue
+        doc.summary = summary
+        doc.summary_source = "gemini"
+        filled = True
+        summaries.append(f"### {doc.filename}\n{summary}")
+
+    if filled:
+        await db.commit()
 
     return "\n\n".join(summaries)
 
