@@ -24,7 +24,7 @@
     "sharp": "^0.35.3"
   },
   "devDependencies": {
-    "wrangler": "^4.107.1"
+    "wrangler": "^4.115.0"
   },
   "optionalDependencies": {
     "@emnapi/core": "^1.11.2",

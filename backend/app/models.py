@@ -165,6 +165,12 @@ class Document(Base):
     filename: Mapped[str] = mapped_column(String(255))
     mime_type: Mapped[str] = mapped_column(String(100))
     gemini_file_uri: Mapped[str] = mapped_column(String(500), default="")
+    # Persisted context summary (ALP-181). Written once - lazily by
+    # get_document_summaries for cloud docs, or at upload for Privacy First
+    # local extraction - then read everywhere; documents are immutable.
+    summary: Mapped[str] = mapped_column(Text, default="")
+    # "" (not yet summarized), "gemini", or "local_extract".
+    summary_source: Mapped[str] = mapped_column(String(20), default="")
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     session = relationship("Session", back_populates="documents")

@@ -205,6 +205,17 @@ async def _add_missing_columns(conn):
                     )
                 )
 
+        if "documents" in tables:
+            columns = {c["name"] for c in inspector.get_columns("documents")}
+            if "summary" not in columns:
+                connection.execute(
+                    text("ALTER TABLE documents ADD COLUMN summary TEXT NOT NULL DEFAULT ''")
+                )
+            if "summary_source" not in columns:
+                connection.execute(
+                    text("ALTER TABLE documents ADD COLUMN summary_source VARCHAR(20) NOT NULL DEFAULT ''")
+                )
+
         # Model ids for self-hosted endpoints ("endpoint:<slug>:<model name>")
         # are longer than the registry ids these columns were sized for.
         for table in ("agent_configs", "token_usage"):

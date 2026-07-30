@@ -2,9 +2,11 @@ import json
 import unittest
 
 from app.services.live_chat_context import (
+    LIVE_DOCUMENTS_BUDGET_CHARS,
     LIVE_INSIGHTS_BUDGET_CHARS,
     LIVE_SYSTEM_PROMPT,
     build_live_prompt,
+    format_live_documents,
     format_live_insights,
 )
 
@@ -15,7 +17,7 @@ def context(lines, **overrides):
         "meeting_type": "client_sales",
         "meeting_context": "Renewal risk",
         "directives": ["Ask about the migration freeze"],
-        "document_filenames": ["pricing.pdf"],
+        "documents": [("pricing.pdf", "")],
         "insights": "",
         "signals": "",
         "lines": lines,
@@ -77,6 +79,43 @@ class LivePromptTests(unittest.TestCase):
         lines = [("Leah", "I want a ninety-minute technical working session.")]
         prompt = build_live_prompt(context(lines, insights="x" * 40000), "how long?")
         self.assertIn("ninety-minute technical working session", prompt)
+
+    def test_stored_summaries_join_without_starving_the_transcript(self):
+        # ALP-192: summaries are useful context but the transcript is the only
+        # ground truth; four maximal local extracts must not push it out.
+        lines = [("Leah", "The runbook freeze lifts on Thursday.")]
+        docs = [(f"doc{i}.txt", "y" * 4000) for i in range(4)]
+        prompt = build_live_prompt(context(lines, documents=docs), "when does the freeze lift?")
+        self.assertIn("The runbook freeze lifts on Thursday.", prompt)
+        self.assertIn("doc0.txt", prompt)
+
+
+class LiveDocumentFormatTests(unittest.TestCase):
+    def test_empty_list_is_empty_string(self):
+        self.assertEqual(format_live_documents([]), "")
+
+    def test_stored_summary_renders_under_its_filename(self):
+        out = format_live_documents([("pricing.pdf", "Enterprise tier is 20k/yr.")])
+        self.assertIn("### pricing.pdf", out)
+        self.assertIn("Enterprise tier is 20k/yr.", out)
+
+    def test_docs_without_a_summary_still_list_by_name(self):
+        out = format_live_documents([("pricing.pdf", ""), ("notes.txt", "Stored.")])
+        self.assertIn("- pricing.pdf (no stored summary", out)
+        self.assertIn("### notes.txt\nStored.", out)
+
+    def test_budget_splits_evenly_and_truncation_is_marked(self):
+        docs = [("a.txt", "a" * 4000), ("b.txt", "b" * 4000)]
+        out = format_live_documents(docs)
+        self.assertIn("[summary truncated]", out)
+        # Each doc gets half the budget; the layer stays near the bound.
+        self.assertLessEqual(len(out), LIVE_DOCUMENTS_BUDGET_CHARS + 100)
+        self.assertIn("### a.txt", out)
+        self.assertIn("### b.txt", out)
+
+    def test_short_summaries_are_not_truncated(self):
+        out = format_live_documents([("a.txt", "brief"), ("b.txt", "also brief")])
+        self.assertNotIn("[summary truncated]", out)
 
 
 class LiveInsightFormatTests(unittest.TestCase):

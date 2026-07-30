@@ -13,6 +13,10 @@ LIVE_CONTEXT_BUDGET_CHARS = 18000
 # A long call accumulates well over 100 insights (~40k chars serialized), so
 # this layer is bounded like the transcript: newest admitted first.
 LIVE_INSIGHTS_BUDGET_CHARS = 6000
+# Stored document summaries (ALP-181) can reach 4000 chars each, so the layer
+# is bounded and the budget splits evenly across documents that have one; the
+# transcript floor in build_live_prompt is the real starvation guard.
+LIVE_DOCUMENTS_BUDGET_CHARS = 4000
 
 LIVE_SYSTEM_PROMPT = (
     "You are assisting someone who is in a live meeting right now. Answer from "
@@ -27,6 +31,40 @@ LIVE_SYSTEM_PROMPT = (
 )
 
 TRUNCATION_MARKER = "[earlier transcript omitted]"
+SUMMARY_TRUNCATION_MARKER = " [summary truncated]"
+
+
+def format_live_documents(docs, budget: int = LIVE_DOCUMENTS_BUDGET_CHARS) -> str:
+    """Render (filename, stored summary) pairs for the live prompt.
+
+    Every filename always lists - names are cheap and were all ALP-178 could
+    offer. Documents with a stored summary (ALP-181) split the budget evenly,
+    each truncated to its share, so one 4000-char local extract cannot crowd
+    out the rest.
+    """
+    docs = [
+        (name, (summary or "").strip())
+        for name, summary in (docs or [])
+        if name
+    ]
+    if not docs:
+        return ""
+
+    with_summary = sum(1 for _, summary in docs if summary)
+    per_doc = budget // with_summary if with_summary else 0
+
+    blocks = []
+    for name, summary in docs:
+        if not summary:
+            blocks.append(f"- {name} (no stored summary; contents not available here)")
+            continue
+        if len(summary) > per_doc:
+            summary = (
+                summary[: max(0, per_doc - len(SUMMARY_TRUNCATION_MARKER))]
+                + SUMMARY_TRUNCATION_MARKER
+            )
+        blocks.append(f"### {name}\n{summary}")
+    return "\n".join(blocks)
 
 
 def format_live_insights(
@@ -90,12 +128,9 @@ def build_live_prompt(context: dict, question: str, budget: int = LIVE_CONTEXT_B
     if directives:
         sections.append("# Active directives\n" + "\n".join(f"- {d}" for d in directives))
 
-    filenames = [f for f in (context.get("document_filenames") or []) if f]
-    if filenames:
-        sections.append(
-            "# Attached documents (names only; their contents are not available here)\n"
-            + "\n".join(f"- {f}" for f in filenames)
-        )
+    documents = format_live_documents(context.get("documents") or [])
+    if documents:
+        sections.append(f"# Attached documents\n{documents}")
 
     signals = (context.get("signals") or "").strip()
     if signals:
