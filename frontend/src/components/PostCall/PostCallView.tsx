@@ -303,14 +303,6 @@ export default function PostCallView({
                 >
                   Insights (Excel)
                 </a>
-                {session.speaker_context_enhanced_at && (
-                  <a
-                    href={`/api/sessions/${session.id}/artifacts/questions-export?enhanced_only=true`}
-                    className="block px-4 py-2.5 text-sm text-brand-dark-gray hover:bg-brand-light-gray-2"
-                  >
-                    Enhanced Insights (Excel)
-                  </a>
-                )}
                 <a
                   href={`/api/sessions/${session.id}/artifacts/transcript-export`}
                   className="block px-4 py-2.5 text-sm text-brand-dark-gray hover:bg-brand-light-gray-2 rounded-b-lg"

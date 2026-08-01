@@ -84,10 +84,9 @@ async def export_transcript(session_id: uuid.UUID, db: AsyncSession = Depends(ge
 @router.get("/questions-export")
 async def export_insights(
     session_id: uuid.UUID,
-    enhanced_only: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
-    """Export session insights as a formatted Excel (.xlsx) file."""
+    """Export all session insights."""
     from io import BytesIO
     from openpyxl import Workbook
     from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -104,8 +103,6 @@ async def export_insights(
         .order_by(Question.vote.desc(), Question.created_at)
     )
     questions = result.scalars().all()
-    if enhanced_only:
-        questions = [q for q in questions if q.enhanced]
 
     wb = Workbook()
     ws = wb.active
@@ -223,8 +220,7 @@ async def export_insights(
     wb.save(buf)
     content = buf.getvalue()
 
-    prefix = "enhanced-insights" if enhanced_only else "insights"
-    filename = f"{prefix}-{session.name.replace(' ', '_')}.xlsx"
+    filename = f"insights-{session.name.replace(' ', '_')}.xlsx"
 
     return StreamingResponse(
         _stream_bytes(content),
