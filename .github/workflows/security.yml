@@ -110,15 +110,10 @@ jobs:
       #   scripts/release_desktop.ps1:354          (Windows x64)
       #   desktop/Dockerfile.release-linux:5       (Linux x64)
       #   .github/workflows/desktop-release.yml:86 (macOS arm64)
-      # so the committed lockfile is precisely what must be audited. Only
-      # tests.yml line 72 regenerates it, and that is a test tree, not a
-      # shipped one. Do not "simplify" this job by regenerating both legs; that
-      # would stop auditing what users actually install.
-      #
-      # Known and NOT addressed here: frontend is therefore tested against a
-      # fresh resolve but ships the committed lockfile, and those two trees
-      # currently differ by ~350 lines. That is a real gap, in the opposite
-      # direction from the one this job fixes, and it needs its own decision.
+      # so the committed lockfile is precisely what must be audited. tests.yml
+      # line 72 installs it with npm ci as well (ALP-198), so the frontend is
+      # audited, tested, and shipped from one tree. Do not "simplify" this job
+      # by regenerating both legs; that would stop auditing what users install.
       #
       # Regenerating makes the docs-site leg time-varying - a newly published
       # advisory can turn it red with no repo change. That is intended, and is
