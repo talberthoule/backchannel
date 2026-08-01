@@ -540,6 +540,14 @@ export interface SynthesisSectionItem {
   evidence_refs?: Record<string, unknown>[];
 }
 
+export interface SignalHistoryItem extends SynthesisSectionItem {
+  section: string;
+  first_seen: string;
+  last_seen: string;
+  count: number;
+  model_id?: string;
+}
+
 export interface InsightCluster {
   id: string;
   synthesis_id: string;
@@ -565,6 +573,8 @@ export interface SessionSynthesis {
   action_plan: SynthesisSectionItem[];
   unresolved_discovery_questions: SynthesisSectionItem[];
   strategic_signals: SynthesisSectionItem[];
+  signal_history?: SignalHistoryItem[];
+  signal_history_count: number;
   evidence_refs: Record<string, unknown>[];
   lens_meeting: Record<string, unknown>;
   lens_discovery: Record<string, unknown>;

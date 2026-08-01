@@ -56,8 +56,10 @@ export async function waitForEnhancement(
   return result;
 }
 
-export const getSynthesis = (id: string, mode = "post_call") =>
-  request<SessionSynthesis | null>(`/sessions/${id}/synthesis?mode=${encodeURIComponent(mode)}`);
+export const getSynthesis = (id: string, mode = "post_call", includeHistory = false) =>
+  request<SessionSynthesis | null>(
+    `/sessions/${id}/synthesis?mode=${encodeURIComponent(mode)}&include_history=${includeHistory}`,
+  );
 
 export const refreshSynthesis = (id: string, mode = "post_call") =>
   request<SessionSynthesis>(`/sessions/${id}/synthesis/refresh?mode=${encodeURIComponent(mode)}`, { method: "POST" });

@@ -14,10 +14,12 @@ import {
   Trophy,
 } from "lucide-react";
 import type { InsightCluster, Session, SessionSynthesis, SynthesisSectionItem } from "../../types";
+import SignalHistory from "../SignalHistory";
 
 interface BriefingViewProps {
   session: Session;
   synthesis: SessionSynthesis | null;
+  signalHistoryCount: number;
   onRefresh: () => Promise<void>;
   refreshing: boolean;
   error?: string | null;
@@ -471,7 +473,7 @@ function ExecutiveStrip({
   );
 }
 
-export default function BriefingView({ session, synthesis, onRefresh, refreshing, error }: BriefingViewProps) {
+export default function BriefingView({ session, synthesis, signalHistoryCount, onRefresh, refreshing, error }: BriefingViewProps) {
   const labels = sectionLabels(session);
   const actionLabel = refreshing
     ? synthesis
@@ -489,6 +491,12 @@ export default function BriefingView({ session, synthesis, onRefresh, refreshing
         refreshing={refreshing}
         error={error}
         actionLabel={actionLabel}
+      />
+
+      <SignalHistory
+        sessionId={session.id}
+        count={signalHistoryCount}
+        heading="Strategic Signal History"
       />
 
       {synthesis && (

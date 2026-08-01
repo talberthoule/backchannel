@@ -1097,6 +1097,7 @@ export default function App() {
             segments={segments}
             speakers={speakers}
             synthesis={postCallSynthesis}
+            signalHistoryCount={liveSynthesis?.signal_history_count ?? 0}
             onResumeCall={handleResumeCall}
             onDeleteSession={handleDeleteSession}
             onRefreshSpeakers={refreshSpeakers}

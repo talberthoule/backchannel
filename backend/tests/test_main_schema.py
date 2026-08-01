@@ -112,9 +112,10 @@ class StartupSchemaPatchTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SessionSynthesisSchemaTests(unittest.TestCase):
-    def test_signal_history_is_server_only(self):
+    def test_signal_history_is_exposed_for_opt_in_reads(self):
         self.assertIn("signal_history", SessionSynthesis.__table__.columns)
-        self.assertNotIn("signal_history", SessionSynthesisOut.model_fields)
+        self.assertIn("signal_history", SessionSynthesisOut.model_fields)
+        self.assertIn("signal_history_count", SessionSynthesisOut.model_fields)
 
 
 class AlembicTrackPathRevisionTests(unittest.TestCase):

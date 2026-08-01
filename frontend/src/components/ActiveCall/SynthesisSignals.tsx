@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Session, SessionSynthesis, SynthesisSectionItem } from "../../types";
+import SignalHistory from "../SignalHistory";
 
 interface SynthesisSignalsProps {
   session: Session;
@@ -181,6 +182,7 @@ function SignalItem({
 export default function SynthesisSignals({ session, synthesis }: SynthesisSignalsProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const cards = useMemo(() => getLiveSignalCards(synthesis, session), [synthesis, session]);
+  const historyCount = synthesis?.signal_history_count || 0;
 
   useEffect(() => {
     if (selectedKey && !cards.some((card) => card.key === selectedKey)) {
@@ -188,7 +190,7 @@ export default function SynthesisSignals({ session, synthesis }: SynthesisSignal
     }
   }, [cards, selectedKey]);
 
-  if (cards.length === 0) {
+  if (cards.length === 0 && historyCount === 0) {
     return null;
   }
 
@@ -216,6 +218,7 @@ export default function SynthesisSignals({ session, synthesis }: SynthesisSignal
           />
         ))}
       </div>
+      <SignalHistory sessionId={session.id} count={historyCount} />
       {synthesis?.status === "partial" && (
         <p className="mt-2 font-body text-xs text-brand-amber">Briefing is based on partial model output.</p>
       )}
