@@ -17,12 +17,14 @@ router = APIRouter(prefix="/api/sessions/{session_id}/synthesis", tags=["synthes
 async def get_synthesis(
     session_id: uuid.UUID,
     mode: Literal["live", "post_call"] = "post_call",
+    include_history: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
     session = await db.get(Session, session_id)
     if not session:
         raise HTTPException(404, "Session not found")
-    return await get_session_synthesis(session_id, mode=mode)
+    synthesis = await get_session_synthesis(session_id, mode=mode)
+    return _synthesis_response(synthesis, include_history=include_history)
 
 
 @router.post(
@@ -45,4 +47,18 @@ async def refresh_synthesis(
     )
     if not synthesis:
         raise HTTPException(400, "Briefing synthesis is disabled or no transcript is available")
-    return synthesis
+    return _synthesis_response(synthesis)
+
+
+def _synthesis_response(
+    synthesis,
+    *,
+    include_history: bool = False,
+) -> SessionSynthesisOut | None:
+    if synthesis is None:
+        return None
+    history = synthesis.signal_history or []
+    response = SessionSynthesisOut.model_validate(synthesis)
+    response.signal_history_count = len(history)
+    response.signal_history = history if include_history else []
+    return response

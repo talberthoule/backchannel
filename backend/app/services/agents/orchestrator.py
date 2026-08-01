@@ -1471,6 +1471,7 @@ def _synthesis_payload(synthesis) -> dict:
         "action_plan": synthesis.action_plan or [],
         "unresolved_discovery_questions": synthesis.unresolved_discovery_questions or [],
         "strategic_signals": synthesis.strategic_signals or [],
+        "signal_history_count": len(synthesis.signal_history or []),
         "evidence_refs": synthesis.evidence_refs or [],
         "lens_meeting": synthesis.lens_meeting or {},
         "lens_discovery": synthesis.lens_discovery or {},

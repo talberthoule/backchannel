@@ -29,13 +29,17 @@ never the transcript, saved insights, directives, documents, speaker roster,
 or strategic-signal history directly.
 
 The latest `SessionSynthesis(mode="live")` fields keep their existing shapes.
-The live UI and in-call Ask endpoint continue reading those latest-cycle fields
-without receiving the history.
+The in-call Ask endpoint continues reading those latest-cycle fields without
+receiving the history. ALP-244 later made the history viewable in the live and
+post-call UI through an explicit lazy read.
 
 ## Storage
 
-Add a server-only `signal_history` JSON column to `session_syntheses`. It is
-not added to `SessionSynthesisOut`.
+ALP-191 added a server-only `signal_history` JSON column to
+`session_syntheses`. ALP-244 deliberately reverses the original response-schema
+boundary: `SessionSynthesisOut` now exposes the full list only when
+`include_history=true`, while normal responses and WebSocket updates carry only
+`signal_history_count`.
 
 Each successful live cycle contributes cards from:
 
@@ -119,7 +123,8 @@ appropriate to the selected meeting type; it is not call evidence.
 
 - A failed or partial Strategic Signals cycle does not add history.
 - Blank or explicitly unselected agent models are not replaced or inferred.
-- Existing latest-cycle live payloads and `SessionSynthesisOut` stay unchanged.
+- Existing latest-cycle live fields stay unchanged; ALP-244 adds count metadata
+  and an opt-in full-history response.
 - A missing history column is repaired by startup schema patching.
 - Existing rows start with an empty history and remain readable.
 - No changes are made to first-run model selection, provider recommendations,
@@ -144,8 +149,8 @@ Backend tests must prove:
    included in both lens prompts.
 9. The arbiter prompt contains meeting context and lens outputs but no raw
    transcript, insights, or history markers.
-10. Latest-cycle live fields keep their existing shape and
-    `SessionSynthesisOut` does not expose history.
+10. Latest-cycle live fields keep their existing shape, WebSocket payloads omit
+    the full history, and explicit reads can request it.
 11. Alembic upgrade/downgrade and startup schema patching agree on the column.
 
 Run the focused briefing, strategic-signals, provider-routing, and schema

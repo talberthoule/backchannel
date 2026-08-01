@@ -204,6 +204,8 @@ class SessionSynthesisOut(BaseModel):
     action_plan: list = Field(default_factory=list)
     unresolved_discovery_questions: list = Field(default_factory=list)
     strategic_signals: list = Field(default_factory=list)
+    signal_history: list = Field(default_factory=list)
+    signal_history_count: int = 0
     evidence_refs: list = Field(default_factory=list)
     lens_meeting: dict = Field(default_factory=dict)
     lens_discovery: dict = Field(default_factory=dict)

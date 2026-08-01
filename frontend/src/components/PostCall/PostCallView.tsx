@@ -20,6 +20,7 @@ interface PostCallViewProps {
   segments: CallSegment[];
   speakers: Speaker[];
   synthesis: SessionSynthesis | null;
+  signalHistoryCount: number;
   onResumeCall: () => void;
   onDeleteSession: () => void;
   onRefreshSpeakers: () => void;
@@ -79,6 +80,7 @@ export default function PostCallView({
   segments,
   speakers,
   synthesis,
+  signalHistoryCount,
   onResumeCall,
   onDeleteSession,
   onRefreshSpeakers,
@@ -347,6 +349,7 @@ export default function PostCallView({
         <BriefingView
           session={session}
           synthesis={synthesis}
+          signalHistoryCount={signalHistoryCount}
           refreshing={refreshingBriefing}
           error={briefingError}
           onRefresh={async () => {
