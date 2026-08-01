@@ -65,11 +65,26 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # Not npm ci, for the same reason deploy-site.yml avoids it: the lockfile
-      # is generated on Windows and npm omits other platforms' optional native
-      # packages from it, then npm install trusts the incomplete lock
-      # (npm/cli#4828). Rollup's Linux binary is the usual casualty. Resolve fresh.
-      - run: rm -f package-lock.json && npm install
+      # npm ci, so this suite runs the tree that actually ships. All three
+      # desktop release paths install the frontend from this committed lockfile
+      # with npm ci, which honours it exactly:
+      #   scripts/release_desktop.ps1:354            Windows x64
+      #   desktop/Dockerfile.release-linux:5         Linux x64
+      #   .github/workflows/desktop-release.yml:86   macOS arm64
+      # Resolving fresh here validated a different tree - measured ~350 lines of
+      # package-lock.json apart - so bundles shipped versions nothing had run.
+      #
+      # This step used to delete the lockfile to dodge npm/cli#4828, on the
+      # premise that a Windows-generated lockfile omits other platforms'
+      # optional native packages. That premise is obsolete under npm 11: the
+      # committed lockfile carries all 52 platform-constrained entries,
+      # including @rollup/rollup-linux-x64 (the binary that rationale named)
+      # and every @esbuild linux arch. See ALP-198 for the full disproof.
+      #
+      # Intended consequence: package.json and the lockfile must stay in sync
+      # or npm ci fails, so dependency changes become explicit commits rather
+      # than silent per-run drift.
+      - run: npm ci
       # npm test is a hardcoded file list. A new *.test.mjs file must be added to
       # it or it will not run here (ALP-178).
       - run: npm test
