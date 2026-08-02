@@ -20,8 +20,11 @@ from app.schemas import (
     TokenUsageSummaryOut,
 )
 from app.services.agents.orchestrator import get_live_orchestrator
+from app.services.briefing_synthesis import agent_model_id
+from app.services.llm import LLMModelNotSelected
 from app.services.meeting_context import normalize_meeting_type
 from app.services.speaker_revalidation import (
+    get_latest_revalidation_run,
     get_revalidation_run,
     run_revalidation,
     start_or_resume_revalidation,
@@ -162,10 +165,27 @@ async def enhance_insights_after_speaker_changes(
             "briefing_status": None,
             "error": None,
         }
+    if not await agent_model_id("synthesizer"):
+        raise LLMModelNotSelected("Synthesizer")
     run, should_start = await start_or_resume_revalidation(session_id, db)
     if should_start:
         background_tasks.add_task(run_revalidation, run.id)
     return summarize_run(run, session)
+
+
+@router.get(
+    "/{session_id}/enhance-insights/latest",
+    response_model=EnhanceInsightsOut | None,
+)
+async def get_latest_enhance_insights_status(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    session = await db.get(Session, session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    run = await get_latest_revalidation_run(session_id, db)
+    return summarize_run(run, session) if run else None
 
 
 @router.get(

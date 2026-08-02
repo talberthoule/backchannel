@@ -6,7 +6,11 @@ from uuid import uuid4
 
 from fastapi import BackgroundTasks
 
-from app.routers.sessions import enhance_insights_after_speaker_changes
+from app.routers.sessions import (
+    enhance_insights_after_speaker_changes,
+    get_latest_enhance_insights_status,
+)
+from app.services.llm import LLMModelNotSelected
 from app.services.speaker_context_enhancer import (
     build_enhancement_prompt,
     mark_speaker_context_dirty_if_completed,
@@ -294,6 +298,10 @@ class SpeakerContextEnhancementRouteTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
+                "app.routers.sessions.agent_model_id",
+                new=AsyncMock(return_value="cloud-primary"),
+            ),
+            patch(
                 "app.routers.sessions.start_or_resume_revalidation",
                 new=AsyncMock(return_value=(run, True)),
             ) as start,
@@ -306,6 +314,52 @@ class SpeakerContextEnhancementRouteTests(unittest.IsolatedAsyncioTestCase):
         start.assert_awaited_once()
         self.assertEqual(summary, result)
         self.assertEqual(1, len(background_tasks.tasks))
+
+    async def test_dirty_context_without_a_synthesizer_model_starts_no_batches(self):
+        session = SimpleNamespace(
+            state="completed",
+            speaker_context_dirty=True,
+            speaker_context_enhanced_at=None,
+        )
+        db = SimpleNamespace(get=AsyncMock(return_value=session))
+        background_tasks = BackgroundTasks()
+
+        with (
+            patch(
+                "app.routers.sessions.agent_model_id",
+                new=AsyncMock(return_value=""),
+            ),
+            patch(
+                "app.routers.sessions.start_or_resume_revalidation",
+                new=AsyncMock(),
+            ) as start,
+        ):
+            with self.assertRaises(LLMModelNotSelected):
+                await enhance_insights_after_speaker_changes(
+                    uuid4(), background_tasks, db
+                )
+
+        start.assert_not_awaited()
+        self.assertEqual([], background_tasks.tasks)
+
+    async def test_latest_status_returns_one_summarized_run(self):
+        session_id = uuid4()
+        session = SimpleNamespace(id=session_id)
+        run = SimpleNamespace(id=uuid4())
+        summary = {"status": "completed", "run_id": run.id}
+        db = SimpleNamespace(get=AsyncMock(return_value=session))
+
+        with (
+            patch(
+                "app.routers.sessions.get_latest_revalidation_run",
+                new=AsyncMock(return_value=run),
+            ) as get_latest,
+            patch("app.routers.sessions.summarize_run", return_value=summary),
+        ):
+            result = await get_latest_enhance_insights_status(session_id, db)
+
+        get_latest.assert_awaited_once_with(session_id, db)
+        self.assertEqual(summary, result)
 
 
 class _ListResult:

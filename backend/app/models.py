@@ -132,6 +132,8 @@ class SpeakerRevalidationBatch(Base):
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str] = mapped_column(Text, default="")
+    requested_model_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    model_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
