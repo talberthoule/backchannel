@@ -13,6 +13,7 @@ from app.services.briefing_synthesis import (
     _build_context,
     _format_insights,
     _format_signal_history,
+    _normalize_synthesis_owners,
     _question_dict,
     agent_config_enabled,
     _response_contract,
@@ -221,6 +222,77 @@ class _ContextManager:
         del exc_type, exc, traceback
 
 
+class _OwnerResult:
+    def __init__(self, *, scalar=None, values=None):
+        self.scalar = scalar
+        self.values = values or []
+
+    def scalar_one_or_none(self):
+        return self.scalar
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return self.values
+
+
+class _OwnerSession:
+    def __init__(self, synthesis, speakers):
+        self.closed = False
+        self.execute = AsyncMock(side_effect=[
+            _OwnerResult(scalar=synthesis),
+            _OwnerResult(values=speakers),
+        ])
+
+
+class _OwnerSessionManager:
+    def __init__(self, db):
+        self.db = db
+
+    async def __aenter__(self):
+        return self.db
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        del exc_type, exc, traceback
+        self.db.closed = True
+
+
+class _AttachedSpeaker:
+    def __init__(self, db, speaker_id, name, display_name="", enabled=False):
+        self._db = db
+        self._values = {
+            "id": speaker_id,
+            "name": name,
+            "role": "",
+            "speaker_type": "external",
+            "display_name": display_name,
+            "display_name_enabled": enabled,
+        }
+
+    def __getattr__(self, name):
+        if self._db.closed:
+            raise AssertionError("speaker rows were accessed after the session closed")
+        return self._values[name]
+
+
+class _DetachedSynthesis(SimpleNamespace):
+    def __init__(self, db, **values):
+        self._db = db
+        self._top_outcomes = values.pop("top_outcomes")
+        super().__init__(**values)
+
+    @property
+    def top_outcomes(self):
+        if not self._db.closed:
+            raise AssertionError("synthesis was normalized before the session closed")
+        return self._top_outcomes
+
+    @top_outcomes.setter
+    def top_outcomes(self, value):
+        self._top_outcomes = value
+
+
 class BriefingSynthesisAsyncTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         for target, value in (
@@ -339,6 +411,73 @@ class BriefingSynthesisAsyncTests(unittest.IsolatedAsyncioTestCase):
             payload["items"][0]["source_context"],
         )
         self.assertNotIn("Live strategic signal history", context.insights_text)
+
+    async def test_get_synthesis_materializes_one_speaker_map_then_normalizes_detached_row(self):
+        session_id = uuid.uuid4()
+        mapped_id = uuid.uuid4()
+        fallback_id = uuid.uuid4()
+        db = _OwnerSession(None, [])
+        synthesis = _DetachedSynthesis(
+            db,
+            top_outcomes=[
+                {"title": "Mapped", "owner": str(mapped_id)},
+                {"title": "Fallback", "owner": str(fallback_id)},
+            ],
+            client_objectives=[],
+            top_opportunities=[],
+            risks_blockers=[],
+            action_plan=[],
+            unresolved_discovery_questions=[],
+            strategic_signals=[],
+            signal_history=[],
+            lens_meeting={},
+            lens_discovery={},
+        )
+        speakers = [
+            _AttachedSpeaker(db, mapped_id, "Speaker 1", "Maya Chen", True),
+            _AttachedSpeaker(db, fallback_id, "Speaker 2", "Ignored", False),
+        ]
+        db.execute.side_effect = [
+            _OwnerResult(scalar=synthesis),
+            _OwnerResult(values=speakers),
+        ]
+
+        with patch.object(
+            briefing_synthesis,
+            "async_session",
+            return_value=_OwnerSessionManager(db),
+        ):
+            result = await briefing_synthesis.get_session_synthesis(session_id)
+
+        self.assertIs(synthesis, result)
+        self.assertEqual(["Maya Chen", "Speaker 2"], [item["owner"] for item in result.top_outcomes])
+        self.assertEqual(2, db.execute.await_count)
+
+
+class BriefingOwnerNormalizationTests(unittest.TestCase):
+    def test_normalizer_covers_nested_outputs_without_exposing_unknown_ids(self):
+        mapped_id = uuid.uuid4()
+        unknown_id = uuid.uuid4()
+        synthesis = SimpleNamespace(
+            top_outcomes=[{"owner": str(mapped_id)}],
+            client_objectives=[{"owner": " Product Team "}],
+            top_opportunities=[],
+            risks_blockers=[],
+            action_plan=[],
+            unresolved_discovery_questions=[],
+            strategic_signals=[{"owner": str(unknown_id)}],
+            signal_history=[{"item": {"owner": str(mapped_id)}}],
+            lens_meeting={"top_outcomes": [{"owner": str(unknown_id)}]},
+            lens_discovery={},
+        )
+
+        _normalize_synthesis_owners(synthesis, {str(mapped_id): "Maya Chen"})
+
+        self.assertEqual("Maya Chen", synthesis.top_outcomes[0]["owner"])
+        self.assertEqual("Product Team", synthesis.client_objectives[0]["owner"])
+        self.assertEqual("", synthesis.strategic_signals[0]["owner"])
+        self.assertEqual("Maya Chen", synthesis.signal_history[0]["item"]["owner"])
+        self.assertEqual("", synthesis.lens_meeting["top_outcomes"][0]["owner"])
 
 
 if __name__ == "__main__":

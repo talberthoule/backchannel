@@ -19,7 +19,7 @@ from app.config import settings
 from app.database import async_session
 from app.models import AgentConfig, Directive, InsightCluster, Question, Session, SessionAgentOverride, SessionSynthesis, Speaker, TranscriptEntry
 from app.services.agents.prompts import BRIEF_ARBITER_PROMPT, BRIEF_DISCOVERY_LENS_PROMPT, BRIEF_MEETING_LENS_PROMPT
-from app.services.agents.speaker_context import format_speakers_list, format_transcript_segment
+from app.services.agents.speaker_context import format_speakers_list, format_transcript_segment, speaker_display_name
 from app.services.llm import generate_json, provider_for
 from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
 from app.services.provider_errors import PROVIDER_ERROR_TYPES, provider_error_message
@@ -33,6 +33,18 @@ BRIEF_ARBITER_SLUG = "brief_arbiter"
 BRIEF_AGENT_SLUGS = {BRIEF_MEETING_LENS_SLUG, BRIEF_DISCOVERY_LENS_SLUG, BRIEF_ARBITER_SLUG}
 SYNTHESIS_MODES = {"live", "post_call"}
 SynthesisMode = Literal["live", "post_call"]
+SYNTHESIS_OWNER_FIELDS = (
+    "top_outcomes",
+    "client_objectives",
+    "top_opportunities",
+    "risks_blockers",
+    "action_plan",
+    "unresolved_discovery_questions",
+    "strategic_signals",
+    "signal_history",
+    "lens_meeting",
+    "lens_discovery",
+)
 SIGNAL_HISTORY_SECTIONS = (
     "strategic_signals",
     "risks_blockers",
@@ -164,7 +176,12 @@ async def get_session_synthesis(session_id: uuid.UUID, mode: str = "post_call") 
             .where(SessionSynthesis.session_id == session_id, SessionSynthesis.mode == mode)
             .options(selectinload(SessionSynthesis.clusters))
         )
-        return result.scalar_one_or_none()
+        synthesis = result.scalar_one_or_none()
+        if synthesis is None:
+            return None
+        speaker_result = await db.execute(select(Speaker).where(Speaker.session_id == session_id))
+        speaker_names = _speaker_owner_names(speaker_result.scalars().all())
+    return _normalize_synthesis_owners(synthesis, speaker_names)
 
 
 async def run_session_synthesis(
@@ -426,6 +443,51 @@ def _speaker_dict(speaker: Speaker) -> dict:
         "display_name": speaker.display_name,
         "display_name_enabled": speaker.display_name_enabled,
     }
+
+
+def _speaker_owner_names(speakers: list[Speaker]) -> dict[str, str]:
+    return {
+        str(speaker.id): speaker_display_name(_speaker_dict(speaker))
+        for speaker in speakers
+    }
+
+
+def _normalize_owner(value: object, speaker_names: dict[str, str]) -> str:
+    owner = str(value or "").strip()
+    try:
+        owner_id = str(uuid.UUID(owner))
+    except ValueError:
+        return owner
+    return speaker_names.get(owner_id, "")
+
+
+def _normalize_owner_data(value: object, speaker_names: dict[str, str]):
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            value[index] = _normalize_owner_data(item, speaker_names)
+        return value
+    if isinstance(value, dict):
+        for key, item in value.items():
+            value[key] = (
+                _normalize_owner(item, speaker_names)
+                if key == "owner"
+                else _normalize_owner_data(item, speaker_names)
+            )
+        return value
+    return value
+
+
+def _normalize_synthesis_owners(
+    synthesis: SessionSynthesis,
+    speaker_names: dict[str, str],
+) -> SessionSynthesis:
+    for field in SYNTHESIS_OWNER_FIELDS:
+        setattr(
+            synthesis,
+            field,
+            _normalize_owner_data(getattr(synthesis, field), speaker_names),
+        )
+    return synthesis
 
 
 def _question_dict(question: Question) -> dict:
@@ -774,7 +836,10 @@ async def _persist_synthesis(
             .where(SessionSynthesis.id == synthesis.id)
             .options(selectinload(SessionSynthesis.clusters))
         )
-        return result.scalar_one()
+        synthesis = result.scalar_one()
+        speaker_result = await db.execute(select(Speaker).where(Speaker.session_id == session_id))
+        speaker_names = _speaker_owner_names(speaker_result.scalars().all())
+    return _normalize_synthesis_owners(synthesis, speaker_names)
 
 
 def _items_json(items: list[BriefItem]) -> list[dict]:
