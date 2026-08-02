@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import Session, Question, Speaker, TranscriptEntry, SessionSynthesis
 from app.services import runtime_activity
+from app.services.briefing_synthesis import get_session_synthesis
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/api/sessions/{session_id}/artifacts", tags=["artifacts"])
 
@@ -236,12 +236,7 @@ async def export_summary(session_id: uuid.UUID, db: AsyncSession = Depends(get_d
     if not session:
         raise HTTPException(404, "Session not found")
 
-    synthesis_result = await db.execute(
-        select(SessionSynthesis)
-        .where(SessionSynthesis.session_id == session_id, SessionSynthesis.mode == "post_call")
-        .options(selectinload(SessionSynthesis.clusters))
-    )
-    synthesis = synthesis_result.scalar_one_or_none()
+    synthesis = await get_session_synthesis(session_id, mode="post_call")
 
     if synthesis and _synthesis_is_usable(synthesis):
         html = _render_synthesis_html(session, synthesis)

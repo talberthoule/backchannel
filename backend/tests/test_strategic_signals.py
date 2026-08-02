@@ -130,6 +130,12 @@ class _PersistenceResult:
     def scalar_one(self):
         return self.value
 
+    def scalars(self):
+        return self
+
+    def all(self):
+        return []
+
 
 class _PersistenceSession:
     def __init__(self, synthesis):

@@ -84,7 +84,7 @@ test("enhanced sessions offer one unified Insights Excel download", () => {
 });
 
 test("briefing item metadata is safe and ordered in hero and section rows", () => {
-  const owner = "e2f5633a-f9c2-4fad-b44e-db1a559525f1";
+  const owner = "Maya Chen";
   const markup = renderBriefing({
     session: { id: "session-1", meeting_type: "general" },
     synthesis: {
@@ -105,14 +105,14 @@ test("briefing item metadata is safe and ordered in hero and section rows", () =
     refreshing: false,
   });
 
-  assert.doesNotMatch(markup, new RegExp(owner));
+  assert.equal(2, markup.match(new RegExp(owner, "g"))?.length);
   for (const [title, status, summary] of [
     ["Hero title", "Completed", "Hero summary"],
     ["Section title", "Pending", "Section summary"],
   ]) {
     const titleAt = markup.indexOf(title);
     const item = markup.slice(markup.lastIndexOf("<li", titleAt), markup.indexOf("</li>", titleAt));
-    assert.ok(item.indexOf(title) < item.indexOf(status) && item.indexOf(status) < item.indexOf(summary), `${status} should share the title row`);
+    assert.ok(item.indexOf(title) < item.indexOf(status) && item.indexOf(status) < item.indexOf(owner) && item.indexOf(owner) < item.indexOf(summary), `${status} and owner should share the title row`);
     assert.match(item, new RegExp(`${summary}</p><div class="mt-1\\.5">`));
   }
 });

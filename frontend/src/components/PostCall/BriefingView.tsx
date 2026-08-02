@@ -167,6 +167,18 @@ function StatusChip({ status }: { status: string }) {
   );
 }
 
+function OwnerChip({ owner }: { owner: string }) {
+  const initial = owner.trim().charAt(0).toUpperCase() || "?";
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-light-gray-2 px-2 py-0.5 font-body text-xs font-medium text-brand-dark-gray">
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brand-teal text-[10px] font-bold text-white">
+        {initial}
+      </span>
+      {owner}
+    </span>
+  );
+}
+
 // Progressive disclosure for the "why this matters" rationale text: collapsed
 // by default so the default view stays dense with signal, not prose.
 function RationaleToggle({ text }: { text?: string }) {
@@ -246,6 +258,7 @@ function InsightSection({
                     {item.title || item.summary}
                   </p>
                   {item.status && <StatusChip status={item.status} />}
+                  {item.owner && <OwnerChip owner={item.owner} />}
                 </div>
                 {item.summary && item.title && (
                   <p className="mt-0.5 font-body text-sm leading-relaxed text-brand-gray">{item.summary}</p>
@@ -284,6 +297,7 @@ function OutcomesHero({ items }: { items: SynthesisSectionItem[] }) {
                     {item.title || item.summary}
                   </p>
                   {item.status && <StatusChip status={item.status} />}
+                  {item.owner && <OwnerChip owner={item.owner} />}
                 </div>
                 {item.summary && item.title && (
                   <p className="mt-1 font-body text-sm leading-relaxed text-brand-gray">{item.summary}</p>
