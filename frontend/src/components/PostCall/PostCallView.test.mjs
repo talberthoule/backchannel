@@ -17,8 +17,12 @@ await build({
       import React from "react";
       import { renderToStaticMarkup } from "react-dom/server";
       import PostCallView from "./PostCallView.tsx";
+      import BriefingView from "./BriefingView.tsx";
       export function render(props) {
         return renderToStaticMarkup(React.createElement(PostCallView, props));
+      }
+      export function renderBriefing(props) {
+        return renderToStaticMarkup(React.createElement(BriefingView, props));
       }
     `,
     resolveDir: dirname(componentPath),
@@ -31,7 +35,7 @@ await build({
   outfile: outputPath,
 });
 
-const { render } = createRequire(import.meta.url)(outputPath);
+const { render, renderBriefing } = createRequire(import.meta.url)(outputPath);
 
 after(async () => {
   await rm(outputDir, { recursive: true, force: true });
@@ -77,4 +81,38 @@ test("enhanced sessions offer one unified Insights Excel download", () => {
 
   assert.deepEqual(hrefs, ["/api/sessions/session-1/artifacts/questions-export"]);
   assert.doesNotMatch(markup, /Enhanced Insights \(Excel\)/);
+});
+
+test("briefing item metadata is safe and ordered in hero and section rows", () => {
+  const owner = "e2f5633a-f9c2-4fad-b44e-db1a559525f1";
+  const markup = renderBriefing({
+    session: { id: "session-1", meeting_type: "general" },
+    synthesis: {
+      id: "synthesis-1",
+      status: "completed",
+      top_outcomes: [{ title: "Hero title", summary: "Hero summary", rationale: "Hero reason", owner, status: "Completed" }],
+      action_plan: [{ title: "Section title", summary: "Section summary", rationale: "Section reason", owner, status: "Pending" }],
+      risks_blockers: [],
+      client_objectives: [],
+      top_opportunities: [],
+      unresolved_discovery_questions: [],
+      strategic_signals: [],
+      clusters: [],
+      arbiter_notes: "",
+    },
+    signalHistoryCount: 0,
+    onRefresh: async () => {},
+    refreshing: false,
+  });
+
+  assert.doesNotMatch(markup, new RegExp(owner));
+  for (const [title, status, summary] of [
+    ["Hero title", "Completed", "Hero summary"],
+    ["Section title", "Pending", "Section summary"],
+  ]) {
+    const titleAt = markup.indexOf(title);
+    const item = markup.slice(markup.lastIndexOf("<li", titleAt), markup.indexOf("</li>", titleAt));
+    assert.ok(item.indexOf(title) < item.indexOf(status) && item.indexOf(status) < item.indexOf(summary), `${status} should share the title row`);
+    assert.match(item, new RegExp(`${summary}</p><div class="mt-1\\.5">`));
+  }
 });

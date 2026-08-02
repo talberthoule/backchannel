@@ -159,21 +159,9 @@ function synthesisStatusTone(status: string): string {
   }
 }
 
-function OwnerChip({ owner }: { owner: string }) {
-  const initial = owner.trim().charAt(0).toUpperCase() || "?";
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-light-gray-2 px-2 py-0.5 font-body text-xs font-medium text-brand-dark-gray">
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brand-teal text-[10px] font-bold text-white">
-        {initial}
-      </span>
-      {owner}
-    </span>
-  );
-}
-
 function StatusChip({ status }: { status: string }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-body text-xs font-medium ${statusChipTone(status)}`}>
+    <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 font-body text-xs font-medium ${statusChipTone(status)}`}>
       {status}
     </span>
   );
@@ -219,7 +207,7 @@ function SectionHeading({ icon: IconCmp, label, chipClass, count }: { icon: Icon
 }
 
 // A single briefing section: colored identity header, item rows with
-// owner/status chips and a rationale disclosure, or a compact muted line
+// status and a rationale disclosure, or a compact muted line
 // when nothing was captured (never a full empty card).
 function InsightSection({
   tone,
@@ -253,17 +241,14 @@ function InsightSection({
             <div className="flex items-start gap-2">
               <ItemIcon className={`mt-0.5 h-4 w-4 shrink-0 ${style.iconColor}`} />
               <div className="min-w-0 flex-1">
-                <p className="font-body text-sm font-semibold text-brand-dark-gray">
-                  {item.title || item.summary}
-                </p>
+                <div className="flex items-start gap-2">
+                  <p className="min-w-0 flex-1 font-body text-sm font-semibold text-brand-dark-gray">
+                    {item.title || item.summary}
+                  </p>
+                  {item.status && <StatusChip status={item.status} />}
+                </div>
                 {item.summary && item.title && (
                   <p className="mt-0.5 font-body text-sm leading-relaxed text-brand-gray">{item.summary}</p>
-                )}
-                {(item.owner || item.status) && (
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    {item.owner && <OwnerChip owner={item.owner} />}
-                    {item.status && <StatusChip status={item.status} />}
-                  </div>
                 )}
                 <RationaleToggle text={item.rationale} />
               </div>
@@ -294,17 +279,14 @@ function OutcomesHero({ items }: { items: SynthesisSectionItem[] }) {
                 {index + 1}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="font-display text-lg font-bold leading-snug text-brand-dark-gray">
-                  {item.title || item.summary}
-                </p>
+                <div className="flex items-start gap-2">
+                  <p className="min-w-0 flex-1 font-display text-lg font-bold leading-snug text-brand-dark-gray">
+                    {item.title || item.summary}
+                  </p>
+                  {item.status && <StatusChip status={item.status} />}
+                </div>
                 {item.summary && item.title && (
                   <p className="mt-1 font-body text-sm leading-relaxed text-brand-gray">{item.summary}</p>
-                )}
-                {(item.owner || item.status) && (
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    {item.owner && <OwnerChip owner={item.owner} />}
-                    {item.status && <StatusChip status={item.status} />}
-                  </div>
                 )}
                 <RationaleToggle text={item.rationale} />
               </div>
