@@ -555,17 +555,22 @@ export default function App() {
     setActiveSessionId(null);
   }, [resetSessionRuntimeState]);
 
-  const openAdmin = useCallback((tab: AdminTab = "agents", onboarding = false) => {
+  const openAdmin = useCallback((tab: AdminTab = "agents", onboarding = false, preserveSession = false) => {
     if (!liveSessionIdRef.current) resetSessionRuntimeState();
     setAdminTab(tab);
     setAdminOnboarding(onboarding);
     setShowAdmin(true);
     setShowOfferings(false);
     setShowKnowledge(false);
-    setActiveSessionId(null);
+    if (!preserveSession) setActiveSessionId(null);
   }, [resetSessionRuntimeState]);
 
   const handleOpenAdmin = useCallback(() => openAdmin(), [openAdmin]);
+
+  const handleOpenEnhancementAgents = useCallback(
+    () => openAdmin("agents", false, true),
+    [openAdmin],
+  );
 
   const handleOpenApiKeys = useCallback(() => openAdmin("keys", true), [openAdmin]);
 
@@ -1104,6 +1109,7 @@ export default function App() {
             onRefreshSession={refreshSession}
             onRefreshQuestions={refreshQuestions}
             onRefreshSynthesis={refreshSynthesis}
+            onOpenAdminAgents={handleOpenEnhancementAgents}
             onRenameSession={handleRenameSession}
             onRetranscribed={async () => {
               setLiveTranscripts([]);

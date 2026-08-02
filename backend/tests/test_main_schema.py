@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from app.main import _add_missing_columns, _cleanup_orphan_audio
-from app.models import SessionSynthesis
-from app.schemas import SessionSynthesisOut
+from app.models import SessionSynthesis, SpeakerRevalidationBatch
+from app.schemas import RevalidationBatchOut, SessionSynthesisOut
 
 
 class FakeInspector:
@@ -25,13 +25,19 @@ class FakeInspector:
 
 class FakeRevalidationInspector:
     def get_table_names(self):
-        return ["sessions", "questions", "session_syntheses"]
+        return [
+            "sessions",
+            "questions",
+            "session_syntheses",
+            "speaker_revalidation_batches",
+        ]
 
     def get_columns(self, table):
         existing = {
             "sessions": {"speaker_context_dirty", "speaker_context_enhanced_at"},
             "questions": {"enhanced"},
             "session_syntheses": {"status"},
+            "speaker_revalidation_batches": {"status"},
         }
         return [{"name": name} for name in existing[table]]
 
@@ -110,12 +116,35 @@ class StartupSchemaPatchTests(unittest.IsolatedAsyncioTestCase):
             sql,
         )
 
+    async def test_adds_revalidation_model_columns_to_existing_database(self):
+        connection = FakeAsyncConnection()
+
+        with patch("sqlalchemy.inspect", return_value=FakeRevalidationInspector()):
+            await _add_missing_columns(connection)
+
+        sql = "\n".join(connection.sync.executed)
+        self.assertIn("ADD COLUMN requested_model_id VARCHAR(160)", sql)
+        self.assertIn("ADD COLUMN model_id VARCHAR(160)", sql)
+
 
 class SessionSynthesisSchemaTests(unittest.TestCase):
     def test_signal_history_is_exposed_for_opt_in_reads(self):
         self.assertIn("signal_history", SessionSynthesis.__table__.columns)
         self.assertIn("signal_history", SessionSynthesisOut.model_fields)
         self.assertIn("signal_history_count", SessionSynthesisOut.model_fields)
+
+
+class SpeakerRevalidationModelSchemaTests(unittest.TestCase):
+    def test_batch_model_ids_are_nullable_and_exposed(self):
+        requested = SpeakerRevalidationBatch.__table__.columns["requested_model_id"]
+        actual = SpeakerRevalidationBatch.__table__.columns["model_id"]
+
+        self.assertTrue(requested.nullable)
+        self.assertTrue(actual.nullable)
+        self.assertEqual(160, requested.type.length)
+        self.assertEqual(160, actual.type.length)
+        self.assertIn("requested_model_id", RevalidationBatchOut.model_fields)
+        self.assertIn("model_id", RevalidationBatchOut.model_fields)
 
 
 class AlembicTrackPathRevisionTests(unittest.TestCase):
@@ -240,6 +269,44 @@ class AlembicSignalHistoryRevisionTests(unittest.TestCase):
         revision.op.drop_column.assert_called_once_with(
             "session_syntheses",
             "signal_history",
+        )
+
+
+class AlembicRevalidationModelsRevisionTests(unittest.TestCase):
+    def test_revision_023_upgrade_and_downgrade(self):
+        path = (
+            Path(__file__).parents[1]
+            / "alembic"
+            / "versions"
+            / "023_record_revalidation_models.py"
+        )
+        spec = importlib.util.spec_from_file_location("alembic_revision_023", path)
+        self.assertIsNotNone(spec)
+        revision = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(revision)
+        revision.op = MagicMock()
+
+        self.assertEqual("023_revalidation_models", revision.revision)
+        self.assertEqual("022_document_summaries", revision.down_revision)
+
+        revision.upgrade()
+
+        added = revision.op.add_column.call_args_list
+        self.assertEqual(
+            ["requested_model_id", "model_id"],
+            [call.args[1].name for call in added],
+        )
+        self.assertEqual([160, 160], [call.args[1].type.length for call in added])
+        self.assertEqual([True, True], [call.args[1].nullable for call in added])
+
+        revision.downgrade()
+
+        self.assertEqual(
+            [
+                ("speaker_revalidation_batches", "model_id"),
+                ("speaker_revalidation_batches", "requested_model_id"),
+            ],
+            [call.args for call in revision.op.drop_column.call_args_list],
         )
 
 

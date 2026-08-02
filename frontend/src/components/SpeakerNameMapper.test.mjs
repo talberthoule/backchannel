@@ -20,6 +20,8 @@ await build({
       import { ConfirmProvider } from "./ConfirmProvider.tsx";
       export const enhancementOutcome = speakerModule.enhancementOutcome;
       export const enhancementProgressLabel = speakerModule.enhancementProgressLabel;
+      export const enhancementRunModels = speakerModule.enhancementRunModels;
+      export const modelBindingLabel = speakerModule.modelBindingLabel;
       export const shouldOfferRetry = speakerModule.shouldOfferRetry;
       export function renderMapper(props) {
         // The mapper's confirmations use the themed useConfirm() hook, which
@@ -43,7 +45,14 @@ await build({
   outfile: outputPath,
 });
 
-const { enhancementOutcome, enhancementProgressLabel, renderMapper, shouldOfferRetry } = createRequire(import.meta.url)(outputPath);
+const {
+  enhancementOutcome,
+  enhancementProgressLabel,
+  enhancementRunModels,
+  modelBindingLabel,
+  renderMapper,
+  shouldOfferRetry,
+} = createRequire(import.meta.url)(outputPath);
 
 after(async () => {
   await rm(outputDir, { recursive: true, force: true });
@@ -77,12 +86,30 @@ test("speaker rows render long names in a wrapping layout without truncation cla
     onRefreshSession: noop,
     onRefreshQuestions: noop,
     onRefreshSynthesis: async () => {},
+    onOpenAdminAgents: noop,
   });
 
   assert.match(markup, /Participant with a fully readable long name/);
   assert.match(markup, /flex-wrap/);
   assert.doesNotMatch(markup, /\bw-36\b/);
   assert.doesNotMatch(markup, /\btruncate\b/);
+});
+
+test("model binding and Briefing agent ownership are visible beside a fail-closed control", () => {
+  const markup = renderMapper({
+    session,
+    speakers: [speaker],
+    onRefresh: noop,
+    onRefreshSession: noop,
+    onRefreshQuestions: noop,
+    onRefreshSynthesis: async () => {},
+    onOpenAdminAgents: noop,
+  });
+
+  assert.match(markup, /Insight enhancement uses Synthesizer/);
+  assert.match(markup, /Open Admin - Agents/);
+  assert.match(markup, /Briefing regeneration uses the Meeting Lens, Discovery Lens, and Arbiter/);
+  assert.match(markup, /<button type="button" disabled=""[^>]*>Enhance Insights<\/button>/);
 });
 
 test("partial and error Briefing outcomes stay retryable and never use success copy", () => {
@@ -149,4 +176,49 @@ test("failure outcomes surface the persisted run reason", () => {
 
   assert.equal(outcome.tone, "warning");
   assert.match(outcome.message, /Gemini quota\/spending cap exhausted/);
+});
+
+test("the configured Synthesizer model is shown by friendly name and id", () => {
+  assert.equal(
+    modelBindingLabel(
+      [{ slug: "synthesizer", model_id: "gemini-3.5-flash" }],
+      [{ id: "gemini-3.5-flash", name: "Gemini 3.5 Flash" }],
+    ),
+    "Gemini 3.5 Flash (gemini-3.5-flash)",
+  );
+  assert.equal(
+    modelBindingLabel([{ slug: "synthesizer", model_id: "" }], []),
+    "Not selected",
+  );
+});
+
+test("latest insight run reports actual fallback models and ignores briefing batches", () => {
+  const summary = enhancementRunModels({
+    batches: [
+      {
+        kind: "insights",
+        requested_model_id: "gemini-3.5-flash",
+        model_id: "endpoint:lab:qwen",
+      },
+      {
+        kind: "briefing",
+        requested_model_id: "brief-meeting",
+        model_id: "brief-arbiter",
+      },
+    ],
+  });
+
+  assert.deepEqual(summary.requested, ["gemini-3.5-flash"]);
+  assert.deepEqual(summary.actual, ["endpoint:lab:qwen"]);
+  assert.equal(summary.usedFallback, true);
+  assert.equal(summary.recorded, true);
+});
+
+test("historical runs without persisted model ids are labelled unrecorded", () => {
+  const summary = enhancementRunModels({
+    batches: [{ kind: "insights", requested_model_id: null, model_id: null }],
+  });
+
+  assert.equal(summary.recorded, false);
+  assert.equal(summary.usedFallback, false);
 });

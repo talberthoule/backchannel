@@ -27,6 +27,7 @@ interface PostCallViewProps {
   onRefreshSession: () => void;
   onRefreshQuestions: () => void;
   onRefreshSynthesis: () => Promise<unknown>;
+  onOpenAdminAgents: () => void;
   onRenameSession: (name: string) => Promise<void>;
   onRetranscribed?: () => Promise<void> | void;
   postProcessing?: PostProcessingProgress;
@@ -87,6 +88,7 @@ export default function PostCallView({
   onRefreshSession,
   onRefreshQuestions,
   onRefreshSynthesis,
+  onOpenAdminAgents,
   onRenameSession,
   onRetranscribed,
   postProcessing,
@@ -385,12 +387,14 @@ export default function PostCallView({
 
       {activeTab === "speakers" && (
         <SpeakerNameMapper
+          key={session.id}
           session={session}
           speakers={speakers}
           onRefresh={onRefreshSpeakers}
           onRefreshSession={onRefreshSession}
           onRefreshQuestions={onRefreshQuestions}
           onRefreshSynthesis={onRefreshSynthesis}
+          onOpenAdminAgents={onOpenAdminAgents}
           disabled={speakerActionsLocked}
           disabledReason="Post-processing must complete before speaker mappings or insight enhancement can be changed."
         />

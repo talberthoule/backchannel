@@ -170,6 +170,8 @@ export interface EnhanceInsightsResult {
     input_tokens: number;
     output_tokens: number;
     total_tokens: number;
+    requested_model_id: string | null;
+    model_id: string | null;
     error: string | null;
   }>;
 }

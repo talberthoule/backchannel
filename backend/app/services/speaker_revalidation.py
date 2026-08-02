@@ -323,6 +323,8 @@ def summarize_run(run: Any, session: Any, now: datetime | None = None) -> dict:
                 "input_tokens": batch.input_tokens,
                 "output_tokens": batch.output_tokens,
                 "total_tokens": batch.total_tokens,
+                "requested_model_id": getattr(batch, "requested_model_id", None),
+                "model_id": getattr(batch, "model_id", None),
                 "error": batch.error_message or None,
             }
             for batch in batches
@@ -416,6 +418,22 @@ async def get_revalidation_run(
             selectinload(SpeakerRevalidationRun.mapping_revision),
         )
     )).scalar_one_or_none()
+
+
+async def get_latest_revalidation_run(
+    session_id: uuid.UUID,
+    db: AsyncSession,
+) -> SpeakerRevalidationRun | None:
+    return (await db.execute(
+        select(SpeakerRevalidationRun)
+        .where(SpeakerRevalidationRun.session_id == session_id)
+        .options(
+            selectinload(SpeakerRevalidationRun.batches),
+            selectinload(SpeakerRevalidationRun.mapping_revision),
+        )
+        .order_by(SpeakerRevalidationRun.created_at.desc())
+        .limit(1)
+    )).scalars().first()
 
 
 async def run_revalidation(run_id: uuid.UUID) -> None:
@@ -528,7 +546,11 @@ async def _enhance_insights_with_fallback(
                         model_id,
                         primary,
                     )
-                return metrics
+                return {
+                    **metrics,
+                    "requested_model_id": primary,
+                    "model_id": model_id,
+                }
             except Exception as error:
                 if model_id != primary and not _should_try_fallback(error):
                     # The batch banner will carry only this model's error, which
@@ -579,6 +601,8 @@ async def _run_batch(
             batch.processed_entries = metrics["processed_entries"]
             batch.applied_operations = metrics["applied_operations"]
             batch.enhanced_insights = metrics["enhanced_insights"]
+            batch.requested_model_id = metrics["requested_model_id"]
+            batch.model_id = metrics["model_id"]
         else:
             synthesis = await run_session_synthesis(run.session_id, mode="post_call")
             if not synthesis or synthesis.status != "completed":

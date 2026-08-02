@@ -42,6 +42,9 @@ export const enhanceInsights = (id: string) =>
 export const getEnhancementStatus = (id: string, runId: string) =>
   request<EnhanceInsightsResult>(`/sessions/${id}/enhance-insights/${runId}`);
 
+export const getLatestEnhancement = (id: string) =>
+  request<EnhanceInsightsResult | null>(`/sessions/${id}/enhance-insights/latest`);
+
 export async function waitForEnhancement(
   id: string,
   initial: EnhanceInsightsResult,

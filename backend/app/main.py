@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.config import settings
 from app.database import engine
@@ -19,9 +20,25 @@ from app.ws import audio_handler
 logging.basicConfig(level=logging.INFO)
 
 
+def _add_revalidation_model_columns(connection, inspector, tables):
+    if "speaker_revalidation_batches" not in tables:
+        return
+    columns = {
+        c["name"] for c in inspector.get_columns("speaker_revalidation_batches")
+    }
+    for column in ("requested_model_id", "model_id"):
+        if column not in columns:
+            connection.execute(
+                text(
+                    f"ALTER TABLE speaker_revalidation_batches "
+                    f"ADD COLUMN {column} VARCHAR(160)"
+                )
+            )
+
+
 async def _add_missing_columns(conn):
     """Add columns that create_all won't add to existing tables."""
-    from sqlalchemy import text, inspect
+    from sqlalchemy import inspect
 
     def _check_and_add(connection):
         inspector = inspect(connection)
@@ -215,6 +232,8 @@ async def _add_missing_columns(conn):
                 connection.execute(
                     text("ALTER TABLE documents ADD COLUMN summary_source VARCHAR(20) NOT NULL DEFAULT ''")
                 )
+
+        _add_revalidation_model_columns(connection, inspector, tables)
 
         # Model ids for self-hosted endpoints ("endpoint:<slug>:<model name>")
         # are longer than the registry ids these columns were sized for.

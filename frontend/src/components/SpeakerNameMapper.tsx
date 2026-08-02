@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import type { EnhanceInsightsResult, Session, Speaker } from "../types";
+import type { AgentConfig, EnhanceInsightsResult, ModelInfo, Session, Speaker } from "../types";
 import * as api from "../services/api";
 import { useConfirm } from "./ConfirmProvider";
 
@@ -38,6 +38,92 @@ export function shouldOfferRetry(
   return !!result && (result.status === "partial" || result.status === "failed");
 }
 
+export function modelBindingLabel(
+  agents: Array<Pick<AgentConfig, "slug" | "model_id">>,
+  models: Array<Pick<ModelInfo, "id" | "name">>,
+): string {
+  const modelId = agents.find((agent) => agent.slug === "synthesizer")?.model_id || "";
+  if (!modelId) return "Not selected";
+  const name = models.find((model) => model.id === modelId)?.name;
+  return name ? `${name} (${modelId})` : modelId;
+}
+
+export function enhancementRunModels(
+  result: Pick<EnhanceInsightsResult, "batches"> | null,
+): {
+  requested: string[];
+  actual: string[];
+  usedFallback: boolean;
+  recorded: boolean;
+} {
+  const batches = result?.batches.filter((batch) => batch.kind === "insights") ?? [];
+  const requested = [...new Set(batches.map((batch) => batch.requested_model_id).filter((id): id is string => !!id))];
+  const actual = [...new Set(batches.map((batch) => batch.model_id).filter((id): id is string => !!id))];
+  return {
+    requested,
+    actual,
+    usedFallback: batches.some(
+      (batch) => !!batch.requested_model_id && !!batch.model_id && batch.requested_model_id !== batch.model_id,
+    ),
+    recorded: actual.length > 0,
+  };
+}
+
+function EnhancementModelStatus({
+  loaded,
+  modelId,
+  models,
+  loadError,
+  latest,
+  onOpenAdminAgents,
+}: {
+  loaded: boolean;
+  modelId: string;
+  models: ModelInfo[];
+  loadError: string;
+  latest: EnhanceInsightsResult | null;
+  onOpenAdminAgents: () => void;
+}) {
+  const label = loaded
+    ? modelBindingLabel([{ slug: "synthesizer", model_id: modelId }], models)
+    : "Loading...";
+  const run = enhancementRunModels(latest);
+  const displayModel = (id: string) => {
+    const name = models.find((model) => model.id === id)?.name;
+    return name ? `${name} (${id})` : id;
+  };
+
+  return (
+    <>
+      <p className="mt-2 font-body text-xs text-brand-gray">
+        Insight enhancement uses Synthesizer: <span className="font-semibold text-brand-dark-gray">{label}</span>{" "}
+        <button type="button" onClick={onOpenAdminAgents} className="font-semibold text-brand-teal underline underline-offset-2">
+          Open Admin - Agents
+        </button>
+      </p>
+      <p className="mt-1 font-body text-xs text-brand-mid-gray">
+        Briefing regeneration uses the Meeting Lens, Discovery Lens, and Arbiter models configured in Admin.
+      </p>
+      {loaded && !modelId && (
+        <p className="mt-1 font-body text-xs font-medium text-brand-amber" role="alert">
+          {loadError || "Select a Synthesizer model in Admin - Agents before enhancing."}
+        </p>
+      )}
+      {latest && run.recorded && (
+        <p className="mt-1 font-body text-xs text-brand-mid-gray">
+          Latest insight run used {run.actual.map(displayModel).join(", ")}
+          {run.usedFallback ? ` (fallback from ${run.requested.map(displayModel).join(", ")})` : ""}.
+        </p>
+      )}
+      {latest && !run.recorded && latest.batches.some((batch) => batch.kind === "insights") && (
+        <p className="mt-1 font-body text-xs text-brand-mid-gray">
+          No successful insight model was recorded for the latest run.
+        </p>
+      )}
+    </>
+  );
+}
+
 interface SpeakerNameMapperProps {
   session: Session;
   speakers: Speaker[];
@@ -45,6 +131,7 @@ interface SpeakerNameMapperProps {
   onRefreshSession: () => void;
   onRefreshQuestions: () => void;
   onRefreshSynthesis: () => Promise<unknown>;
+  onOpenAdminAgents: () => void;
   disabled?: boolean;
   disabledReason?: string;
 }
@@ -56,6 +143,7 @@ export default function SpeakerNameMapper({
   onRefreshSession,
   onRefreshQuestions,
   onRefreshSynthesis,
+  onOpenAdminAgents,
   disabled = false,
   disabledReason,
 }: SpeakerNameMapperProps) {
@@ -64,7 +152,35 @@ export default function SpeakerNameMapper({
   const [enhancementWarning, setEnhancementWarning] = useState("");
   const [enhancementError, setEnhancementError] = useState("");
   const [lastResult, setLastResult] = useState<EnhanceInsightsResult | null>(null);
+  const [agentsLoaded, setAgentsLoaded] = useState(false);
+  const [synthesizerModelId, setSynthesizerModelId] = useState("");
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [modelLoadError, setModelLoadError] = useState("");
   const { confirm } = useConfirm();
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.allSettled([
+      api.listAgents(),
+      api.listModels(),
+      api.getLatestEnhancement(session.id),
+    ]).then(([agentsResult, modelsResult, latestResult]) => {
+      if (cancelled) return;
+      if (modelsResult.status === "fulfilled") setModels(modelsResult.value);
+      if (agentsResult.status === "fulfilled") {
+        setSynthesizerModelId(
+          agentsResult.value.find((agent) => agent.slug === "synthesizer")?.model_id || "",
+        );
+      } else {
+        setModelLoadError("Could not load the Synthesizer model binding.");
+      }
+      setAgentsLoaded(true);
+      if (latestResult.status === "fulfilled") setLastResult(latestResult.value);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [session.id]);
 
   if (speakers.length === 0) return null;
 
@@ -107,7 +223,7 @@ export default function SpeakerNameMapper({
   };
 
   const handleEnhance = async () => {
-    if (disabled || !session.speaker_context_dirty) return;
+    if (disabled || !session.speaker_context_dirty || !synthesizerModelId) return;
     const ok = await confirm({
       title: "Enhance Insights",
       message: "Enhance Insights will revalidate the Briefing and every Insight using the corrected speaker names and internal/external roles.",
@@ -119,7 +235,7 @@ export default function SpeakerNameMapper({
   };
 
   const handleRetry = async () => {
-    if (disabled || enhancing || !session.speaker_context_dirty) return;
+    if (disabled || enhancing || !session.speaker_context_dirty || !synthesizerModelId) return;
     await runEnhancement();
   };
 
@@ -128,6 +244,7 @@ export default function SpeakerNameMapper({
     && !enhancing
     && !disabled
     && session.speaker_context_dirty;
+  const modelBlocked = !agentsLoaded || !synthesizerModelId;
 
   return (
     <div className="rounded-xl bg-surface p-5 shadow-sm">
@@ -143,6 +260,14 @@ export default function SpeakerNameMapper({
             Correct speaker names and roles first. Enhance Insights uses these associations to
             reframe the Briefing and every Insight from the correct internal or external perspective.
           </p>
+          <EnhancementModelStatus
+            loaded={agentsLoaded}
+            modelId={synthesizerModelId}
+            models={models}
+            loadError={modelLoadError}
+            latest={lastResult}
+            onOpenAdminAgents={onOpenAdminAgents}
+          />
           {session.speaker_context_dirty ? (
             <p className="mt-1 font-body text-xs font-medium text-brand-amber">
               Speaker context changed since the last enhancement run.
@@ -161,9 +286,9 @@ export default function SpeakerNameMapper({
         <button
           type="button"
           onClick={handleEnhance}
-          disabled={disabled || enhancing || !session.speaker_context_dirty}
+          disabled={disabled || enhancing || !session.speaker_context_dirty || modelBlocked}
           className={`shrink-0 rounded-md px-3 py-2 font-body text-sm font-semibold transition-colors ${
-            session.speaker_context_dirty && !enhancing && !disabled
+            session.speaker_context_dirty && !enhancing && !disabled && !modelBlocked
               ? "bg-brand-teal text-white hover:bg-brand-teal-dark"
               : "cursor-not-allowed bg-brand-light-gray-2 text-brand-mid-gray"
           }`}

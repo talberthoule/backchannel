@@ -22,6 +22,7 @@ from app.services.speaker_revalidation import (
     canonical_speaker_mapping,
     content_version,
     finalize_run_state,
+    get_latest_revalidation_run,
     is_quota_error,
     is_rate_limit_error,
     mapping_hash,
@@ -239,6 +240,8 @@ class SpeakerRevalidationBatchTests(unittest.TestCase):
                 total_tokens=120,
                 duration_ms=750,
                 error_message="",
+                requested_model_id="cloud-primary",
+                model_id="endpoint:lab:qwen",
             ),
             SimpleNamespace(
                 id=uuid.uuid4(),
@@ -254,6 +257,8 @@ class SpeakerRevalidationBatchTests(unittest.TestCase):
                 total_tokens=35,
                 duration_ms=1250,
                 error_message="model offline",
+                requested_model_id=None,
+                model_id=None,
             ),
         ]
         run = SimpleNamespace(
@@ -280,6 +285,8 @@ class SpeakerRevalidationBatchTests(unittest.TestCase):
         self.assertEqual(2, summary["processed_entries"])
         self.assertEqual(155, summary["total_tokens"])
         self.assertEqual(2000, summary["duration_ms"])
+        self.assertEqual("cloud-primary", summary["batches"][0]["requested_model_id"])
+        self.assertEqual("endpoint:lab:qwen", summary["batches"][0]["model_id"])
         self.assertEqual("model offline", summary["batches"][1]["error"])
 
     def test_finalization_carries_the_failed_batch_reason_into_the_run(self):
@@ -509,6 +516,24 @@ class SpeakerRevalidationOrmTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("mapping_revision", inspect(run).unloaded)
         self.assertEqual(3, summarize_run(run, session)["mapping_revision"])
 
+    async def test_latest_run_query_is_limited_to_one(self):
+        session_id = uuid.uuid4()
+        run = SimpleNamespace(id=uuid.uuid4())
+        captured = {}
+
+        async def execute(statement):
+            captured["statement"] = statement
+            return _OrmResult(values=[run])
+
+        result = await get_latest_revalidation_run(
+            session_id,
+            SimpleNamespace(execute=execute),
+        )
+
+        compiled = str(captured["statement"].compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn("LIMIT 1", compiled)
+        self.assertIs(run, result)
+
 
 class _OrmResult:
     def __init__(self, *, one=None, values=None):
@@ -660,6 +685,8 @@ class EnhanceInsightsWithFallbackTests(unittest.IsolatedAsyncioTestCase):
         metrics = await self._enhance(batch, ["endpoint:lab:qwen"])
 
         self.assertEqual(1, metrics["enhanced_insights"])
+        self.assertEqual("cloud-primary", metrics["requested_model_id"])
+        self.assertEqual("cloud-primary", metrics["model_id"])
         self.assertEqual(1, batch.await_count)
         self.assertEqual("cloud-primary", batch.await_args.kwargs["model_id"])
 
@@ -670,6 +697,8 @@ class EnhanceInsightsWithFallbackTests(unittest.IsolatedAsyncioTestCase):
         metrics = await self._enhance(batch, ["endpoint:lab:qwen"])
 
         self.assertEqual(2, metrics["enhanced_insights"])
+        self.assertEqual("cloud-primary", metrics["requested_model_id"])
+        self.assertEqual("endpoint:lab:qwen", metrics["model_id"])
         self.assertEqual(2, batch.await_count)
         self.assertEqual("cloud-primary", batch.await_args_list[0].kwargs["model_id"])
         self.assertEqual("endpoint:lab:qwen", batch.await_args_list[1].kwargs["model_id"])
@@ -848,6 +877,8 @@ class RetryFailedBatchesEndToEndTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(2, batch.attempts)
         self.assertEqual(2, batch.enhanced_insights)
         self.assertEqual(3, batch.processed_entries)
+        self.assertEqual("cloud-primary", batch.requested_model_id)
+        self.assertEqual("endpoint:lab:qwen", batch.model_id)
         # Token usage is still attributed, because the fallback keeps the same
         # source label the batch query filters on.
         self.assertEqual(11, batch.input_tokens)

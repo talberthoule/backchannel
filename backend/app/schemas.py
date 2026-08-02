@@ -141,6 +141,8 @@ class RevalidationBatchOut(BaseModel):
     input_tokens: int
     output_tokens: int
     total_tokens: int
+    requested_model_id: str | None = None
+    model_id: str | None = None
     error: str | None = None
 
 
