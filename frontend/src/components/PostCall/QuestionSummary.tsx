@@ -48,8 +48,8 @@ function SummaryCard({ question, speakers, showEnhanced }: { question: Question;
           <div className="flex items-center gap-2">
             {(itemType !== "question" || (question.lens_label && question.lens_label.trim())) && (
               <span
-                className="inline-flex items-center rounded-full px-2 py-0.5 font-body text-xs font-medium"
-                style={{ backgroundColor: `${cardColor}15`, color: cardColor }}
+                className="inline-flex items-center rounded-full px-2 py-0.5 font-body text-xs font-medium text-brand-dark-gray"
+                style={{ backgroundColor: `${cardColor}15` }}
               >
                 {typeLabel(itemType, question.lens_label)}
               </span>
@@ -122,13 +122,13 @@ function SummaryCard({ question, speakers, showEnhanced }: { question: Question;
 
 function SectionHeader({ label, color, count }: { label: string; color: string; count: number }) {
   return (
-    <h3 className="flex items-center gap-2 font-display text-sm font-semibold uppercase tracking-wide" style={{ color }}>
+    <h3 className="flex items-center gap-2 font-display text-sm font-semibold uppercase tracking-wide text-brand-dark-gray">
       <span
         className="inline-block h-3 w-3 rounded-full"
         style={{ backgroundColor: color }}
       />
       {label}
-      <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ backgroundColor: `${color}15`, color }}>
+      <span className="rounded-full px-2 py-0.5 text-xs font-medium text-brand-dark-gray" style={{ backgroundColor: `${color}15` }}>
         {count}
       </span>
     </h3>

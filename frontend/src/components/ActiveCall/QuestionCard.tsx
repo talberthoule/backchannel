@@ -115,8 +115,8 @@ export default function QuestionCard({ question, isStrategicSignal = false, show
           {/* Type badge — shows the producing lens's heading when available */}
           {showTypeBadge && (
             <span
-              className="inline-flex items-center rounded-full px-2 py-0.5 font-body text-xs font-medium"
-              style={{ backgroundColor: `${badgeColor}15`, color: badgeColor }}
+              className="inline-flex items-center rounded-full px-2 py-0.5 font-body text-xs font-medium text-brand-dark-gray"
+              style={{ backgroundColor: `${badgeColor}15` }}
             >
               {badgeLabel}
             </span>
