@@ -10,10 +10,59 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.4.1"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.4.1",
+        "date": "2026-08-02",
+        "title": "Asks which provider you use, and stops losing things",
+        "body": """Setup stops assuming which provider you use, the call
+surfaces stop losing things, and the post-call record stops showing you raw
+identifiers.
+
+- First-run setup asks instead of assuming. A fresh install no longer seeds a
+  cloud model behind your back. Every enabled agent starts unselected and says
+  so, models are grouped by Google, OpenAI, and local, and one role-appropriate
+  recommendation is marked in each provider you actually have available.
+  Connecting only an OpenAI key no longer tells you Google is required, and a
+  keyless local setup can find the paths that work with no cloud account.
+- Strategic signals persist. Signals raised during a call are kept and stay
+  readable both live and after the call instead of scrolling away. Briefing
+  context built from them is deduplicated, so the same observation stops
+  arriving several times in different words.
+- Documents feed the live conversation. Uploaded document summaries are stored
+  once and reused, so asking about a document mid-call draws on the summary
+  rather than re-reading the file. Under Privacy First the excerpt path keeps
+  that working without sending the document anywhere.
+- The briefing names people, not identifiers. Owners and attribution resolve to
+  speaker names at read time, including in exported HTML. The raw owner chip is
+  gone and the rationale sits directly under the summary it explains.
+- Insights say which model produced them. Enhance Insights shows the model you
+  asked for alongside the one that actually ran, so a fallback is visible
+  rather than silent. Insight type labels are legible words on badges and
+  section headers, and the Excel export is a single enriched file instead of a
+  choice between two partial ones.
+- Ask questions without leaving the call. A new in-call ask bar answers from the
+  conversation as it happens, so you can check what was said earlier without
+  stopping the recording or waiting for the post-call briefing.
+- The live insight surface was redesigned. Insights arriving during a call are
+  laid out to be read at a glance while you are still talking, so the list can
+  be scanned mid-conversation rather than studied afterwards.
+- Steadier in the places that used to slip. Activity chips separate blocked
+  work from failed work and report a current failure count rather than a
+  running total. Batch readiness stops calling a blank or unrecognized model id
+  ready. Oversized briefing context items are retained rather than dropped. The
+  live ask bar no longer starves the transcript it depends on.
+- Sixteen known vulnerabilities were cleared from the web-facing dependency
+  stack. The four ways this project builds its frontend now agree, so the app
+  you install is built from the exact dependency tree that was tested, and
+  Windows executables carry proper product and version metadata.
+
+Existing installations keep the models they have selected; the unselected
+first-run state applies only to genuinely fresh databases.""",
+    },
     {
         "version": "0.4.0",
         "date": "2026-07-28",
