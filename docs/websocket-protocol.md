@@ -167,7 +167,11 @@ or by briefing synthesis at call end
 (`_send_synthesis_update` in `backend/app/services/agents/orchestrator.py`).
 `data` is the full persisted synthesis, the same shape
 `GET /api/sessions/{id}/synthesis` returns (`SessionSynthesis` in
-`frontend/src/types/index.ts`).
+`frontend/src/types/index.ts`), with one deliberate omission: kept signals
+arrive as a `signal_history_count` only, never as rows. The count is what the
+History control needs; the rows are fetched on demand from
+`GET /api/sessions/{id}/synthesis?include_history=true`, so a long call does
+not push its whole signal history down the socket every cycle.
 
 ## Ordering and delivery notes
 

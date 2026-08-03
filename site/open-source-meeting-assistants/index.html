@@ -200,7 +200,7 @@
               <td>Self-hosted web app (Docker Compose) plus desktop builds</td>
               <td>Yes -- local ONNX transcription and diarization, self-hosted models (Ollama, LM Studio, vLLM, LiteLLM) for the agents, on-device interim captions</td>
               <td>Yes, always local and always included</td>
-              <td>Yes -- five live insight agents</td>
+              <td>Yes -- five live insight agents, and a bar that answers a question mid-call</td>
               <td>Active, but by far the youngest and smallest project here</td>
             </tr>
             <tr>
@@ -293,6 +293,18 @@
           built on anyway.
         </p>
       </div>
+
+      <figure class="shot">
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <picture>
+            <source srcset="/assets/shots/live-call-dark.webp" media="(prefers-color-scheme: dark)" />
+            <img src="/assets/shots/live-call.webp" width="1440" height="900" loading="lazy"
+                 alt="Backchannel during a live call: a strategic-signal strip across the top, 125 insights in the feed with a mid-call question already answered, a speaker-attributed transcript beside it, and the ask bar along the bottom." />
+          </picture>
+        </div>
+        <figcaption class="fig-caption"><span>What a live surface looks like in practice: signals, insights, an answered mid-call question, and the attributed transcript, all self-hosted.</span></figcaption>
+      </figure>
     </div>
   </section>
 
@@ -506,6 +518,8 @@
     <span><a href="/releases/">All releases</a></span>
   </div>
 </footer>
+
+<script src="/lightbox.js" defer></script>
 
 </body>
 </html>

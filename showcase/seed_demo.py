@@ -166,6 +166,16 @@ CURATED_INSIGHTS = [
     ("question", "question_hunter", "What evidence cadence will be required after September?", "A recurring requirement changes the managed-service scope and operating cost.", "The board and insurer need evidence of a tested recovery plan", "Maya", False, False, "", True, "Will quarterly validation satisfy both governance groups?", "Managed Recovery Operations", False),
 ]
 
+# Questions asked through the call's command bar (ALP-178). The product stores
+# them as `asked` insights: starred on creation so they pin to the top of the
+# live feed, answered from the running transcript, with the answering model and
+# latency carried in `rationale` exactly as backend/app/routers/ask.py writes
+# it. They carry no speaker, because the person asking is the operator.
+ASKED_INSIGHTS = [
+    ("asked", "live_chat", "What exactly does Maya need in the evidence pack?", "Answered by Gemini 3.6 Flash in 2.3s", "", "", True, True, "Timings, owners, exceptions, and the next remediation decision. She also asked that external artifacts name accountable roles rather than individuals.", False, "", "", False),
+    ("asked", "live_chat", "Have we agreed a commercial ceiling for the pilot?", "Answered by Gemini 3.6 Flash in 1.8s", "", "", True, True, "Yes. Owen named a ninety-thousand-dollar single-source threshold, and the fixed pilot is scoped at seventy-two to eighty-four thousand with managed operations priced separately.", False, "", "", False),
+]
+
 # Volume filler beyond the curated rows: a dense 46-minute call plausibly
 # yields ~123 insights at the agents' 10-40s cadences, and the marketing copy
 # quotes that total. Filler rows are seeded with earlier timestamps than every
@@ -245,7 +255,11 @@ def _filler_insights():
 
 
 FILLER_INSIGHTS = _filler_insights()
-INSIGHTS = CURATED_INSIGHTS + FILLER_INSIGHTS
+# Asked rows sit at the end of the hand-written block so they take the newest
+# timestamps in it and lead the live feed, the way a question asked a moment
+# ago does in a real call.
+HAND_WRITTEN = CURATED_INSIGHTS + ASKED_INSIGHTS
+INSIGHTS = HAND_WRITTEN + FILLER_INSIGHTS
 
 OTHERS = [
     ("Alderwake Health Network - identity recovery workshop", "client_sales", "Technical follow-up on emergency identity authority and isolated validation.", True),
@@ -290,6 +304,54 @@ BRIEFING = {
         {"title": "Commercial boundary", "summary": "Fixed pilot below $90K"},
     ],
 }
+
+# The live strategic-signal cycle keeps its own `mode='live'` synthesis row.
+# One item per section is what the call view renders as the five signal cards.
+LIVE_SIGNALS = {
+    "strategic_signals": [
+        {"title": "September 18 board risk committee is the real deadline", "summary": "Evidence must clear the insurer before the committee reviews it.", "rationale": "Maya named the committee date first and returned to it three times."},
+    ],
+    "risks_blockers": [
+        {"title": "Ten-day identity change approval", "summary": "The change advisory board gates every isolated test that touches identity.", "owner": "Owen", "status": "Open"},
+    ],
+    "unresolved_discovery_questions": [
+        {"title": "Who is the after-hours emergency-access delegate?", "summary": "The last exercise stalled because nobody could authorize emergency accounts."},
+    ],
+    "top_opportunities": [
+        {"title": "Managed Recovery Operations", "summary": "Remote staffing plus a separate cost center make a recurring service credible.", "status": "Follow-on"},
+    ],
+    "action_plan": [
+        {"title": "Keep the fixed pilot below $90K", "summary": "Single-source justification holds under the threshold; above it needs a competitive event.", "owner": "Account Lead", "status": "Before Thursday"},
+    ],
+    "top_outcomes": [],
+    "client_objectives": [],
+}
+
+# Signals raised earlier in the call and kept (ALP-244). Before v0.5.0 each
+# cycle overwrote the last, so anything not on screen was gone; these rows are
+# what "strategic signals persist" means in the product.
+SIGNAL_HISTORY = [
+    {"section": "strategic_signals", "title": "September 18 board risk committee is the real deadline", "summary": "Evidence must clear the insurer before the committee reviews it.", "count": 6, "first_seen": "", "last_seen": ""},
+    {"section": "risks_blockers", "title": "No production failover during the pilot", "summary": "Clinical operations will not approve a production-impacting test in August.", "owner": "Maya", "count": 4, "first_seen": "", "last_seen": ""},
+    {"section": "strategic_signals", "title": "Sequencing, not backup integrity, caused the gap", "summary": "The vault met its timing objective; the runbook assumed staff were onsite.", "count": 3, "first_seen": "", "last_seen": ""},
+    {"section": "top_opportunities", "title": "Quarterly recovery validation program", "summary": "Governance evidence has to repeat after September, not just exist once.", "count": 2, "first_seen": "", "last_seen": ""},
+    {"section": "unresolved_discovery_questions", "title": "Which accountable role signs clinical validation?", "summary": "The public evidence pack will name a role rather than a person.", "count": 3, "first_seen": "", "last_seen": ""},
+    {"section": "action_plan", "title": "Pre-clear the evidence outline with the insurer", "summary": "Maya can clear the shape before the test if she sees it now.", "owner": "Maya", "count": 2, "first_seen": "", "last_seen": ""},
+]
+
+
+def signal_history_rows(start):
+    """Stamp the kept signals with plausible first/last sighting times."""
+    rows = []
+    for index, item in enumerate(SIGNAL_HISTORY):
+        first_seen = start + timedelta(minutes=8 + index * 4)
+        rows.append({
+            **item,
+            "first_seen": first_seen.isoformat(),
+            "last_seen": (first_seen + timedelta(minutes=6 + index)).isoformat(),
+        })
+    return rows
+
 
 KNOWLEDGE_RECORDS = [
     {
@@ -339,7 +401,7 @@ def seed_catalog_and_knowledge():
         call("POST", f"/knowledge/{source['id']}/records", {**record, "active": True})
 
 
-def briefing_sql(session_id, created_at):
+def briefing_sql(session_id, created_at, payload=None, mode="post_call", history=()):
     fields = (
         "top_outcomes",
         "client_objectives",
@@ -349,20 +411,22 @@ def briefing_sql(session_id, created_at):
         "unresolved_discovery_questions",
         "strategic_signals",
     )
-    values = [q(json.dumps(BRIEFING[field])) + "::json" for field in fields]
+    payload = BRIEFING if payload is None else payload
+    values = [q(json.dumps(payload[field])) + "::json" for field in fields]
     return (
         "INSERT INTO session_syntheses ("
         "id, session_id, mode, status, "
         + ", ".join(fields)
-        + ", evidence_refs, lens_meeting, lens_discovery, arbiter_notes, model_ids, "
-        "error_message, created_at, updated_at, speaker_mapping_revision_id) VALUES ("
+        + ", signal_history, evidence_refs, lens_meeting, lens_discovery, arbiter_notes, "
+        "model_ids, error_message, created_at, updated_at, speaker_mapping_revision_id) VALUES ("
         + ", ".join(
             [
                 q(str(uuid.uuid4())),
                 q(session_id),
-                q("post_call"),
+                q(mode),
                 q("completed"),
                 *values,
+                q(json.dumps(list(history))) + "::json",
                 q("[]") + "::json",
                 q(json.dumps({"notes": "Deterministic fixture-backed meeting lens."})) + "::json",
                 q(json.dumps({"notes": "Deterministic fixture-backed discovery lens."})) + "::json",
@@ -488,9 +552,9 @@ def main():
         "speaker_mapping_revision_id"
     )
     insight_rows = []
-    # Curated rows take the newest window (minutes 20-43) so they top every
-    # newest-first section; filler spreads across minutes 2-20 underneath.
-    curated_count = len(CURATED_INSIGHTS)
+    # Hand-written rows take the newest window (minutes 20-45) so they top
+    # every newest-first section; filler spreads across minutes 2-20 underneath.
+    curated_count = len(HAND_WRITTEN)
 
     def insight_timestamp(index):
         if index < curated_count:
@@ -524,7 +588,7 @@ def main():
                     q(question),
                     q(rationale),
                     q(context),
-                    q(speakers[who]),
+                    q(speakers[who]) if who else "NULL",
                     "NULL",
                     str(starred).lower(),
                     "false",
@@ -546,18 +610,28 @@ def main():
             + ")"
         )
 
+    history = signal_history_rows(start)
     psql(
         f"INSERT INTO questions ({columns}) VALUES\n"
         + ",\n".join(insight_rows)
         + ";\n"
         + timings
-        + briefing_sql(main_session["id"], start + timedelta(minutes=47))
+        + briefing_sql(
+            main_session["id"], start + timedelta(minutes=47), history=history
+        )
+        + briefing_sql(
+            main_session["id"],
+            start + timedelta(minutes=45),
+            payload=LIVE_SIGNALS,
+            mode="live",
+            history=history,
+        )
     )
     print(
         f"seeded: 1 group, {1 + len(OTHERS)} sessions, {len(speakers)} speakers, "
         f"{len(LINES)} transcript lines, {len(CURATED_INSIGHTS)} curated + "
-        f"{len(FILLER_INSIGHTS)} filler insights, "
-        f"{len(KNOWLEDGE_RECORDS)} knowledge records"
+        f"{len(ASKED_INSIGHTS)} asked + {len(FILLER_INSIGHTS)} filler insights, "
+        f"{len(history)} kept signals, {len(KNOWLEDGE_RECORDS)} knowledge records"
     )
 
 

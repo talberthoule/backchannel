@@ -3,7 +3,7 @@
 Every asset here is captured from a **wholly fictional demo workspace**. No real
 employer, client, or person appears in any of them. Safe for public use.
 
-Twelve surfaces, each with a light and a `-dark` variant, all 1440x900 before
+Sixteen surfaces, each with a light and a `-dark` variant, all 1440x900 before
 encoding. The source data is "Alderwake Health Network - recovery readiness
 review": an invented 46-minute services-integration call between a distributed
 account team and two customer-side leaders, seeded by `showcase/seed_demo.py`.
@@ -16,15 +16,21 @@ python showcase/seed_demo.py --reset
 node showcase/capture.mjs
 python showcase/encode.py                   # PNG -> site/assets/shots/*.webp
 python showcase/crops.py                    # focused crops from those captures
+node showcase/og_card.mjs                   # site/assets/og-image.png
 ```
 
-The default fixture is intentionally deterministic: it inserts 123 insights
-(24 curated, transcript-grounded rows that top every newest-first list and are
-the only cards visible in shots, plus 99 generated filler rows seeded earlier
-in the call to make the counts read like a dense 46-minute session) and one
-completed briefing, seeds three recovery offerings and three delivery
-playbooks, and injects a canned chat exchange through the product's real
-session-storage contract. No LLM key is required.
+Reseed immediately before capturing, and capture once. Reaching the live view
+resumes the session, so every extra capture run adds another call segment to
+the fixture and the session header drifts from "across 2 calls".
+
+The default fixture is intentionally deterministic: it inserts 125 insights
+(24 curated, transcript-grounded rows plus 2 `asked` rows, which top every
+newest-first list and are the only cards visible in shots, plus 99 generated
+filler rows seeded earlier in the call to make the counts read like a dense
+46-minute session), a completed briefing, and a `live` synthesis row carrying
+the five strategic-signal cards and six kept signals; it seeds three recovery
+offerings and three delivery playbooks, and injects a canned chat exchange
+through the product's real session-storage contract. No LLM key is required.
 Use `--analyze` only for local exploratory runs; do not use it for committed
 assets. The capture script starts the real live view with Chrome's fake media
 device and restores the session to completed when it finishes.
@@ -33,12 +39,17 @@ device and restores the session to completed when it finishes.
 
 | Asset | Shows | Placement |
 | --- | --- | --- |
-| `live-call(-dark)` | Live recovery review: Listening status, 123 saved insights, answered objection cards, and a speaker-attributed transcript | **Hero** |
-| `live-answered(-dark)` | Crop: answered objection cards with Objection Handler badges, attribution, and ready-to-use responses | "Questions answer themselves" |
-| `postcall-briefing(-dark)` | Conversation briefing: TOP 3 OUTCOMES beside CLIENT OBJECTIVES, each grounded in the fixture | Briefing / results section |
-| `postcall-insights(-dark)` | Insights tab: 123 total, 24 action items, 16 objections, 18 opportunities, 31 observations, 34 questions | Post-call results |
-| `insights-attributed(-dark)` | Crop: insight cards carrying agent badge and speaker attribution | Agents feature; speaker re-attribution |
-| `session-header(-dark)` | Crop: two call segments totalling 46m 12s, dated, 123 insights | Wrap-up proof strip |
+| `live-call(-dark)` | Live recovery review: Listening status, the live strategic-signal strip, 125 saved insights, an answered mid-call question, and a speaker-attributed transcript | **Hero**, README, OG card, comparison pages |
+| `live-ask(-dark)` | The same call with a question typed into the command bar, unsent | "Ask the call a question" |
+| `live-objections(-dark)` | The live feed filtered to objections, leading with the offering-matched answered card | Crop source |
+| `live-answered(-dark)` | Crop: the answered objection card with its offering match and drafted response | "Questions answer themselves"; comparison pages |
+| `ask-bar(-dark)` | Crop: the command bar with its Chat/Directive modes and the answering model chip | Detail strip |
+| `postcall-briefing(-dark)` | Conversation briefing: at-a-glance strip, kept signal history, and TOP 3 OUTCOMES with named owners | Briefing / results section |
+| `postcall-signals(-dark)` | Strategic Signal History expanded: six kept signals with counts and first/last sighting | "Nothing raised is quietly dropped" |
+| `postcall-insights(-dark)` | Insights tab: 125 total, 2 asked, 24 action items, 16 objections, 18 opportunities, 31 observations, 34 questions | Post-call results |
+| `postcall-attributed(-dark)` | The same tab scrolled to the action items themselves | Crop source |
+| `insights-attributed(-dark)` | Crop: insight cards carrying speaker attribution and follow-up state | Speaker re-attribution |
+| `session-header(-dark)` | Crop: two call segments totalling 46m 12s, dated, 125 insights | Wrap-up proof strip |
 | `postcall-transcript(-dark)` | Speaker-attributed transcript with timestamps | Transcription feature |
 | `postcall-speakers(-dark)` | Speakers tab: name mapping, team/external tagging, merge controls | Diarization feature |
 | `postcall-chat(-dark)` | Fixture-backed cross-session chat answer with scope pickers | Cross-meeting Q&A |

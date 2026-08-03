@@ -6,6 +6,8 @@
 > and runs configurable AI agents (Google Gemini or OpenAI, with optional
 > fully local ONNX transcription) that surface questions, objections,
 > opportunities, and action items while the meeting is still happening.
+> You can also ask the running call a question and get an answer from the
+> conversation so far, without stopping the recording.
 
 Backchannel is free to run: there is no hosted service and no pricing
 tiers, and self-hosting with Docker Compose (React frontend, FastAPI
@@ -39,6 +41,20 @@ Key facts:
   90s, synthesizer, opportunity specialist, strategic signals every 45s), and
   a three-agent post-call briefing pass (meeting lens, discovery lens,
   arbiter) -- each with a configurable model, prompt, and trigger
+- Ask during the call: the call's command bar answers a typed question from
+  the live transcript, the insights raised so far, strategic signals,
+  directives, and stored document summaries, without stopping the recording.
+  The answer is saved as a starred `asked` insight and exported with the
+  rest. It is not an agent: nothing schedules it and asking does not steer
+  the running agents. The answering model is chosen in the bar and may be a
+  self-hosted one
+- Strategic signals persist: signals raised during a call are kept with a
+  per-signal count and first/last sighting, readable live and in the
+  post-call briefing, rather than being overwritten by the next cycle
+- Nothing is chosen for you at first run: a fresh install seeds no cloud
+  model, every agent starts unselected, models are grouped by Google,
+  OpenAI, and local, and one role-appropriate recommendation is marked in
+  each provider that is actually available
 - Works with any meeting, digital or in person: captures mic plus tab/system
   audio in the browser, so Zoom, Meet, and Teams need no bot or integration,
   and a conference-room conversation needs only the microphone

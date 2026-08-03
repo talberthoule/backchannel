@@ -8,7 +8,9 @@ Backchannel is a real-time meeting analysis app. A React frontend captures
 microphone (and optionally tab/system) audio, streams it to a FastAPI backend
 over WebSocket, and the backend produces a speaker-attributed transcript while
 a set of provider-routed AI agents surface questions, observations,
-opportunities, objections, and action items as the conversation happens.
+opportunities, objections, and action items as the conversation happens. The
+call's command bar also answers a question put to the conversation so far,
+without interrupting it ([Agent System](agents.md#asking-during-a-call)).
 
 This folder is the deeper technical reference behind the top-level
 [README](../README.md). For how Backchannel differs from the other meeting

@@ -99,12 +99,34 @@ empty `by_source` / `by_model` lists; historical sessions are not backfilled.
 | GET | `/api/sessions/{id}/questions` | List insights (all item types) |
 | PATCH | `/api/sessions/{id}/questions/{question_id}` | Mark answered/dismissed, edit |
 
+### Ask (`routers/ask.py`)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/sessions/{id}/ask` | Answer one question against the running call and save the answer |
+
+The body is `{"model_id": "...", "question": "..."}`. Context is assembled
+recency-first from the session's transcript, live insights, strategic signals,
+directives, and the persisted `documents.summary` values -- never a fresh
+summarization call. The answer is persisted as an `asked` insight
+(`agent_source` `live_chat`, `starred`, `answered`), with the answering model
+and elapsed time in `rationale`; answers over 4000 characters are truncated
+with a marker. Separate from `/api/chat`, which is cross-session and
+briefing-led.
+
 ### Synthesis (`routers/synthesis.py`)
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/sessions/{id}/synthesis` | Get the saved session synthesis (or null) |
 | POST | `/api/sessions/{id}/synthesis/refresh` | Regenerate the synthesis |
+
+Both take `mode` (`live` or `post_call`, default `post_call`): `live` is the
+strategic-signal cycle, `post_call` the briefing. `GET` also takes
+`include_history`; without it the response carries only
+`signal_history_count`, so the caller can render the History control without
+paying for the rows. Signals accumulate in `signal_history` with a per-signal
+`count`, `first_seen`, and `last_seen` rather than being replaced each cycle.
 
 ### Imports (`routers/imports.py`)
 
@@ -125,7 +147,7 @@ empty `by_source` / `by_model` lists; historical sessions are not backfilled.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/sessions/{id}/artifacts/transcript-export` | Transcript as TXT |
-| GET | `/api/sessions/{id}/artifacts/questions-export` | Insights as XLSX |
+| GET | `/api/sessions/{id}/artifacts/questions-export` | Insights as one XLSX, enriched columns folded in |
 | GET | `/api/sessions/{id}/artifacts/summary-export` | Summary as HTML |
 
 ## Global configuration
