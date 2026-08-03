@@ -15,11 +15,14 @@ DST = REPO / "site" / "assets" / "shots"
 # name -> (source stem, box)
 CROPS = {
     # Post-call header: call segments, total duration, insight count.
-    "session-header": ("postcall-insights", (336, 84, 1368, 250)),
-    # The answered objection card with its ready-to-use suggested response.
-    "live-answered": ("live-call", (288, 292, 1020, 800)),
-    # Insight cards carrying speaker attribution badges.
-    "insights-attributed": ("postcall-insights", (336, 440, 1368, 900)),
+    "session-header": ("postcall-insights", (336, 84, 1368, 292)),
+    # The answered objection card with its offering match and drafted response,
+    # taken from the objection-filtered live feed.
+    "live-answered": ("live-objections", (288, 404, 1020, 818)),
+    # Insight cards carrying speaker attribution and follow-up state.
+    "insights-attributed": ("postcall-attributed", (336, 68, 1368, 610)),
+    # The call's command bar: chat/directive modes and the answering model.
+    "ask-bar": ("live-ask", (288, 822, 1408, 880)),
 }
 
 

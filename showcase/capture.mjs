@@ -19,6 +19,9 @@ const outArg = process.argv.indexOf("--out");
 const OUT = outArg > -1 ? process.argv[outArg + 1] : "showcase/screenshots";
 const BASE = "http://localhost:3000";
 const SESSION = "Alderwake Health Network - recovery readiness review";
+// Matches the model named in the seeded asked rows' "Answered by" caption.
+const ASK_MODEL = "gemini-3.6-flash";
+const ASK_DRAFT = "What did Owen commit to sending tomorrow?";
 const CHAT = [
   {
     role: "user",
@@ -77,11 +80,39 @@ const browser = await chromium.launch({
   ],
 });
 
+// The review pane is the scrolling element, not the window: find it by overflow
+// rather than by class, so a Tailwind change does not silently stop scrolling.
+async function scrollPane(page, top) {
+  await page.evaluate((offset) => {
+    const pane = [...document.querySelectorAll("*")]
+      .filter((node) => {
+        const style = getComputedStyle(node);
+        return (
+          /auto|scroll/.test(style.overflowY) &&
+          node.scrollHeight > node.clientHeight + 50 &&
+          node.clientHeight > 300
+        );
+      })
+      .sort((a, b) => b.scrollHeight - b.clientHeight - (a.scrollHeight - a.clientHeight))[0];
+    if (pane) pane.scrollTop = offset;
+  }, top);
+}
+
 async function openDemo(page) {
   await page.goto(BASE, { waitUntil: "networkidle" });
   await page.evaluate(
-    ({ key, messages }) => sessionStorage.setItem(key, JSON.stringify(messages)),
-    { key: `backchannel:meeting-chat:${demo.id}`, messages: CHAT },
+    ({ key, messages, askKey, askModel }) => {
+      sessionStorage.setItem(key, JSON.stringify(messages));
+      // The ask bar's model is an explicit per-session choice held in
+      // localStorage; without it every live shot reads "Select model".
+      localStorage.setItem(askKey, askModel);
+    },
+    {
+      key: `backchannel:meeting-chat:${demo.id}`,
+      messages: CHAT,
+      askKey: `backchannel:ask-model:${demo.id}`,
+      askModel: ASK_MODEL,
+    },
   );
   const expand = page.locator('[aria-label="Expand sidebar"]');
   if (await expand.isVisible().catch(() => false)) await expand.click();
@@ -113,11 +144,36 @@ async function runCompleted(colorScheme, suffix) {
   await page.getByText("Top 3 Outcomes", { exact: true }).waitFor({ timeout: 20000 });
   await shot("postcall-briefing", "fixture-backed briefing rendered");
 
+  // Signals raised during the call are kept, so they can still be read here
+  // (ALP-244). Expanded and scrolled to, because the panel sits below the fold.
+  const history = page.getByRole("button", { name: /^History \(\d+\)$/ }).first();
+  await history.waitFor({ timeout: 20000 });
+  await history.scrollIntoViewIfNeeded();
+  await history.click();
+  const hide = page.getByRole("button", { name: "Hide history" }).first();
+  await hide.waitFor({ timeout: 20000 });
+  await hide.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(600);
+  await shot("postcall-signals", "kept strategic signals expanded");
+  await hide.click();
+  await scrollPane(page, 0);
+
   await tab(/^Insights/);
   await page.getByText(/^ACTION ITEMS$/i).first().waitFor({ timeout: 20000 });
   const total = await page.evaluate(() =>
     document.body.innerText.match(/TOTAL\s+(\d+)/)?.[1] ?? "?");
   await shot("postcall-insights", `insight cards rendered, TOTAL ${total}`);
+
+  // Scrolled past the type tiles to the cards themselves: this is where an
+  // insight shows the speaker it came from and the agent that produced it.
+  // A fixed offset into the review pane, not a locator: every "ACTION ITEMS"
+  // string on this page is already in view inside a count tile, so
+  // scrollIntoViewIfNeeded is a no-op. The fixture is deterministic, so the
+  // distance is too. The pane scrolls, not the window.
+  await scrollPane(page, 890);
+  await page.waitForTimeout(500);
+  await shot("postcall-attributed", "speaker-attributed insight cards");
+  await scrollPane(page, 0);
 
   await tab(/^Transcript/);
   await page.getByText(/board risk committee meets September 18/i).first().waitFor({ timeout: 20000 });
@@ -190,8 +246,42 @@ async function runLive(colorScheme, suffix) {
     if (await resume.isVisible().catch(() => false)) await resume.click();
     await listening.waitFor({ timeout: 20000 });
     await page.waitForTimeout(700);
+    // Resuming to reach the live view appends a "Session Resumed" marker to
+    // the transcript. That is real behavior, but it belongs to the capture
+    // harness rather than the fictional call, so scroll it just out of frame
+    // and let the panel show the conversation it is there to show.
+    await page.evaluate(() => {
+      const marker = [...document.querySelectorAll("div")].find(
+        (el) => el.children.length === 0 && /Session Resumed/.test(el.textContent || ""),
+      );
+      if (!marker) return;
+      let box = marker.parentElement;
+      while (box && box.scrollHeight <= box.clientHeight + 1) box = box.parentElement;
+      if (!box) return;
+      box.scrollTop += marker.getBoundingClientRect().top - box.getBoundingClientRect().bottom;
+    });
+    await page.waitForTimeout(200);
     await page.screenshot({ path: `${OUT}/live-call${suffix}.png` });
     log.push(`  live-call${suffix} -- active call listening with saved insights and transcript`);
+
+    // Filtered to objections: the handler's drafted responses are the densest
+    // proof the live feed offers, and the unfiltered view leads with asks.
+    await page.getByRole("button", { name: /^Objections/ }).first().click();
+    await page.getByText(/not yet an approved supplier/i).first().waitFor({ timeout: 20000 });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `${OUT}/live-objections${suffix}.png` });
+    log.push(`  live-objections${suffix} -- objection cards with drafted responses`);
+    await page.getByRole("button", { name: /^All/ }).first().click();
+    await page.waitForTimeout(400);
+
+    // The command bar mid-question: typed, not submitted, so the shot stays
+    // deterministic and never spends a provider call.
+    const ask = page.getByPlaceholder("Ask this call anything...");
+    await ask.waitFor({ timeout: 20000 });
+    await ask.fill(ASK_DRAFT);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${OUT}/live-ask${suffix}.png` });
+    log.push(`  live-ask${suffix} -- question drafted in the call's command bar`);
   } finally {
     await page.close();
     await api(`/sessions/${demo.id}`, {

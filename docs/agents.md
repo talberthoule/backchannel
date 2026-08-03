@@ -63,6 +63,16 @@ The three briefing agents never run on the live interval. Normal **End Call**
 runs them; **End without briefing** skips them; **Generate Briefing** runs them
 on demand. Live Strategic Signals is separately enabled and configured.
 
+Each Strategic Signals cycle replaces the five live cards, but the signals
+themselves are kept. Every cycle folds its items into `signal_history` on the
+`live` synthesis row, matched on section plus a normalized title, so a repeat
+raises `count` and moves `last_seen` instead of appending a near-duplicate.
+A theme that recurred is therefore visibly distinct from a one-off, and the
+briefing context built from the history carries each observation once rather
+than several times in different words. The History control renders the kept
+signals during the call and again in the post-call briefing. The list is
+capped at the newest `SIGNAL_HISTORY_MAX_ENTRIES` (200) entries.
+
 The settled briefing leads with an at-a-glance summary strip (outcome, action,
 risk, and open-question counts plus synthesis status) and a Top Outcomes hero,
 followed by per-section cards that each carry their own icon and accent color.

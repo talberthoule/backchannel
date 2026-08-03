@@ -9,6 +9,7 @@
 <p align="center">
   <a href="#run-it">Run it</a> -
   <a href="#features">Features</a> -
+  <a href="#what-it-looks-like">Screenshots</a> -
   <a href="#architecture">Architecture</a> -
   <a href="https://backchannel.page/docs/">Documentation</a>
 </p>
@@ -26,6 +27,19 @@ AI agents over the conversation as it happens -- surfacing the questions you
 should ask, the objections you need to handle, and the opportunities and
 action items you would otherwise reconstruct from memory afterwards.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="site/assets/shots/live-call-dark.webp" />
+    <img src="site/assets/shots/live-call.webp" alt="Backchannel during a live call: strategic signals across the top, 125 insights in the feed with a mid-call question already answered, a speaker-attributed transcript beside it, and the ask bar along the bottom." width="900" />
+  </picture>
+</p>
+
+<p align="center">
+  <em>A live call: signals across the top, a question asked and answered mid-call, the attributed
+  transcript running beside it. Every screenshot here comes from a fictional demo workspace seeded
+  by <code>showcase/seed_demo.py</code>.</em>
+</p>
+
 ## Features
 
 - **Live diarized transcription** -- Silero VAD plus WeSpeaker ResNet152
@@ -33,10 +47,17 @@ action items you would otherwise reconstruct from memory afterwards.
   interim text streaming in seconds ahead of the final transcript
 - **Agent-based analysis** -- a consolidated analyst, a low-latency objection
   handler, a synthesizer, an opportunity specialist, and a live Strategic
-  Signals agent run on their own triggers and push insights to the UI mid-call
+  Signals agent run on their own triggers and push insights to the UI mid-call.
+  Signals are kept with how often each recurred instead of being overwritten by
+  the next cycle
+- **Ask the call mid-conversation** -- the command bar answers from the live
+  transcript, the insights raised so far, strategic signals, directives, and
+  attached document summaries, without stopping the recording. The answer is
+  saved with the call, starred, and exported with everything else; you choose
+  which model answers, including a local one
 - **Post-call briefings** -- two briefing lenses draft the factual record and
   the broader discovery view, and an arbiter settles them into a meeting
-  briefing after End Call or on demand
+  briefing after End Call or on demand, with owners resolved to speaker names
 - **Provider-routed models** -- mix Google Gemini and OpenAI models per
   agent, or register any number of self-hosted OpenAI-compatible servers
   (LM Studio, Ollama, vLLM, LiteLLM) and pick their models by name. With
@@ -44,6 +65,10 @@ action items you would otherwise reconstruct from memory afterwards.
   pipeline on your own hardware with no API key from anyone -- and because
   Privacy First recognizes endpoints on your machine or network, you can
   leave the switch on and keep the agents working
+- **Nothing chosen on your behalf** -- a fresh install seeds no cloud model.
+  Every agent starts unselected, models are grouped by Google, OpenAI, and
+  local, and one role-appropriate recommendation is marked in each provider you
+  actually have available
 - **Dual-track audio** -- mic and tab/system audio are captured separately,
   so remote participants get their own speaker identities, and a short voice
   calibration clip keeps your own lines attributed to you
@@ -58,6 +83,59 @@ action items you would otherwise reconstruct from memory afterwards.
   saved insights, and speaker-attributed transcript
 - **Encrypted credentials** -- provider API keys are stored encrypted at
   rest and managed from the Admin panel
+
+## What it looks like
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="site/assets/shots/postcall-briefing-dark.webp" />
+  <img src="site/assets/shots/postcall-briefing.webp" alt="The post-call briefing: an at-a-glance strip, the kept strategic-signal history, and the top three outcomes with named owners." />
+</picture>
+
+**The briefing.** Two lenses draft in parallel, an arbiter settles them, and the
+page opens with the whole meeting in five seconds.
+
+</td>
+<td width="50%" valign="top">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="site/assets/shots/postcall-insights-dark.webp" />
+  <img src="site/assets/shots/postcall-insights.webp" alt="The insights tab: 125 total across asked, action items, objections, opportunities, observations, and questions." />
+</picture>
+
+**Every insight, kept.** 125 from one 46-minute call, each attributed to who
+said it and exportable as one enriched workbook.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="site/assets/shots/live-answered-dark.webp" />
+  <img src="site/assets/shots/live-answered.webp" alt="A live objection card matched to an offering and marked Answered above a drafted response." />
+</picture>
+
+**Objections, handled.** Every 10 seconds over the freshest 90 seconds of
+speech, with a response you can say out loud.
+
+</td>
+<td width="50%" valign="top">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="site/assets/shots/admin-agents-dark.webp" />
+  <img src="site/assets/shots/admin-agents.webp" alt="The Admin agents tab: the Privacy First switch above the nine-agent lineup with a model picker per agent." />
+</picture>
+
+**The crew, configurable.** Nine agents, each with its own model, prompt, and
+trigger -- and a Privacy First switch that judges the destination.
+
+</td>
+</tr>
+</table>
 
 ## How Backchannel compares
 
@@ -177,7 +255,7 @@ Full setup options (local development, migrations, GPU validation) are in
 | --- | --- |
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS, served by nginx |
 | Backend | FastAPI, SQLAlchemy (async), Alembic, PostgreSQL 16 |
-| AI providers | Google Gemini (Live + Flash), OpenAI (GPT-5, Realtime) |
+| AI providers | Google Gemini (Live + Flash), OpenAI (GPT-5.x, Realtime), any OpenAI-compatible server |
 | Local inference | Silero VAD, WeSpeaker ResNet152, Whisper/Parakeet via ONNX Runtime |
 
 ## License

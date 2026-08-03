@@ -99,6 +99,14 @@
           },
           {
             "@type": "Question",
+            "name": "Can I ask a question during the meeting?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. The call's command bar answers from the conversation as it stands -- the live transcript, the insights raised so far, strategic signals, your directives, and the summaries of attached documents. Recording continues while it answers, the answer is saved with the call and starred, and it exports alongside every other insight. You pick which model answers, including a model running on your own hardware."
+            }
+          },
+          {
+            "@type": "Question",
             "name": "Do I need a GPU?",
             "acceptedAnswer": {
               "@type": "Answer",
@@ -179,10 +187,10 @@
           <picture>
             <source srcset="assets/shots/live-call-dark.webp" media="(prefers-color-scheme: dark)" />
             <img src="assets/shots/live-call.webp" width="1440" height="900" fetchpriority="high"
-                 alt="Backchannel live during a fictional recovery-readiness review: dual Listening indicators, 123 insights, answered objection cards with ready-to-use responses, and a speaker-attributed transcript." />
+                 alt="Backchannel live during a fictional recovery-readiness review: dual Listening indicators, a live strategic-signal strip, 125 insights, an answered mid-call question, a speaker-attributed transcript, and the ask bar along the bottom." />
           </picture>
         </div>
-        <figcaption class="fig-caption"><span class="fig-no">FIG. 1</span><span>A high-stakes recovery review, handled remotely: objections surface with responses already drafted beside the attributed transcript. <strong>123 insights</strong> from one 46-minute call, distilled into a single briefing.</span></figcaption>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 1</span><span>A high-stakes recovery review, handled remotely: signals across the top, a question asked and answered mid-call, the attributed transcript running beside it. <strong>125 insights</strong> from one 46-minute call, distilled into a single briefing.</span></figcaption>
       </figure>
     </div>
   </section>
@@ -210,7 +218,7 @@
       <div class="feature-row reverse">
         <div class="feature-copy">
           <h3>Agents that work the call, not just the recap</h3>
-          <p>Five live agents -- an analyst, a fast objection handler, a synthesizer, an opportunity specialist, and a strategic-signals scanner -- each run on their own trigger and push questions, objections, opportunities, and action items mid-call. At call end, two independent briefing lenses draft in parallel and an arbiter reconciles them into one summary.</p>
+          <p>Five live agents -- an analyst, a fast objection handler, a synthesizer, an opportunity specialist, and a strategic-signals scanner -- each run on their own trigger and push questions, objections, opportunities, and action items mid-call. Signals raised early are kept rather than overwritten, so the point someone made twenty minutes ago is still there. At call end, two independent briefing lenses draft in parallel and an arbiter reconciles them into one summary.</p>
         </div>
         <div class="feature-visual">
           <div class="browser-frame">
@@ -255,7 +263,50 @@
     </div>
   </section>
 
-  <section id="answered" class="center">
+  <section id="ask">
+    <div class="wrap">
+      <span class="kicker">New in v0.5.0</span>
+      <h2>Ask the call a question while it is still running</h2>
+      <p class="sub">Twenty minutes ago someone named a number and you did not write it down. Type the question into the bar under the transcript and the answer comes back from the conversation as it stands &mdash; without stopping the recording, opening a second tool, or waiting for the post-call briefing. The answer is saved with the call, starred, and exported alongside every other insight.</p>
+      <figure class="shot wide">
+        <div class="shot-strip">
+          <picture>
+            <source srcset="assets/shots/ask-bar-dark.webp" media="(prefers-color-scheme: dark)" />
+            <img src="assets/shots/ask-bar.webp" width="1120" height="58" loading="lazy"
+                 alt="The call's command bar: a Chat and Directive mode toggle, the question &ldquo;What did Owen commit to sending tomorrow?&rdquo; typed in, and a Gemini 3.6 Flash model chip marked Recommended." />
+          </picture>
+        </div>
+        <figcaption class="fig-caption"><span>The whole interface: two modes, one input, and the model that will answer.</span></figcaption>
+      </figure>
+      <figure class="shot">
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <picture>
+            <source srcset="assets/shots/live-ask-dark.webp" media="(prefers-color-scheme: dark)" />
+            <img src="assets/shots/live-ask.webp" width="1440" height="900" loading="lazy"
+                 alt="A live call with two answered mid-call questions pinned at the top of the insight feed and a third being typed into the ask bar at the bottom of the screen." />
+          </picture>
+        </div>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 2</span><span>Asked mid-call, answered from the transcript so far &mdash; and kept, so the answer is still there afterwards.</span></figcaption>
+      </figure>
+      <div class="more-strip">
+        <div>
+          <h3>Two modes, one bar</h3>
+          <p>Chat asks the call a question. Directive steers what the agents look for next. An answer you want the crew to act on converts to a directive in one click.</p>
+        </div>
+        <div>
+          <h3>You choose who answers</h3>
+          <p>The model that answers is picked in the bar itself &mdash; Google, OpenAI, or a model on your own hardware. Nothing is selected on your behalf.</p>
+        </div>
+        <div>
+          <h3>Grounded in the room</h3>
+          <p>Answers draw on the live transcript, the insights raised so far, strategic signals, your directives, and the summaries of documents you attached.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="answered" class="alt center">
     <div class="wrap">
       <span class="kicker">Live</span>
       <h2>Questions answer themselves</h2>
@@ -265,16 +316,16 @@
           <div class="bar" aria-hidden="true"></div>
           <picture>
             <source srcset="assets/shots/live-answered-dark.webp" media="(prefers-color-scheme: dark)" />
-            <img src="assets/shots/live-answered.webp" width="732" height="508" loading="lazy"
-                 alt="Two live objection cards marked Answered, each badged Objection Handler and attributed to a speaker, with the drafted response shown beneath the objection." />
+            <img src="assets/shots/live-answered.webp" width="732" height="414" loading="lazy"
+                 alt="The live feed filtered to 16 objections, with the leading card badged Objection Handler, matched to an offering, and marked Answered above the drafted response." />
           </picture>
         </div>
-        <figcaption class="fig-caption"><span class="fig-no">FIG. 2</span><span>Mid-call &mdash; an objection is marked Answered with the response already drafted, and the reasoning behind it kept alongside.</span></figcaption>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 3</span><span>Mid-call &mdash; an objection is matched to what you sell, marked Answered, and given a response you can say out loud.</span></figcaption>
       </figure>
     </div>
   </section>
 
-  <section id="wrap-up" class="alt">
+  <section id="wrap-up">
     <div class="wrap">
       <span class="kicker">After the call</span>
       <h2>When the call ends, the wrap-up runs itself</h2>
@@ -287,17 +338,17 @@
                  alt="Alderwake recovery-readiness session header showing a 44-minute 12-second call and a two-minute resumed segment." />
           </picture>
         </div>
-        <figcaption class="fig-caption"><span class="fig-no">FIG. 3</span><span>46:12 across two segments &mdash; the resumed call and the original settle into one reviewable record.</span></figcaption>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 4</span><span>46:12 across two segments &mdash; the resumed call and the original settle into one reviewable record.</span></figcaption>
       </figure>
     </div>
   </section>
 
-  <section id="results">
+  <section id="results" class="alt">
     <div class="wrap">
       <h2>The briefing does the reading for you</h2>
-      <p class="sub">A 46-minute call produced 123 grounded signals. You never wade through them. Backchannel distills the whole conversation into one briefing that opens with an at-a-glance strip and leads with the top outcomes &mdash; risks, actions, and open questions each color-coded, owners and status shown as chips &mdash; so you start from the point instead of the pile.</p>
+      <p class="sub">A 46-minute call produced 125 grounded signals. You never wade through them. Backchannel distills the whole conversation into one briefing that opens with an at-a-glance strip and leads with the top outcomes &mdash; risks, actions, and open questions each color-coded, owners named as people rather than identifiers &mdash; so you start from the point instead of the pile.</p>
       <div class="proof-line">
-        <span class="big">123</span>
+        <span class="big">125</span>
         <span class="arrow">&rarr;</span>
         <span class="big">1</span>
         <span class="desc"><strong>One briefing</strong> of outcomes, objectives, and follow-ups &mdash; with every underlying insight kept, attributed, and exportable.</span>
@@ -308,27 +359,39 @@
           <picture>
             <source srcset="assets/shots/postcall-briefing-dark.webp" media="(prefers-color-scheme: dark)" />
             <img src="assets/shots/postcall-briefing.webp" width="1440" height="900" loading="lazy"
-                 alt="Alderwake recovery-readiness briefing with three settled outcomes beside three client objectives." />
+                 alt="Alderwake recovery-readiness briefing: an at-a-glance strip of three outcomes, four actions, three risks and three open questions, the kept strategic-signal history, and the top three outcomes with named owners." />
           </picture>
         </div>
-        <figcaption class="fig-caption"><span class="fig-no">FIG. 4</span><span>The settled briefing &mdash; two independent lens drafts reconciled by an arbiter into outcomes and objectives.</span></figcaption>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 5</span><span>The settled briefing &mdash; two independent lens drafts reconciled by an arbiter, opening with the whole meeting in five seconds.</span></figcaption>
       </figure>
-      <p class="sub">The detail is all still there: every one of the 123, each attributed to who said it, ready to take with you as Excel, HTML, or text.</p>
+      <p class="sub">Nothing raised during the call is quietly dropped. Signals the strategic scan surfaced are kept with how often each came back, so a theme that ran through the conversation reads as a theme rather than one line you happened to catch.</p>
+      <figure class="shot">
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <picture>
+            <source srcset="assets/shots/postcall-signals-dark.webp" media="(prefers-color-scheme: dark)" />
+            <img src="assets/shots/postcall-signals.webp" width="1440" height="900" loading="lazy"
+                 alt="Strategic Signal History expanded in the briefing: six kept signals labelled Action, Discovery Question, Opportunity, Signal and Risk, each showing how many times it was seen and when it was first and last raised." />
+          </picture>
+        </div>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 6</span><span>Durable signals, with first and last sighting &mdash; &ldquo;seen 6 times&rdquo; is the difference between a passing remark and the thing the meeting was actually about.</span></figcaption>
+      </figure>
+      <p class="sub">The detail is all still there: every one of the 125, each attributed to who said it, ready to take with you as one enriched Excel workbook, HTML, or text.</p>
       <figure class="shot">
         <div class="browser-frame">
           <div class="bar" aria-hidden="true"></div>
           <picture>
             <source srcset="assets/shots/postcall-insights-dark.webp" media="(prefers-color-scheme: dark)" />
             <img src="assets/shots/postcall-insights.webp" width="1440" height="900" loading="lazy"
-                 alt="Insights tab: 123 total, with 24 action items, 16 objections, 18 opportunities, 31 observations, and 34 questions above speaker-attributed cards." />
+                 alt="Insights tab: 125 total, with 2 asked, 24 action items, 16 objections, 18 opportunities, 31 observations, and 34 questions above the answered mid-call questions." />
           </picture>
         </div>
-        <figcaption class="fig-caption"><span class="fig-no">FIG. 5</span><span>All 123, kept and attributed &mdash; 24 action items, 16 objections, 18 opportunities, 31 observations, 34 questions.</span></figcaption>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 7</span><span>All 125, kept and attributed &mdash; 24 action items, 16 objections, 18 opportunities, 31 observations, 34 questions, and the 2 you asked yourself.</span></figcaption>
       </figure>
     </div>
   </section>
 
-  <section id="speakers" class="alt">
+  <section id="speakers">
     <div class="wrap">
       <h2>Diarization gets close. You get it right.</h2>
       <p class="sub">Automatic diarization is fast, but it mislabels: splitting one person across several voices, or blending two into one. Rename, merge, and tag speakers by hand, then re-run the analysis so every insight reflects who actually said it.</p>
@@ -360,8 +423,8 @@
             <div class="bar" aria-hidden="true"></div>
             <picture>
               <source srcset="assets/shots/insights-attributed-dark.webp" media="(prefers-color-scheme: dark)" />
-              <img src="assets/shots/insights-attributed.webp" width="1032" height="460" loading="lazy"
-                   alt="Insight cards after speaker mapping: each item names the person it came from and is badged with the agent that produced it." />
+              <img src="assets/shots/insights-attributed.webp" width="1032" height="542" loading="lazy"
+                   alt="Action items after speaker mapping: each card names the person it belongs to, quotes the line it came from, and flags the one still needing a follow-up." />
             </picture>
           </div>
         </div>
@@ -369,7 +432,7 @@
     </div>
   </section>
 
-  <section id="chat" class="center">
+  <section id="chat" class="alt center">
     <div class="wrap">
       <h2>Ask across every meeting</h2>
       <p class="sub">Every transcript stays local, and stays queryable. Ask a question against one call or all of them at once, and get a grounded answer with the meetings it came from.</p>
@@ -382,7 +445,7 @@
                  alt="Cross-session chat answering what was committed and what is blocking the timeline, with a grounded answer and session scope pickers." />
           </picture>
         </div>
-        <figcaption class="fig-caption"><span class="fig-no">FIG. 6</span><span>One question asked across every saved meeting, answered with the sessions it came from.</span></figcaption>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 8</span><span>One question asked across every saved meeting, answered with the sessions it came from.</span></figcaption>
       </figure>
     </div>
   </section>
@@ -546,6 +609,10 @@ docker compose up --build
           <p>Real-time help is no longer rare: Otter shipped Live Assist in July 2026 and Zoom's Sales Assist reached general availability a day later. Both are Enterprise-priced and tied to their own platform, and like Fireflies.ai and Granola they run in a vendor cloud. Backchannel is self-hosted, MIT licensed, and joins no call as a bot, and its objection handler generates a response to the objection actually raised, every 10 seconds over the freshest 90 seconds of speech.</p>
         </div>
         <div class="faq-item">
+          <h3>Can I ask a question during the meeting?</h3>
+          <p>Yes. The call's command bar answers from the conversation as it stands &mdash; the live transcript, the insights raised so far, strategic signals, your directives, and the summaries of attached documents. Recording continues while it answers, the answer is saved with the call and starred, and it exports alongside every other insight. You pick which model answers, including a model running on your own hardware.</p>
+        </div>
+        <div class="faq-item">
           <h3>Do I need a GPU?</h3>
           <p>No. CPU-only Docker Compose is the default. An NVIDIA GPU can accelerate diarization via a compose override, and AMD GPUs on Windows are supported with a native backend setup script.</p>
         </div>
@@ -639,189 +706,7 @@ docker compose up --build
   </div>
 </footer>
 
-<dialog id="lightbox" class="lightbox" aria-label="Enlarged screenshot" data-zoom="fit" data-zoomable="true">
-  <div class="lightbox-controls">
-    <button type="button" class="lightbox-zoom" aria-pressed="false">Actual size</button>
-    <button type="button" class="lightbox-close" aria-label="Close enlarged screenshot"><span aria-hidden="true">&times;</span></button>
-  </div>
-  <div class="lightbox-stage" tabindex="0" role="group" aria-label="Screenshot detail, scrollable">
-    <img alt="" />
-  </div>
-</dialog>
-
-<script>
-  // Click-to-enlarge for product screenshots. The native <dialog> supplies
-  // Esc-to-close, the backdrop, and a focus trap; we add a delegated open,
-  // keyboard activation, and lazy-load the larger *-full image (when present)
-  // only at open time so page load stays light.
-  //
-  // Inside the lightbox the shot has two states. "fit" scales it into the
-  // viewport; "actual" renders it at natural width in a scrolling stage, which
-  // is the only way a dense dashboard shot is legible on a phone. Panning and
-  // pinch are the browser's own scrolling -- no custom pointer maths -- and a
-  // short pull down from the top of the stage dismisses, because reaching a
-  // corner button one-handed is the other half of the clunkiness.
-  (function () {
-    var dlg = document.getElementById("lightbox");
-    if (!dlg || typeof dlg.showModal !== "function") return;
-    var big = dlg.querySelector("img");
-    var stage = dlg.querySelector(".lightbox-stage");
-    var zoomBtn = dlg.querySelector(".lightbox-zoom");
-    var closeBtn = dlg.querySelector(".lightbox-close");
-    var SEL = ".browser-frame img, .shot-strip img, .feature-visual img";
-    var DISMISS_PX = 90; // pull-down distance that closes the lightbox
-    var DRAG_MIN_PX = 6; // below this the gesture is still a tap
-    var REPEAT_MS = 350; // swallows the second half of a double-tap
-    var lastToggle = 0;
-    var suppressClick = false;
-    var dragY = 0;
-    var dragging = false;
-    var startX = 0;
-    var startY = 0;
-
-    Array.prototype.forEach.call(document.querySelectorAll(SEL), function (el) {
-      el.classList.add("zoomable");
-      el.tabIndex = 0;
-      el.setAttribute("role", "button");
-      el.setAttribute("aria-label", "Enlarge screenshot: " + (el.alt || "screenshot"));
-    });
-
-    function setZoom(actual) {
-      dlg.dataset.zoom = actual ? "actual" : "fit";
-      zoomBtn.setAttribute("aria-pressed", actual ? "true" : "false");
-      zoomBtn.textContent = actual ? "Fit to screen" : "Actual size";
-    }
-
-    function fit() {
-      setZoom(false);
-      stage.scrollTop = 0;
-      stage.scrollLeft = 0;
-    }
-
-    // Centre the stage on the point that was asked about, so tapping the right
-    // edge of a wide shot lands there rather than back at the top left.
-    function zoomInto(fx, fy) {
-      setZoom(true);
-      var maxX = stage.scrollWidth - stage.clientWidth;
-      var maxY = stage.scrollHeight - stage.clientHeight;
-      stage.scrollLeft = Math.max(0, Math.min(maxX, fx * stage.scrollWidth - stage.clientWidth / 2));
-      stage.scrollTop = Math.max(0, Math.min(maxY, fy * stage.scrollHeight - stage.clientHeight / 2));
-    }
-
-    function ratio(value, min, size) {
-      return size > 0 ? Math.min(1, Math.max(0, (value - min) / size)) : 0.5;
-    }
-
-    // A shot that already fits at natural size gets no toggle: there is
-    // nothing to reveal, so the image keeps its older tap-to-dismiss role.
-    function syncAffordance() {
-      var fits = big.naturalWidth > 0 &&
-        big.naturalWidth <= stage.clientWidth &&
-        big.naturalHeight <= stage.clientHeight;
-      dlg.dataset.zoomable = fits ? "false" : "true";
-      if (!fits) return;
-      if (document.activeElement === zoomBtn) closeBtn.focus();
-      if (dlg.dataset.zoom === "actual") fit();
-    }
-
-    function open(el) {
-      fit();
-      dlg.dataset.zoomable = "true";
-      big.src = el.dataset.full || el.currentSrc || el.src;
-      big.alt = el.alt || "";
-      dlg.showModal();
-      if (big.complete) syncAffordance();
-    }
-
-    function endDrag() {
-      dragging = false;
-      dragY = 0;
-      dlg.classList.remove("lb-dragging");
-      stage.style.transform = "";
-      stage.style.opacity = "";
-    }
-
-    big.addEventListener("load", syncAffordance);
-    window.addEventListener("resize", function () { if (dlg.open) syncAffordance(); });
-
-    document.addEventListener("click", function (e) {
-      var el = e.target.closest ? e.target.closest(SEL) : null;
-      if (el) { e.preventDefault(); open(el); return; }
-      if (!dlg.open) return;
-      if (e.target === big) {
-        if (suppressClick) { suppressClick = false; return; }
-        if (dlg.dataset.zoomable === "false") { dlg.close(); return; }
-        // One toggle per gesture: a double-click or double-tap flips once and
-        // the repeat click is swallowed instead of flipping straight back.
-        var now = Date.now();
-        if (e.detail > 1 || now - lastToggle < REPEAT_MS) return;
-        lastToggle = now;
-        if (dlg.dataset.zoom === "actual") { fit(); return; }
-        var r = big.getBoundingClientRect();
-        zoomInto(ratio(e.clientX, r.left, r.width), ratio(e.clientY, r.top, r.height));
-        return;
-      }
-      if (e.target === dlg || e.target === stage) dlg.close();
-    });
-
-    document.addEventListener("keydown", function (e) {
-      if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches(SEL)) {
-        e.preventDefault(); open(e.target);
-      }
-    });
-
-    zoomBtn.addEventListener("click", function () {
-      lastToggle = Date.now();
-      if (dlg.dataset.zoom === "actual") fit();
-      else zoomInto(0.5, 0.5);
-    });
-
-    // Pull down to dismiss. Listeners stay passive so scrolling is never
-    // delayed; the gesture only starts at the top of the stage, where there is
-    // nothing left for the browser to scroll anyway.
-    stage.addEventListener("touchstart", function (e) {
-      suppressClick = false;
-      dragging = e.touches.length === 1 && stage.scrollTop <= 0;
-      dragY = 0;
-      if (!dragging) return;
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-    }, { passive: true });
-
-    stage.addEventListener("touchmove", function (e) {
-      if (!dragging) return;
-      if (e.touches.length !== 1 || stage.scrollTop > 0) { endDrag(); return; }
-      var dy = e.touches[0].clientY - startY;
-      var dx = e.touches[0].clientX - startX;
-      if (dy < DRAG_MIN_PX || Math.abs(dx) > Math.abs(dy)) {
-        if (dragY > 0) endDrag();
-        return;
-      }
-      dragY = dy;
-      dragging = true;
-      suppressClick = true;
-      dlg.classList.add("lb-dragging");
-      stage.style.transform = "translateY(" + dy + "px)";
-      stage.style.opacity = String(Math.max(0.4, 1 - dy / 420));
-    }, { passive: true });
-
-    stage.addEventListener("touchend", function () {
-      var dismiss = dragY > DISMISS_PX;
-      endDrag();
-      if (dismiss) dlg.close();
-    }, { passive: true });
-
-    stage.addEventListener("touchcancel", endDrag, { passive: true });
-
-    closeBtn.addEventListener("click", function () { dlg.close(); });
-    dlg.addEventListener("close", function () {
-      big.removeAttribute("src");
-      suppressClick = false;
-      endDrag();
-      fit();
-    });
-  })();
-</script>
+<script src="/lightbox.js" defer></script>
 
 <script>
   // Live listening console in the hero: types a real objection from the demo
