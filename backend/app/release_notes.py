@@ -10,12 +10,12 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.4.1"
+APP_VERSION = "0.5.0"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
     {
-        "version": "0.4.1",
+        "version": "0.5.0",
         "date": "2026-08-02",
         "title": "Asks which provider you use, and stops losing things",
         "body": """Setup stops assuming which provider you use, the call
