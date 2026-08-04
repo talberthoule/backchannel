@@ -70,6 +70,14 @@ def _parse_model_intervals(raw: str) -> dict[str, int]:
 # percent were within 2.1 minutes. A 60s window structurally missed 13 of 21 of
 # them and left the synthesizer to merge them afterwards at full corpus cost.
 _DEDUP_WINDOW_SECONDS = 300
+
+# Open questions carried into the analyst and strategic-signals prompts so they
+# stop re-proposing what is already on the board. Only pruned when a question is
+# answered, so on a measured meeting it grew to 45 entries and never shrank --
+# unbounded in call length. Kept generous: the emission-time dedup cannot catch
+# a re-proposal at minute 40 of something first raised at minute 12, so this
+# list is the only thing standing between the user and that repeat (ALP-287).
+_MAX_ACTIVE_QUESTIONS = 24
 ProgressCallback = Callable[[dict[str, object]], Awaitable[None]]
 
 # Drain modes for call finalization: "full" runs every post-call stage,
@@ -554,6 +562,19 @@ class AgentOrchestrator:
             ),
         )
         self._event_bus.subscribe("new_opportunity", self._opp_specialist_subscriber)
+
+    def _remember_active_question(self, item_id: str, text: str, item_type: str = "question"):
+        """Track an open question, dropping the oldest past the cap."""
+        self.active_questions.append({"id": item_id, "question": text, "item_type": item_type})
+        overflow = len(self.active_questions) - _MAX_ACTIVE_QUESTIONS
+        if overflow > 0:
+            del self.active_questions[:overflow]
+
+    def _forget_active_question(self, item_id: str | None):
+        """Stop carrying a question once it is answered or dismissed."""
+        if not item_id:
+            return
+        self.active_questions[:] = [aq for aq in self.active_questions if aq["id"] != item_id]
 
     def _derive_meeting_context(self):
         """Recompute the fields derived from meeting_type/meeting_context."""
@@ -1115,7 +1136,7 @@ class AgentOrchestrator:
             await db.refresh(question)
 
             if question.item_type == "question":
-                self.active_questions.append({"id": str(question.id), "question": question.question})
+                self._remember_active_question(str(question.id), question.question, question.item_type)
 
             try:
                 await self.websocket.send_json({
@@ -1159,6 +1180,7 @@ class AgentOrchestrator:
         interval = self._get_interval("consolidated_analyst", settings.TEXT_AGENT_INTERVAL_SECONDS)
         await asyncio.sleep(interval)
 
+        last_window = ""
         while not self._stopped:
             await self.activity.cycle_started("consolidated_analyst")
             try:
@@ -1175,6 +1197,14 @@ class AgentOrchestrator:
                     )
                     await asyncio.sleep(interval)
                     continue
+                # Nobody spoke since the last cycle: the model has already read
+                # exactly this window, so re-reading it buys nothing. Mirrors the
+                # guard the objection handler has always had.
+                if transcript_window == last_window:
+                    logger.debug("[consolidated_analyst] Window unchanged, skipping cycle")
+                    await asyncio.sleep(interval)
+                    continue
+                last_window = transcript_window
 
                 logger.info(f"[consolidated_analyst] Running cycle with {len(transcript_window)} chars of transcript")
                 insights = await self.consolidated_agent.run_cycle(
@@ -1296,11 +1326,15 @@ class AgentOrchestrator:
     async def _strategic_signals_loop(self):
         interval = self._get_interval(STRATEGIC_SIGNALS_SLUG, 45)
         await asyncio.sleep(interval)
+        last_window = ""
         while not self._stopped:
             await self.activity.cycle_started(STRATEGIC_SIGNALS_SLUG)
             try:
                 transcript_window = await self.transcript_buffer.get_window()
-                if transcript_window != "(No recent transcript)":
+                if transcript_window == last_window:
+                    logger.debug("[strategic_signals] Window unchanged, skipping cycle")
+                elif transcript_window != "(No recent transcript)":
+                    last_window = transcript_window
                     synthesis = await run_strategic_signals_cycle(
                         self.session_id,
                         agent_configs=self._agent_configs,
@@ -1438,17 +1472,18 @@ class AgentOrchestrator:
                 except Exception:
                     pass
 
-            if op_result.get("op") == "answer":
-                ans_id = op_result.get("id")
-                self.active_questions[:] = [
-                    aq for aq in self.active_questions
-                    if aq["id"] != ans_id
-                ]
-            elif op_result.get("op") == "create" and ws_data:
-                self.active_questions.append({
-                    "id": ws_data["id"],
-                    "question": ws_data["question"],
-                })
+            op_name = op_result.get("op")
+            if op_name in ("answer", "dismiss", "merge"):
+                # A merged-away or dismissed question is as closed as an
+                # answered one; only "answer" used to prune, so the rest
+                # accumulated for the rest of the call.
+                self._forget_active_question(op_result.get("id"))
+                self._forget_active_question(op_result.get("remove_id"))
+            elif op_name == "create" and ws_data:
+                if (ws_data.get("item_type") or "question") == "question":
+                    self._remember_active_question(
+                        ws_data["id"], ws_data["question"], ws_data.get("item_type") or "question"
+                    )
 
     # ── Reconnection ─────────────────────────────────────────────────────
 

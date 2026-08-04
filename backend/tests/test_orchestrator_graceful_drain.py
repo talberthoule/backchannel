@@ -467,7 +467,16 @@ class AgentOrchestratorGracefulDrainTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(saved)
         self.assertEqual(1, fake_session.commits)
         self.assertEqual(1, len(fake_session.added))
-        self.assertEqual([{"id": str(fake_session.added[0].id), "question": "Who owns the final approval?"}], orchestrator.active_questions)
+        self.assertEqual(
+            [{
+                "id": str(fake_session.added[0].id),
+                "question": "Who owns the final approval?",
+                # Carried so _format_insights labels the entry correctly instead
+                # of defaulting every one of them to "question".
+                "item_type": "question",
+            }],
+            orchestrator.active_questions,
+        )
         websocket.send_json.assert_awaited_once()
 
 

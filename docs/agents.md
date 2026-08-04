@@ -303,7 +303,15 @@ Beyond transcript text, the orchestrator passes agents the session's active
 directives (including mid-call directives sent over the WebSocket), document
 summaries produced at upload time, the speaker roster with roles and
 team/external tags, the meeting type and meeting context, and currently
-unanswered questions so agents can track what is already open.
+unanswered questions so agents can track what is already open. That open-question
+list is capped at the 24 most recent and is pruned when a question is answered,
+dismissed, or merged away -- it used to prune only on answer, so it grew for the
+whole call and was billed to two agents on every cycle.
+
+Each interval agent also skips its cycle outright when the transcript window is
+byte-identical to the one it last read, so a quiet stretch of a meeting costs
+nothing. The objection handler has always done this; the consolidated analyst
+and strategic signals now do too.
 
 Meeting type and context edits made during a live call (`PATCH
 /api/sessions/{id}`) are pushed into the running agents immediately: the

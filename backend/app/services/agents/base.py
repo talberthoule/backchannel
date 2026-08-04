@@ -9,7 +9,12 @@ from collections import deque
 
 from app.services.agents.speaker_context import format_transcript_segment
 
-# ~5 minutes of transcript at ~10s per segment = ~30 segments
+# The segment cap, not get_window's max_age_seconds, is what actually bounds
+# every agent's transcript window. The "~10s per segment" assumption behind this
+# number does not hold in practice: a measured meeting averaged 4.87s between
+# entries, so 30 segments was about 144s of speech, not the 300s the age budget
+# advertises. Raising this roughly doubles the consolidated analyst's and
+# strategic signals' transcript cost with no other code change (ALP-287).
 _DEFAULT_BUFFER_SIZE = 30
 
 
@@ -37,7 +42,12 @@ class TranscriptBuffer:
             })
 
     async def get_window(self, max_age_seconds: float = 300.0) -> str:
-        """Return formatted transcript window for the last `max_age_seconds`."""
+        """Return formatted transcript window for the last `max_age_seconds`.
+
+        The effective window is the tighter of this age budget and the buffer's
+        segment cap; at normal speech rates the cap binds first. See
+        _DEFAULT_BUFFER_SIZE.
+        """
         async with self._lock:
             cutoff = time.time() - max_age_seconds
             lines = []
