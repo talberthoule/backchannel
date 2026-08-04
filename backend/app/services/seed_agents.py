@@ -80,6 +80,17 @@ STALE_PLACEHOLDER_MARKERS = {
 # from before the de-branding and get replaced with the new generic default.
 LEGACY_BRAND_MARKER = "Presidio"
 
+# Fingerprints of the pre-ALP-285 prompt ordering, where static instruction
+# blocks sat after the volatile placeholders so no cacheable prefix could form.
+# Each marker is the exact placeholder-then-heading sequence the old default
+# had and the reordered one does not, so a stored copy carrying it is a stale
+# default rather than a deliberate customization of the new layout.
+LEGACY_ORDERING_MARKERS = {
+    "synthesizer": "{transcript_text}\n\nSpeaker context:",
+    "consolidated_analyst": "{active_questions}\n\n## Output Format",
+    "opportunity_specialist": "{opportunities_json}\n\n## Output Format",
+}
+
 CONTEXT_PROMPT_MARKERS = {
     "consolidated_analyst": "supporting a live call for leading solutions providers",
     "synthesizer": "Clusters of insights that together reveal a strategic initiative, project, or objective the client is pursuing",
@@ -272,6 +283,9 @@ def _should_refresh_seeded_model(existing: AgentConfig, cfg: dict) -> bool:
 def _should_refresh_seeded_prompt(existing: AgentConfig, cfg: dict) -> bool:
     stale_marker = STALE_PLACEHOLDER_MARKERS.get(existing.slug)
     if stale_marker and stale_marker in (existing.prompt or ""):
+        return True
+    ordering_marker = LEGACY_ORDERING_MARKERS.get(existing.slug)
+    if ordering_marker and ordering_marker in (existing.prompt or ""):
         return True
     if LEGACY_BRAND_MARKER in (existing.prompt or ""):
         return True
