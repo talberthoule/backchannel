@@ -5,6 +5,9 @@
 // no cached-input discounts, and audio-heavy input (live gateway, transcribe
 // models) is priced at the model's listed input rate. Models without a
 // published per-token price yield null and render as "-", never $0.00.
+//
+// Thinking tokens bill at the output rate. Omitting them understated a
+// measured session by about a third, so they are priced here explicitly.
 
 import type { ModelPricing } from "../types";
 
@@ -13,6 +16,7 @@ export interface TokenCostRow {
   model_id: string;
   input_tokens: number;
   output_tokens: number;
+  thinking_tokens?: number;
 }
 
 export type PricingMap = Record<string, ModelPricing | null | undefined>;
@@ -23,12 +27,13 @@ export function estimateCostUsd(
   pricing: ModelPricing | null | undefined,
   inputTokens: number,
   outputTokens: number,
+  thinkingTokens = 0,
 ): number | null {
   if (!pricing) return null;
   if (pricing.input_per_million === null || pricing.output_per_million === null) return null;
   return (
     (inputTokens / 1_000_000) * pricing.input_per_million +
-    (outputTokens / 1_000_000) * pricing.output_per_million
+    ((outputTokens + thinkingTokens) / 1_000_000) * pricing.output_per_million
   );
 }
 
@@ -37,7 +42,12 @@ export function estimateCostUsd(
 export function estimateSessionCostUsd(rows: TokenCostRow[], pricing: PricingMap): number | null {
   let total: number | null = null;
   for (const row of rows) {
-    const cost = estimateCostUsd(pricing[row.model_id], row.input_tokens, row.output_tokens);
+    const cost = estimateCostUsd(
+      pricing[row.model_id],
+      row.input_tokens,
+      row.output_tokens,
+      row.thinking_tokens ?? 0,
+    );
     if (cost === null) continue;
     total = (total ?? 0) + cost;
   }

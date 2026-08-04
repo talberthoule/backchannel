@@ -41,9 +41,11 @@ class TokenCaptureTests(unittest.IsolatedAsyncioTestCase):
         record.assert_awaited_once_with(session_id, "batch_transcriber", transcriber._model_id, response.usage_metadata)
 
     def test_gemini_live_usage_uses_positive_cumulative_deltas(self):
-        self.assertEqual((10, 2, 12), _usage_delta((10, 2, 12), (0, 0, 0)))
-        self.assertEqual((3, 1, 4), _usage_delta((13, 3, 16), (10, 2, 12)))
-        self.assertEqual((0, 0, 0), _usage_delta((2, 1, 3), (13, 3, 16)))
+        self.assertEqual((10, 2, 0, 12), _usage_delta((10, 2, 0, 12), (0, 0, 0, 0)))
+        self.assertEqual((3, 1, 0, 4), _usage_delta((13, 3, 0, 16), (10, 2, 0, 12)))
+        self.assertEqual((0, 0, 0, 0), _usage_delta((2, 1, 0, 3), (13, 3, 0, 16)))
+        # A thinking-only increment still produces a delta.
+        self.assertEqual((0, 0, 5, 5), _usage_delta((10, 2, 5, 17), (10, 2, 0, 12)))
 
     async def test_gemini_live_records_each_positive_delta(self):
         session_id = uuid.uuid4()
@@ -55,7 +57,10 @@ class TokenCaptureTests(unittest.IsolatedAsyncioTestCase):
         with mock.patch("app.services.gemini_live.record_token_usage", mock.AsyncMock()) as record:
             self.assertEqual([], [item async for item in gateway.receive_responses()])
         self.assertEqual(2, record.await_count)
-        self.assertEqual({"input_tokens": 4, "output_tokens": 1, "total_tokens": 5}, record.await_args_list[1].args[3])
+        self.assertEqual(
+            {"input_tokens": 4, "output_tokens": 1, "thoughts_token_count": 0, "total_tokens": 5},
+            record.await_args_list[1].args[3],
+        )
 
     async def test_malformed_gemini_usage_does_not_break_transcription(self):
         gateway = GeminiLiveSession(session_id=uuid.uuid4())

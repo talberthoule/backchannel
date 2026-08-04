@@ -183,6 +183,13 @@ async def _add_missing_columns(conn):
                     text("ALTER TABLE session_syntheses ADD COLUMN speaker_mapping_revision_id UUID")
                 )
 
+        if "token_usage" in tables:
+            columns = {c["name"] for c in inspector.get_columns("token_usage")}
+            if "thinking_tokens" not in columns:
+                connection.execute(
+                    text("ALTER TABLE token_usage ADD COLUMN thinking_tokens INTEGER NOT NULL DEFAULT 0")
+                )
+
         # Model ids for self-hosted endpoints ("endpoint:<slug>:<model name>")
         # are longer than the registry ids these columns were sized for.
         for table in ("agent_configs", "token_usage"):
