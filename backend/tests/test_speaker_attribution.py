@@ -17,7 +17,10 @@ class SpeakerAttributionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Speaker 1", window)
         self.assertIn(f"speaker_id={speaker_id}", window)
 
-    async def test_transcript_buffer_includes_speaker_type_when_available(self):
+    async def test_transcript_buffer_omits_per_line_speaker_type(self):
+        # speaker_type is constant per speaker and stated once in the
+        # Participants legend; repeating it per line was ~11 percent of every
+        # transcript payload and nothing ever parsed it back (ALP-282).
         speaker_id = str(uuid4())
         buffer = TranscriptBuffer()
 
@@ -29,7 +32,16 @@ class SpeakerAttributionTests(unittest.IsolatedAsyncioTestCase):
         )
 
         window = await buffer.get_window()
-        self.assertIn("speaker_type=team", window)
+        self.assertNotIn("speaker_type", window)
+        # The attribution round-trip still works: the UUID is still on the line.
+        self.assertIn(f"speaker_id={speaker_id}", window)
+
+    async def test_participants_legend_still_carries_speaker_type(self):
+        speaker_id = str(uuid4())
+        legend = format_speakers_list([
+            {"id": speaker_id, "name": "Account Manager", "speaker_type": "team", "role": "AE"},
+        ])
+        self.assertIn("speaker_type=team", legend)
 
     async def test_transcript_buffer_omits_missing_speaker_id(self):
         buffer = TranscriptBuffer()
