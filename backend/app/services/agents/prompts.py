@@ -28,9 +28,6 @@ Speaker context:
 - `speaker_type=external` means outside the internal team; use Meeting Context to decide whether they are a client, vendor, partner, candidate, or other participant.
 - Do not treat internal/team summaries as direct external evidence unless the transcript explicitly says they are relaying confirmed information or an external speaker corroborates it.
 
-## Active Questions (avoid repeating these):
-{active_questions}
-
 ## Output Format
 Return a JSON object with an `items` array. Each item:
 {{"item_type": "{item_type_values}", "question": "the insight text", "rationale": "why this matters", "source_context": "what was said that triggered this", "speaker_id": "matching speaker UUID from the transcript or participants list, or null", "directive_source": "matching directive text" or null}}
@@ -46,11 +43,23 @@ Rules:
 - If the responsible or source speaker is unclear, set speaker_id to null.
 - Return ONLY the valid JSON object, no other text.
 
+## Speaker Attribution Requirements
+- Transcript lines may include `speaker_id=<uuid>`. Use those UUIDs for attribution.
+- Participants lists `speaker_type=team` or `speaker_type=external` once per speaker. Look the speaker up there by `speaker_id`; transcript lines do not repeat it.
+- Treat `team` speakers as internal voices from the user's organization.
+- Treat `external` speakers as outside the internal team. Use Meeting Context to decide whether they are a client, vendor, partner, candidate, or other participant.
+- Do not treat external speaker statements as client evidence unless the Meeting Context or transcript supports that interpretation.
+- Return a `speaker_id` field on each JSON item. Use a UUID shown in Participants or Recent Transcript, or null if unclear.
+- Do not invent Speaker numbers, real names, or combined labels like "Speaker 1/Mark" in the insight text.
+
 ## Call Directives
 {directives_text}
 
 ## Pre-Call Context
 {document_summaries}
+
+## Active Questions (avoid repeating these):
+{active_questions}
 
 ## Recent Transcript
 {transcript_window}
@@ -256,16 +265,6 @@ Multiple specialists may surface overlapping insights. Look specifically for:
 - Opportunities that subsume or extend existing observations
 - Clusters of insights that together reveal a strategic initiative, project, objective, learning gap, program motion, or relationship dynamic
 
-## Current Insights
-Live insights carry their full record. Insights marked `"settled": true` are
-shown with shortened text only, for recognition and as merge/answer targets --
-treat them as already handled unless the transcript clearly reopens them.
-
-{insights_json}
-
-## Recent Transcript (last ~3-5 minutes)
-{transcript_text}
-
 Speaker context:
 - Transcript and insight metadata may include `speaker_type=team` or `speaker_type=external`.
 - Treat `team` speakers as internal voices from the user's organization.
@@ -302,6 +301,16 @@ Rules:
 - Use exact UUIDs from the insights list.
 - When creating strategic synthesis insights, clearly explain how the pieces connect and what bigger picture they reveal.
 - Return ONLY the valid JSON object, no other text.
+
+## Current Insights
+Live insights carry their full record. Insights marked `"settled": true` are
+shown with shortened text only, for recognition and as merge/answer targets --
+treat them as already handled unless the transcript clearly reopens them.
+
+{insights_json}
+
+## Recent Transcript (last ~3-5 minutes)
+{transcript_text}
 """
 
 # ---------------------------------------------------------------------------
@@ -313,12 +322,6 @@ For each opportunity, determine:
 1. Which specific entries from the knowledge base are the best match
 2. Whether it's a direct match, a partial match, or a creative bundle of multiple entries
 3. A brief justification connecting the expressed need to the entry's capabilities
-
-## Available Knowledge Base
-{knowledge_context}
-
-## Opportunities to Map
-{opportunities_json}
 
 ## Output Format
 Return a JSON array of mapping objects. If no good matches exist for an opportunity, skip it.
@@ -337,6 +340,12 @@ For bundles (combining multiple entries):
 - Include the delivery model (Resale, Managed Service, Professional Services, etc.) when the knowledge base provides one.
 - Skip opportunities that don't have a reasonable match in the knowledge base.
 - Return ONLY valid JSON array, no other text.
+
+## Available Knowledge Base
+{knowledge_context}
+
+## Opportunities to Map
+{opportunities_json}
 """
 
 # ---------------------------------------------------------------------------
