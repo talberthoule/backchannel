@@ -153,6 +153,9 @@ class TokenUsage(Base):
     model_id: Mapped[str] = mapped_column(String(160))
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    # Reasoning tokens, billed at output rates. Already counted inside
+    # total_tokens when the provider reports a total, so never add the two.
+    thinking_tokens: Mapped[int] = mapped_column(Integer, default=0)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

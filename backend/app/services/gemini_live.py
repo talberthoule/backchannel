@@ -12,10 +12,13 @@ logger = logging.getLogger(__name__)
 GATEWAY_SYSTEM_PROMPT = """You are a silent audio relay. Your only purpose is to listen to a live conversation and enable transcription. Do not speak, do not analyze, do not comment, and do not generate any output. Just listen."""
 
 
-def _usage_delta(current: tuple[int, int, int], previous: tuple[int, int, int]) -> tuple[int, int, int]:
-    if any(current[index] < previous[index] for index in range(3)):
-        return 0, 0, 0
-    return tuple(current[index] - previous[index] for index in range(3))
+def _usage_delta(current: tuple[int, ...], previous: tuple[int, ...]) -> tuple[int, ...]:
+    """Per-event delta of a cumulative usage tuple, width-agnostic so it keeps
+    working as normalize_usage grows fields (it now also reports thinking)."""
+    width = len(current)
+    if any(current[index] < previous[index] for index in range(width)):
+        return (0,) * width
+    return tuple(current[index] - previous[index] for index in range(width))
 
 
 class GeminiLiveSession:
@@ -26,7 +29,7 @@ class GeminiLiveSession:
         self._context_manager = None
         self._model = settings.GEMINI_MODEL if model_override is None else model_override
         self._session_id = session_id
-        self._last_usage = (0, 0, 0)
+        self._last_usage = (0, 0, 0, 0)
 
     async def connect(self):
         if self.client is None:
@@ -44,7 +47,7 @@ class GeminiLiveSession:
             config=config,
         )
         self.session = await self._context_manager.__aenter__()
-        self._last_usage = (0, 0, 0)
+        self._last_usage = (0, 0, 0, 0)
         logger.info("Gemini Live session connected")
         return self.session
 
@@ -78,7 +81,12 @@ class GeminiLiveSession:
                     self._session_id,
                     "audio_gateway",
                     self._model,
-                    {"input_tokens": delta[0], "output_tokens": delta[1], "total_tokens": delta[2]},
+                    {
+                        "input_tokens": delta[0],
+                        "output_tokens": delta[1],
+                        "thoughts_token_count": delta[2],
+                        "total_tokens": delta[3],
+                    },
                 )
             sc = response.server_content
             if not sc:

@@ -45,6 +45,7 @@ class TokenUsageSourceOut(BaseModel):
     model_id: str
     input_tokens: int
     output_tokens: int
+    thinking_tokens: int = 0
     total_tokens: int
 
 
@@ -52,12 +53,14 @@ class TokenUsageModelOut(BaseModel):
     model_id: str
     input_tokens: int
     output_tokens: int
+    thinking_tokens: int = 0
     total_tokens: int
 
 
 class TokenUsageSummaryOut(BaseModel):
     input_tokens: int
     output_tokens: int
+    thinking_tokens: int = 0
     total_tokens: int
     by_source: list[TokenUsageSourceOut]
     by_model: list[TokenUsageModelOut]

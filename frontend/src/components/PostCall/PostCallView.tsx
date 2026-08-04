@@ -523,7 +523,15 @@ export default function PostCallView({
                 </p>
                 <p className="mt-2 text-sm text-brand-mid-gray">
                   {tokenUsage.input_tokens.toLocaleString()} input / {tokenUsage.output_tokens.toLocaleString()} output
+                  {tokenUsage.thinking_tokens > 0 && (
+                    <> / {tokenUsage.thinking_tokens.toLocaleString()} thinking</>
+                  )}
                 </p>
+                {tokenUsage.thinking_tokens > 0 && (
+                  <p className="mt-1 text-xs text-brand-mid-gray">
+                    Thinking tokens are billed at output rates.
+                  </p>
+                )}
               </div>
 
               {tokenUsage.total_tokens === 0 ? (
@@ -555,6 +563,9 @@ function TokenBreakdownTable({
   pricing?: ModelPricingResponse | null;
 }) {
   const sessionCost = pricing ? estimateSessionCostUsd(rows, pricing.models) : null;
+  // Only surface the thinking column when something actually thought, so
+  // non-reasoning sessions keep the narrower table.
+  const showThinking = rows.some((row) => row.thinking_tokens > 0);
   return (
     <section>
       <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-brand-gray">{title}</h3>
@@ -566,6 +577,7 @@ function TokenBreakdownTable({
               <th scope="col" className="px-4 py-3 font-semibold">Model</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold">Input</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold">Output</th>
+              {showThinking && <th scope="col" className="px-4 py-3 text-right font-semibold">Thinking</th>}
               <th scope="col" className="px-4 py-3 text-right font-semibold">Total</th>
               {pricing && <th scope="col" className="px-4 py-3 text-right font-semibold">Est. cost</th>}
             </tr>
@@ -577,10 +589,13 @@ function TokenBreakdownTable({
                 <td className="px-4 py-3 font-mono text-xs text-brand-gray">{row.model_id}</td>
                 <td className="px-4 py-3 text-right tabular-nums text-brand-gray">{row.input_tokens.toLocaleString()}</td>
                 <td className="px-4 py-3 text-right tabular-nums text-brand-gray">{row.output_tokens.toLocaleString()}</td>
+                {showThinking && (
+                  <td className="px-4 py-3 text-right tabular-nums text-brand-gray">{row.thinking_tokens.toLocaleString()}</td>
+                )}
                 <td className="px-4 py-3 text-right font-semibold tabular-nums text-brand-dark-gray">{row.total_tokens.toLocaleString()}</td>
                 {pricing && (
                   <td className="px-4 py-3 text-right tabular-nums text-brand-gray">
-                    {formatEstimatedCost(estimateCostUsd(pricing.models[row.model_id], row.input_tokens, row.output_tokens))}
+                    {formatEstimatedCost(estimateCostUsd(pricing.models[row.model_id], row.input_tokens, row.output_tokens, row.thinking_tokens))}
                   </td>
                 )}
               </tr>
@@ -589,7 +604,7 @@ function TokenBreakdownTable({
           {pricing && (
             <tfoot className="border-t border-brand-light-gray-1 bg-brand-light-gray-2/60">
               <tr>
-                <th scope="row" colSpan={showSource ? 5 : 4} className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-brand-gray">
+                <th scope="row" colSpan={(showSource ? 5 : 4) + (showThinking ? 1 : 0)} className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-brand-gray">
                   Session estimate
                 </th>
                 <td className="px-4 py-3 text-right font-semibold tabular-nums text-brand-dark-gray">

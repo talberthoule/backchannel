@@ -16,6 +16,22 @@ test("estimates cost from input and output rates per 1M tokens", async () => {
   assert.equal(estimateCostUsd(price(2.5, 15.0), 500_000, 100_000), 2.75);
 });
 
+test("thinking tokens are priced at the output rate", async () => {
+  const { estimateCostUsd } = await load();
+  // 500k in at $2.50/1M + (100k out + 100k thinking) at $15.00/1M = 1.25 + 3.00
+  assert.equal(estimateCostUsd(price(2.5, 15.0), 500_000, 100_000, 100_000), 4.25);
+  // Omitting the argument keeps the pre-existing two-part estimate.
+  assert.equal(estimateCostUsd(price(2.5, 15.0), 500_000, 100_000), 2.75);
+});
+
+test("session total prices each row's thinking tokens", async () => {
+  const { estimateSessionCostUsd } = await load();
+  const pricing = { "gemini-flash": price(1.5, 7.5) };
+  const rows = [{ model_id: "gemini-flash", input_tokens: 1_000_000, output_tokens: 100_000, thinking_tokens: 200_000 }];
+  // 1.50 + (300k at $7.50/1M) = 1.50 + 2.25
+  assert.equal(estimateSessionCostUsd(rows, pricing), 3.75);
+});
+
 test("free local models cost exactly zero", async () => {
   const { estimateCostUsd } = await load();
   assert.equal(estimateCostUsd(price(0, 0), 123_456, 7_890), 0);

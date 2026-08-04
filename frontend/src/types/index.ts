@@ -28,12 +28,16 @@ export interface TokenUsageBreakdown {
   model_id: string;
   input_tokens: number;
   output_tokens: number;
+  // Reasoning tokens. Billed at output rates and already counted in
+  // total_tokens, so never add it to input + output.
+  thinking_tokens: number;
   total_tokens: number;
 }
 
 export interface TokenUsageSummary {
   input_tokens: number;
   output_tokens: number;
+  thinking_tokens: number;
   total_tokens: number;
   by_source: TokenUsageBreakdown[];
   by_model: TokenUsageBreakdown[];
