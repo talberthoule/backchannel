@@ -84,6 +84,11 @@ class CooldownSubscriber:
         """Fallback: ensure handler runs at least every max_interval seconds."""
         while not self._stopped:
             await asyncio.sleep(self._max_interval)
+            # Nothing accumulated means nothing to reconcile. Firing anyway made
+            # a silent stretch of a meeting pay for a full handler run on every
+            # fallback tick (ALP-283).
+            if not self._pending:
+                continue
             elapsed = time.time() - self._last_run
             if elapsed >= self._max_interval - 1:  # small tolerance
                 await self._fire()

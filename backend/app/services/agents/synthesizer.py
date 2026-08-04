@@ -4,9 +4,11 @@ Replaces the current insight_refiner.py refinement loop with enhanced
 cross-agent deduplication and reconciliation capabilities.
 """
 
+import hashlib
 import json
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -17,7 +19,7 @@ from app.services.llm import generate_json
 from app.database import async_session
 from app.models import Question, Session, TranscriptEntry
 from app.services.agents.prompts import PRINCIPAL_AGENT_PROMPT
-from app.services.agents.speaker_context import format_speaker_context, format_transcript_segment
+from app.services.agents.speaker_context import format_transcript_segment, normalize_speaker_type
 from app.services.insight_refiner import _apply_operations
 from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
 
@@ -59,25 +61,99 @@ class SynthesizerOutput(BaseModel):
     items: list[SynthesizerOperation]
 
 
-def _build_insights_json(questions: list[Question]) -> str:
-    items = []
-    for q in questions:
-        speaker = _speaker_dict(q.speaker) if q.speaker else None
-        items.append({
-            "id": str(q.id),
-            "item_type": q.item_type,
-            "text": q.question,
-            "rationale": q.rationale,
-            "source_context": q.source_context,
-            "speaker_id": str(q.speaker_id) if q.speaker_id else None,
-            "speaker": format_speaker_context(speaker) if speaker else None,
-            "answered": q.answered,
-            "answer_summary": q.answer_summary,
-            "starred": q.starred,
-            "enrichment_notes": q.enrichment_notes or "",
-            "agent_source": q.agent_source,
-        })
-    return json.dumps(items, indent=2)
+# An insight earns a full record while it is still live: starred, or unanswered
+# and touched recently. Everything else is settled and appears as a compact stub
+# so merge/answer operations can still target it by id without paying for its
+# full backstory on every cycle. Sending the whole corpus in full made this
+# agent 48 percent of a measured meeting's token bill, growing quadratically
+# with call length (ALP-283).
+_STUB_TEXT_CHARS = 110
+_ENRICHMENT_NOTE_CHARS = 200
+
+# Last (insights + transcript) fingerprint per session, so an unchanged corpus
+# skips the call. Cleared by clear_session_state when the call ends.
+_last_fingerprints: dict[uuid.UUID, str] = {}
+
+
+def clear_synthesizer_state(session_id: uuid.UUID) -> None:
+    """Drop the per-session skip fingerprint when a call finishes."""
+    _last_fingerprints.pop(session_id, None)
+
+
+def _touched_at(q: Question) -> datetime | None:
+    stamp = q.updated_at or q.created_at
+    if stamp is not None and stamp.tzinfo is None:
+        return stamp.replace(tzinfo=timezone.utc)
+    return stamp
+
+
+def _in_working_set(q: Question, cutoff: datetime) -> bool:
+    """Whether this insight still needs its full record in the prompt."""
+    if q.starred:
+        return True
+    if q.answered:
+        return False
+    touched = _touched_at(q)
+    return touched is None or touched >= cutoff
+
+
+def _truncate(text: str | None, limit: int) -> str:
+    value = (text or "").strip()
+    return value if len(value) <= limit else value[:limit].rstrip() + "..."
+
+
+def _full_record(q: Question) -> dict:
+    """A live insight: everything the operations can actually reason about.
+
+    Deliberately omits source_context (raw quote material no operation can
+    write), the standalone speaker_id, and the rendered speaker line, which
+    repeated the same UUID a second time. The prompt only ever reasons about
+    speaker_type.
+    """
+    item = {
+        "id": str(q.id),
+        "item_type": q.item_type,
+        "text": q.question,
+        "rationale": q.rationale or "",
+        "agent_source": q.agent_source,
+    }
+    if q.speaker is not None:
+        item["speaker_type"] = normalize_speaker_type(q.speaker.speaker_type)
+    if q.answered:
+        item["answered"] = True
+        if q.answer_summary:
+            item["answer_summary"] = q.answer_summary
+    if q.starred:
+        item["starred"] = True
+    if q.enrichment_notes:
+        item["enrichment_notes"] = _truncate(q.enrichment_notes, _ENRICHMENT_NOTE_CHARS)
+    return item
+
+
+def _stub_record(q: Question) -> dict:
+    """A settled insight: enough to recognize it and target it by id."""
+    return {
+        "id": str(q.id),
+        "item_type": q.item_type,
+        "text": _truncate(q.question, _STUB_TEXT_CHARS),
+        "answered": bool(q.answered),
+        "settled": True,
+    }
+
+
+def _build_insights_json(questions: list[Question], now: datetime | None = None) -> str:
+    """Serialize the corpus as full records for live items, stubs for settled.
+
+    Ordered by creation so the payload is byte-stable between cycles, which a
+    prompt cache needs and the unordered query could never guarantee.
+    """
+    window = max(0, int(getattr(settings, "SYNTHESIZER_WORKING_SET_SECONDS", 600)))
+    cutoff = (now or datetime.now(timezone.utc)) - timedelta(seconds=window)
+    items = [
+        _full_record(q) if _in_working_set(q, cutoff) else _stub_record(q)
+        for q in questions
+    ]
+    return json.dumps(items, separators=(",", ":"))
 
 
 def _speaker_dict(speaker) -> dict:
@@ -118,7 +194,11 @@ async def run_synthesizer_cycle(session_id: uuid.UUID, model_override: str | Non
                 # agent material: excluded so the Principal Agent cannot
                 # dismiss, adjust, or elevate an answer it did not produce.
                 Question.item_type != ASKED_ITEM_TYPE,
-            ).options(selectinload(Question.speaker))
+            )
+            # Deterministic order: without it the payload is not byte-stable
+            # between cycles, so no prompt cache can ever hit (ALP-285).
+            .order_by(Question.created_at, Question.id)
+            .options(selectinload(Question.speaker))
         )
         questions = list(result.scalars().all())
 
@@ -137,6 +217,16 @@ async def run_synthesizer_cycle(session_id: uuid.UUID, model_override: str | Non
 
     transcript_text = _format_transcript_entries(entries)
     insights_json = _build_insights_json(questions)
+
+    # Nothing new to reconcile since the last cycle: skip the call entirely.
+    # The max-interval fallback would otherwise pay for a full corpus every
+    # two minutes through a silent stretch of a meeting.
+    fingerprint = hashlib.sha256(
+        f"{insights_json}\x00{transcript_text}".encode("utf-8")
+    ).hexdigest()
+    if _last_fingerprints.get(session_id) == fingerprint:
+        logger.debug("[synthesizer] corpus and transcript unchanged, skipping cycle")
+        return []
 
     prompt_template = prompt_override or PRINCIPAL_AGENT_PROMPT
     prompt = format_prompt_with_meeting_context(
@@ -160,6 +250,14 @@ async def run_synthesizer_cycle(session_id: uuid.UUID, model_override: str | Non
         logger.error(f"[synthesizer] API call failed: {e}")
         return []
 
+    # Only remember the input once the call actually succeeded, so a transient
+    # API failure does not suppress the retry.
+    _last_fingerprints[session_id] = fingerprint
+
+    # Structured output (generate_json + SynthesizerOutput) replaced the hand
+    # rolled fence-strip and bracket-scan recovery this commit originally
+    # carried; llm.parse_json_response now tolerates fences centrally.
     ops = [item.model_dump(exclude_unset=True) for item in output.items]
+
     applied = await _apply_operations(session_id, ops, questions, agent_source="synthesizer")
     return applied

@@ -257,6 +257,10 @@ Multiple specialists may surface overlapping insights. Look specifically for:
 - Clusters of insights that together reveal a strategic initiative, project, objective, learning gap, program motion, or relationship dynamic
 
 ## Current Insights
+Live insights carry their full record. Insights marked `"settled": true` are
+shown with shortened text only, for recognition and as merge/answer targets --
+treat them as already handled unless the transcript clearly reopens them.
+
 {insights_json}
 
 ## Recent Transcript (last ~3-5 minutes)
@@ -283,8 +287,8 @@ Operations:
 ### Elevate an insight's type (e.g. observation -> opportunity):
 {{"op": "elevate", "id": "<insight-uuid>", "new_type": "opportunity|action_item|observation|question", "reason": "why this type change is warranted"}}
 
-### Adjust an existing insight's text:
-{{"op": "adjust", "id": "<insight-uuid>", "new_text": "updated text", "reason": "what changed"}}
+### Adjust an existing insight's text or rationale:
+{{"op": "adjust", "id": "<insight-uuid>", "new_text": "updated text", "new_rationale": "updated rationale (optional)", "reason": "what changed"}}
 
 ### Create a new insight the specialists missed:
 {{"op": "create", "item_type": "question|observation|opportunity|action_item", "question": "the insight text", "rationale": "why this matters", "source_context": "what was said"}}

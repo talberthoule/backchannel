@@ -36,7 +36,7 @@ from app.services.agents.strategic_signals import (
     STRATEGIC_SIGNALS_SLUG,
     run_strategic_signals_cycle,
 )
-from app.services.agents.synthesizer import run_synthesizer_cycle
+from app.services.agents.synthesizer import clear_synthesizer_state, run_synthesizer_cycle
 from app.services.briefing_synthesis import (
     BRIEF_ARBITER_SLUG,
     agent_config_enabled,
@@ -654,6 +654,7 @@ class AgentOrchestrator:
     async def close_all(self):
         self._stopped = True
         self._unregister_live()
+        clear_synthesizer_state(self.session_id)
 
         # Stop cooldown subscribers
         if self._synth_subscriber:

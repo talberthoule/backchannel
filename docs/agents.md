@@ -282,6 +282,14 @@ snapshots during the call.
    merge them afterwards at full corpus cost.
 3. Surviving items are saved to the `questions` table (all item types share
    that table) and pushed to the browser as a `question` message.
+3a. The synthesizer sees the session's insights ordered by creation, but not
+   all in full. A **live** insight (starred, or unanswered and touched within
+   `SYNTHESIZER_WORKING_SET_SECONDS`, default 600) carries its full record; a
+   **settled** one collapses to a stub of id, type, shortened text, and
+   `"settled": true`, which merge and answer can still target. Sending every
+   insight in full made this agent 48 percent of a measured meeting's token
+   bill and grew quadratically with call length. A cycle whose insights and
+   transcript are byte-identical to the previous one skips the model call.
 4. `new_insight` / `new_opportunity` events fan out to the meta agents: the
    synthesizer may update, answer, or elevate items (emitting
    `insight_updated`, `question_answered`, `insight_elevated`), and the
