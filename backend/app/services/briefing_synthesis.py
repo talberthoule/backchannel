@@ -389,10 +389,15 @@ def _format_insights(items: list[dict]) -> str:
     lines = []
     for item in items:
         item_id = item.get("id", "")
-        item_type = item.get("item_type", "question")
+        item_type = item.get("item_type") or "question"
         text = item.get("question") or item.get("text") or ""
-        rationale = item.get("rationale") or ""
-        lines.append(f"- insight_id={item_id}; type={item_type}: {text} ({rationale})")
+        rationale = (item.get("rationale") or "").strip()
+        line = f"- insight_id={item_id}; type={item_type}: {text}"
+        # The live path supplies no rationale; an empty "()" is noise the model
+        # would otherwise have to read past on every entry, every cycle.
+        if rationale:
+            line += f" ({rationale})"
+        lines.append(line)
     return "\n".join(lines)
 
 
