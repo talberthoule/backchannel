@@ -132,9 +132,33 @@ class ConsolidatedAnalystAgent:
         meeting_context_text: str | None = None,
         lenses: list[dict] | None = None,
         session_id: uuid.UUID | None = None,
+        suppressed_types: set[str] | None = None,
     ):
         self._model = settings.REFINEMENT_MODEL if model_override is None else model_override
         prompt_template = prompt_override or CONSOLIDATED_ANALYST_BASE_PROMPT
+
+        # Kept so the lens set can be recomposed when the meeting type changes
+        # mid-call and a lens becomes (in)applicable.
+        self._configured_lenses = lenses
+        self._configured_types = enabled_types
+        self._suppressed_types = set(suppressed_types or ())
+        self._uses_lens_sections = LENS_SECTIONS_PLACEHOLDER in prompt_template
+        self._compose_lenses()
+
+        if "## Speaker Attribution Requirements" not in prompt_template:
+            prompt_template = f"{prompt_template.rstrip()}{SPEAKER_ATTRIBUTION_APPENDIX}"
+        self._prompt_template = prompt_template
+        self.meeting_context_text = meeting_context_text or build_meeting_context_text()
+        self._session_id = session_id
+
+    def _compose_lenses(self):
+        """(Re)build the lens sections and enabled types from the stored config.
+
+        Suppressed item types are dropped here rather than filtered from the
+        output, so a suppressed lens costs no prompt tokens at all.
+        """
+        lenses = self._configured_lenses
+        enabled_types = self._configured_types
 
         self._lens_sections = ""
         self._item_type_values = "|".join(TYPE_ORDER)
@@ -142,14 +166,17 @@ class ConsolidatedAnalystAgent:
         # lens label per item_type as an attribution fallback.
         self._lens_by_key: dict[str, dict] = {}
         self._label_by_type: dict[str, str] = {}
-        if LENS_SECTIONS_PLACEHOLDER in prompt_template:
+        if self._uses_lens_sections:
             if lenses is None:
                 # No lens config stored yet: fall back to the defaults, honoring
                 # the legacy sub_types selection when one was provided.
                 lenses = [dict(l) for l in DEFAULT_ANALYST_LENSES]
                 if enabled_types:
                     lenses = [l for l in lenses if l["item_type"] in enabled_types]
-            lens_list = active_lenses(lenses)
+            lens_list = [
+                lens for lens in active_lenses(lenses)
+                if _lens_item_type(lens) not in self._suppressed_types
+            ]
             self._lens_sections = compose_lens_sections(lens_list)
             lens_types = []
             for lens in lens_list:
@@ -166,7 +193,8 @@ class ConsolidatedAnalystAgent:
         else:
             # Legacy monolithic prompt (custom prompt from before configurable
             # lenses): run it as-is and filter output by the sub_types config.
-            self.enabled_types = enabled_types or VALID_TYPES
+            # The prompt cannot be trimmed, but suppressed output is dropped.
+            self.enabled_types = set(enabled_types or VALID_TYPES) - self._suppressed_types
             self._item_type_values = "|".join(t for t in TYPE_ORDER if t in self.enabled_types)
             # No lens sections in a legacy prompt; the enabled types are the
             # closest analog for the live activity summary.
@@ -178,6 +206,14 @@ class ConsolidatedAnalystAgent:
         self.meeting_context_text = meeting_context_text or build_meeting_context_text()
         self._session_id = session_id
         self.last_outcome: dict | None = None
+
+    def set_suppressed_types(self, suppressed_types: set[str] | None):
+        """Apply a mid-call change to which item types this agent may produce."""
+        updated = set(suppressed_types or ())
+        if updated == self._suppressed_types:
+            return
+        self._suppressed_types = updated
+        self._compose_lenses()
 
     async def run_cycle(
         self,

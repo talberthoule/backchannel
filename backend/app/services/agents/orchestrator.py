@@ -65,7 +65,11 @@ def _parse_model_intervals(raw: str) -> dict[str, int]:
     return {str(k): int(v) for k, v in data.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
 
 
-_DEDUP_WINDOW_SECONDS = 60
+# Restatements cluster about a minute apart: on a measured 57-minute meeting the
+# median gap between insights the synthesizer later merged was 1.0 minute, and 90
+# percent were within 2.1 minutes. A 60s window structurally missed 13 of 21 of
+# them and left the synthesizer to merge them afterwards at full corpus cost.
+_DEDUP_WINDOW_SECONDS = 300
 ProgressCallback = Callable[[dict[str, object]], Awaitable[None]]
 
 # Drain modes for call finalization: "full" runs every post-call stage,
@@ -330,6 +334,7 @@ class AgentOrchestrator:
             meeting_context_text=self.meeting_context_text,
             lenses=ca_lenses,
             session_id=session_id,
+            suppressed_types=self._suppressed_analyst_types(),
         )
 
         activity_agents = []
@@ -555,6 +560,16 @@ class AgentOrchestrator:
         self.meeting_context_text = build_meeting_context_text(self.meeting_type, self.meeting_context)
         self._offering_matching_enabled = should_match_offerings(self.meeting_type)
 
+    def _suppressed_analyst_types(self) -> set[str]:
+        """Item types the analyst should not produce for this meeting type.
+
+        Opportunity scouting only pays off when the offering specialist can
+        enrich the result. On a meeting type where offering matching is off,
+        the lens produced 57 of 199 insights on a measured call and every one
+        carried an empty offering_match, so it is dropped from the prompt.
+        """
+        return set() if self._offering_matching_enabled else {"opportunity"}
+
     def update_meeting_context(self, meeting_type: str | None = None, meeting_context: str | None = None):
         """Apply a mid-call session context edit to the running text agents."""
         if meeting_type is not None:
@@ -563,6 +578,7 @@ class AgentOrchestrator:
             self.meeting_context = meeting_context
         self._derive_meeting_context()
         self.consolidated_agent.meeting_context_text = self.meeting_context_text
+        self.consolidated_agent.set_suppressed_types(self._suppressed_analyst_types())
         self.objection_agent.update_meeting_context(self.meeting_context_text)
         # If the type change turned offering matching on, the specialist may not be wired yet.
         self._wire_opportunity_specialist()

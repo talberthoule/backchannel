@@ -276,8 +276,10 @@ snapshots during the call.
 1. A text agent proposes an item (question, observation, opportunity,
    objection, or action item) with a type and content.
 2. The orchestrator deduplicates it against recent items using simple
-   word-overlap similarity within a 60-second sliding window
-   (`orchestrator.py`).
+   word-overlap similarity within a 300-second sliding window
+   (`orchestrator.py`). Restatements cluster around a minute apart, so a
+   shorter window let near-duplicates through and left the synthesizer to
+   merge them afterwards at full corpus cost.
 3. Surviving items are saved to the `questions` table (all item types share
    that table) and pushed to the browser as a `question` message.
 4. `new_insight` / `new_opportunity` events fan out to the meta agents: the
@@ -303,3 +305,11 @@ and objection handler, taking effect on their next cycle. A type change
 that turns on offering matching (client/sales or customer delivery) also
 wires the opportunity specialist mid-call. The registry is per-process, so
 this requires the single-worker deployment the app uses today.
+
+Offering matching also gates the analyst's opportunity lens. On a meeting
+type where matching is off, that lens is dropped from the prompt rather than
+filtered from the output, so it costs no tokens and produces no cards. A
+measured internal check-in had been spending 29 percent of its insights on
+opportunities that could never be enriched, because the specialist that
+enriches them is disabled for that meeting type. Switching the type mid-call
+recomposes the lens set on the analyst's next cycle.

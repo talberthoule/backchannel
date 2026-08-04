@@ -188,7 +188,7 @@ Interval defaults above are the seeded values in `backend/app/services/seed_agen
 
 Important: there is no standalone `question_hunter.py` in the current tree. Question generation is one enabled lens of `ConsolidatedAnalystAgent`; `question_hunter` only appears as a backward-compatible `agent_source` label for exported/saved question items.
 
-Deduplication is in `orchestrator.py` and uses simple word-overlap similarity within a 60-second sliding window.
+Deduplication is in `orchestrator.py` and uses simple word-overlap similarity within a 300-second sliding window (`_DEDUP_WINDOW_SECONDS`). The analyst's opportunity lens is dropped from the prompt entirely on meeting types where offering matching is off, so an internal check-in no longer runs sales scouting whose enrichment stage is disabled (ALP-286).
 
 ## Audio Pipeline Details
 

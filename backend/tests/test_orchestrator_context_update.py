@@ -112,6 +112,41 @@ class UpdateMeetingContextTests(unittest.IsolatedAsyncioTestCase):
         # Context not passed -> original context retained.
         self.assertIn("initial context", orchestrator.meeting_context_text)
 
+    async def test_opportunity_lens_is_suppressed_when_offering_matching_is_off(self):
+        orchestrator = make_orchestrator(meeting_type="internal_checkin")
+
+        self.assertFalse(orchestrator._offering_matching_enabled)
+        self.assertEqual({"opportunity"}, orchestrator._suppressed_analyst_types())
+        agent = orchestrator.consolidated_agent
+        self.assertNotIn("opportunity", agent.enabled_types)
+        # Suppression removes the lens from the prompt, not just from the output.
+        # (Match the tag line, not the word: other lenses mention "opportunity"
+        # in their prose.)
+        self.assertNotIn('"item_type": "opportunity"', agent._lens_sections)
+        self.assertIn('"item_type": "question"', agent._lens_sections)
+        self.assertNotIn("opportunity", agent._item_type_values)
+
+    async def test_opportunity_lens_runs_when_offering_matching_is_on(self):
+        orchestrator = make_orchestrator(meeting_type="client_sales")
+
+        self.assertTrue(orchestrator._offering_matching_enabled)
+        self.assertEqual(set(), orchestrator._suppressed_analyst_types())
+        self.assertIn("opportunity", orchestrator.consolidated_agent.enabled_types)
+
+    async def test_type_change_recomposes_the_analyst_lenses_mid_call(self):
+        orchestrator = make_orchestrator(meeting_type="internal_checkin")
+        self.assertNotIn("opportunity", orchestrator.consolidated_agent.enabled_types)
+
+        orchestrator.update_meeting_context(meeting_type="client_sales")
+
+        agent = orchestrator.consolidated_agent
+        self.assertIn("opportunity", agent.enabled_types)
+        self.assertIn("opportunity", agent._item_type_values)
+
+        orchestrator.update_meeting_context(meeting_type="internal_checkin")
+
+        self.assertNotIn("opportunity", agent.enabled_types)
+
     async def test_invalid_type_normalizes_to_general(self):
         orchestrator = make_orchestrator(meeting_type="client_sales")
 
