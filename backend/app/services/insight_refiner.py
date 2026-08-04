@@ -21,6 +21,24 @@ from app.models import Question, TranscriptEntry
 
 logger = logging.getLogger(__name__)
 
+
+def strip_json_fence(raw: str) -> str:
+    """Unwrap a markdown-fenced model response down to its JSON body.
+
+    The leading strip matters: without it a response whose fence carries any
+    surrounding whitespace (a trailing newline is the common case) fails both
+    the startswith and endswith checks, so the fence survives, json.loads
+    fails, and the caller silently falls through to bracket-scan recovery.
+    Both call sites had that strip stranded after a return and never ran it.
+    """
+    raw = (raw or "").strip()
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+    if raw.endswith("```"):
+        raw = raw[:-3]
+    return raw.strip()
+
+
 REFINEMENT_PROMPT_TEMPLATE = """You are a refinement engine for a live call assistant. You are reviewing the current state of all captured insights against the most recent transcript.
 
 Your job is to find things the real-time system may have missed or that have evolved:
@@ -126,12 +144,7 @@ async def run_refinement_cycle(session_id: uuid.UUID) -> list[dict]:
         logger.error(f"Refinement API call failed: {e}")
         return []
 
-        raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-    if raw.endswith("```"):
-        raw = raw[:-3]
-    raw = raw.strip()
+    raw = strip_json_fence(raw)
 
     if not raw or raw == "[]":
         return []
