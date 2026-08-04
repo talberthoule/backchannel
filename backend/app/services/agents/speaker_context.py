@@ -45,12 +45,15 @@ def format_transcript_segment(
     speaker_id: str | None = None,
     speaker_type: str | None = None,
 ) -> str:
+    """Render one transcript line for a prompt.
+
+    speaker_type is accepted for call-site compatibility but deliberately not
+    emitted: it is a constant per speaker, already stated once per speaker in
+    the Participants legend, and nothing parses it back out of model output.
+    Repeating it on every line cost about 11 percent of every transcript
+    payload, multiplied by how often each window is re-read (ALP-282).
+    """
     name = speaker_name or "Unknown"
-    metadata = []
     if speaker_id:
-        metadata.append(f"speaker_id={speaker_id}")
-    if speaker_type:
-        metadata.append(f"speaker_type={normalize_speaker_type(speaker_type)}")
-    if metadata:
-        return f"[{name} | {'; '.join(metadata)}]: {text}"
+        return f"[{name} | speaker_id={speaker_id}]: {text}"
     return f"[{name}]: {text}"

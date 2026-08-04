@@ -100,7 +100,7 @@ SPEAKER_ATTRIBUTION_APPENDIX = """
 
 ## Speaker Attribution Requirements
 - Transcript lines may include `speaker_id=<uuid>`. Use those UUIDs for attribution.
-- Transcript lines and Participants may include `speaker_type=team` or `speaker_type=external`.
+- Participants lists `speaker_type=team` or `speaker_type=external` once per speaker. Look the speaker up there by `speaker_id`; transcript lines do not repeat it.
 - Treat `team` speakers as internal voices from the user's organization.
 - Treat `external` speakers as outside the internal team. Use Meeting Context to decide whether they are a client, vendor, partner, candidate, or other participant.
 - Do not treat external speaker statements as client evidence unless the Meeting Context or transcript supports that interpretation.
