@@ -73,7 +73,12 @@ class PromptOrderingTests(unittest.TestCase):
             prompts.CONSOLIDATED_ANALYST_BASE_PROMPT,
         )
         agent = ConsolidatedAnalystAgent()
-        self.assertNotIn(SPEAKER_ATTRIBUTION_APPENDIX, agent._prompt_template)
+        # Assert placement, not absence: the baked-in section is byte-identical
+        # to the appendix constant, so a substring check would match the
+        # correctly-placed copy too. What matters is that it appears once and
+        # that nothing static trails the transcript.
+        self.assertEqual(1, agent._prompt_template.count("## Speaker Attribution Requirements"))
+        self.assertFalse(agent._prompt_template.rstrip().endswith(SPEAKER_ATTRIBUTION_APPENDIX.rstrip()))
         self.assertLessEqual(len(trailing_static(agent._prompt_template)), MAX_TRAILING_STATIC_CHARS)
 
     def test_a_custom_prompt_without_the_section_still_gets_it(self):
