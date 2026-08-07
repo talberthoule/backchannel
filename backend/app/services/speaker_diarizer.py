@@ -4,6 +4,7 @@ Pipeline: PCM16 audio → VAD (speech detection) → speaker embedding → match
 """
 
 import logging
+import math
 import os
 from dataclasses import dataclass
 
@@ -32,12 +33,52 @@ _vad_session: ort.InferenceSession | None = None
 _embed_session: ort.InferenceSession | None = None
 
 
+def _vad_session_options() -> ort.SessionOptions:
+    """Single-threaded: the VAD has nothing worth parallelizing.
+
+    Silero VAD is an LSTM over one 512-sample frame. ORT's default pool of one
+    thread per core costs 5x the CPU (0.53ms vs 0.11ms per frame on 28 cores)
+    and buys roughly 9% of wall time back, which is not a trade worth making
+    for something that runs 31 times a second per track (ALP-289).
+    """
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = settings.DIARIZER_VAD_ONNX_THREADS
+    return options
+
+
+def _embed_session_options() -> ort.SessionOptions:
+    """A small bounded pool for the embedding model.
+
+    ResNet152 does parallelize, unlike the VAD, but nowhere near one thread
+    per core: on 28 cores the default drew 19 cores' worth of CPU for a single
+    5s segment to go 4.4x faster than one thread - 23% parallel efficiency, so
+    77% of that CPU was pool overhead rather than arithmetic. Bounding the
+    pool cuts that CPU about 4x and does
+    cost wall time - a 5s segment goes 158ms to 326ms, five minutes of audio
+    14.3s to 22.1s. Live that is invisible (7% of realtime), but a foreground
+    audio import on a many-core box is around 1.5x slower.
+
+    Spinning is off because segments arrive seconds apart and ORT keeps the
+    pool hot in between, charging that spin to whatever runs next - the VAD
+    (ALP-289).
+    """
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = settings.DIARIZER_EMBED_ONNX_THREADS
+    if not settings.DIARIZER_EMBED_ONNX_SPIN:
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+    return options
+
+
 def _get_vad_model() -> ort.InferenceSession:
     global _vad_session
     if _vad_session is None:
         path = os.path.join(MODELS_DIR, "silero_vad.onnx")
-        _vad_session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
-        logger.info("Loaded Silero VAD model")
+        _vad_session = ort.InferenceSession(
+            path, _vad_session_options(), providers=["CPUExecutionProvider"]
+        )
+        logger.info(
+            f"Loaded Silero VAD model (intra-op threads: {settings.DIARIZER_VAD_ONNX_THREADS})"
+        )
     return _vad_session
 
 
@@ -52,8 +93,13 @@ def _get_embed_model() -> ort.InferenceSession:
     global _embed_session
     if _embed_session is None:
         path = resolve_embed_model_path()
-        _embed_session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
-        logger.info(f"Loaded speaker embedding model: {os.path.basename(path)}")
+        _embed_session = ort.InferenceSession(
+            path, _embed_session_options(), providers=["CPUExecutionProvider"]
+        )
+        logger.info(
+            f"Loaded speaker embedding model: {os.path.basename(path)} "
+            f"(intra-op threads: {settings.DIARIZER_EMBED_ONNX_THREADS})"
+        )
     return _embed_session
 
 
@@ -366,6 +412,13 @@ class SpeakerDiarizer:
         self._processed_samples = 0
         self._current_segment_start_sample: int | None = None
 
+        # VAD diagnostics, rolled over every ~10s window in feed_audio.
+        # _diag_max_energy holds a sum of squares, not an RMS; feed_audio
+        # converts once per window.
+        self._diag_frames = 0
+        self._diag_max_prob = 0.0
+        self._diag_max_energy = 0.0
+
     @property
     def registry(self) -> SpeakerRegistry:
         return self._registry
@@ -379,33 +432,42 @@ class SpeakerDiarizer:
         while len(self._pending_audio) >= frame_bytes:
             frame_start_sample = self._processed_samples
             frame_pcm = bytes(self._pending_audio[:frame_bytes])
-            self._pending_audio = self._pending_audio[frame_bytes:]
+            # In place: rebinding to a slice copied the whole remaining buffer
+            # once per frame, which grows with the incoming chunk size
+            # (109us vs 16us per 1000ms chunk) for no benefit (ALP-290).
+            del self._pending_audio[:frame_bytes]
 
             frame_float = np.frombuffer(frame_pcm, dtype=np.int16).astype(np.float32) / 32768.0
             speech_prob = self._vad.process_frame(frame_float)
             is_speech = speech_prob >= self._vad._threshold
 
-            # Diagnostic: track RMS + max VAD prob per ~10s window
-            if not hasattr(self, "_diag_frames"):
-                self._diag_frames = 0
-                self._diag_max_prob = 0.0
-                self._diag_max_rms = 0.0
+            # Diagnostic: loudest RMS + max VAD prob per ~10s window. The line
+            # stays - it is the quickest way to tell a dead mic from a quiet
+            # room - and so does RMS, which a single click or DC glitch cannot
+            # fool the way a peak can. Only the arithmetic changed: every
+            # frame is the same length, so tracking the largest sum of squares
+            # and taking one square root per window is exactly the old
+            # max-of-RMS at roughly a ninth of the cost (0.5us vs 4.8us per
+            # frame): np.dot beats sqrt(mean(f ** 2)), which allocated a
+            # squared copy of every frame to report one number every 312
+            # (ALP-290).
             self._diag_frames += 1
-            rms = float(np.sqrt(np.mean(frame_float ** 2)))
-            if rms > self._diag_max_rms:
-                self._diag_max_rms = rms
+            energy = float(np.dot(frame_float, frame_float))
+            if energy > self._diag_max_energy:
+                self._diag_max_energy = energy
             if speech_prob > self._diag_max_prob:
                 self._diag_max_prob = speech_prob
-            # 512 samples/frame @ 16kHz = 32ms; 312 frames ≈ 10s
+            # 512 samples/frame @ 16kHz = 32ms; 312 frames ~= 10s
             if self._diag_frames >= 312:
+                max_rms = math.sqrt(self._diag_max_energy / VoiceActivityDetector.FRAME_SAMPLES)
                 logger.info(
-                    f"VAD diag (10s window): max_rms={self._diag_max_rms:.4f} "
+                    f"VAD diag (10s window): max_rms={max_rms:.4f} "
                     f"max_speech_prob={self._diag_max_prob:.3f} "
                     f"threshold={self._vad._threshold}"
                 )
                 self._diag_frames = 0
                 self._diag_max_prob = 0.0
-                self._diag_max_rms = 0.0
+                self._diag_max_energy = 0.0
 
             if is_speech:
                 if not self._in_speech:

@@ -202,6 +202,25 @@ Diarization values can be changed at runtime through
 `PATCH /api/diagnostics/diarization/config`; the database-persisted runtime
 config wins over these defaults.
 
+#### ONNX Runtime threading
+
+The lightweight diarizer runs two ONNX models on CPU, and ONNX Runtime sizes
+its thread pool from the host core count unless told otherwise. Left at that
+default both models spend most of their CPU on pool overhead rather than
+arithmetic, and ORT does not see container CPU quotas, so a big host or a
+small quota both go badly. These settings bound it.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `DIARIZER_VAD_ONNX_THREADS` | 1 | Intra-op threads for Silero VAD. It is an LSTM over one 512-sample frame with nothing to parallelize; the ORT default cost 5x the CPU for about 9% of wall time |
+| `DIARIZER_EMBED_ONNX_THREADS` | `min(4, cores / 2)` | Intra-op threads for the WeSpeaker embedding model. Bounding the pool cuts CPU roughly 4x and costs some wall time |
+| `DIARIZER_EMBED_ONNX_SPIN` | `false` | Let ORT spin-wait between embedding calls. Segments arrive seconds apart, so that spin is charged to the VAD; leaving this off measured no downside |
+
+Both thread counts are clamped to at least 1: ORT reads 0 as "use every core",
+which is the default these settings exist to avoid. Raising
+`DIARIZER_EMBED_ONNX_THREADS` trades CPU for latency on the foreground
+transcript-import path; the live path has ample headroom either way.
+
 ### Legacy agent toggles
 
 `AGENT_QUESTION_HUNTER_ENABLED`, `AGENT_CONSOLIDATED_ENABLED`,

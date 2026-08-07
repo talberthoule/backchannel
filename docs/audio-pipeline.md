@@ -49,6 +49,18 @@ diagnostics endpoints (`/api/diagnostics/diarization`):
 | `MIN_NEW_SPEAKER_MS` | 4000 | Minimum speech needed before enrolling a new voice profile |
 | `MAX_SPEAKER_PROFILES_PER_TRACK` | 4 | Safety cap for auto-enrolled profiles on each audio track |
 
+Both ONNX models run on CPU with an explicitly bounded ONNX Runtime thread
+pool rather than ORT's one-thread-per-core default, which charged most of its
+CPU to pool overhead and ignored container CPU quotas:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `DIARIZER_VAD_ONNX_THREADS` | 1 | Intra-op threads for Silero VAD (nothing in it parallelizes) |
+| `DIARIZER_EMBED_ONNX_THREADS` | `min(4, cores / 2)` | Intra-op threads for the speaker embedding model |
+| `DIARIZER_EMBED_ONNX_SPIN` | `false` | Whether ORT may spin-wait between embedding calls |
+
+See [Configuration](configuration.md) for the measured trade-offs.
+
 A diarizer slower than realtime would otherwise buffer incoming audio without
 bound until the process is killed for running out of memory. The ingress path
 therefore caps the queued diarization backlog at 30 seconds of dual-track
@@ -58,6 +70,13 @@ audio and sheds the oldest queued frames past that cap (`_shed_diarization_backl
 speaker attribution instead of ending the call. The client is told once via a
 `diarization_overloaded` status message, and the shed count feeds the
 call-health block of the live agent activity feed.
+
+That guard and the thread bounds above address the same failure from opposite
+ends. Under a 2-CPU container quota the unbounded pool ran the pipeline at 134
+percent of realtime - slower than the audio arriving, which is what drove the
+backlog into the shedder in the first place. Bounding the pool brought the same
+audio to 14 percent, so the shedder is now a genuine backstop rather than a
+routine occurrence.
 
 ## Speaker identification
 

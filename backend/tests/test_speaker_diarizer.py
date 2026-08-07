@@ -2,12 +2,17 @@ import unittest
 from unittest.mock import Mock, patch
 
 import numpy as np
+import onnxruntime as ort
 
+from app.config import Settings, _default_embed_threads, settings
+from app.services import speaker_diarizer
 from app.services.speaker_diarizer import (
     DiarizedSegment,
     SpeakerDiarizer,
     SpeakerRegistry,
     VoiceActivityDetector,
+    _embed_session_options,
+    _vad_session_options,
 )
 from app.services.voice_enrollment import LOCAL_VOICE_PROFILE_ID
 
@@ -329,6 +334,180 @@ class SpeakerDiarizerTests(unittest.TestCase):
 
         self.assertEqual(DiarizedSegment("auto_1", b"ab"), legacy.flush())
         self.assertEqual(pieces, batch.flush_segments())
+
+
+class DiarizerThreadPoolTests(unittest.TestCase):
+    """ALP-289: both ONNX sessions get a tuned pool instead of ORT's default."""
+
+    def test_vad_session_is_single_threaded(self):
+        self.assertEqual(1, _vad_session_options().intra_op_num_threads)
+
+    def test_embed_session_bounds_the_pool_and_parks_it_between_calls(self):
+        options = _embed_session_options()
+
+        self.assertEqual(settings.DIARIZER_EMBED_ONNX_THREADS, options.intra_op_num_threads)
+        self.assertEqual(
+            "0",
+            options.get_session_config_entry("session.intra_op.allow_spinning"),
+        )
+
+    def test_embed_thread_default_scales_with_the_host_and_never_reaches_zero(self):
+        # The floor matters more than the ceiling: ORT reads 0 as "use every
+        # core", so losing it would silently restore the default pool on the
+        # smallest hosts - and on a 4-core CI runner a bounds-only assertion
+        # cannot tell scaling from a hardcoded constant.
+        self.assertEqual(
+            [1, 1, 1, 1, 2, 4, 4, 4],
+            [_default_embed_threads(n) for n in (None, 0, 1, 2, 4, 8, 28, 128)],
+        )
+
+    def test_supplied_thread_counts_are_clamped_out_of_ort_default_territory(self):
+        for supplied, expected in ((0, 1), (-8, 1), (1, 1), (2, 2), (6, 6)):
+            with self.subTest(supplied=supplied):
+                configured = Settings(
+                    DIARIZER_EMBED_ONNX_THREADS=supplied,
+                    DIARIZER_VAD_ONNX_THREADS=supplied,
+                )
+                self.assertEqual(expected, configured.DIARIZER_EMBED_ONNX_THREADS)
+                self.assertEqual(expected, configured.DIARIZER_VAD_ONNX_THREADS)
+
+    def test_spinning_can_be_handed_back_to_ort(self):
+        with patch.object(settings, "DIARIZER_EMBED_ONNX_SPIN", True):
+            options = _embed_session_options()
+
+        with self.assertRaises(RuntimeError):
+            options.get_session_config_entry("session.intra_op.allow_spinning")
+
+
+class DiarizerSessionWiringTests(unittest.TestCase):
+    """The options must actually reach ORT, not merely be constructible.
+
+    Dropping the options argument from either InferenceSession call reverts
+    all of ALP-289 while leaving the builders above perfectly green.
+    """
+
+    def _construct(self, getter, attribute):
+        original = getattr(speaker_diarizer, attribute)
+        setattr(speaker_diarizer, attribute, None)
+        self.addCleanup(setattr, speaker_diarizer, attribute, original)
+        with patch("app.services.speaker_diarizer.ort.InferenceSession") as session:
+            getter()
+        self.assertEqual(1, session.call_count)
+        args, kwargs = session.call_args
+        self.assertEqual(
+            2, len(args), "session options must reach InferenceSession positionally"
+        )
+        self.assertIsInstance(args[1], ort.SessionOptions)
+        self.assertEqual(["CPUExecutionProvider"], kwargs["providers"])
+        return args[1]
+
+    def test_vad_session_is_built_with_the_single_threaded_options(self):
+        options = self._construct(speaker_diarizer._get_vad_model, "_vad_session")
+
+        self.assertEqual(settings.DIARIZER_VAD_ONNX_THREADS, options.intra_op_num_threads)
+
+    def test_embed_session_is_built_with_the_bounded_pool_options(self):
+        options = self._construct(speaker_diarizer._get_embed_model, "_embed_session")
+
+        self.assertEqual(settings.DIARIZER_EMBED_ONNX_THREADS, options.intra_op_num_threads)
+        self.assertEqual(
+            "0",
+            options.get_session_config_entry("session.intra_op.allow_spinning"),
+        )
+
+
+class FrameLoopTests(unittest.TestCase):
+    """ALP-290: the per-frame loop pays only for what the frame needs."""
+
+    def test_in_place_drain_yields_every_frame_in_order_with_a_clean_remainder(self):
+        diarizer = SpeakerDiarizer()
+        frame_samples = VoiceActivityDetector.FRAME_SAMPLES
+        buffer = diarizer._pending_audio
+        values = [100, 200, 300, 400, 500]
+        remainder = np.full(frame_samples // 2, 999, dtype=np.int16).tobytes()
+        audio = b"".join(
+            np.full(frame_samples, value, dtype=np.int16).tobytes() for value in values
+        ) + remainder
+        seen: list[int] = []
+
+        def record(frame_float):
+            # Every sample in a frame carries that frame's value, and 32768 is
+            # a power of two, so the round trip through float32 is exact.
+            self.assertEqual(frame_samples, len(frame_float))
+            seen.append(int(frame_float[0] * 32768.0))
+            return 0.0
+
+        diarizer._vad.process_frame = record
+        # Deliberately unaligned chunks: frames must still be carved on
+        # 1024-byte boundaries no matter how the input is split.
+        for start in range(0, len(audio), 777):
+            diarizer.feed_audio(audio[start:start + 777])
+
+        self.assertEqual(values, seen)
+        self.assertEqual(remainder, bytes(diarizer._pending_audio))
+        self.assertEqual(len(values) * frame_samples, diarizer._processed_samples)
+        # Drained in place rather than rebound to a fresh copy per frame.
+        self.assertIs(buffer, diarizer._pending_audio)
+
+    def test_a_broken_embedder_still_emits_every_segment(self):
+        # A deployment whose embedding model never loads - no download_models
+        # run, a truncated file, an ORT load failure - never enrolls anyone, so
+        # profile_count stays 0 for the whole call. Short turns must still
+        # reach transcription as unknown-speaker audio; dropping them would be
+        # silent data loss visible only as a log line.
+        registry = SpeakerRegistry(threshold=0.68)
+        diarizer = SpeakerDiarizer(registry=registry)
+        short = pcm(2.0)  # below MIN_NEW_SPEAKER_MS, so it cannot enroll
+        long = pcm(6.0)
+        emitted: list[DiarizedSegment] = []
+
+        for audio in (short, long):
+            diarizer._current_segment.extend(audio)
+            with patch(
+                "app.services.speaker_diarizer._extract_embedding",
+                side_effect=RuntimeError("embedding model missing"),
+            ):
+                emitted.extend(diarizer._finalize_segment())
+
+        self.assertEqual(
+            ["auto_unknown", "auto_unknown"], [segment.speaker_id for segment in emitted]
+        )
+        self.assertEqual(short + long, b"".join(segment.pcm_bytes for segment in emitted))
+        self.assertEqual(0, registry.profile_count)
+
+    def test_diagnostic_counters_exist_before_any_audio_arrives(self):
+        diarizer = SpeakerDiarizer()
+
+        self.assertEqual(
+            (0, 0.0, 0.0),
+            (diarizer._diag_frames, diarizer._diag_max_prob, diarizer._diag_max_energy),
+        )
+
+    def test_diagnostic_window_reports_loudest_rms_then_rolls_over(self):
+        diarizer = SpeakerDiarizer()
+        frame_samples = VoiceActivityDetector.FRAME_SAMPLES
+        diarizer._vad.process_frame = Mock(return_value=0.0)
+        quiet = np.full(frame_samples, 5, dtype=np.int16).tobytes()
+        # A single full-scale sample: the click that peak amplitude cannot
+        # tell from a loud room. Its RMS is only 0.044, well under the frame
+        # below, so it must not win the window.
+        click = np.zeros(frame_samples, dtype=np.int16)
+        click[0] = 32767
+        # Negative frame: RMS squares, so this is genuinely the loudest one.
+        # A signed max would read it as near-silence instead.
+        loud = np.full(frame_samples, -8000, dtype=np.int16).tobytes()
+
+        with self.assertLogs("app.services.speaker_diarizer", level="INFO") as logs:
+            diarizer.feed_audio(quiet * 310 + click.tobytes() + loud)
+
+        # Every sample in the loud frame shares one magnitude, so its RMS is
+        # exactly 8000/32768 - the same figure the pre-ALP-290 code reported,
+        # which keeps remembered thresholds meaningful.
+        self.assertIn(f"max_rms={8000 / 32768.0:.4f}", logs.output[0])
+        self.assertEqual(
+            (0, 0.0, 0.0),
+            (diarizer._diag_frames, diarizer._diag_max_prob, diarizer._diag_max_energy),
+        )
 
 
 if __name__ == "__main__":

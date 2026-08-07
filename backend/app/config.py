@@ -1,4 +1,21 @@
+import os
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+
+def _default_embed_threads(cpu_count: int | None) -> int:
+    """Bounded intra-op pool size for the speaker embedding model.
+
+    Half the cores, so the model never takes the whole machine; at least one,
+    because ORT reads 0 as "use every core" and that default is precisely what
+    this setting exists to avoid (an unknown or single-core count must not
+    silently reinstate it); at most four, because measured parallel efficiency
+    collapses past that - 28 threads spent 77% of their CPU on pool overhead
+    rather than arithmetic. The cap also makes ORT's blindness to container
+    CPU quotas a non-issue (ALP-289).
+    """
+    return min(4, max(1, (cpu_count or 1) // 2))
 
 
 class Settings(BaseSettings):
@@ -62,6 +79,38 @@ class Settings(BaseSettings):
     MAX_SEGMENT_MS: int = 15000
     MIN_SEGMENT_MS: int = 750
     SORTFORMER_WINDOW_MS: int = 15000
+
+    # ONNX Runtime thread pools for the two diarizer models. Left at ORT's
+    # default - one intra-op thread per core - both models spend most of their
+    # CPU in pool overhead rather than arithmetic. Measured on 28 cores: the
+    # VAD is a 2.3MB LSTM over a 512-sample frame with nothing to parallelize,
+    # and the default cost 0.53ms CPU per frame against 0.11ms at a single
+    # thread to buy back about 9% of wall time. The embedding model does
+    # parallelize, but not 28 ways: the default drew 19 cores' worth of CPU
+    # for one 5s segment at 5% parallel efficiency. Bounding it trades some
+    # wall time for roughly a quarter of the CPU - see _embed_session_options
+    # in services/speaker_diarizer.py (ALP-289).
+    DIARIZER_VAD_ONNX_THREADS: int = 1
+    DIARIZER_EMBED_ONNX_THREADS: int = _default_embed_threads(os.cpu_count())
+    # ORT's intra-op pool spin-waits after a call returns so the next one
+    # starts sooner. Embeddings arrive seconds apart, so that spin is charged
+    # to whatever runs next - which is the VAD: 894ms of CPU burned during a
+    # 300ms idle gap, gone entirely with spinning off. The VAD keeps the
+    # default; at one thread there is no pool to idle and disabling it
+    # measured slightly worse (ALP-289).
+    DIARIZER_EMBED_ONNX_SPIN: bool = False
+
+    @field_validator("DIARIZER_VAD_ONNX_THREADS", "DIARIZER_EMBED_ONNX_THREADS")
+    @classmethod
+    def _clamp_onnx_threads(cls, value: int) -> int:
+        """Keep an operator override out of ORT's default pool.
+
+        Setting 0 is the natural way to write "let ORT choose", and that is
+        exactly the one-thread-per-core behavior these settings exist to
+        avoid; negatives are accepted by ORT and measure worse still. If the
+        computed default is worth a floor, so is a supplied one (ALP-289).
+        """
+        return max(1, value)
 
     # extra="ignore": a .env with unrelated keys (compose database settings,
     # legacy entries) must not crash startup.
