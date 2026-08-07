@@ -6,7 +6,7 @@ import WelcomeView from "./components/WelcomeView";
 import PreCallView from "./components/PreCall/PreCallView";
 import ActiveCallView from "./components/ActiveCall/ActiveCallView";
 import PostCallView from "./components/PostCall/PostCallView";
-import { startSingleFlight, useAudioCapture } from "./hooks/useAudioCapture";
+import { SILENT_AUDIO_LEVEL, startSingleFlight, useAudioCapture } from "./hooks/useAudioCapture";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { reconcileRefusedSession, useSession } from "./hooks/useSession";
 import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
@@ -193,7 +193,7 @@ export default function App() {
     refreshSynthesis,
   } = useSession(activeSessionId);
 
-  const { startCapture, stopCapture, isCapturing, audioLevel, systemAudioLevel, systemAudioActive } = useAudioCapture();
+  const { startCapture, stopCapture, isCapturing, audioLevelRef, systemAudioLevelRef, systemAudioActive } = useAudioCapture();
   const [captureSystemAudio, setCaptureSystemAudio] = useState(true);
   const { connect, disconnect, sendAudio, sendDirective, sendTrackState, sendStop, status, messages, audioStats } =
     useWebSocket();
@@ -896,8 +896,8 @@ export default function App() {
             onVoteQuestion={handleVoteQuestion}
             onAddDirective={handleAddDirective}
             onUpdateSessionContext={handleUpdateSessionContext}
-            audioLevel={audioLevel}
-            systemAudioLevel={liveSessionId === session.id ? systemAudioLevel : 0}
+            audioLevel={audioLevelRef}
+            systemAudioLevel={liveSessionId === session.id ? systemAudioLevelRef : SILENT_AUDIO_LEVEL}
             systemAudioActive={liveSessionId === session.id && systemAudioActive}
             isCapturing={liveSessionId === session.id && isCapturing}
             isStarting={liveSessionId === session.id && audioStarting}
