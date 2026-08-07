@@ -375,20 +375,37 @@ Python permanently.**
 After Tier 0 and Tier 1, essentially all remaining local CPU is one model:
 WeSpeaker ResNet152-LM, 79MB, per segment.
 
-Two open questions worth settling with `backend/scripts/diarizer_ab.py` and the
-call audio already on disk (`DATA_DIR/audio/<session_id>/segment_N.wav`):
+This section originally posed two open questions. The first has since been
+settled and the answer was no.
 
-1. **Does ResNet152 measurably beat ResNet34 on your real calls?** The legacy
-   `ecapa_tdnn.onnx` fallback already holds ResNet34-LM, so both are available.
-   ResNet34 is roughly 5-6x cheaper. Given that `SPEAKER_SIMILARITY_THRESHOLD`
-   was tuned empirically at 0.68, it is entirely possible the larger model is
-   buying precision the threshold already discards.
-2. **Does INT8 dynamic quantization cost any accuracy?** ORT supports it directly;
-   for speaker embeddings the typical accuracy loss is negligible and CPU cost
-   falls 2-3x.
+**SETTLED (ALP-292): ResNet152 stays.** The hypothesis that the larger model was
+buying precision the 0.68 threshold already discards is wrong. Measured on real
+Backchannel audio with a paired test over identical pair sets, ResNet152's
+overlap rate - the probability a different-speaker pair scores at least as high
+as a same-speaker pair - is 0.920% against ResNet34's 1.581% at 1.5s windows over
+278 positives; difference +0.661%, 95% CI [+0.287, +1.096], P(152 better) 100%.
+Equal error rate 3.61% against 5.37%. ResNet34 also over-segments concretely:
+208 enrollments against 185 over the same ten recordings, and one extra phantom
+speaker on two of them.
 
-If either lands, it is a larger win than the entire Rust rewrite, for a fraction
-of the effort. **The model is the cost; the language is the glue.**
+So the trade on offer was 1.7-1.9x more speaker confusion to save 3.3x CPU on a
+component Tier 0 had already made ~4x cheaper. Declined. Full evidence and
+method: `docs/superpowers/reviews/2026-08-07-alp-292-embedding-model-ab.md`.
+
+Worth recording, because it cost the evaluation a redesign: **the per-track split
+recordings are not usable as labels on this corpus.** Five of six two-sided
+recordings carry speakerphone echo, and the two with a silent output track are
+in-person meetings whose single mic holds the whole room. Anyone reaching for
+that shortcut again should read section 3 of the ALP-292 report first.
+
+**Still open: does INT8 dynamic quantization cost any accuracy?** ORT supports it
+directly; for speaker embeddings the typical loss is negligible and CPU falls
+2-3x. This is now the only remaining lever of that size, and the ALP-292 harness
+can score it the same way - the comparison machinery already exists, so this is
+a much cheaper question to answer than the first one was.
+
+The framing still holds even though the answer changed: **the model is the cost;
+the language is the glue.** It is simply that this particular model earns it.
 
 ### 3.5 Tier 3 - the architectural move: run the VAD in the browser
 
@@ -445,41 +462,79 @@ replaced with measurements as each tier lands.
 
 | Stage | CPU-s per wall-second | vs today |
 | --- | --- | --- |
-| Today (measured, as shipped) | **~2.5** | 1.0x |
-| + Tier 0 (session options, coherence gating, dead code) | ~0.7 | **~3.5x** |
-| + Tier 3 (VAD in the browser) | ~0.65 | ~4x |
-| + Tier 1 (Rust audio core) | ~0.62 | ~4x |
-| + Tier 2 (ResNet34 or INT8 embedding) | **~0.15** | **~15x** |
+| Today, as shipped (**measured**) | **2.51** | 1.0x |
+| + Tier 0, session options + frame loop (**measured**) | **0.54** | **4.7x** |
+| + Tier 3, VAD in the browser (projected) | ~0.52 | ~4.8x |
+| + Tier 1, Rust audio core (projected) | ~0.52 | ~4.8x |
+| + INT8 quantized embedding (projected, unevaluated) | ~0.20 | ~12x |
 
-The shape of that table is the argument, and the corrected baseline sharpens it.
-Tier 0 is a small diff and gets the first 3.5x. Tier 1 - the actual Rust rewrite -
-moves the number by a few percent, because by then the cost is arithmetic, not
-interpretation.
+The first two rows are measured end to end on the same 600 seconds of real call
+audio, pinned to the committed diarizer before and after. Everything below them
+is projection.
 
-**Tier 2 is now clearly the dominant remaining lever.** With real speech density
-near 90%, essentially every second of call audio goes through the embedding
-model, so the model's per-second cost is very nearly the whole budget. Whether
-ResNet152 earns its 5-6x premium over ResNet34 is therefore the single highest
--value open question in this document, and it is an evaluation, not an
-engineering project. It is tracked as ALP-292.
+Two rows changed meaning since the first draft, and both changes matter.
+
+**Tier 0 delivered 4.7x, and it was configuration, not code.** The measured split
+after the change is 98% embedding, 2% VAD - the VAD fell from 86.3s to 3.4s of
+CPU over the same audio, a 25x drop from a change that mostly just set a thread
+count. Most of that was never VAD cost at all: it was the embedding pool's
+spin-wait bleeding into the frames that followed it. Measured directly, the
+as-shipped configuration burns 894.5ms of CPU during a 300ms *idle* gap after an
+inference returns; with spinning disabled, 0.0ms.
+
+The deployment result is starker than the ratio suggests. Emulating a 2-CPU
+container quota with an affinity mask - `os.cpu_count()` still reports the host's
+28, which is exactly what ORT sees under a quota - the **old** configuration
+processed audio at **134% of realtime**. It could not keep up with the
+conversation, which is precisely the ALP-153 backlog-shed spiral. The same audio
+under the bounded pool runs at 14.2%. Capping the pool is what makes ORT's
+blindness to container CPU quotas stop mattering.
+
+**Tier 2 is closed, not pending.** ResNet34 was evaluated and lost (section 3.4).
+The coherence-split gating that appeared in an earlier version of this row was
+also evaluated and declined: the windows partition the segment, so total embedded
+audio is fixed and capping them saves nothing, and the splits are load-bearing -
+each one prevents a spurious speaker enrollment. Both were plausible on paper and
+neither survived measurement.
+
+That leaves INT8 quantization as the only remaining lever of consequence, and it
+is unevaluated. The ALP-292 harness can score it with the machinery already
+built.
+
+One structural caveat on all of this, from ALP-293: `MAX_SPEAKER_PROFILES_PER_TRACK`
+is 4 and the application log shows that cap binding 350 times. On calls where it
+binds, the registry has stopped discriminating regardless of which embedding model
+is loaded - so past four voices, none of this section's trade-offs apply.
 
 ### 3.8 Recommended sequence
 
-1. **Tier 0, this week.** Measure before and after on a real call. It is a small
-   diff with a large, verifiable effect, and it makes every later comparison
-   meaningful.
-2. **Settle the model question (Tier 2).** Run the A/B against stored call audio.
-   This is analysis, not engineering, and it determines whether Tier 1 is even
-   the right next investment.
-3. **Prototype the energy pre-gate in Python.** The idea is language-independent;
-   validate it before committing to Rust.
-4. **Then decide on the native core**, with the real remaining budget in hand
-   rather than an assumed one.
+Steps 1 and 2 are **done**; the rest stands.
 
-Build the Rust core because you want a predictable, embeddable, GIL-free audio
-engine - which is a legitimate goal on its own terms. Do not build it expecting
-it to be the thing that fixes the CPU. The measurements say that is a
-configuration problem wearing a language problem's clothes.
+1. ~~Tier 0.~~ **Done (ALP-289, ALP-290).** Measured 4.0x on real call audio.
+   Output provably unchanged: identical segment hashes and PCM at every emulated
+   host size, embeddings bit-identical across thread configurations.
+2. ~~Settle the model question.~~ **Done (ALP-292).** ResNet152 stays. The A/B
+   also invalidated the labelling scheme this document originally proposed, and
+   the harness now validates recordings instead of trusting them.
+3. **Prototype the energy pre-gate in Python.** Unchanged and still worth doing.
+   The idea is language-independent, so validate it before committing to Rust.
+   Note it now targets the 3% of the budget that is VAD rather than the 11% it
+   was before Tier 0, so its ceiling is lower than originally implied.
+4. **Evaluate INT8 quantization of the embedding model.** This has moved up. It
+   is the only remaining lever comparable in size to Tier 0, the harness to score
+   it already exists, and it is an evaluation rather than an engineering project.
+5. **Then decide on the native core**, with the real remaining budget in hand.
+
+That budget is now known rather than assumed, and it argues against the rewrite
+more strongly than the first draft did. After Tier 0, **97% of what remains is
+ONNX inference inside one model** - arithmetic that Rust executes with the
+identical kernels. The projected Rust win fell from "a few percent" to
+approximately that, of a number already 4x smaller.
+
+So: build the Rust core if you want a predictable, embeddable, GIL-free audio
+engine, which is a legitimate goal on its own terms. Do not build it expecting it
+to fix the CPU. The measurements said that was a configuration problem wearing a
+language problem's clothes, and setting the configuration proved it.
 
 ---
 
