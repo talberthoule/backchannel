@@ -66,7 +66,7 @@ class SortformerDiarizer:
         segments: list[DiarizedSegment] = []
         while len(self._pending_audio) >= self._window_bytes:
             window = bytes(self._pending_audio[:self._window_bytes])
-            self._pending_audio = self._pending_audio[self._window_bytes:]
+            del self._pending_audio[:self._window_bytes]  # in place (ALP-290)
             segments.extend(self._process_pcm_window(window, self._processed_samples))
             self._processed_samples += len(window) // self._bytes_per_sample
         return segments

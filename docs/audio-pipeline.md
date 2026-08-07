@@ -45,6 +45,18 @@ diagnostics endpoints (`/api/diagnostics/diarization`):
 | `MIN_NEW_SPEAKER_MS` | 4000 | Minimum speech needed before enrolling a new voice profile |
 | `MAX_SPEAKER_PROFILES_PER_TRACK` | 4 | Safety cap for auto-enrolled profiles on each audio track |
 
+Both ONNX models run on CPU with an explicitly bounded ONNX Runtime thread
+pool rather than ORT's one-thread-per-core default, which charged most of its
+CPU to pool overhead and ignored container CPU quotas:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `DIARIZER_VAD_ONNX_THREADS` | 1 | Intra-op threads for Silero VAD (nothing in it parallelizes) |
+| `DIARIZER_EMBED_ONNX_THREADS` | `min(4, cores / 2)` | Intra-op threads for the speaker embedding model |
+| `DIARIZER_EMBED_ONNX_SPIN` | `false` | Whether ORT may spin-wait between embedding calls |
+
+See [Configuration](configuration.md) for the measured trade-offs.
+
 ## Speaker identification
 
 Each closed segment gets a WeSpeaker ResNet152 embedding, compared against the
