@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SILENT_AUDIO_LEVEL, type AudioLevelSource } from "../../hooks/useAudioCapture";
 import type { AgentActivitySnapshot, AudioSendStats, MeetingType, ModelInfo, PostProcessingProgress as PostProcessingProgressState, Question, Session, SessionSynthesis, Speaker, StopDrainMode, TranscriptEntry } from "../../types";
 import AgentActivityPanel, { activityEmptyMessage } from "./AgentActivityPanel";
 import AudioIndicator from "./AudioIndicator";
@@ -28,8 +29,9 @@ interface ActiveCallViewProps {
   askDisabled: boolean;
   onMakeDirective?: (question: Question) => void;
   onUpdateSessionContext: (data: { meeting_type?: MeetingType; meeting_context?: string }) => Promise<void>;
-  audioLevel: number;
-  systemAudioLevel?: number;
+  // Live meter levels, read per animation frame rather than rendered (ALP-291).
+  audioLevel: AudioLevelSource;
+  systemAudioLevel?: AudioLevelSource;
   systemAudioActive?: boolean;
   isCapturing: boolean;
   isStarting: boolean;
@@ -213,11 +215,15 @@ export default function ActiveCallView({
       {/* Top bar */}
       <header className="flex items-center justify-between gap-4 border-b border-brand-light-gray-1 bg-surface px-4 py-3 md:px-6">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-          <AudioIndicator isCapturing={isCapturing} audioLevel={audioLevel} />
+          <AudioIndicator isCapturing={isCapturing} level={audioLevel} label="Microphone input level" />
           {systemAudioActive && (
             <span className="flex items-center gap-1">
               <span className="font-body text-[10px] text-brand-mid-gray">Meeting</span>
-              <AudioIndicator isCapturing={isCapturing} audioLevel={systemAudioLevel ?? 0} />
+              <AudioIndicator
+                isCapturing={isCapturing}
+                level={systemAudioLevel ?? SILENT_AUDIO_LEVEL}
+                label="Meeting audio input level"
+              />
             </span>
           )}
           {captureStatus && (

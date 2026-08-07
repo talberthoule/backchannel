@@ -2,6 +2,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type AudioTrack = 0 | 1; // 0 = mic, 1 = system audio
 
+/**
+ * A live 0-1 audio level read imperatively. Meter values change at frame rate,
+ * so they are kept out of React state entirely: consumers read `current` inside
+ * their own animation frame and paint the DOM directly (ALP-291).
+ */
+export interface AudioLevelSource {
+  readonly current: number;
+}
+
+/** Stable empty source for an indicator that has no live capture behind it. */
+export const SILENT_AUDIO_LEVEL: AudioLevelSource = { current: 0 };
+
 interface CaptureOptions {
   systemAudio?: boolean;
   onSystemAudioStateChange?: (active: boolean) => void;
@@ -63,12 +75,23 @@ export function createSystemCaptureStop(handle: SystemCaptureHandle): () => bool
   };
 }
 
+// Samples are written straight into a preallocated Int16Array: boxing every
+// sample into a JS array and splicing it ran on the audio thread, where an
+// overrun is a dropped render quantum.
+//
+// Do not fold the emit back into a single check after the loop. The chunk has
+// to be flushed inline, every time it fills, or a render quantum larger than
+// SAMPLES_NEEDED leaves a backlog that grows for the whole call: the previous
+// one-emit-per-process() version emitted 30 chunks where this one emits 76
+// over 30 blocks of 4096 samples. 128-sample quanta hide it; larger ones do
+// not, and the two versions are byte-identical whenever it is hidden.
 const WORKLET_CODE = `
+  const SAMPLES_NEEDED = 1600; // ~100ms at 16kHz
   class PCM16Processor extends AudioWorkletProcessor {
     constructor() {
       super();
-      this._buffer = [];
-      this._samplesNeeded = 1600; // ~100ms at 16kHz
+      this._chunk = new Int16Array(SAMPLES_NEEDED);
+      this._filled = 0;
     }
     process(inputs) {
       const input = inputs[0];
@@ -76,11 +99,13 @@ const WORKLET_CODE = `
       const float32 = input[0];
       for (let i = 0; i < float32.length; i++) {
         const s = Math.max(-1, Math.min(1, float32[i]));
-        this._buffer.push(s < 0 ? s * 0x8000 : s * 0x7fff);
-      }
-      if (this._buffer.length >= this._samplesNeeded) {
-        const int16 = new Int16Array(this._buffer.splice(0, this._samplesNeeded));
-        this.port.postMessage(int16.buffer, [int16.buffer]);
+        this._chunk[this._filled++] = s < 0 ? s * 0x8000 : s * 0x7fff;
+        if (this._filled === SAMPLES_NEEDED) {
+          const full = this._chunk;
+          this._chunk = new Int16Array(SAMPLES_NEEDED);
+          this._filled = 0;
+          this.port.postMessage(full.buffer, [full.buffer]);
+        }
       }
       return true;
     }
@@ -94,10 +119,13 @@ const WORKLET_CODE = `
  */
 export function useAudioCapture() {
   const [isCapturing, setIsCapturing] = useState(false);
-  const [audioLevel, setAudioLevel] = useState(0);
-  const [systemAudioLevel, setSystemAudioLevel] = useState(0);
   const [systemAudioActive, setSystemAudioActive] = useState(false);
 
+  // Meter levels are refs, not state: they change ~60 times a second and the
+  // only consumer is one meter's width, so publishing them through React would
+  // re-render the whole app on every animation frame for the whole call.
+  const audioLevelRef = useRef(0);
+  const systemAudioLevelRef = useRef(0);
   const streamsRef = useRef<MediaStream[]>([]);
   const contextRef = useRef<AudioContext | null>(null);
   const nodesRef = useRef<AudioNode[]>([]);
@@ -126,8 +154,8 @@ export function useAudioCapture() {
 
   const releaseCapture = useCallback(() => {
     cancelAnimationFrame(levelFrameRef.current);
-    setAudioLevel(0);
-    setSystemAudioLevel(0);
+    audioLevelRef.current = 0;
+    systemAudioLevelRef.current = 0;
     setSystemAudioActive(false);
     onLevelRef.current = null;
     onSystemAudioStateChangeRef.current = null;
@@ -189,19 +217,21 @@ export function useAudioCapture() {
     } catch {
       // Fallback: ScriptProcessorNode
       const scriptNode = ctx.createScriptProcessor(4096, 1, 1);
-      let pcmBuffer: number[] = [];
       const samplesPerChunk = 1600; // ~100ms at 16kHz
+      let chunk = new Int16Array(samplesPerChunk);
+      let filled = 0;
 
       scriptNode.onaudioprocess = (e: AudioProcessingEvent) => {
         const float32 = e.inputBuffer.getChannelData(0);
         for (let i = 0; i < float32.length; i++) {
           const s = Math.max(-1, Math.min(1, float32[i]));
-          pcmBuffer.push(s < 0 ? s * 0x8000 : s * 0x7fff);
-        }
-        while (pcmBuffer.length >= samplesPerChunk) {
-          const samples = pcmBuffer.splice(0, samplesPerChunk);
-          const int16 = new Int16Array(samples);
-          onChunk(int16.buffer, track);
+          chunk[filled++] = s < 0 ? s * 0x8000 : s * 0x7fff;
+          if (filled === samplesPerChunk) {
+            const full = chunk;
+            chunk = new Int16Array(samplesPerChunk);
+            filled = 0;
+            onChunk(full.buffer, track);
+          }
         }
       };
 
@@ -323,8 +353,8 @@ export function useAudioCapture() {
           if (track === 0) micRms = rms; else sysRms = rms;
         }
         onLevelRef.current?.(micRms);
-        setAudioLevel(Math.min(1, micRms * 10));
-        setSystemAudioLevel(Math.min(1, sysRms * 10));
+        audioLevelRef.current = Math.min(1, micRms * 10);
+        systemAudioLevelRef.current = Math.min(1, sysRms * 10);
         levelFrameRef.current = requestAnimationFrame(updateLevel);
       };
       levelFrameRef.current = requestAnimationFrame(updateLevel);
@@ -343,5 +373,13 @@ export function useAudioCapture() {
     releaseCapture();
   }, [releaseCapture]);
 
-  return { startCapture, stopCapture, isCapturing, audioLevel, systemAudioLevel, systemAudioActive };
+  return {
+    startCapture,
+    stopCapture,
+    isCapturing,
+    // Read per frame by AudioIndicator; never render these through React.
+    audioLevelRef: audioLevelRef as AudioLevelSource,
+    systemAudioLevelRef: systemAudioLevelRef as AudioLevelSource,
+    systemAudioActive,
+  };
 }
