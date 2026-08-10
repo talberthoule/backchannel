@@ -460,17 +460,27 @@ Two tracks, anchored to the **measured** 2.5 CPU-s/wall-second baseline from
 section 2.7. Everything below the first row is a projection and should be
 replaced with measurements as each tier lands.
 
-| Stage | CPU-s per wall-second | vs today |
-| --- | --- | --- |
-| Today, as shipped (**measured**) | **2.51** | 1.0x |
-| + Tier 0, session options + frame loop (**measured**) | **0.54** | **4.7x** |
-| + Tier 3, VAD in the browser (projected) | ~0.52 | ~4.8x |
-| + Tier 1, Rust audio core (projected) | ~0.52 | ~4.8x |
-| + INT8 quantized embedding (projected, unevaluated) | ~0.20 | ~12x |
+Re-measured on v0.5.0. The original numbers were taken against a v0.3.8 base;
+this work was later ported onto v0.5.0 (170 commits later) and the measurement
+repeated on the same 600 seconds of real call audio, with the baseline pinned to
+the v0.5.0 diarizer as committed.
 
-The first two rows are measured end to end on the same 600 seconds of real call
-audio, pinned to the committed diarizer before and after. Everything below them
-is projection.
+| Stage | CPU-s per wall-second | vs baseline |
+| --- | --- | --- |
+| v0.5.0 as shipped (**measured**) | **2.27** | 1.0x |
+| + Tier 0, session options + frame loop (**measured**) | **0.39** | **5.75x** |
+| + Tier 3, VAD in the browser (projected) | ~0.38 | ~6x |
+| + Tier 1, Rust audio core (projected) | ~0.37 | ~6x |
+| + INT8 quantized embedding (projected, unevaluated) | ~0.12 | ~19x |
+
+The first two rows are measured end to end, pinned to the committed diarizer
+before and after. Everything below them is projection.
+
+Output parity held across the port: both sides produced 110 identical segments
+and 172 identical embedding calls. The VAD fell from 79.8 to 2.7 CPU-seconds, a
+29x drop, and wall time was essentially unchanged this run (37.8s to 39.2s) - the
+wall-time cost documented below is real but load-dependent, and did not
+materialize on an uncontended machine.
 
 Two rows changed meaning since the first draft, and both changes matter.
 
