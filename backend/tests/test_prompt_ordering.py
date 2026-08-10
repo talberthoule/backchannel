@@ -86,34 +86,34 @@ class PromptOrderingTests(unittest.TestCase):
         self.assertIn("## Speaker Attribution Requirements", agent._prompt_template)
 
 
-class LegacyOrderingMigrationTests(unittest.TestCase):
-    """Stored agent_configs.prompt rows override these constants at runtime, so
-    without a stale marker the reorder is a no-op on every existing install."""
+class StoredPromptsOverrideTheReorderTests(unittest.TestCase):
+    """The reorder above only reaches an install whose stored prompt is refreshed.
 
-    SEEDED = {
-        "synthesizer": "PRINCIPAL_AGENT_PROMPT",
-        "consolidated_analyst": "CONSOLIDATED_ANALYST_BASE_PROMPT",
-        "opportunity_specialist": "OPPORTUNITY_SPECIALIST_PROMPT",
-    }
+    LegacyOrderingMigrationTests used to live here and asserted that a stale
+    stored prompt was rewritten on startup via seed_agents._should_refresh_
+    seeded_prompt and LEGACY_ORDERING_MARKERS. v0.5.0 deleted that entire
+    migration path: seed_agent_configs now only inserts missing rows, syncs
+    seed-owned descriptions, and backfills lenses. It never rewrites a stored
+    prompt.
 
-    def test_markers_no_longer_match_the_reordered_defaults(self):
-        # Otherwise every startup would rewrite the prompt forever.
-        for slug, marker in seed_agents.LEGACY_ORDERING_MARKERS.items():
-            with self.subTest(agent=slug):
-                self.assertNotIn(marker, getattr(prompts, self.SEEDED[slug]))
+    The consequence is worth keeping visible rather than deleting silently.
+    agent_configs.prompt wins over the module constant at runtime, so on any
+    install whose rows predate this commit the static-first ordering - and the
+    cacheable prefix it exists to create - is inert until the operator resets
+    that agent's prompt to default. The reset path is
+    routers/agents.py, which serves DEFAULT_PROMPTS.
+    """
 
-    def test_a_stored_old_order_prompt_is_refreshed(self):
-        for slug, marker in seed_agents.LEGACY_ORDERING_MARKERS.items():
-            with self.subTest(agent=slug):
-                stored = SimpleNamespace(slug=slug, prompt=f"preamble\n{marker}\ntrailing rules")
-                self.assertTrue(seed_agents._should_refresh_seeded_prompt(stored, {"prompt": ""}))
+    def test_seeding_no_longer_rewrites_a_stored_prompt(self):
+        # Pins the upstream behavior this warning depends on: if a future change
+        # reintroduces prompt refreshing, this fails and the note above is stale.
+        self.assertFalse(hasattr(seed_agents, "_should_refresh_seeded_prompt"))
+        self.assertFalse(hasattr(seed_agents, "LEGACY_ORDERING_MARKERS"))
 
-    def test_an_unrelated_custom_prompt_is_left_alone(self):
-        stored = SimpleNamespace(
-            slug="synthesizer",
-            prompt="My own prompt with {insights_json} and {transcript_text} at the end.",
-        )
-        self.assertFalse(seed_agents._should_refresh_seeded_prompt(stored, {"prompt": ""}))
+    def test_a_stored_prompt_beats_the_module_default(self):
+        agent = ConsolidatedAnalystAgent(prompt_override="MY STORED PROMPT {lens_sections}")
+        self.assertIn("MY STORED PROMPT", agent._prompt_template)
+        self.assertNotIn("You are a multi-disciplinary analyst", agent._prompt_template)
 
 
 if __name__ == "__main__":

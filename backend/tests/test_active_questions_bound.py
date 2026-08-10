@@ -7,6 +7,7 @@ synthesizer answered a question, so on a measured 57-minute meeting it reached
 agents on every cycle.
 """
 
+import json
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -62,22 +63,36 @@ class ActiveQuestionBoundTests(unittest.TestCase):
 
 
 class InsightFormattingTests(unittest.TestCase):
-    def test_live_entries_render_without_an_empty_rationale(self):
-        # The live path supplies no rationale; every entry used to end in "()".
-        line = _format_insights([{"id": "abc", "question": "Who signs off?", "item_type": "question"}])
-        self.assertNotIn("()", line)
-        self.assertIn("insight_id=abc", line)
-        self.assertIn("type=question", line)
+    """v0.5.0 replaced the line renderer these covered with a budget-bounded
+    JSON payload, so the original empty-"()" assertion no longer has anything to
+    describe. The two assertions that still mean something - identity survives,
+    and a non-question is not relabelled as a question - are kept against the
+    new shape."""
 
-    def test_rationale_is_still_rendered_when_present(self):
-        line = _format_insights([
-            {"id": "abc", "question": "Who signs off?", "item_type": "question", "rationale": "budget owner unclear"}
-        ])
-        self.assertIn("(budget owner unclear)", line)
+    @staticmethod
+    def _items(rendered: str) -> list[dict]:
+        return json.loads(rendered)["items"]
+
+    def test_identity_and_type_survive_the_render(self):
+        [item] = self._items(
+            _format_insights([{"id": "abc", "question": "Who signs off?", "item_type": "question"}])
+        )
+        self.assertEqual("abc", item["id"])
+        self.assertEqual("question", item["item_type"])
+
+    def test_rationale_is_still_carried_when_present(self):
+        [item] = self._items(
+            _format_insights([
+                {"id": "abc", "question": "Who signs off?", "item_type": "question", "rationale": "budget owner unclear"}
+            ])
+        )
+        self.assertEqual("budget owner unclear", item["rationale"])
 
     def test_a_non_question_entry_is_not_mislabelled(self):
-        line = _format_insights([{"id": "abc", "text": "They are consolidating vendors", "item_type": "observation"}])
-        self.assertIn("type=observation", line)
+        [item] = self._items(
+            _format_insights([{"id": "abc", "text": "They are consolidating vendors", "item_type": "observation"}])
+        )
+        self.assertEqual("observation", item["item_type"])
 
 
 class IdleWindowSkipTests(unittest.IsolatedAsyncioTestCase):

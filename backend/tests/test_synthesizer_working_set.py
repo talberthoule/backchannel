@@ -15,7 +15,6 @@ from types import SimpleNamespace
 from app.services.agents import synthesizer
 from app.services.agents.event_bus import CooldownSubscriber
 from app.services.agents.synthesizer import _build_insights_json
-from app.services.insight_refiner import strip_json_fence
 
 NOW = datetime(2026, 8, 3, 20, 0, 0, tzinfo=timezone.utc)
 
@@ -135,26 +134,11 @@ class UnchangedCorpusSkipTests(unittest.TestCase):
         synthesizer.clear_synthesizer_state(uuid.uuid4())
 
 
-class JsonFenceTests(unittest.TestCase):
-    """The pre-strip was stranded after a return in both call sites, so every
-    fenced response with surrounding whitespace fell through to bracket-scan
-    recovery instead of parsing cleanly."""
-
-    def test_fence_with_trailing_newline_is_stripped(self):
-        raw = '```json\n[{"op": "answer"}]\n```\n'
-        self.assertEqual('[{"op": "answer"}]', strip_json_fence(raw))
-        json.loads(strip_json_fence(raw))
-
-    def test_fence_with_leading_whitespace_is_stripped(self):
-        raw = '  \n```json\n[{"op": "enrich"}]\n```'
-        self.assertEqual('[{"op": "enrich"}]', strip_json_fence(raw))
-
-    def test_bare_json_is_untouched(self):
-        self.assertEqual('[{"op": "merge"}]', strip_json_fence('[{"op": "merge"}]'))
-
-    def test_empty_and_none_are_safe(self):
-        self.assertEqual("", strip_json_fence(""))
-        self.assertEqual("", strip_json_fence(None))
+# The JsonFenceTests class that lived here covered strip_json_fence, which this
+# commit extracted to fix a strip stranded after a return in both call sites.
+# v0.5.0 made the synthesizer a structured-output caller (generate_json against
+# SynthesizerOutput), so there is no hand-rolled fence handling left to test:
+# llm.parse_json_response tolerates fences centrally for every caller.
 
 
 class MaxIntervalIdleTests(unittest.IsolatedAsyncioTestCase):

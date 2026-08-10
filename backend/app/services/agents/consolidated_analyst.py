@@ -150,6 +150,7 @@ class ConsolidatedAnalystAgent:
         self._prompt_template = prompt_template
         self.meeting_context_text = meeting_context_text or build_meeting_context_text()
         self._session_id = session_id
+        self.last_outcome: dict | None = None
 
     def _compose_lenses(self):
         """(Re)build the lens sections and enabled types from the stored config.
@@ -199,13 +200,6 @@ class ConsolidatedAnalystAgent:
             # No lens sections in a legacy prompt; the enabled types are the
             # closest analog for the live activity summary.
             self.lens_count = len(self.enabled_types)
-
-        if "## Speaker Attribution Requirements" not in prompt_template:
-            prompt_template = f"{prompt_template.rstrip()}{SPEAKER_ATTRIBUTION_APPENDIX}"
-        self._prompt_template = prompt_template
-        self.meeting_context_text = meeting_context_text or build_meeting_context_text()
-        self._session_id = session_id
-        self.last_outcome: dict | None = None
 
     def set_suppressed_types(self, suppressed_types: set[str] | None):
         """Apply a mid-call change to which item types this agent may produce."""

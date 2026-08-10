@@ -1,6 +1,7 @@
 import json
 import unittest
 import uuid
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -151,6 +152,11 @@ class SynthesizerStructuredOutputTests(unittest.IsolatedAsyncioTestCase):
             starred=False,
             enrichment_notes="",
             agent_source="observer",
+            # The working-set split (ALP-283) reads both stamps to decide
+            # whether an insight is still live; a real Question row always
+            # carries them, and updated_at is nullable.
+            created_at=datetime.now(timezone.utc),
+            updated_at=None,
         )
 
         with (
@@ -186,6 +192,11 @@ class SynthesizerStructuredOutputTests(unittest.IsolatedAsyncioTestCase):
             starred=False,
             enrichment_notes="",
             agent_source="observer",
+            # The working-set split (ALP-283) reads both stamps to decide
+            # whether an insight is still live; a real Question row always
+            # carries them, and updated_at is nullable.
+            created_at=datetime.now(timezone.utc),
+            updated_at=None,
         )
         output = SynthesizerOutput(
             items=[

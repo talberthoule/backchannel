@@ -160,9 +160,17 @@ class ActivityRegistryTests(unittest.IsolatedAsyncioTestCase):
             records["opportunity_specialist"]["blocked_reason"],
         )
         # The analyst record carries its active lens count for the live summary
-        # (empty lenses column falls back to the default lens set).
+        # (empty lenses column falls back to the default lens set), minus any
+        # lens suppressed for this meeting type. meeting_type="general" turns
+        # offering matching off -- which is what blocks opportunity_specialist
+        # just above -- so the analyst drops its opportunity lens rather than
+        # scouting for matches nothing downstream can enrich (ALP-286).
+        suppressed = {
+            lens["item_type"] for lens in DEFAULT_ANALYST_LENSES
+            if lens["item_type"] == "opportunity"
+        }
         self.assertEqual(
-            len(DEFAULT_ANALYST_LENSES),
+            len(DEFAULT_ANALYST_LENSES) - len(suppressed),
             records["consolidated_analyst"]["lens_count"],
         )
 

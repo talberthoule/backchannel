@@ -36,6 +36,22 @@ def _add_revalidation_model_columns(connection, inspector, tables):
             )
 
 
+def _add_thinking_token_column(connection, inspector, tables):
+    """Backfill token_usage.thinking_tokens on databases predating ALP-284.
+
+    Extracted rather than inlined with its siblings: _check_and_add is a long
+    chain of table/column guards already sitting at the structural complexity
+    ceiling, and two more branches pushed it over.
+    """
+    if "token_usage" not in tables:
+        return
+    columns = {c["name"] for c in inspector.get_columns("token_usage")}
+    if "thinking_tokens" not in columns:
+        connection.execute(
+            text("ALTER TABLE token_usage ADD COLUMN thinking_tokens INTEGER NOT NULL DEFAULT 0")
+        )
+
+
 async def _add_missing_columns(conn):
     """Add columns that create_all won't add to existing tables."""
     from sqlalchemy import inspect
@@ -234,13 +250,7 @@ async def _add_missing_columns(conn):
                 )
 
         _add_revalidation_model_columns(connection, inspector, tables)
-
-        if "token_usage" in tables:
-            columns = {c["name"] for c in inspector.get_columns("token_usage")}
-            if "thinking_tokens" not in columns:
-                connection.execute(
-                    text("ALTER TABLE token_usage ADD COLUMN thinking_tokens INTEGER NOT NULL DEFAULT 0")
-                )
+        _add_thinking_token_column(connection, inspector, tables)
 
         # Model ids for self-hosted endpoints ("endpoint:<slug>:<model name>")
         # are longer than the registry ids these columns were sized for.
