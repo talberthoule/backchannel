@@ -1,7 +1,9 @@
+import logging
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +22,7 @@ from app.schemas import (
     TokenUsageSummaryOut,
 )
 from app.services.agents.orchestrator import get_live_orchestrator
+from app.services.audio_echo import build_echo_cancelled_mix
 from app.services.briefing_synthesis import agent_model_id
 from app.services.llm import LLMModelNotSelected
 from app.services.meeting_context import normalize_meeting_type
@@ -31,6 +34,8 @@ from app.services.speaker_revalidation import (
     summarize_run,
 )
 from app.services.token_usage import summarize_usage
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -120,7 +125,24 @@ async def get_token_usage(session_id: uuid.UUID, db: AsyncSession = Depends(get_
 
 
 @router.get("/{session_id}/segments/{segment_number}/audio")
-async def get_segment_audio(session_id: uuid.UUID, segment_number: int, db: AsyncSession = Depends(get_db)):
+async def get_segment_audio(
+    session_id: uuid.UUID,
+    segment_number: int,
+    raw: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    """Serve a segment's recording, echo-cancelled when both tracks survive.
+
+    The stored mixed file is mic + system summed, so on a speakerphone the
+    remote side lands twice - once digitally and once through the room a couple
+    of hundred milliseconds later. That is only a listening problem (each track
+    is diarized separately, so the pipeline never heard it), but it makes an
+    hour of call audio unplayable. When the split tracks are present we cancel
+    the bleed and remix; the result is cached beside them and reused.
+
+    raw=true serves the original mixed file, for comparison or if the
+    cancellation ever does something unwanted.
+    """
     result = await db.execute(
         select(CallSegment).where(
             CallSegment.session_id == session_id,
@@ -133,6 +155,35 @@ async def get_segment_audio(session_id: uuid.UUID, segment_number: int, db: Asyn
     path = data_dir() / segment.audio_path
     if not path.exists():
         raise HTTPException(404, "Stored audio file is missing")
+
+    if not raw and segment.mic_audio_path and segment.system_audio_path:
+        mic_path = data_dir() / segment.mic_audio_path
+        system_path = data_dir() / segment.system_audio_path
+        cleaned = path.with_name(f"{path.stem}_clean.wav")
+        if mic_path.exists() and system_path.exists():
+            try:
+                # Rebuild if the cache predates either source track.
+                stale = (
+                    not cleaned.exists()
+                    or cleaned.stat().st_mtime < max(
+                        mic_path.stat().st_mtime, system_path.stat().st_mtime
+                    )
+                )
+                if stale:
+                    await run_in_threadpool(
+                        build_echo_cancelled_mix, mic_path, system_path, cleaned
+                    )
+                path = cleaned
+            except Exception as exc:
+                # A failed mixdown must not cost the user their recording.
+                logger.warning(
+                    "Echo cancellation failed for session %s segment %s; "
+                    "serving the original mix: %s",
+                    session_id,
+                    segment_number,
+                    exc,
+                )
+
     return FileResponse(path, media_type="audio/wav")
 
 

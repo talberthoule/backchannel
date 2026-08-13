@@ -39,10 +39,29 @@ class RequestLimitTests(unittest.TestCase):
         # The observed failure was a ReadTimeout at 120 s on one lens.
         self.assertGreaterEqual(llm._request_timeout(SELF_HOSTED), 600)
 
-    def test_only_self_hosted_requests_carry_an_output_budget(self):
+    def test_every_request_carries_an_output_budget(self):
         local = llm._apply_output_budget({}, SELF_HOSTED)
         self.assertEqual(settings.LLM_SELF_HOSTED_MAX_TOKENS, local["max_tokens"])
-        self.assertNotIn("max_tokens", llm._apply_output_budget({}, HOSTED))
+        hosted = llm._apply_output_budget({}, HOSTED)
+        self.assertEqual(settings.LLM_HOSTED_MAX_TOKENS, hosted["max_tokens"])
+
+    def test_a_hosted_model_is_not_left_uncapped(self):
+        """This assertion used to say the opposite, and that was the bug.
+
+        Leaving hosted providers uncapped was deliberate - their defaults were
+        assumed generous enough that a cap "could only make them worse". What it
+        actually did was set the price of failure. On one measured session five
+        synthesizer calls emitted 47k-63k output tokens each, 22 percent of the
+        entire session bill, and every one was discarded unparsed and retried.
+        The cap does not rescue those calls, it stops them costing sixteen times
+        what they need to before failing (ALP-295).
+        """
+        self.assertIn("max_tokens", llm._apply_output_budget({}, HOSTED))
+
+    def test_the_hosted_budget_clears_a_healthy_reply_by_a_wide_margin(self):
+        # Observed healthy synthesizer output on a real call: median 300 tokens.
+        # The cap must bound the runaway without ever touching a good reply.
+        self.assertGreaterEqual(settings.LLM_HOSTED_MAX_TOKENS, 4096)
 
     def test_the_budget_is_large_enough_for_the_briefing_contract(self):
         # The arbiter reply died at ~6605 characters, roughly 1900 tokens.

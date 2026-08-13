@@ -42,6 +42,18 @@ class Settings(BaseSettings):
     # own default decides, and LM Studio's truncated a briefing mid-JSON at
     # ~1900 tokens. Hosted providers keep their defaults.
     LLM_SELF_HOSTED_MAX_TOKENS: int = 8192
+    # Hosted providers used to run uncapped. A degenerate reply then ran to the
+    # provider's own ceiling and was discarded unparsed: 47k-63k output tokens
+    # per incident, 22 percent of one session's entire bill, for nothing. This
+    # is roughly thirteen times the observed healthy median output, so it
+    # bounds the failure without touching a successful call (ALP-295).
+    LLM_HOSTED_MAX_TOKENS: int = 4096
+    # Thinking bills at output rates. Structured reconciliation is closer to
+    # classification than open reasoning, but answer detection is genuinely
+    # inferential, so this leaves room rather than zeroing it (ALP-296).
+    # Negative disables the override and restores provider defaults.
+    LLM_JSON_THINKING_BUDGET: int = 512
+    LLM_JSON_TEMPERATURE: float = 0.2
     DATABASE_URL: str = "postgresql+asyncpg://callhelper:changeme@db:5432/callhelper"
     FRONTEND_DIST: str = ""  # path to built frontend; empty = nginx serves it (Docker)
     GEMINI_MODEL: str = "gemini-3.1-flash-live-preview"

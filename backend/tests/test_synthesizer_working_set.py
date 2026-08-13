@@ -87,11 +87,21 @@ class WorkingSetTests(unittest.TestCase):
         self.assertNotIn("tired of managing three separate renewals", payload)
         self.assertNotIn("speaker_id", payload)
 
-    def test_enrichment_notes_are_truncated(self):
-        long_note = "x" * 900
-        [item] = records([insight(enrichment_notes=long_note)])
+    def test_enrichment_notes_are_truncated_from_the_front_not_the_back(self):
+        """The bound is unchanged; which end survives it is not.
+
+        This originally asserted a trailing ellipsis, i.e. the head was kept.
+        That is backwards for this field: _append_note in insight_refiner
+        appends, so keeping the head meant that past the limit the model saw
+        only its OLDEST notes and could never see what it wrote last cycle -
+        no signal that it had already enriched an insight (ALP-297).
+        """
+        notes = "\n".join(f"note {i}" for i in range(1, 200))
+        [item] = records([insight(enrichment_notes=notes)])
         self.assertLess(len(item["enrichment_notes"]), 250)
-        self.assertTrue(item["enrichment_notes"].endswith("..."))
+        self.assertTrue(item["enrichment_notes"].startswith("..."))
+        self.assertIn("note 199", item["enrichment_notes"])
+        self.assertNotIn("note 1\n", item["enrichment_notes"])
 
     def test_serialization_is_byte_stable_for_an_unchanged_corpus(self):
         rows = [insight(), insight(), insight()]

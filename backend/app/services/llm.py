@@ -73,15 +73,33 @@ def _request_timeout(model_id: str) -> float:
 
 
 def _apply_output_budget(payload: dict, model_id: str, budget: int | None = None) -> dict:
-    """Give self-hosted servers an explicit completion budget.
+    """Give every provider an explicit completion budget.
 
-    Hosted providers are left alone: their defaults are already generous and
-    an explicit cap here could only make them worse. budget overrides the
-    configured default with whatever this server has been observed to accept.
+    This used to exempt hosted providers, on the reasoning that their defaults
+    are generous and a cap could only make things worse. The opposite turned
+    out to be true. With no ceiling, a reply that degenerates runs until the
+    provider stops it: on one measured session five synthesizer calls emitted
+    47k-63k output tokens each - 95 percent of that agent's output and 22
+    percent of the entire session bill - and every one of them was then
+    DISCARDED as unparseable and retried. The generous default was not buying
+    headroom, it was setting the price of failure.
+
+    A cap does not rescue those calls; a reply truncated at 4k fails schema
+    parsing exactly as one truncated at 63k does, and the existing retry still
+    runs. It only stops the doomed attempt costing sixteen times what it needs
+    to. Healthy calls are nowhere near the ceiling - the observed median output
+    for that same agent is 300 tokens (ALP-295).
+
+    budget overrides the default with whatever this particular server has been
+    observed to accept.
     """
-    if not _is_self_hosted(model_id):
-        return payload
-    effective = budget if budget is not None else settings.LLM_SELF_HOSTED_MAX_TOKENS
+    effective = budget
+    if effective is None:
+        effective = (
+            settings.LLM_SELF_HOSTED_MAX_TOKENS
+            if _is_self_hosted(model_id)
+            else settings.LLM_HOSTED_MAX_TOKENS
+        )
     if effective > 0:
         payload["max_tokens"] = effective
     return payload
@@ -269,6 +287,40 @@ def _parse_google_response(response, response_schema: type[BaseModel]):
     return parse_json_response(response.text or "", response_schema)
 
 
+def _google_generation_limits() -> dict:
+    """Output ceiling, thinking budget and temperature for a structured call.
+
+    None of these were ever set, so every structured agent ran at the provider
+    defaults: no output cap (see _apply_output_budget for what that cost),
+    dynamic thinking, and temperature 1.0. Thinking bills at output rates and
+    on one measured session the synthesizer spent 83,471 thinking tokens at a
+    median of 2,913 per call against a median visible output of 293 - roughly
+    ten tokens of reasoning per token of answer, to pick operations from a
+    fixed six-item vocabulary against a list it was handed.
+
+    The budget is deliberately not zero. Answer detection - deciding whether a
+    question was answered implicitly by something nobody said directly - is
+    genuinely inferential and is this agent's highest-value output, so the
+    default leaves room for it rather than optimizing it away unmeasured
+    (ALP-296).
+
+    Built per call rather than as a module constant so an operator override in
+    settings takes effect without a restart, and returned as kwargs so a
+    google-genai build that lacks one of these fails loudly at construction
+    rather than silently ignoring it.
+    """
+    limits: dict = {}
+    if settings.LLM_HOSTED_MAX_TOKENS > 0:
+        limits["max_output_tokens"] = settings.LLM_HOSTED_MAX_TOKENS
+    if settings.LLM_JSON_TEMPERATURE >= 0:
+        limits["temperature"] = settings.LLM_JSON_TEMPERATURE
+    if settings.LLM_JSON_THINKING_BUDGET >= 0:
+        limits["thinking_config"] = types.ThinkingConfig(
+            thinking_budget=settings.LLM_JSON_THINKING_BUDGET
+        )
+    return limits
+
+
 async def _google_json(
     model_id: str,
     prompt: str,
@@ -297,6 +349,7 @@ async def _google_json(
             types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=response_schema,
+                **_google_generation_limits(),
             ),
         )
         return _parse_google_response(response, response_schema)
@@ -311,7 +364,10 @@ async def _google_json(
     try:
         response = await call(
             contract,
-            types.GenerateContentConfig(response_mime_type="application/json"),
+            types.GenerateContentConfig(
+                response_mime_type="application/json",
+                **_google_generation_limits(),
+            ),
         )
     except TypeError:
         response = await call(contract, None)

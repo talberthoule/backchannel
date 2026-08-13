@@ -202,6 +202,13 @@ async def _apply_elevate_operation(db, session_id, op, q_map, agent_source, enha
         return []
 
     old_type = q.item_type
+    if new_type == old_type:
+        # A same-type elevate is not a change. Applying it anyway bumps
+        # revision_count, lights the "Refined" badge, and writes "Elevated from
+        # observation to observation" into the notes the model reads back next
+        # cycle. _apply_adjust_operation already returns empty on a no-op; this
+        # follows it (ALP-297).
+        return []
     if enhanced:
         _mark_revised(q, now, enhanced)
         _append_note(
@@ -314,6 +321,15 @@ async def _apply_merge_operation(db, session_id, op, q_map, agent_source, enhanc
     keep_id = op.get("keep_id")
     remove_id = op.get("remove_id")
     if keep_id not in q_map or remove_id not in q_map:
+        return []
+    if keep_id == remove_id:
+        # Both ids resolve to the same row, so the merge below would rewrite
+        # that insight to merged_text and then dismiss it - deleting what the
+        # user was reading, with a note claiming it was merged into something
+        # that does not exist. Nothing stops the model emitting this: both
+        # fields are free-form uuids and the correct pair are, by definition,
+        # two insights that look almost identical (ALP-297).
+        logger.warning("[insight_refiner] ignoring self-merge of %s", keep_id)
         return []
 
     keep_q = await db.get(Question, uuid.UUID(keep_id))

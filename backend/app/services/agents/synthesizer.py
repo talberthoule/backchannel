@@ -102,6 +102,20 @@ def _truncate(text: str | None, limit: int) -> str:
     return value if len(value) <= limit else value[:limit].rstrip() + "..."
 
 
+def _truncate_tail(text: str | None, limit: int) -> str:
+    """Keep the END of a value that grows by appending.
+
+    _truncate keeps the head, which is right for an insight's text - the
+    opening words identify it. It is wrong for enrichment notes, because
+    _append_note in insight_refiner appends to the tail: past the limit the
+    model was shown only its OLDEST notes and could never see what it wrote
+    last cycle, so it had no signal that it had already enriched an insight
+    (ALP-297).
+    """
+    value = (text or "").strip()
+    return value if len(value) <= limit else "..." + value[-limit:].lstrip()
+
+
 def _full_record(q: Question) -> dict:
     """A live insight: everything the operations can actually reason about.
 
@@ -126,7 +140,7 @@ def _full_record(q: Question) -> dict:
     if q.starred:
         item["starred"] = True
     if q.enrichment_notes:
-        item["enrichment_notes"] = _truncate(q.enrichment_notes, _ENRICHMENT_NOTE_CHARS)
+        item["enrichment_notes"] = _truncate_tail(q.enrichment_notes, _ENRICHMENT_NOTE_CHARS)
     return item
 
 
