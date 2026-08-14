@@ -48,11 +48,11 @@ Cloud recommendations are grouped by role:
 
 | Role | Google | OpenAI |
 | --- | --- | --- |
-| Audio gateway | `gemini-3.1-flash-live-preview` | `gpt-realtime-whisper` |
-| Consolidated Analyst, Principal Agent, Strategic Signals, meeting/discovery briefing lenses, Live Ask | `gemini-3.6-flash` | `gpt-5.6-terra` |
+| Audio gateway | `gemini-3.1-flash-live-preview` | `gpt-live-transcribe` |
+| Consolidated Analyst, Principal Agent, Strategic Signals, meeting/discovery briefing lenses, Live Ask | `gemini-3.7-flash` | `gpt-5.6-terra` |
 | Objection Handler | `gemini-3.5-flash-lite` | `gpt-5.6-luna` |
-| Opportunity Specialist | `gemini-3.6-flash` | `gpt-5.6-luna` |
-| Briefing Arbiter | `gemini-3.6-flash` | `gpt-5.6-sol` (high effort) |
+| Opportunity Specialist | `gemini-3.7-flash` | `gpt-5.6-luna` |
+| Briefing Arbiter | `gemini-3.7-flash` | `gpt-5.6-sol` (high effort) |
 | Batch transcription | `gemini-3.5-flash-lite` | `gpt-4o-mini-transcribe` |
 
 `gpt-5.6-sol` high effort is reserved for the Briefing Arbiter. Self-hosted
@@ -139,7 +139,7 @@ routing for the cloud gateways is unchanged.
 
 Setting the
 `audio_gateway` agent to an OpenAI realtime transcription model
-(`gpt-realtime-whisper`, `gpt-4o-transcribe`, or `gpt-4o-mini-transcribe`)
+(`gpt-live-transcribe`, `gpt-4o-transcribe`, or `gpt-4o-mini-transcribe`)
 switches the interim gateway from Gemini Live to the OpenAI Realtime API.
 
 `backend/app/config.py` still contains legacy toggles such as

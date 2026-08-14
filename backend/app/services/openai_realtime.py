@@ -5,9 +5,12 @@ audio (upsampled 16k -> 24k, which the API expects), and yields completed
 input transcriptions as {"type": "transcript", "data": text} events.
 
 Uses the GA event shapes: session.update with session.type="transcription"
-(the pre-GA transcription_session.update event was removed). Server VAD is
-not supported for gpt-realtime-whisper, so the buffer is committed manually
-on a fixed cadence to finalize transcription items.
+(the pre-GA transcription_session.update event was removed). The buffer is
+committed manually on a fixed cadence to finalize transcription items, which
+the previous default (gpt-realtime-whisper) required because it rejected
+server VAD. Kept for gpt-live-transcribe as well: manual commit works
+regardless of whether a model also supports server VAD, so it stays until a
+live run shows VAD-gated commits read better.
 """
 
 import base64
@@ -24,7 +27,7 @@ from app.services.token_usage import record_token_usage
 logger = logging.getLogger(__name__)
 
 REALTIME_URL = "wss://api.openai.com/v1/realtime?intent=transcription"
-DEFAULT_TRANSCRIBE_MODEL = "gpt-realtime-whisper"
+DEFAULT_TRANSCRIBE_MODEL = "gpt-live-transcribe"
 
 # ponytail: fixed-cadence manual commit (~3s of 16 kHz source audio);
 # upgrade to VAD-gated commits if transcripts read too choppy.
@@ -32,16 +35,20 @@ COMMIT_INTERVAL_BYTES = 3 * 32000
 
 # Registry ids are the real API transcription model ids and pass through as-is.
 TRANSCRIBE_MODEL_IDS = {
-    "gpt-realtime-whisper",
+    "gpt-live-transcribe",
     "gpt-4o-transcribe",
     "gpt-4o-mini-transcribe",
 }
 
 # Ids that may persist in agent_configs rows from earlier registry versions.
+# Stored selections are never rewritten in place (ALP-188), so a retired id has
+# to keep resolving here or the agent fails at call time with "no longer
+# exists" rather than at startup.
 LEGACY_MODEL_ALIASES = {
     "openai-realtime": "gpt-4o-transcribe",
     "openai-realtime-mini": "gpt-4o-mini-transcribe",
-    "openai-realtime-whisper": "gpt-realtime-whisper",
+    "openai-realtime-whisper": "gpt-live-transcribe",
+    "gpt-realtime-whisper": "gpt-live-transcribe",
 }
 
 
@@ -65,7 +72,8 @@ def _resample_16k_to_24k(pcm_bytes: bytes) -> bytes:
 
 def _session_update_payload(model: str) -> dict:
     """GA transcription session config. turn_detection is omitted on purpose:
-    gpt-realtime-whisper rejects server VAD; we commit the buffer manually."""
+    the buffer is committed manually on a fixed cadence, which every supported
+    transcription model accepts."""
     return {
         "type": "session.update",
         "session": {

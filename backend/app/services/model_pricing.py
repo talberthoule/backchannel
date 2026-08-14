@@ -23,6 +23,11 @@ without updating this table fails the suite.
 # Date the rates below were verified against provider pricing pages.
 PRICING_AS_OF = "2026-07-23"
 
+# gemini-3.7-flash and gemini-3.6-flash re-verified 2026-08-14 and corrected;
+# see the note on those rows. The other Gemini rows have NOT been re-checked
+# against the same promotional-versus-standard distinction and may carry the
+# same error. Worth a sweep before any cost figure is quoted externally.
+
 
 def _price(
     input_per_million: float,
@@ -40,7 +45,13 @@ def _price(
 
 MODEL_PRICING: dict[str, dict | None] = {
     # --- Google (paid tier, standard text rates) ---
-    "gemini-3.6-flash": _price(1.50, 7.50),
+    # 3.7 and 3.6 Flash are priced identically. The 1.50/7.50 previously
+    # recorded for 3.6 is the rate that takes effect 2027-01-01; the rate in
+    # force through 2026-12-31 is half that, so estimates were 2x high.
+    # Cached-input is published for both and is filled in here -- ALP-285 notes
+    # every Gemini row leaving it None, which blocks measuring cache savings.
+    "gemini-3.7-flash": _price(0.75, 3.75, cached_input_per_million=0.075),
+    "gemini-3.6-flash": _price(0.75, 3.75, cached_input_per_million=0.075),
     "gemini-3.5-flash": _price(1.50, 9.00),
     "gemini-3.5-flash-lite": _price(0.30, 2.50),
     "gemini-3-flash-preview": _price(0.50, 3.00),
@@ -63,10 +74,11 @@ MODEL_PRICING: dict[str, dict | None] = {
     # audio-token rate; output is text.
     "gpt-4o-transcribe": _price(2.50, 10.00, audio_input_per_million=2.50),
     "gpt-4o-mini-transcribe": _price(1.25, 5.00, audio_input_per_million=1.25),
-    # No published per-token price for the realtime Whisper transcription
-    # variant; kept in the table (as None) so the registry-sync test still
-    # covers it and the UI shows "-".
-    "gpt-realtime-whisper": None,
+    # gpt-live-transcribe publishes a per-minute rate ($0.017/min of realtime
+    # audio), not a per-token one, so it cannot be expressed in this table.
+    # Kept here as None so the registry-sync test still covers it and the UI
+    # shows "-" rather than a wrong number.
+    "gpt-live-transcribe": None,
     # Audio-capable chat models (Chat Completions input_audio path). Text
     # rates from the per-model pages; gpt-audio-1.5 audio input is billed at
     # 32.00/1M audio tokens. The gpt-audio-mini page publishes no separate

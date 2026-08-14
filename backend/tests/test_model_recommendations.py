@@ -40,24 +40,24 @@ class CloudRecommendationTests(unittest.IsolatedAsyncioTestCase):
         }
         expected = {
             ("audio_gateway", "google"): "gemini-3.1-flash-live-preview",
-            ("audio_gateway", "openai"): "gpt-realtime-whisper",
-            ("consolidated_analyst", "google"): "gemini-3.6-flash",
+            ("audio_gateway", "openai"): "gpt-live-transcribe",
+            ("consolidated_analyst", "google"): "gemini-3.7-flash",
             ("consolidated_analyst", "openai"): "gpt-5.6-terra",
             ("objection_handler", "google"): "gemini-3.5-flash-lite",
             ("objection_handler", "openai"): "gpt-5.6-luna",
-            ("synthesizer", "google"): "gemini-3.6-flash",
+            ("synthesizer", "google"): "gemini-3.7-flash",
             ("synthesizer", "openai"): "gpt-5.6-terra",
-            ("opportunity_specialist", "google"): "gemini-3.6-flash",
+            ("opportunity_specialist", "google"): "gemini-3.7-flash",
             ("opportunity_specialist", "openai"): "gpt-5.6-luna",
-            ("strategic_signals", "google"): "gemini-3.6-flash",
+            ("strategic_signals", "google"): "gemini-3.7-flash",
             ("strategic_signals", "openai"): "gpt-5.6-terra",
-            ("brief_meeting_lens", "google"): "gemini-3.6-flash",
+            ("brief_meeting_lens", "google"): "gemini-3.7-flash",
             ("brief_meeting_lens", "openai"): "gpt-5.6-terra",
-            ("brief_discovery_lens", "google"): "gemini-3.6-flash",
+            ("brief_discovery_lens", "google"): "gemini-3.7-flash",
             ("brief_discovery_lens", "openai"): "gpt-5.6-terra",
-            ("brief_arbiter", "google"): "gemini-3.6-flash",
+            ("brief_arbiter", "google"): "gemini-3.7-flash",
             ("brief_arbiter", "openai"): "gpt-5.6-sol",
-            ("live_ask", "google"): "gemini-3.6-flash",
+            ("live_ask", "google"): "gemini-3.7-flash",
             ("live_ask", "openai"): "gpt-5.6-terra",
             ("batch_transcription", "google"): "gemini-3.5-flash-lite",
             ("batch_transcription", "openai"): "gpt-4o-mini-transcribe",
@@ -69,7 +69,7 @@ class CloudRecommendationTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn(
             "strategic_signals",
-            {item["role"] for item in by_id["gemini-3.6-flash"]["recommendations"]},
+            {item["role"] for item in by_id["gemini-3.7-flash"]["recommendations"]},
         )
         self.assertEqual(
             {"brief_arbiter"},

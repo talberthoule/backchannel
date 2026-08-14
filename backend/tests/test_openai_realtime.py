@@ -25,19 +25,19 @@ class _FakeWS:
 
 class SessionUpdateTests(unittest.TestCase):
     def test_ga_session_update_shape(self):
-        payload = _session_update_payload("gpt-realtime-whisper")
+        payload = _session_update_payload("gpt-live-transcribe")
         self.assertEqual("session.update", payload["type"])
         self.assertEqual("transcription", payload["session"]["type"])
         audio_input = payload["session"]["audio"]["input"]
         self.assertEqual({"type": "audio/pcm", "rate": 24000}, audio_input["format"])
-        self.assertEqual("gpt-realtime-whisper", audio_input["transcription"]["model"])
-        # gpt-realtime-whisper rejects server VAD; must stay absent
+        self.assertEqual("gpt-live-transcribe", audio_input["transcription"]["model"])
+        # gpt-live-transcribe rejects server VAD; must stay absent
         self.assertNotIn("turn_detection", audio_input)
 
 
 class CommitCadenceTests(unittest.TestCase):
     def test_commits_after_interval_and_resets(self):
-        session = OpenAIRealtimeSession(model_override="gpt-realtime-whisper")
+        session = OpenAIRealtimeSession(model_override="gpt-live-transcribe")
         ws = _FakeWS()
         session._ws = ws
         one_second = b"\x00" * 32000
@@ -95,18 +95,27 @@ class ParseEventTests(unittest.TestCase):
 
 class TranscribeModelSelectionTests(unittest.TestCase):
     def test_registry_ids_pass_through(self):
-        self.assertEqual("gpt-realtime-whisper", resolve_transcribe_model("gpt-realtime-whisper"))
+        self.assertEqual("gpt-live-transcribe", resolve_transcribe_model("gpt-live-transcribe"))
         self.assertEqual("gpt-4o-transcribe", resolve_transcribe_model("gpt-4o-transcribe"))
         self.assertEqual("gpt-4o-mini-transcribe", resolve_transcribe_model("gpt-4o-mini-transcribe"))
 
     def test_legacy_aliases_resolve(self):
         self.assertEqual("gpt-4o-transcribe", resolve_transcribe_model("openai-realtime"))
         self.assertEqual("gpt-4o-mini-transcribe", resolve_transcribe_model("openai-realtime-mini"))
-        self.assertEqual("gpt-realtime-whisper", resolve_transcribe_model("openai-realtime-whisper"))
+        self.assertEqual("gpt-live-transcribe", resolve_transcribe_model("openai-realtime-whisper"))
+
+    def test_the_retired_whisper_id_still_resolves(self):
+        # gpt-realtime-whisper was the registry id until gpt-live-transcribe
+        # replaced it. Stored agent_configs.model_id rows are never rewritten
+        # in place (ALP-188), so any install that had selected it keeps a dead
+        # id on disk. Without this alias the audio gateway would fail at call
+        # time rather than at startup -- the same quiet failure mode seen when
+        # a removed custom endpoint was left referenced.
+        self.assertEqual("gpt-live-transcribe", resolve_transcribe_model("gpt-realtime-whisper"))
 
     def test_session_honors_model_override(self):
-        session = OpenAIRealtimeSession(model_override="gpt-realtime-whisper")
-        self.assertEqual("gpt-realtime-whisper", session._transcribe_model)
+        session = OpenAIRealtimeSession(model_override="gpt-live-transcribe")
+        self.assertEqual("gpt-live-transcribe", session._transcribe_model)
 
     def test_session_defaults_only_for_missing_override(self):
         self.assertEqual(

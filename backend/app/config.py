@@ -142,7 +142,7 @@ settings = Settings()
 
 DEFAULT_MODEL_RECOMMENDATION_ROLES: dict[str, tuple[str, ...]] = {
     "gemini-3.1-flash-live-preview": ("audio_gateway",),
-    "gemini-3.6-flash": (
+    "gemini-3.7-flash": (
         "consolidated_analyst",
         "synthesizer",
         "opportunity_specialist",
@@ -153,7 +153,7 @@ DEFAULT_MODEL_RECOMMENDATION_ROLES: dict[str, tuple[str, ...]] = {
         "live_ask",
     ),
     "gemini-3.5-flash-lite": ("objection_handler", "batch_transcription"),
-    "gpt-realtime-whisper": ("audio_gateway",),
+    "gpt-live-transcribe": ("audio_gateway",),
     "gpt-5.6-terra": (
         "consolidated_analyst",
         "synthesizer",
@@ -179,6 +179,20 @@ MODEL_REGISTRY: list[dict] = [
         "supports_batch_audio": True,
         "supports_live_audio": False,
     },
+    {
+        "id": "gemini-3.7-flash",
+        "name": "Gemini 3.7 Flash",
+        "provider": "Google",
+        "description": "Current frontier-speed model for agentic, coding, and multimodal reasoning tasks; thinking levels low/medium/high",
+        "tier": "stable",
+        "requires_key": "google",
+        "supports_text": True,
+        "supports_batch_audio": True,
+        "supports_live_audio": False,
+    },
+    # Kept selectable rather than retired: stored agent_configs.model_id rows
+    # are never rewritten in place (ALP-188) and there is no alias resolver on
+    # the text path, so removing an id strands every install that selected it.
     {
         "id": "gemini-3.6-flash",
         "name": "Gemini 3.6 Flash",
@@ -409,10 +423,10 @@ MODEL_REGISTRY: list[dict] = [
         "supports_live_audio": False,
     },
     {
-        "id": "gpt-realtime-whisper",
-        "name": "GPT Realtime Whisper",
+        "id": "gpt-live-transcribe",
+        "name": "GPT Live Transcribe",
         "provider": "OpenAI",
-        "description": "Streaming speech-to-text model for realtime interim transcription (text only)",
+        "description": "Streaming speech-to-text for low-latency interim transcript deltas; supports keyword and language hints (text only)",
         "tier": "stable",
         "requires_key": "openai",
         "supports_text": False,

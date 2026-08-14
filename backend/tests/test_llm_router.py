@@ -105,7 +105,7 @@ class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("gpt-5.4-mini", ids)
         self.assertIn("gpt-5.4-nano", ids)
         self.assertNotIn("gpt-5.2", ids)  # superseded; removed from the lineup
-        self.assertIn("gpt-realtime-whisper", ids)
+        self.assertIn("gpt-live-transcribe", ids)
         self.assertIn("gpt-4o-transcribe", ids)
         self.assertIn("gpt-4o-mini-transcribe", ids)
         self.assertIn("gpt-audio-1.5", ids)
@@ -115,7 +115,7 @@ class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
         from app.config import MODEL_REGISTRY
 
         by_id = {model["id"]: model for model in MODEL_REGISTRY}
-        for model_id in ("gemini-3.6-flash", "gemini-3.5-flash-lite"):
+        for model_id in ("gemini-3.7-flash", "gemini-3.5-flash-lite"):
             model = by_id[model_id]
             self.assertEqual("Google", model["provider"])
             self.assertEqual("stable", model["tier"])
@@ -142,11 +142,11 @@ class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
 
         by_id = {model["id"]: model for model in MODEL_REGISTRY}
         # Streaming-only realtime gateway model: live audio, nothing else.
-        whisper = by_id["gpt-realtime-whisper"]
-        self.assertTrue(whisper["supports_live_audio"])
-        self.assertFalse(whisper["supports_text"])
-        self.assertFalse(whisper["supports_batch_audio"])
-        self.assertEqual("openai", whisper["requires_key"])
+        live_transcribe = by_id["gpt-live-transcribe"]
+        self.assertTrue(live_transcribe["supports_live_audio"])
+        self.assertFalse(live_transcribe["supports_text"])
+        self.assertFalse(live_transcribe["supports_batch_audio"])
+        self.assertEqual("openai", live_transcribe["requires_key"])
         # gpt-4o transcribe models serve both the realtime gateway and the
         # REST /v1/audio/transcriptions batch path.
         for model_id in ("gpt-4o-transcribe", "gpt-4o-mini-transcribe"):

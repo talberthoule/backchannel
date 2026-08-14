@@ -250,13 +250,13 @@ Privacy First UI admission keys off; `endpoint_id` is set for models served
 by a saved custom endpoint.
 
 Current entries include Google Gemini text/audio models
-(`gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.5-flash`, `gemini-3-flash-preview`, `gemini-3.1-pro-preview`,
+(`gemini-3.7-flash`, `gemini-3.5-flash-lite`, `gemini-3.5-flash`, `gemini-3-flash-preview`, `gemini-3.1-pro-preview`,
 `gemini-3.1-flash-lite`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`,
 `gemini-2.5-pro`), the live gateway model
 `gemini-3.1-flash-live-preview`, OpenAI text models (the GPT-5.6 family
 `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, plus `gpt-5.5`, `gpt-5.4`,
 `gpt-5.4-mini`, `gpt-5.4-nano`), OpenAI speech-to-text models
-(`gpt-realtime-whisper` as a realtime-only gateway; `gpt-4o-transcribe` and
+(`gpt-live-transcribe` as a realtime-only gateway; `gpt-4o-transcribe` and
 `gpt-4o-mini-transcribe` usable both as realtime gateways and as batch
 transcription models; `gpt-audio-1.5` and `gpt-audio-mini` as batch-only
 audio chat models), the `openai-compatible` placeholder for the legacy
