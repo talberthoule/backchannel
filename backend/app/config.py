@@ -44,10 +44,21 @@ class Settings(BaseSettings):
     LLM_SELF_HOSTED_MAX_TOKENS: int = 8192
     # Hosted providers used to run uncapped. A degenerate reply then ran to the
     # provider's own ceiling and was discarded unparsed: 47k-63k output tokens
-    # per incident, 22 percent of one session's entire bill, for nothing. This
-    # is roughly thirteen times the observed healthy median output, so it
-    # bounds the failure without touching a successful call (ALP-295).
-    LLM_HOSTED_MAX_TOKENS: int = 4096
+    # per incident, 22 percent of one session's entire bill, for nothing.
+    #
+    # Sized to match the self-hosted budget rather than to the synthesizer,
+    # whose healthy median output is 300 tokens. A first attempt at 4096 was
+    # derived from that median and was wrong: it is one agent's profile, and
+    # the briefing lenses are a different workload - two of them landed on
+    # exactly 4096 in a replay, which is the ceiling rather than a coincidence.
+    # ALP-154 already established 8192 as adequate for the briefing contract.
+    #
+    # Two reasons not to shave this further. On OpenAI, max_completion_tokens
+    # counts reasoning tokens too, so a reasoning model can spend most of the
+    # ceiling before emitting anything visible. And the point was never to sit
+    # close to normal output - 8192 still bounds the observed 63k runaway by
+    # nearly eight times, which is the entire saving (ALP-295).
+    LLM_HOSTED_MAX_TOKENS: int = 8192
     # Thinking bills at output rates. Structured reconciliation is closer to
     # classification than open reasoning, but answer detection is genuinely
     # inferential, so this leaves room rather than zeroing it (ALP-296).

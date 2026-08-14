@@ -43,7 +43,51 @@ class RequestLimitTests(unittest.TestCase):
         local = llm._apply_output_budget({}, SELF_HOSTED)
         self.assertEqual(settings.LLM_SELF_HOSTED_MAX_TOKENS, local["max_tokens"])
         hosted = llm._apply_output_budget({}, HOSTED)
-        self.assertEqual(settings.LLM_HOSTED_MAX_TOKENS, hosted["max_tokens"])
+        self.assertEqual(
+            settings.LLM_HOSTED_MAX_TOKENS, hosted["max_completion_tokens"]
+        )
+
+    def test_the_two_shapes_use_the_field_name_each_one_accepts(self):
+        """OpenAI renamed this and rejects the old name outright.
+
+        Observed against a live model: "Unsupported parameter: 'max_tokens' is
+        not supported with this model. Use 'max_completion_tokens' instead."
+        Every agent call 400'd. Self-hosted OpenAI-compatible servers only know
+        max_tokens, so the two paths cannot share one field name.
+
+        This was unreachable until hosted providers started getting a budget at
+        all - before that the hosted branch returned early (ALP-295).
+        """
+        hosted = llm._apply_output_budget({}, HOSTED)
+        self.assertIn("max_completion_tokens", hosted)
+        self.assertNotIn("max_tokens", hosted)
+
+        local = llm._apply_output_budget({}, SELF_HOSTED)
+        self.assertIn("max_tokens", local)
+        self.assertNotIn("max_completion_tokens", local)
+
+    def test_a_renamed_parameter_refusal_is_recoverable(self):
+        # Whatever the field is called next, a request refused purely over a
+        # field name should drop the optional fields rather than fail a cycle.
+        request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+        exc = httpx.HTTPStatusError(
+            "bad request",
+            request=request,
+            response=httpx.Response(
+                400,
+                request=request,
+                json={
+                    "error": {
+                        "message": (
+                            "Unsupported parameter: 'max_tokens' is not supported "
+                            "with this model. Use 'max_completion_tokens' instead."
+                        ),
+                        "code": "unsupported_parameter",
+                    }
+                },
+            ),
+        )
+        self.assertTrue(llm._rejects_generation_limits(exc))
 
     def test_a_hosted_model_is_not_left_uncapped(self):
         """This assertion used to say the opposite, and that was the bug.
@@ -56,12 +100,27 @@ class RequestLimitTests(unittest.TestCase):
         The cap does not rescue those calls, it stops them costing sixteen times
         what they need to before failing (ALP-295).
         """
-        self.assertIn("max_tokens", llm._apply_output_budget({}, HOSTED))
+        # Field name per shape is pinned separately below; here the point is
+        # only that some ceiling is sent at all.
+        hosted = llm._apply_output_budget({}, HOSTED)
+        self.assertTrue({"max_tokens", "max_completion_tokens"} & set(hosted))
 
-    def test_the_hosted_budget_clears_a_healthy_reply_by_a_wide_margin(self):
-        # Observed healthy synthesizer output on a real call: median 300 tokens.
-        # The cap must bound the runaway without ever touching a good reply.
-        self.assertGreaterEqual(settings.LLM_HOSTED_MAX_TOKENS, 4096)
+    def test_the_hosted_budget_clears_the_widest_legitimate_reply(self):
+        """Sized to the briefing contract, not to the synthesizer.
+
+        A first attempt used 4096, derived from the synthesizer's healthy
+        median output of 300 tokens. That is one agent's profile: in a replay
+        two briefing calls landed on exactly 4096, which is the ceiling rather
+        than a coincidence. On OpenAI the budget also counts reasoning tokens,
+        so a reasoning model can spend most of it before emitting anything
+        visible. The saving never depended on sitting close to normal output -
+        8192 still bounds the observed 63k runaway by nearly eight times.
+        """
+        self.assertGreaterEqual(
+            settings.LLM_HOSTED_MAX_TOKENS, settings.LLM_SELF_HOSTED_MAX_TOKENS
+        )
+        # Still far below what a degenerate reply reached uncapped.
+        self.assertLess(settings.LLM_HOSTED_MAX_TOKENS, 47_000)
 
     def test_the_budget_is_large_enough_for_the_briefing_contract(self):
         # The arbiter reply died at ~6605 characters, roughly 1900 tokens.

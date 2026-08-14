@@ -93,15 +93,27 @@ def _apply_output_budget(payload: dict, model_id: str, budget: int | None = None
     budget overrides the default with whatever this particular server has been
     observed to accept.
     """
+    self_hosted = _is_self_hosted(model_id)
     effective = budget
     if effective is None:
         effective = (
             settings.LLM_SELF_HOSTED_MAX_TOKENS
-            if _is_self_hosted(model_id)
+            if self_hosted
             else settings.LLM_HOSTED_MAX_TOKENS
         )
     if effective > 0:
-        payload["max_tokens"] = effective
+        # The two shapes disagree on the field name. OpenAI renamed it for
+        # newer models and rejects the old one outright - "Unsupported
+        # parameter: 'max_tokens' is not supported with this model. Use
+        # 'max_completion_tokens' instead." Self-hosted OpenAI-compatible
+        # servers (LM Studio, Ollama, vLLM) only know max_tokens, and that
+        # path has been shipping against them for a while, so it keeps it.
+        #
+        # This only became reachable when hosted providers started getting a
+        # budget at all; before that the hosted branch returned early and the
+        # disagreement was invisible.
+        key = "max_tokens" if self_hosted else "max_completion_tokens"
+        payload[key] = effective
     return payload
 
 
@@ -460,6 +472,12 @@ def _rejects_generation_limits(exc: httpx.HTTPStatusError) -> bool:
     if exc.response.status_code not in (400, 404, 422):
         return False
     text = (exc.response.text or "").lower()
+    if "unsupported parameter" in text or "unrecognized" in text:
+        # Covers the completion-budget field name as well. Providers rename
+        # these (max_tokens became max_completion_tokens on newer OpenAI
+        # models), and a request refused purely over a field name should
+        # degrade to one without the optional fields rather than fail a cycle.
+        return True
     return any(term in text for term in ("temperature", "reasoning_effort", "reasoning"))
 
 
