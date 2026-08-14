@@ -68,6 +68,71 @@ class RequestLimitTests(unittest.TestCase):
         self.assertGreaterEqual(settings.LLM_SELF_HOSTED_MAX_TOKENS, 4096)
 
 
+class GenerationLimitParityTests(unittest.TestCase):
+    """Both provider paths must carry the limits, or a switch reverts them.
+
+    These were set on the Google path first. Moving the analysis agents to
+    OpenAI would then have looked like a provider difference while actually
+    being a lost setting: the reasoning budget back to the provider default and
+    no temperature sent at all (ALP-296).
+    """
+
+    def test_the_google_path_carries_all_three_limits(self):
+        limits = llm._google_generation_limits()
+        self.assertEqual(settings.LLM_HOSTED_MAX_TOKENS, limits["max_output_tokens"])
+        self.assertEqual(settings.LLM_JSON_TEMPERATURE, limits["temperature"])
+        self.assertEqual(
+            settings.LLM_JSON_THINKING_BUDGET,
+            limits["thinking_config"].thinking_budget,
+        )
+
+    def test_the_openai_path_carries_the_equivalents(self):
+        limits = llm._openai_generation_limits(HOSTED, None)
+        self.assertEqual(settings.LLM_JSON_REASONING_EFFORT, limits["reasoning_effort"])
+        self.assertEqual(settings.LLM_JSON_TEMPERATURE, limits["temperature"])
+
+    def test_neither_provider_path_is_left_empty(self):
+        # The regression this guards is one path keeping its limits while the
+        # other quietly loses them, which reads as a provider quirk.
+        self.assertTrue(llm._google_generation_limits())
+        self.assertTrue(llm._openai_generation_limits(HOSTED, None))
+
+    def test_an_explicit_caller_effort_beats_the_default(self):
+        # briefing_synthesis raises the arbiter deliberately; a global default
+        # must not silently lower it.
+        self.assertEqual(
+            "high", llm._openai_generation_limits(HOSTED, "high")["reasoning_effort"]
+        )
+
+    def test_a_self_hosted_server_is_left_to_its_own_sampling(self):
+        self.assertEqual({}, llm._openai_generation_limits(SELF_HOSTED, None))
+
+    def test_a_refusal_of_the_optional_limits_is_recognised_and_recoverable(self):
+        request = httpx.Request("POST", "http://x/chat/completions")
+        rejected = httpx.HTTPStatusError(
+            "bad request",
+            request=request,
+            response=httpx.Response(
+                400,
+                request=request,
+                json={"error": "Unsupported parameter: 'temperature' is not supported"},
+            ),
+        )
+        self.assertTrue(llm._rejects_generation_limits(rejected))
+        # A context overflow is a different failure and must not be mistaken
+        # for one, or the retry drops the wrong thing.
+        overflow = httpx.HTTPStatusError(
+            "bad request",
+            request=request,
+            response=httpx.Response(
+                400,
+                request=request,
+                json={"error": "the prompt exceeds the context length"},
+            ),
+        )
+        self.assertFalse(llm._rejects_generation_limits(overflow))
+
+
 class TruncationDetectionTests(unittest.TestCase):
     def test_a_length_stop_is_recognised(self):
         self.assertTrue(llm._truncated({"choices": [{"finish_reason": "length"}]}))

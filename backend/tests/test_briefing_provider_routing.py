@@ -8,6 +8,8 @@ route through app.services.llm.generate_json, which dispatches by provider.
 
 import unittest
 import uuid
+
+from app.config import settings
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -305,9 +307,22 @@ class BriefingProviderRoutingTests(ProviderRoutingTestCase):
             agent_configs=configs,
         )
 
-        self.assertNotIn("reasoning_effort", fake.posts[0]["json"])
-        self.assertNotIn("reasoning_effort", fake.posts[1]["json"])
+        # The lenses used to carry no reasoning_effort at all, which meant
+        # "whatever this provider defaults to" - the invisible spend ALP-296
+        # exists to bound. They now carry the low default explicitly. What this
+        # test is actually for survives: the arbiter is raised and the lenses
+        # are not, and the two must still differ.
+        self.assertEqual(
+            settings.LLM_JSON_REASONING_EFFORT, fake.posts[0]["json"]["reasoning_effort"]
+        )
+        self.assertEqual(
+            settings.LLM_JSON_REASONING_EFFORT, fake.posts[1]["json"]["reasoning_effort"]
+        )
         self.assertEqual("high", fake.posts[2]["json"]["reasoning_effort"])
+        self.assertNotEqual(
+            fake.posts[0]["json"]["reasoning_effort"],
+            fake.posts[2]["json"]["reasoning_effort"],
+        )
         persist.assert_awaited_once()
 
     async def test_gemini_lenses_and_arbiter_use_google_native_schema(self):

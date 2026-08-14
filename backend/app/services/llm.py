@@ -415,6 +415,54 @@ _MIN_OUTPUT_BUDGET = 1024
 _json_budget_by_base_url: dict[str, int] = {}
 
 
+# Whether this server accepted the optional generation limits below. Assumed
+# yes until one is rejected, then remembered, so the cost of a server that does
+# not take them is one refused call rather than one per request - the same
+# shape as _json_mode_by_base_url and _json_budget_by_base_url above.
+_json_generation_limits_by_base_url: dict[str, bool] = {}
+
+
+def _openai_generation_limits(model_id: str, reasoning_effort: str | None) -> dict:
+    """Temperature and reasoning budget for an OpenAI-shaped structured call.
+
+    The Google path gets these from _google_generation_limits. Without the same
+    treatment here, moving the analysis agents from Gemini to OpenAI would
+    silently revert ALP-296: the reasoning budget would go back to the
+    provider default and no temperature would be sent at all, so the change
+    would look like a provider difference rather than a lost setting.
+
+    Self-hosted servers are left alone. They are the ones most likely to reject
+    an unknown field outright, they are already negotiated hard by the mode and
+    budget loops, and their operators set their own sampling.
+
+    An explicit reasoning_effort from the caller always wins - briefing_synthesis
+    raises the arbiter deliberately, and a global default must not quietly
+    lower it (ALP-296).
+    """
+    if _is_self_hosted(model_id):
+        return {}
+    limits: dict = {}
+    effort = reasoning_effort or settings.LLM_JSON_REASONING_EFFORT
+    if effort:
+        limits["reasoning_effort"] = effort
+    if settings.LLM_JSON_TEMPERATURE >= 0:
+        limits["temperature"] = settings.LLM_JSON_TEMPERATURE
+    return limits
+
+
+def _rejects_generation_limits(exc: httpx.HTTPStatusError) -> bool:
+    """Whether a failure is the server refusing temperature or reasoning_effort.
+
+    Reasoning models commonly reject a non-default temperature, and models
+    without a reasoning mode reject reasoning_effort. Either way the request is
+    recoverable by dropping the optional fields, unlike a context overflow.
+    """
+    if exc.response.status_code not in (400, 404, 422):
+        return False
+    text = (exc.response.text or "").lower()
+    return any(term in text for term in ("temperature", "reasoning_effort", "reasoning"))
+
+
 def _rejects_output_budget(exc: httpx.HTTPStatusError) -> bool:
     if exc.response.status_code not in (400, 413, 422):
         return False
@@ -458,7 +506,12 @@ async def _openai_json(
 
     async def post(messages: list[dict], mode: str) -> str:
         payload: dict = {"model": endpoint.model, "messages": messages}
-        if reasoning_effort is not None:
+        if _json_generation_limits_by_base_url.get(endpoint.base_url, True):
+            payload.update(_openai_generation_limits(model_id, reasoning_effort))
+        elif reasoning_effort is not None:
+            # This server refused the optional limits, but an explicit caller
+            # value is a deliberate choice rather than a default, so it still
+            # goes out and fails loudly if it is genuinely unsupported.
             payload["reasoning_effort"] = reasoning_effort
         response_format = _response_format(mode, response_schema)
         if response_format is not None:
@@ -485,6 +538,15 @@ async def _openai_json(
             try:
                 return await post(messages, mode)
             except httpx.HTTPStatusError as exc:
+                if _json_generation_limits_by_base_url.get(
+                    endpoint.base_url, True
+                ) and _rejects_generation_limits(exc):
+                    _json_generation_limits_by_base_url[endpoint.base_url] = False
+                    logger.info(
+                        "%s refused the optional generation limits; retrying without them",
+                        endpoint.base_url,
+                    )
+                    continue
                 current = _json_budget_by_base_url.get(
                     endpoint.base_url, settings.LLM_SELF_HOSTED_MAX_TOKENS
                 )

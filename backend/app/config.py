@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     # Negative disables the override and restores provider defaults.
     LLM_JSON_THINKING_BUDGET: int = 512
     LLM_JSON_TEMPERATURE: float = 0.2
+    # The OpenAI-shaped equivalent of the thinking budget above. Gemini takes a
+    # token count, OpenAI-shaped servers take an effort level, so this cannot be
+    # one setting. Without it, moving the analysis agents to OpenAI would
+    # silently revert the budget to the provider default. Empty disables it.
+    LLM_JSON_REASONING_EFFORT: str = "low"
     DATABASE_URL: str = "postgresql+asyncpg://callhelper:changeme@db:5432/callhelper"
     FRONTEND_DIST: str = ""  # path to built frontend; empty = nginx serves it (Docker)
     GEMINI_MODEL: str = "gemini-3.1-flash-live-preview"
