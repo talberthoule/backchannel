@@ -16,6 +16,10 @@ def _usage_delta(current: tuple[int, ...], previous: tuple[int, ...]) -> tuple[i
     """Per-event delta of a cumulative usage tuple, width-agnostic so it keeps
     working as normalize_usage grows fields (it now also reports thinking)."""
     width = len(current)
+    # Pad rather than assume equal widths: the stored previous tuple predates
+    # any field normalize_usage gains mid-session, and indexing past its end
+    # would raise instead of degrading to a zero baseline.
+    previous = tuple(previous) + (0,) * (width - len(previous))
     if any(current[index] < previous[index] for index in range(width)):
         return (0,) * width
     return tuple(current[index] - previous[index] for index in range(width))

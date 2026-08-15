@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Text, String, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, Text, String, UniqueConstraint, Uuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -157,6 +157,11 @@ class TokenUsage(Base):
     # total_tokens when the provider reports a total, so never add the two.
     thinking_tokens: Mapped[int] = mapped_column(Integer, default=0)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    # Realtime transcription bills by audio duration, not tokens, so a
+    # token-only row cannot represent it and the usage was being dropped
+    # entirely (ALP-300). Seconds rather than minutes because that is the unit
+    # the provider reports; the per-minute rate is applied at display time.
+    audio_seconds: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     session = relationship("Session", back_populates="token_usage")

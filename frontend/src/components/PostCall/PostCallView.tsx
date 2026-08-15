@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CallSegment, Directive, Document, ModelPricingResponse, PostProcessingProgress, Question, Session, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptEntry } from "../../types";
 import TranscriptReview from "./TranscriptReview";
 import CallAudioPanel from "./CallAudioPanel";
@@ -9,7 +9,7 @@ import SpeakerNameMapper from "../SpeakerNameMapper";
 import EditableSessionName from "../EditableSessionName";
 import * as api from "../../services/api";
 import { formatPostProcessingSummary, parseSavedDrainSummary } from "../../lib/postProcessingSummary";
-import { estimateCostUsd, estimateSessionCostUsd, formatEstimatedCost } from "../../lib/modelPricing";
+import { estimateCostUsd, estimateSessionCostUsd, formatAudioDuration, formatEstimatedCost } from "../../lib/modelPricing";
 
 interface PostCallViewProps {
   session: Session;
@@ -517,14 +517,22 @@ export default function PostCallView({
           ) : tokenUsage ? (
             <div className="mt-6 space-y-6">
               <div className="rounded-lg border border-brand-teal/20 bg-brand-teal/5 p-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-brand-gray">Total tokens</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-brand-gray">Estimated cost</p>
                 <p className="mt-1 font-display text-3xl font-semibold tabular-nums text-brand-dark-gray">
-                  {tokenUsage.total_tokens.toLocaleString()}
+                  {formatEstimatedCost(
+                    modelPricing ? estimateSessionCostUsd(tokenUsage.by_model, modelPricing.models) : null,
+                  )}
                 </p>
                 <p className="mt-2 text-sm text-brand-mid-gray">
+                  {tokenUsage.total_tokens.toLocaleString()} tokens
+                  {" ("}
                   {tokenUsage.input_tokens.toLocaleString()} input / {tokenUsage.output_tokens.toLocaleString()} output
                   {tokenUsage.thinking_tokens > 0 && (
                     <> / {tokenUsage.thinking_tokens.toLocaleString()} thinking</>
+                  )}
+                  {")"}
+                  {tokenUsage.audio_seconds > 0 && (
+                    <> plus {formatAudioDuration(tokenUsage.audio_seconds)} of audio</>
                   )}
                 </p>
                 {tokenUsage.thinking_tokens > 0 && (
@@ -532,13 +540,18 @@ export default function PostCallView({
                     Thinking tokens are billed at output rates.
                   </p>
                 )}
+                {tokenUsage.audio_seconds > 0 && (
+                  <p className="mt-1 text-xs text-brand-mid-gray">
+                    The live gateway is billed per minute of audio, not per token.
+                  </p>
+                )}
               </div>
 
-              {tokenUsage.total_tokens === 0 ? (
-                <p className="text-sm text-brand-mid-gray">No token usage was recorded for this session.</p>
+              {tokenUsage.total_tokens === 0 && tokenUsage.audio_seconds === 0 ? (
+                <p className="text-sm text-brand-mid-gray">No usage was recorded for this session.</p>
               ) : (
                 <>
-                  <TokenBreakdownTable title="By source" rows={tokenUsage.by_source} showSource />
+                  <TokenBreakdownTable title="By source" rows={tokenUsage.by_source} showSource pricing={modelPricing} showRateNote={false} />
                   <TokenBreakdownTable title="By model" rows={tokenUsage.by_model} pricing={modelPricing} />
                 </>
               )}
@@ -555,17 +568,31 @@ function TokenBreakdownTable({
   rows,
   showSource = false,
   pricing = null,
+  showRateNote = true,
 }: {
   title: string;
   rows: TokenUsageSummary["by_source"];
   showSource?: boolean;
   // When set, adds an Est. cost column plus a session total row.
   pricing?: ModelPricingResponse | null;
+  // Both tables price their rows, but the rate caveat only needs saying once.
+  showRateNote?: boolean;
 }) {
   const sessionCost = pricing ? estimateSessionCostUsd(rows, pricing.models) : null;
+  // The API orders by tokens, which ranks a duration-billed row (zero tokens,
+  // real money) last. Cost is the only axis the two billing units share, and
+  // it is only known here, so the re-sort happens at render.
+  const ordered = useMemo(() => {
+    if (!pricing) return rows;
+    const cost = (row: TokenUsageSummary["by_source"][number]) =>
+      estimateCostUsd(pricing.models[row.model_id], row.input_tokens, row.output_tokens, row.thinking_tokens, row.audio_seconds ?? 0) ?? -1;
+    return [...rows].sort((a, b) => cost(b) - cost(a));
+  }, [rows, pricing]);
   // Only surface the thinking column when something actually thought, so
-  // non-reasoning sessions keep the narrower table.
+  // non-reasoning sessions keep the narrower table. Same for audio, which is
+  // non-zero only when a duration-billed model ran.
   const showThinking = rows.some((row) => row.thinking_tokens > 0);
+  const showAudio = rows.some((row) => (row.audio_seconds ?? 0) > 0);
   return (
     <section>
       <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-brand-gray">{title}</h3>
@@ -578,12 +605,13 @@ function TokenBreakdownTable({
               <th scope="col" className="px-4 py-3 text-right font-semibold">Input</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold">Output</th>
               {showThinking && <th scope="col" className="px-4 py-3 text-right font-semibold">Thinking</th>}
+              {showAudio && <th scope="col" className="px-4 py-3 text-right font-semibold">Audio</th>}
               <th scope="col" className="px-4 py-3 text-right font-semibold">Total</th>
               {pricing && <th scope="col" className="px-4 py-3 text-right font-semibold">Est. cost</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-brand-light-gray-1">
-            {rows.map((row) => (
+            {ordered.map((row) => (
               <tr key={`${row.source ?? "model"}-${row.model_id}`}>
                 {showSource && <th scope="row" className="px-4 py-3 font-medium text-brand-dark-gray">{row.source}</th>}
                 <td className="px-4 py-3 font-mono text-xs text-brand-gray">{row.model_id}</td>
@@ -592,10 +620,13 @@ function TokenBreakdownTable({
                 {showThinking && (
                   <td className="px-4 py-3 text-right tabular-nums text-brand-gray">{row.thinking_tokens.toLocaleString()}</td>
                 )}
+                {showAudio && (
+                  <td className="px-4 py-3 text-right tabular-nums text-brand-gray">{formatAudioDuration(row.audio_seconds ?? 0)}</td>
+                )}
                 <td className="px-4 py-3 text-right font-semibold tabular-nums text-brand-dark-gray">{row.total_tokens.toLocaleString()}</td>
                 {pricing && (
                   <td className="px-4 py-3 text-right tabular-nums text-brand-gray">
-                    {formatEstimatedCost(estimateCostUsd(pricing.models[row.model_id], row.input_tokens, row.output_tokens, row.thinking_tokens))}
+                    {formatEstimatedCost(estimateCostUsd(pricing.models[row.model_id], row.input_tokens, row.output_tokens, row.thinking_tokens, row.audio_seconds ?? 0))}
                   </td>
                 )}
               </tr>
@@ -604,7 +635,7 @@ function TokenBreakdownTable({
           {pricing && (
             <tfoot className="border-t border-brand-light-gray-1 bg-brand-light-gray-2/60">
               <tr>
-                <th scope="row" colSpan={(showSource ? 5 : 4) + (showThinking ? 1 : 0)} className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-brand-gray">
+                <th scope="row" colSpan={(showSource ? 5 : 4) + (showThinking ? 1 : 0) + (showAudio ? 1 : 0)} className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-brand-gray">
                   Session estimate
                 </th>
                 <td className="px-4 py-3 text-right font-semibold tabular-nums text-brand-dark-gray">
@@ -615,9 +646,9 @@ function TokenBreakdownTable({
           )}
         </table>
       </div>
-      {pricing && (
+      {pricing && showRateNote && (
         <p className="mt-2 text-xs text-brand-mid-gray">
-          Est. cost is an estimate at standard text rates (prices as of {pricing.as_of}); models without published pricing show - and are excluded from the total.
+          Est. cost is an estimate at standard text rates, or at the published per-minute rate for models billed by audio duration (prices as of {pricing.as_of}); models without published pricing show - and are excluded from the total.
         </p>
       )}
     </section>

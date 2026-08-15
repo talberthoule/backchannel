@@ -20,6 +20,10 @@ class ModelPricing(BaseModel):
     output_per_million: float | None = None
     cached_input_per_million: float | None = None
     audio_input_per_million: float | None = None
+    # USD per minute of audio, for models billed by duration rather than
+    # tokens. Omitting it here silently stripped the live gateway's only
+    # published rate from the response (ALP-300).
+    per_minute: float | None = None
 
 
 class ModelRecommendation(BaseModel):

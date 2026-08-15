@@ -36,15 +36,24 @@ source of truth, which is updated as part of every release.
 | DELETE | `/api/sessions/{id}` | Delete a session and its children |
 | GET | `/api/sessions/{id}/segments` | List call segments |
 | GET | `/api/sessions/{id}/segments/{n}/audio` | Download a segment's recorded WAV |
-| GET | `/api/sessions/{id}/token-usage` | Token totals with per-source and per-model breakdowns |
+| GET | `/api/sessions/{id}/token-usage` | Usage totals with per-source and per-model breakdowns |
 | POST | `/api/sessions/{id}/enhance-insights` | Re-run insight enrichment after speaker changes; started in the background, returns the run summary |
 | GET | `/api/sessions/{id}/enhance-insights/{run_id}` | Poll a started enhance run: status, dirty flag, and whether the briefing was updated |
 | GET | `/api/sessions/{id}/agents` | Effective per-session agent list |
 | PUT | `/api/sessions/{id}/agents` | Set per-session agent enable/disable overrides |
 
-Token usage is persisted per provider response and shown in the post-call
-**Tokens** tab. Sessions without recorded LLM activity return zero totals and
-empty `by_source` / `by_model` lists; historical sessions are not backfilled.
+Usage is persisted per provider response and shown in the post-call
+**Tokens** tab, which reports estimated cost rather than raw counts. Sessions
+without recorded LLM activity return zero totals and empty `by_source` /
+`by_model` lists; historical sessions are not backfilled.
+
+Not every model bills per token. OpenAI Realtime transcription
+(`gpt-live-transcribe`) publishes a per-minute rate and reports audio duration
+instead of token counts, so each row also carries `audio_seconds`, which is
+zero for every token-billed model. `GET /api/models/pricing` exposes the
+matching `per_minute` rate alongside the per-million token rates; a model
+priced one way has `null` for the other. Cost estimates sum both, so a row can
+show zero tokens and a non-zero cost.
 
 ## Session groups (`routers/groups.py`)
 

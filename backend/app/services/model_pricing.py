@@ -11,9 +11,10 @@ Simplifications (also stated in the UI):
 - Audio-token input rates are recorded where published (live/transcribe
   models) but cost estimates in the app use the text-tier input rate.
 
-All rates are USD per 1 million tokens. A model mapped to ``None`` is in
-the registry but has no published per-token pricing; the UI renders it as
-"-" and excludes it from cost estimates.
+All token rates are USD per 1 million tokens; ``per_minute`` is USD per
+minute of audio, for models billed by duration instead. A model mapped to
+``None`` is in the registry but has no published pricing of either kind;
+the UI renders it as "-" and excludes it from cost estimates.
 
 ``tests/test_model_pricing.py`` asserts this table stays in one-to-one
 sync with ``MODEL_REGISTRY``, so adding or removing a registry model
@@ -30,16 +31,26 @@ PRICING_AS_OF = "2026-07-23"
 
 
 def _price(
-    input_per_million: float,
-    output_per_million: float,
+    input_per_million: float | None,
+    output_per_million: float | None,
     cached_input_per_million: float | None = None,
     audio_input_per_million: float | None = None,
+    per_minute: float | None = None,
 ) -> dict:
+    """A model's published rates.
+
+    Token rates may be None when a model is not billed per token at all; such a
+    model must carry ``per_minute`` instead, or it has no usable price. The two
+    are additive rather than exclusive so a model billed both ways can be
+    represented without another shape.
+    """
     return {
         "input_per_million": input_per_million,
         "output_per_million": output_per_million,
         "cached_input_per_million": cached_input_per_million,
         "audio_input_per_million": audio_input_per_million,
+        # USD per minute of audio, for duration-billed models (ALP-300).
+        "per_minute": per_minute,
     }
 
 
@@ -75,10 +86,11 @@ MODEL_PRICING: dict[str, dict | None] = {
     "gpt-4o-transcribe": _price(2.50, 10.00, audio_input_per_million=2.50),
     "gpt-4o-mini-transcribe": _price(1.25, 5.00, audio_input_per_million=1.25),
     # gpt-live-transcribe publishes a per-minute rate ($0.017/min of realtime
-    # audio), not a per-token one, so it cannot be expressed in this table.
-    # Kept here as None so the registry-sync test still covers it and the UI
-    # shows "-" rather than a wrong number.
-    "gpt-live-transcribe": None,
+    # audio) and no per-token one. Token rates stay None rather than 0.0 so a
+    # token-shaped payload from this model would price as unknown instead of
+    # silently free; what it actually reports is audio duration, which is
+    # recorded as token_usage.audio_seconds and priced from per_minute.
+    "gpt-live-transcribe": _price(None, None, per_minute=0.017),
     # Audio-capable chat models (Chat Completions input_audio path). Text
     # rates from the per-model pages; gpt-audio-1.5 audio input is billed at
     # 32.00/1M audio tokens. The gpt-audio-mini page publishes no separate

@@ -37,7 +37,11 @@ def _add_revalidation_model_columns(connection, inspector, tables):
 
 
 def _add_thinking_token_column(connection, inspector, tables):
-    """Backfill token_usage.thinking_tokens on databases predating ALP-284.
+    """Backfill token_usage columns added after the table shipped.
+
+    thinking_tokens predates ALP-284; audio_seconds predates ALP-300, which
+    gave duration-billed models (OpenAI Realtime transcription) somewhere to
+    land instead of being discarded.
 
     Extracted rather than inlined with its siblings: _check_and_add is a long
     chain of table/column guards already sitting at the structural complexity
@@ -49,6 +53,10 @@ def _add_thinking_token_column(connection, inspector, tables):
     if "thinking_tokens" not in columns:
         connection.execute(
             text("ALTER TABLE token_usage ADD COLUMN thinking_tokens INTEGER NOT NULL DEFAULT 0")
+        )
+    if "audio_seconds" not in columns:
+        connection.execute(
+            text("ALTER TABLE token_usage ADD COLUMN audio_seconds DOUBLE PRECISION NOT NULL DEFAULT 0")
         )
 
 

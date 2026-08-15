@@ -32,6 +32,9 @@ export interface TokenUsageBreakdown {
   // total_tokens, so never add it to input + output.
   thinking_tokens: number;
   total_tokens: number;
+  // Audio duration, for models billed per minute instead of per token
+  // (the live gateway). Zero for every token-billed model.
+  audio_seconds: number;
 }
 
 export interface TokenUsageSummary {
@@ -39,6 +42,7 @@ export interface TokenUsageSummary {
   output_tokens: number;
   thinking_tokens: number;
   total_tokens: number;
+  audio_seconds: number;
   by_source: TokenUsageBreakdown[];
   by_model: TokenUsageBreakdown[];
 }
@@ -326,6 +330,9 @@ export interface ModelPricing {
   output_per_million: number | null;
   cached_input_per_million: number | null;
   audio_input_per_million: number | null;
+  // USD per minute of audio. Set only for duration-billed models, whose
+  // token rates are null in turn.
+  per_minute: number | null;
 }
 
 // GET /api/models/pricing: rates keyed by model id; a null entry means the

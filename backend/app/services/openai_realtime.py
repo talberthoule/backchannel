@@ -151,6 +151,10 @@ class OpenAIRealtimeSession:
                 logger.warning(f"OpenAI Realtime error event: {event.get('error')}")
                 continue
             if event.get("type") == "conversation.item.input_audio_transcription.completed":
+                # Usage here is per completed item, not cumulative, so rows add
+                # up. For gpt-live-transcribe it arrives as a duration payload
+                # rather than token counts (ALP-300); record_token_usage stores
+                # the seconds and the per-minute rate is applied at display.
                 await record_token_usage(
                     self._session_id,
                     "audio_gateway",

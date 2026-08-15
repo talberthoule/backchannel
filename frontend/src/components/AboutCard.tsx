@@ -8,7 +8,7 @@ import type {
   ReleaseNote,
 } from "../types";
 import * as api from "../services/api";
-import { formatRate } from "../lib/modelPricing";
+import { formatPerMinuteRate, formatRate } from "../lib/modelPricing";
 import { DesktopUpdateCard } from "./DesktopUpdate";
 
 interface AboutCardProps {
@@ -189,6 +189,13 @@ export default function AboutCard({ version, desktopUpdate, highlightSince }: Ab
                   {models.map((model) => {
                     const rates = pricing?.models[model.id] ?? null;
                     const isFree = rates !== null && rates.input_per_million === 0 && rates.output_per_million === 0;
+                    // Billed by audio duration rather than tokens, so the two
+                    // per-1M columns do not apply and a bare "-" would read as
+                    // "no published price" when there is one.
+                    const perMinute =
+                      rates !== null && rates.input_per_million === null && rates.per_minute !== null
+                        ? rates.per_minute
+                        : null;
                     return (
                       <tr key={model.id}>
                         <td className="px-5 py-2.5">
@@ -200,6 +207,10 @@ export default function AboutCard({ version, desktopUpdate, highlightSince }: Ab
                         {isFree ? (
                           <td colSpan={2} className="px-5 py-2.5 text-right">
                             <span className="rounded-full bg-brand-teal/10 px-2 py-0.5 text-[11px] font-semibold text-brand-teal">Free</span>
+                          </td>
+                        ) : perMinute !== null ? (
+                          <td colSpan={2} className="px-5 py-2.5 text-right tabular-nums text-brand-gray">
+                            {formatPerMinuteRate(perMinute)}
                           </td>
                         ) : (
                           <>
