@@ -333,6 +333,28 @@ def _google_generation_limits() -> dict:
     return limits
 
 
+def _google_retry_generation_limits() -> dict:
+    """Limits for the retry after a structured call came back unparseable.
+
+    The retry used to reuse the first attempt's ceiling verbatim, which is the
+    one thing guaranteed not to help when the reason for the retry was that the
+    ceiling truncated the JSON mid-string. A measured 35-minute Gemini call hit
+    the 8192 ceiling twice, both times the synthesizer, both times producing
+    "Unterminated string"; those retries happened to fit on the second pass but
+    nothing made that likely, and a response that genuinely needed the room
+    would have truncated twice and lost the cycle outright.
+
+    Widening only on the retry keeps the cap doing its job on the common path -
+    the runaway this bounds reached 63,192 tokens uncapped - while giving the
+    uncommon legitimately-long answer somewhere to land.
+    """
+    limits = _google_generation_limits()
+    ceiling = limits.get("max_output_tokens")
+    if ceiling:
+        limits["max_output_tokens"] = int(ceiling * settings.LLM_JSON_RETRY_HEADROOM)
+    return limits
+
+
 async def _google_json(
     model_id: str,
     prompt: str,
@@ -378,7 +400,7 @@ async def _google_json(
             contract,
             types.GenerateContentConfig(
                 response_mime_type="application/json",
-                **_google_generation_limits(),
+                **_google_retry_generation_limits(),
             ),
         )
     except TypeError:

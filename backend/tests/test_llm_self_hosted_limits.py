@@ -150,6 +150,39 @@ class GenerationLimitParityTests(unittest.TestCase):
         self.assertEqual(settings.LLM_JSON_REASONING_EFFORT, limits["reasoning_effort"])
         self.assertEqual(settings.LLM_JSON_TEMPERATURE, limits["temperature"])
 
+    def test_the_retry_gets_more_room_than_the_attempt_that_truncated(self):
+        """A retry at the ceiling that just truncated cannot succeed by luck.
+
+        A measured 35-minute Gemini call hit the 8192 ceiling twice, both the
+        synthesizer, both returning "Unterminated string". The retry reused the
+        same ceiling; those two happened to fit on the second pass, but a reply
+        that genuinely needed the room would have truncated again and lost the
+        cycle (ALP-295).
+        """
+        first = llm._google_generation_limits()
+        retry = llm._google_retry_generation_limits()
+        self.assertGreater(retry["max_output_tokens"], first["max_output_tokens"])
+        self.assertEqual(
+            int(first["max_output_tokens"] * settings.LLM_JSON_RETRY_HEADROOM),
+            retry["max_output_tokens"],
+        )
+
+    def test_the_retry_keeps_the_other_limits(self):
+        # Only the ceiling is the reason for the retry; loosening temperature
+        # or the thinking budget too would change what is being retried.
+        first = llm._google_generation_limits()
+        retry = llm._google_retry_generation_limits()
+        self.assertEqual(first["temperature"], retry["temperature"])
+        self.assertEqual(
+            first["thinking_config"].thinking_budget,
+            retry["thinking_config"].thinking_budget,
+        )
+
+    def test_an_uncapped_config_stays_uncapped_on_retry(self):
+        # Multiplying a missing ceiling must not invent one.
+        with mock.patch.object(settings, "LLM_HOSTED_MAX_TOKENS", 0):
+            self.assertNotIn("max_output_tokens", llm._google_retry_generation_limits())
+
     def test_neither_provider_path_is_left_empty(self):
         # The regression this guards is one path keeping its limits while the
         # other quietly loses them, which reads as a provider quirk.

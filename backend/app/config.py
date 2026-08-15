@@ -106,6 +106,20 @@ class Settings(BaseSettings):
     SPEAKER_COHERENCE_THRESHOLD: float = 0.40
     MIN_NEW_SPEAKER_MS: int = 4000
     MAX_SPEAKER_PROFILES_PER_TRACK: int = 4
+
+    # Duplicate-utterance suppression for live transcripts (ALP-301). On
+    # measured dual-track calls about 45 percent of entries were the same
+    # speech saved twice under two speaker identities. The window covers the
+    # observed p90 gap between a pair (3.8s) with headroom; the min-word floor
+    # keeps short backchannels, which legitimately repeat, out of scope.
+    # Headroom multiplier for the retry after a structured JSON call truncated
+    # (ALP-295). Only the retry widens; the first attempt keeps the cap.
+    LLM_JSON_RETRY_HEADROOM: float = 2.0
+
+    TRANSCRIPT_DEDUP_ENABLED: bool = True
+    TRANSCRIPT_DEDUP_WINDOW_SECONDS: float = 10.0
+    TRANSCRIPT_DEDUP_SIMILARITY: float = 0.7
+    TRANSCRIPT_DEDUP_MIN_WORDS: int = 5
     VAD_THRESHOLD: float = 0.6
     SILENCE_GAP_MS: int = 600
     MAX_SEGMENT_MS: int = 15000

@@ -21,6 +21,8 @@ from app.services.speaker_assignment import (
     resolve_live_mic_speaker,
 )
 from app.services.speaker_ghost_filter import should_defer_new_speaker_segment
+from app.services.transcript_dedup import build_transcript_deduper
+from app.config import settings
 from app.services.ordered_transcription import OrderedTranscriptionQueue
 from app.services import runtime_activity
 from app.ws.audio_persistence import (
@@ -487,6 +489,8 @@ def _create_transcript_emitter(
     # Also track speaker names for transcript buffer
     speaker_name_map: dict[str, str] = {}  # str(speaker.id) -> speaker.name
     speaker_type_map: dict[str, str] = {}  # str(speaker.id) -> team/external
+    # Per-call, because the window is only meaningful within one conversation.
+    deduper = build_transcript_deduper(settings)
 
     async def _resolve_auto_speaker(auto_id: str) -> str | None:
         """Map diarizer's auto-assigned IDs to DB Speaker rows."""
@@ -533,6 +537,12 @@ def _create_transcript_emitter(
 
     async def _emit_transcript(speaker_auto_id: str, pcm_bytes: bytes, text: str):
         """Persist an already-transcribed diarized segment in original audio order."""
+        # Ahead of speaker resolution on purpose: a suppressed twin must not
+        # get as far as auto-creating the phantom speaker it would be
+        # attributed to (ALP-301).
+        if not deduper.admit(text):
+            logger.info("Suppressed duplicate transcript: '%s'", text[:80])
+            return
         speaker_auto_id, split_track_mic = _normalize_speaker_auto_id(speaker_auto_id)
         local_mic_speaker = resolve_live_mic_speaker(speaker_auto_id, speaker_rows, split_track_mic)
         if is_unknown_auto_speaker(speaker_auto_id):
