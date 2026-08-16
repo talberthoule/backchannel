@@ -253,12 +253,24 @@ function InsightSection({
             <div className="flex items-start gap-2">
               <ItemIcon className={`mt-0.5 h-4 w-4 shrink-0 ${style.iconColor}`} />
               <div className="min-w-0 flex-1">
-                <div className="flex items-start gap-2">
-                  <p className="min-w-0 flex-1 font-body text-sm font-semibold text-brand-dark-gray">
+                {/* Wraps rather than sharing one line unconditionally. These
+                    sections render both full width (risks, action plan) and
+                    three-up (objectives, opportunities, questions); in the
+                    narrow case a status and an owner chip claim about 10rem,
+                    which left a four-word title wrapping over five lines. The
+                    title keeps a floor of 13rem, so the chips drop to their own
+                    row exactly when there is no longer room beside it. 13 rather
+                    than 11 because at 11 the two-up risks column still squeezed
+                    its title to 195px over three lines: the chips fit, barely,
+                    which is the case worth pushing over. */}
+                <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
+                  <p className="min-w-[13rem] flex-1 font-body text-sm font-semibold text-brand-dark-gray">
                     {item.title || item.summary}
                   </p>
-                  {item.status && <StatusChip status={item.status} />}
-                  {item.owner && <OwnerChip owner={item.owner} />}
+                  <div className="flex shrink-0 items-center gap-2">
+                    {item.status && <StatusChip status={item.status} />}
+                    {item.owner && <OwnerChip owner={item.owner} />}
+                  </div>
                 </div>
                 {item.summary && item.title && (
                   <p className="mt-0.5 font-body text-sm leading-relaxed text-brand-gray">{item.summary}</p>
@@ -292,12 +304,18 @@ function OutcomesHero({ items }: { items: SynthesisSectionItem[] }) {
                 {index + 1}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="flex items-start gap-2">
-                  <p className="min-w-0 flex-1 font-display text-lg font-bold leading-snug text-brand-dark-gray">
+                {/* Same wrap rule as ItemList. This one is always full width,
+                    so the chips stay inline on a desktop viewport; the floor
+                    matters on narrow screens, where a large display title has
+                    even less room to give. */}
+                <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
+                  <p className="min-w-[14rem] flex-1 font-display text-lg font-bold leading-snug text-brand-dark-gray">
                     {item.title || item.summary}
                   </p>
-                  {item.status && <StatusChip status={item.status} />}
-                  {item.owner && <OwnerChip owner={item.owner} />}
+                  <div className="flex shrink-0 items-center gap-2">
+                    {item.status && <StatusChip status={item.status} />}
+                    {item.owner && <OwnerChip owner={item.owner} />}
+                  </div>
                 </div>
                 {item.summary && item.title && (
                   <p className="mt-1 font-body text-sm leading-relaxed text-brand-gray">{item.summary}</p>
