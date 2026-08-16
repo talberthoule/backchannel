@@ -10,10 +10,26 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.5.1"
+APP_VERSION = "0.5.2"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.5.2",
+        "date": "2026-08-16",
+        "title": "Everything in 0.5.1, plus a briefing that reads properly",
+        "body": """v0.5.1 was tagged but never distributed, so if you are coming
+from v0.5.0 this release carries all of its changes as well as the fix below.
+See the v0.5.1 notes underneath for the rest.
+
+- Briefing headings get the width of their card. In the post-call briefing, an
+  item's title shared a line with its status and speaker labels. In the
+  three-across cards at the bottom - objectives, opportunities, open questions -
+  those labels took most of the width and left a five-word heading wrapping over
+  five lines beside a mostly empty card. The labels now drop to their own line
+  when there is no room for them, so headings read as headings.
+""",
+    },
     {
         "version": "0.5.1",
         "date": "2026-08-15",
