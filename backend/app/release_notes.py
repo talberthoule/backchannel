@@ -48,6 +48,12 @@ wasting: your money and your transcript.
   merged into itself; that can no longer happen. Sales-opportunity scouting is
   also switched off entirely on meeting types that do not use it, instead of
   running and discarding the result.
+- The meeting-audio option explains itself. The pre-call checkbox now says
+  plainly that your microphone is always recorded and that this option adds a
+  second track for the meeting's own audio, which is what lets speaker labels
+  tell local from remote voices definitively. Turning it off shows what that
+  costs: with headphones on, the far end cannot be heard or transcribed. The
+  consent notice is also readable in dark mode instead of gray-on-gray.
 """,
     },
     {

@@ -226,14 +226,14 @@ export default function PreCallView({
 
       {/* Consent notice — only show for live calls */}
       {!hasImportedTranscript && (
-        <div className="rounded-lg border border-brand-amber/40 bg-orange-50/60 p-4">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/40">
           <div className="flex gap-3">
             <span className="text-brand-amber text-lg leading-none mt-0.5">&#9888;</span>
             <div>
-              <p className="font-display text-sm font-semibold text-brand-dark-gray">
+              <p className="font-display text-sm font-semibold text-amber-900 dark:text-amber-200">
                 Recording & Transcription Notice
               </p>
-              <p className="font-body text-sm text-brand-gray mt-1 leading-relaxed">
+              <p className="font-body text-sm text-amber-800 mt-1 leading-relaxed dark:text-amber-300/90">
                 This tool transcribes live audio to generate questions. Before starting,
                 ensure all call participants have been informed and have given consent
                 (or do not object) to the recording and transcription of the conversation.
@@ -271,29 +271,42 @@ export default function PreCallView({
                 {startError}
               </div>
             )}
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-start gap-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={captureSystemAudio}
                 onChange={(e) => onToggleSystemAudio?.(e.target.checked)}
-                className="h-4 w-4 rounded border-brand-light-gray-1 text-brand-teal"
+                className="mt-0.5 h-4 w-4 rounded border-brand-light-gray-1 text-brand-teal"
               />
               <span className="font-body text-sm text-brand-dark-gray">
-                Capture meeting audio (share a tab or screen with audio)
+                Capture remote meeting audio on a second track
+                <span className="mt-0.5 block font-body text-xs leading-relaxed text-brand-mid-gray">
+                  Your microphone is always recorded either way. This adds a second
+                  track carrying the meeting's own audio: when the call starts you
+                  pick the meeting tab, window, or screen (with audio sharing on).
+                  A separate remote track lets speaker identification tell local
+                  from remote voices definitively.
+                </span>
               </span>
             </label>
-            {captureSystemAudio === false
-              && speakers.filter((speaker) => speaker.is_user).length === 1
-              && voiceEnrolled === false && (
-              <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 font-body text-xs text-amber-800">
-                Mic-only calls identify you more reliably after voice calibration.{" "}
-                <button
-                  type="button"
-                  onClick={onOpenVoiceSettings}
-                  className="font-semibold underline"
-                >
-                  Open Transcription &amp; Audio
-                </button>
+            {captureSystemAudio === false && (
+              <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 font-body text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+                Mic-only call: remote participants are transcribed only if your
+                microphone can hear them, so with headphones the far end will be
+                missed.
+                {speakers.filter((speaker) => speaker.is_user).length === 1
+                  && voiceEnrolled === false && (
+                  <>
+                    {" "}Voice calibration also makes identifying you more reliable.{" "}
+                    <button
+                      type="button"
+                      onClick={onOpenVoiceSettings}
+                      className="font-semibold underline"
+                    >
+                      Open Transcription &amp; Audio
+                    </button>
+                  </>
+                )}
               </p>
             )}
             <button
