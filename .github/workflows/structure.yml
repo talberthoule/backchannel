@@ -78,6 +78,13 @@ jobs:
       - name: Install Sentrux
         run: |
           set -euo pipefail
+          # sentrux-linux-x86_64 is dynamically linked against GTK and dies with
+          # "error while loading shared libraries: libgtk-3.so.0" without it.
+          # The hosted runner image happens to carry GTK today because it ships
+          # a browser, but that is incidental to this job and a slimmer image
+          # would break it, so declare the dependency rather than inherit it.
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgtk-3-0t64 || sudo apt-get install -y -qq libgtk-3-0
           curl -fsSL -o /tmp/sentrux \
             "https://github.com/sentrux/sentrux/releases/download/${SENTRUX_VERSION}/sentrux-linux-x86_64"
           chmod +x /tmp/sentrux
