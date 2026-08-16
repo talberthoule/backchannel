@@ -680,33 +680,69 @@ try {
         } | Out-Null
     }
 
+    # State the outcome per platform before anything else can muddy it. The
+    # exit code alone proved too fragile to read a release by (ALP-268), and an
+    # operator deciding whether to re-run needs to know which platforms are
+    # already published against immutable objects.
+    $failedPlatforms = $failures | Select-Object -Unique
+    Write-Host ""
+    Write-Host "Desktop release $Version"
+    foreach ($platformId in @("windows-x64", "linux-x64", "macos-arm64")) {
+        $outcome = if ($failedPlatforms -contains $platformId) {
+            "FAILED"
+        } elseif ($state[$platformId] -eq "Completed") {
+            "already published before this run"
+        } else {
+            "published"
+        }
+        Write-Host ("  {0,-13} {1}" -f $platformId, $outcome)
+    }
+    if ($runUrls.Count -gt 0) {
+        Write-Host "  runs: $($runUrls -join ', ')"
+    }
+    Write-Host ""
+
     if ($failures.Count -gt 0) {
-        $details = ($failures | Select-Object -Unique) -join ", "
+        $details = $failedPlatforms -join ", "
         $urls = if ($runUrls.Count -gt 0) { "; runs: " + ($runUrls -join ", ") } else { "" }
         throw "Desktop release is incomplete: $details$urls"
     }
 } finally {
     $env:PATH = $oldPath
-    if ($worktreeAdded) {
-        $resolvedSource = [IO.Path]::GetFullPath($sourceRoot)
+    # Nothing below this line may change the exit status. Publication has
+    # already happened against immutable R2 objects, so a cleanup failure that
+    # reads as a release failure invites exactly the wrong response: the v0.5.0
+    # run published both platforms successfully and then exited 255 because
+    # this checkout sits in OneDrive and the worktree was locked (ALP-268).
+    # The guards that used to throw now warn and skip the deletion, which is
+    # the safe half of what they were protecting.
+    $exitCodeBeforeCleanup = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
+    try {
+        if ($worktreeAdded) {
+            $resolvedSource = [IO.Path]::GetFullPath($sourceRoot)
+            $resolvedTemporary = [IO.Path]::GetFullPath($temporary)
+            if (-not $resolvedSource.StartsWith(
+                $resolvedTemporary + [IO.Path]::DirectorySeparatorChar,
+                [StringComparison]::OrdinalIgnoreCase
+            )) {
+                Write-Warning "Refusing to remove release worktree outside its temporary parent: $resolvedSource"
+            } else {
+                & $script:Git worktree remove --force $resolvedSource
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Warning "Release worktree cleanup failed; the release itself is unaffected: $resolvedSource"
+                }
+            }
+        }
         $resolvedTemporary = [IO.Path]::GetFullPath($temporary)
-        if (-not $resolvedSource.StartsWith(
-            $resolvedTemporary + [IO.Path]::DirectorySeparatorChar,
-            [StringComparison]::OrdinalIgnoreCase
-        )) {
-            throw "Refusing to remove release worktree outside its temporary parent"
+        if (-not $resolvedTemporary.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Warning "Refusing release cleanup outside the temporary root: $resolvedTemporary"
+        } elseif (Test-Path -LiteralPath $resolvedTemporary) {
+            Remove-Item -LiteralPath $resolvedTemporary -Recurse -Force
         }
-        & $script:Git worktree remove --force $resolvedSource
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Release worktree cleanup failed: $resolvedSource"
-        }
-    }
-    $resolvedTemporary = [IO.Path]::GetFullPath($temporary)
-    if (-not $resolvedTemporary.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Refusing release cleanup outside the temporary root"
-    }
-    if (Test-Path -LiteralPath $resolvedTemporary) {
-        Remove-Item -LiteralPath $resolvedTemporary -Recurse -Force
+    } catch {
+        Write-Warning "Release cleanup failed; the release itself is unaffected: $($_.Exception.Message)"
+    } finally {
+        $global:LASTEXITCODE = $exitCodeBeforeCleanup
     }
     Pop-Location
 }

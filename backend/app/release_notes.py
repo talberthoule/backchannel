@@ -10,10 +10,46 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.5.1"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.5.1",
+        "date": "2026-08-15",
+        "title": "Tells you what a call cost, and stops writing everything down twice",
+        "body": """This release is about the two things a long call was quietly
+wasting: your money and your transcript.
+
+- The Tokens tab is a cost report now. It opens with what the call cost rather
+  than a token count, and every agent carries its own dollar figure so you can
+  see which one is expensive. The live audio bridge is billed by the minute
+  instead of by tokens, so it used to show nothing at all; it now appears with
+  the rest. On a measured 35-minute call that was about a fifth of the bill,
+  invisible.
+- Calls stop transcribing the same sentence twice. When a call captures both
+  your microphone and system audio, close to half the transcript was the same
+  speech saved twice under two different speaker names, which is also why a
+  two-person call could show up as four participants. The duplicates are
+  suppressed as they happen, so the transcript reads properly, the export is
+  not half padding, and every analysis agent stops re-reading the same words.
+- Runaway answers are capped. One analysis call in an earlier session produced
+  sixty-three thousand tokens in a single reply, most of it discarded. Replies
+  are now bounded and reasoning is budgeted, and a reply that legitimately
+  needs more room gets it on a second attempt instead of being truncated.
+- The app is lighter while a call is running. Live speaker detection uses
+  substantially less processor time, and the call screen no longer redraws
+  itself sixty times a second to animate the audio meter, so the machine stays
+  responsive during long meetings.
+- New models and corrected prices. GPT Live Transcribe and Gemini 3.7 Flash are
+  selectable, and the Gemini Flash rates shown in the pricing table were too
+  high by half and are now correct.
+- Insights stop quietly disappearing. An insight could be deleted by being
+  merged into itself; that can no longer happen. Sales-opportunity scouting is
+  also switched off entirely on meeting types that do not use it, instead of
+  running and discarding the result.
+""",
+    },
     {
         "version": "0.5.0",
         "date": "2026-08-02",

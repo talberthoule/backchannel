@@ -337,4 +337,41 @@ $state = Get-ReleasePublicationState `
 Assert-True ($state["windows-x64"] -eq "Failed") `
     "Platform metadata without release identity did not fail"
 
+# --- ALP-268: cleanup must never be mistaken for a failed release ------------
+# v0.5.0 published both local platforms and then exited 255 because this
+# OneDrive-synced checkout held a lock on the release worktree. An operator or
+# any automation reading that status would conclude the release failed, and the
+# natural response - re-run - is aimed at immutable R2 objects.
+$cleanup = $source.Substring($source.LastIndexOf('$env:PATH = $oldPath'))
+Assert-True ($cleanup -notmatch 'throw "Refusing to remove release worktree') `
+    "A locked release worktree can still throw out of cleanup"
+Assert-True ($cleanup -notmatch 'throw "Refusing release cleanup') `
+    "A cleanup path check can still throw after a successful publish"
+Assert-True $cleanup.Contains('$global:LASTEXITCODE = $exitCodeBeforeCleanup') `
+    "Cleanup does not restore the pre-cleanup exit code"
+Assert-True ($cleanup.IndexOf("catch") -gt 0) `
+    "Cleanup is not wrapped in a catch, so a locked temp directory still escapes"
+
+# The outcome has to be readable without decoding an exit code at all.
+foreach ($platformId in @("windows-x64", "linux-x64", "macos-arm64")) {
+    Assert-True $source.Contains($platformId) "Summary is missing platform: $platformId"
+}
+Assert-True $source.Contains('"already published before this run"') `
+    "Summary does not distinguish a skipped platform from a newly published one"
+Assert-True ($source.IndexOf('Write-Host "Desktop release $Version"') -lt
+    $source.IndexOf('throw "Desktop release is incomplete')) `
+    "Per-platform summary must print before the incomplete-release throw"
+
+# The documented invocation must actually bind -Confirm. `powershell -File`
+# passes arguments as strings, so the switch never binds and the run dies on
+# a type conversion before doing any work.
+$releasingDoc = Get-Content -LiteralPath (
+    Join-Path $PSScriptRoot "..\..\docs\releasing.md"
+) -Raw
+Assert-True $releasingDoc.Contains('& ./scripts/release_desktop.ps1 -Version vX.Y.Z -Confirm:$false') `
+    "docs/releasing.md lost the working call-operator invocation"
+Assert-True (-not ($releasingDoc -match
+    '-File scripts/release_desktop\.ps1[^\r\n]*-Confirm')) `
+    "docs/releasing.md documents a -File invocation that cannot bind -Confirm"
+
 Write-Output "Desktop release coordinator contracts: OK"

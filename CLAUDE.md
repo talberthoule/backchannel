@@ -177,7 +177,7 @@ Agents are coordinated by `AgentOrchestrator` and configured by `agent_configs` 
 | `audio_gateway` | audio | Continuous audio stream | `backend/app/services/gemini_live.py` / `backend/app/services/openai_realtime.py` / `backend/app/services/local_live_captioner.py` | Silent live listener for interim transcription: Gemini Live, OpenAI Realtime, or the on-device local captioner (`local-parakeet-live`), chosen by the agent's model |
 | `consolidated_analyst` | text | Interval, default 40s, plus a final pass | `backend/app/services/agents/consolidated_analyst.py` | Single Gemini call that can produce questions, observations, opportunities, and action items |
 | `objection_handler` | text | Interval, default 10s, over only the last ~90s of transcript | `backend/app/services/agents/objection_handler.py` | Low-latency objection scan; each `objection` insight pairs an immediate suggested response (micro) with the underlying concern and strategic angle (macro). Skips the LLM call when the window is unchanged |
-| `synthesizer` | meta | `new_insight` / `insight_updated` events, 75s cooldown, 120s fallback | `backend/app/services/agents/synthesizer.py` | Reconciles and enriches saved insights, detects answered questions, may elevate item type. Sends full records only for live insights (starred, or unanswered within `SYNTHESIZER_WORKING_SET_SECONDS`); settled ones collapse to id/type/short-text stubs, and an unchanged corpus skips the call (ALP-283) |
+| `synthesizer` | meta | `new_insight` events, 75s cooldown (see the dead-path note below) | `backend/app/services/agents/synthesizer.py` | Reconciles and enriches saved insights, detects answered questions, may elevate item type. Sends full records only for live insights (starred, or unanswered within `SYNTHESIZER_WORKING_SET_SECONDS`); settled ones collapse to id/type/short-text stubs, and an unchanged corpus skips the call (ALP-283) |
 | `opportunity_specialist` | db | `new_opportunity` events, 55s cooldown, plus final matching | `backend/app/services/agents/opportunity_specialist.py` | Matches opportunity insights against the configured knowledge sources (offerings catalog by default) |
 | `strategic_signals` | meta | Interval, default 45s during the call | `backend/app/services/agents/strategic_signals.py` | Standalone live strategic-signal scan surfaced as signal cards during the call |
 | `brief_meeting_lens` | text | At call end or on demand | `backend/app/services/briefing_synthesis.py` | Briefing lens over the finished transcript |
@@ -187,6 +187,20 @@ Agents are coordinated by `AgentOrchestrator` and configured by `agent_configs` 
 Interval defaults above are the seeded values in `backend/app/services/seed_agents.py`, which is authoritative; `docs/agents.md` and `site/index.html` mirror them and `docs-site/site.test.js` asserts the site copy against the seed data.
 
 Important: there is no standalone `question_hunter.py` in the current tree. Question generation is one enabled lens of `ConsolidatedAnalystAgent`; `question_hunter` only appears as a backward-compatible `agent_source` label for exported/saved question items.
+
+Three synthesizer trigger paths read as live but are not (ALP-298). The
+orchestrator subscribes to an `insight_updated` event that nothing ever
+publishes - only `new_insight` and `new_opportunity` are published anywhere -
+so `new_insight` is the agent's sole trigger. The `insight_updated` that does
+exist is a WebSocket message type sent to the browser, which is a different
+thing from the internal event bus. The 120s max-interval fallback requires a
+non-empty pending list at its tick, but the 75s cooldown has already drained
+it, so on a talking call it never fires. And the unchanged-corpus skip
+fingerprints the insight corpus together with the last 30 transcript entries,
+so on a call where anyone is speaking the fingerprint always differs and the
+skip only engages during silence. Treat all three as documented-but-dead until
+someone decides whether to wire them up or delete them; making the fallback
+live in particular would increase cost.
 
 Deduplication is in `orchestrator.py` and uses simple word-overlap similarity within a 300-second sliding window (`_DEDUP_WINDOW_SECONDS`). The analyst's opportunity lens is dropped from the prompt entirely on meeting types where offering matching is off, so an internal check-in no longer runs sales scouting whose enrichment stage is disabled (ALP-286).
 

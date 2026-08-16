@@ -375,8 +375,20 @@ tag.
 Run the coordinator from clean synchronized `master`:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release_desktop.ps1 -Version vX.Y.Z -Confirm:$false
+& ./scripts/release_desktop.ps1 -Version vX.Y.Z -Confirm:$false
 ```
+
+Use the call operator from inside PowerShell. Do not "simplify" this back to
+`powershell -File`: that form passes every argument as a string, so
+`-Confirm:$false` never binds to the switch and the run dies immediately with
+`Cannot convert 'System.String' to the type
+'System.Management.Automation.SwitchParameter'`. It fails before doing any
+work, but it cost a cycle on both v0.4.0 and v0.5.0 (ALP-268).
+
+The run ends with a per-platform outcome summary. Read that rather than the
+exit code alone; cleanup failures after a successful publish are warnings and
+deliberately do not change the exit status, because this checkout is
+OneDrive-synced and its worktree is routinely locked.
 
 It verifies the immutable local and remote annotated tag, checks existing R2
 metadata, dispatches macOS, builds and immediately publishes Windows, then
