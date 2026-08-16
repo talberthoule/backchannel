@@ -385,6 +385,19 @@ Use the call operator from inside PowerShell. Do not "simplify" this back to
 'System.Management.Automation.SwitchParameter'`. It fails before doing any
 work, but it cost a cycle on both v0.4.0 and v0.5.0 (ALP-268).
 
+From a bash shell (Git Bash, or an agent session whose `!` prefix is bash), `&`
+is not the call operator and the line will not parse. Use `-Command` with
+single quotes, which keeps PowerShell parsing the arguments and stops bash
+expanding `$false`:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command '& ./scripts/release_desktop.ps1 -Version vX.Y.Z -Confirm:$false'
+```
+
+`-Command` binds the switch correctly where `-File` does not: the same probe
+under `-Command` reports `ConfirmPreference=None`, under `-File`
+`ConfirmPreference=High`.
+
 The run ends with a per-platform outcome summary. Read that rather than the
 exit code alone; cleanup failures after a successful publish are warnings and
 deliberately do not change the exit status, because this checkout is
