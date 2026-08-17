@@ -63,15 +63,21 @@ The three briefing agents never run on the live interval. Normal **End Call**
 runs them; **End without briefing** skips them; **Generate Briefing** runs them
 on demand. Live Strategic Signals is separately enabled and configured.
 
-Each Strategic Signals cycle replaces the five live cards, but the signals
-themselves are kept. Every cycle folds its items into `signal_history` on the
-`live` synthesis row, matched on section plus a normalized title, so a repeat
-raises `count` and moves `last_seen` instead of appending a near-duplicate.
-A theme that recurred is therefore visibly distinct from a one-off, and the
-briefing context built from the history carries each observation once rather
-than several times in different words. The History control renders the kept
-signals during the call and again in the post-call briefing. The list is
-capped at the newest `SIGNAL_HISTORY_MAX_ENTRIES` (200) entries.
+Each Strategic Signals cycle scores five candidate slots - Signal, Risk, Next
+Question, Opportunity, Action Cue, in that priority order - and the call screen
+panels the first three of them that have content. The rest are captured, not
+discarded, and so is every signal a previous cycle produced. Every cycle folds
+its items into `signal_history` on the `live` synthesis row, matched on section
+plus a normalized title, so a repeat raises `count` and moves `last_seen`
+instead of appending a near-duplicate. A theme that recurred is therefore
+visibly distinct from a one-off, and the briefing context built from the
+history carries each observation once rather than several times in different
+words. The list is capped at the newest `SIGNAL_HISTORY_MAX_ENTRIES` (200)
+entries.
+
+During the call, the kept signals are listed in full under the insight list's
+**Strategic** filter, newest first. The post-call briefing keeps its own
+History control over the same record.
 
 The settled briefing leads with an at-a-glance summary strip (outcome, action,
 risk, and open-question counts plus synthesis status) and a Top Outcomes hero,

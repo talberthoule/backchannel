@@ -1,26 +1,12 @@
 import { useState } from "react";
 import type { SignalHistoryItem } from "../types";
 import * as api from "../services/api";
-
-const SECTION_LABELS: Record<string, string> = {
-  strategic_signals: "Signal",
-  risks_blockers: "Risk / Blocker",
-  unresolved_discovery_questions: "Discovery Question",
-  top_opportunities: "Opportunity",
-  action_plan: "Action",
-};
+import StrategicSignalCard, { signalKey } from "./StrategicSignalCard";
 
 interface SignalHistoryProps {
   sessionId: string;
   count: number;
   heading?: string;
-}
-
-function historyTime(value: string): string {
-  const time = new Date(value);
-  return Number.isFinite(time.getTime())
-    ? time.toLocaleString([], { dateStyle: "short", timeStyle: "short" })
-    : "Unknown";
 }
 
 function SignalHistoryList({ items }: { items: SignalHistoryItem[] }) {
@@ -30,36 +16,9 @@ function SignalHistoryList({ items }: { items: SignalHistoryItem[] }) {
 
   return (
     <div className="mt-3 grid gap-2 lg:grid-cols-2">
-      {ordered.map((item, index) => {
-        const title = item.title?.trim() || item.summary?.trim() || "Untitled signal";
-        const summary = item.summary?.trim() || "";
-        const distinctSummary = Boolean(item.title?.trim() && summary);
-        return (
-          <article
-            key={`${item.section}:${item.title}:${item.first_seen}:${index}`}
-            className="rounded-lg border border-brand-light-gray-1 bg-surface px-3 py-3"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="rounded-full bg-brand-teal/10 px-2 py-0.5 font-body text-[10px] font-semibold uppercase tracking-wide text-brand-teal">
-                {SECTION_LABELS[item.section] || item.section.replace(/_/g, " ")}
-              </span>
-              <span className="font-body text-[11px] font-medium text-brand-mid-gray">
-                {item.count === 1 ? "Seen once" : `Seen ${item.count} times`}
-              </span>
-            </div>
-            <h4 className="mt-2 font-body text-sm font-semibold text-brand-dark-gray">{title}</h4>
-            {distinctSummary && (
-              <p className="mt-1 font-body text-xs leading-relaxed text-brand-gray">{summary}</p>
-            )}
-            {item.rationale?.trim() && (
-              <p className="mt-2 font-body text-xs leading-relaxed text-brand-mid-gray">{item.rationale}</p>
-            )}
-            <p className="mt-2 font-body text-[11px] text-brand-mid-gray">
-              First {historyTime(item.first_seen)} · Last {historyTime(item.last_seen)}
-            </p>
-          </article>
-        );
-      })}
+      {ordered.map((item, index) => (
+        <StrategicSignalCard key={signalKey(item, index)} item={item} />
+      ))}
     </div>
   );
 }

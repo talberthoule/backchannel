@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Session, SessionSynthesis, SynthesisSectionItem } from "../../types";
-import SignalHistory from "../SignalHistory";
+import type { Session, SessionSynthesis, SignalHistoryItem, SynthesisSectionItem } from "../../types";
 
 interface SynthesisSignalsProps {
   session: Session;
@@ -12,6 +11,11 @@ export interface LiveSignalCard {
   label: string;
   item: SynthesisSectionItem;
 }
+
+// The call screen is busy enough for three panels (ALP-305). Every candidate
+// signal is still captured and scored - the ones past the cut stay available
+// under the insight list's Strategic filter and keep feeding later analysis.
+export const LIVE_SIGNAL_CARD_LIMIT = 3;
 
 function first(items: SynthesisSectionItem[] | undefined): SynthesisSectionItem | null {
   return items?.find((item) => itemText(item)) ?? null;
@@ -89,6 +93,51 @@ export function getLiveSignalCards(synthesis: SessionSynthesis | null, session?:
   ].filter((card): card is LiveSignalCard => card.item !== null);
 }
 
+// Matches _signal_identity in backend/app/services/briefing_synthesis.py, so a
+// signal merged into history and the same signal still on the current cycle
+// collapse to one entry here too.
+function signalIdentity(value: string | undefined): string {
+  return (value || "").replace(/\s+/g, " ").toLowerCase().trim().replace(/[ .,:;!?]+$/, "");
+}
+
+/**
+ * Every strategic signal this call has captured, newest first: the merged
+ * history plus any current-cycle signal not yet in it. This is the full record
+ * the panel's top three are drawn from, and what the Strategic insight filter
+ * lists.
+ */
+export function getStrategicSignalItems(synthesis: SessionSynthesis | null): SignalHistoryItem[] {
+  if (!synthesis || synthesis.mode !== "live") {
+    return [];
+  }
+
+  const byKey = new Map<string, SignalHistoryItem>();
+  for (const item of synthesis.signal_history || []) {
+    const identity = signalIdentity(item.title || item.summary);
+    if (identity) byKey.set(`${item.section}:${identity}`, item);
+  }
+
+  // A cycle's signals reach the client before the next history read does, so
+  // fill any gap from the current cycle. History wins where both have it: it
+  // carries first_seen and the seen count.
+  const stamp = synthesis.updated_at || synthesis.created_at;
+  for (const item of synthesis.strategic_signals || []) {
+    const identity = signalIdentity(item.title || item.summary);
+    if (!identity || byKey.has(`strategic_signals:${identity}`)) continue;
+    byKey.set(`strategic_signals:${identity}`, {
+      ...item,
+      section: "strategic_signals",
+      first_seen: stamp,
+      last_seen: stamp,
+      count: 1,
+    });
+  }
+
+  return [...byKey.values()].sort(
+    (a, b) => new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime(),
+  );
+}
+
 export function getLiveSignalInsightIds(synthesis: SessionSynthesis | null): Set<string> {
   const ids = new Set<string>();
   const cards = getLiveSignalCards(synthesis);
@@ -138,7 +187,7 @@ function SignalItem({
       aria-expanded={isSelected}
       className={`min-w-0 rounded-md border bg-surface px-3 py-2 text-left shadow-sm transition-all duration-200 focus:ring-2 focus:ring-brand-teal-light ${
         isSelected
-          ? "border-brand-teal ring-1 ring-brand-teal/20 md:col-span-2 xl:col-span-5"
+          ? "border-brand-teal ring-1 ring-brand-teal/20 sm:col-span-2 lg:col-span-3"
           : "border-brand-light-gray-1 hover:border-brand-teal-light/60 hover:shadow"
       }`}
     >
@@ -181,8 +230,10 @@ function SignalItem({
 
 export default function SynthesisSignals({ session, synthesis }: SynthesisSignalsProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const cards = useMemo(() => getLiveSignalCards(synthesis, session), [synthesis, session]);
-  const historyCount = synthesis?.signal_history_count || 0;
+  const cards = useMemo(
+    () => getLiveSignalCards(synthesis, session).slice(0, LIVE_SIGNAL_CARD_LIMIT),
+    [synthesis, session],
+  );
 
   useEffect(() => {
     if (selectedKey && !cards.some((card) => card.key === selectedKey)) {
@@ -190,7 +241,7 @@ export default function SynthesisSignals({ session, synthesis }: SynthesisSignal
     }
   }, [cards, selectedKey]);
 
-  if (cards.length === 0 && historyCount === 0) {
+  if (cards.length === 0) {
     return null;
   }
 
@@ -208,7 +259,7 @@ export default function SynthesisSignals({ session, synthesis }: SynthesisSignal
           </span>
         )}
       </div>
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => (
           <SignalItem
             key={card.key}
@@ -218,7 +269,6 @@ export default function SynthesisSignals({ session, synthesis }: SynthesisSignal
           />
         ))}
       </div>
-      <SignalHistory sessionId={session.id} count={historyCount} />
       {synthesis?.status === "partial" && (
         <p className="mt-2 font-body text-xs text-brand-amber">Briefing is based on partial model output.</p>
       )}

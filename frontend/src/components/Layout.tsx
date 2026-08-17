@@ -25,6 +25,8 @@ interface LayoutProps {
   showingOfferings?: boolean;
   showingKnowledge?: boolean;
   showingAdmin?: boolean;
+  /** A call is on screen and running: the live view gets the width. */
+  liveCallActive?: boolean;
   onDeleteSession: (id: string) => Promise<void>;
   onRefreshGroups: () => void;
   onRefreshSessions: () => void;
@@ -306,6 +308,7 @@ export default function Layout({
   showingOfferings,
   showingKnowledge,
   showingAdmin,
+  liveCallActive = false,
   onDeleteSession,
   onRefreshGroups,
   onRefreshSessions,
@@ -334,6 +337,13 @@ export default function Layout({
   useEffect(() => {
     setMobileOpen(false);
   }, [activeSessionId, showingOfferings, showingKnowledge, showingAdmin]);
+
+  // Opening a live call collapses the rail: the call view is the dense screen
+  // and the session list is not what you are reading during a meeting. Only on
+  // the transition in, so expanding it mid-call sticks.
+  useEffect(() => {
+    if (liveCallActive) setSidebarCollapsed(true);
+  }, [liveCallActive]);
 
   const collapsed = isDesktop ? sidebarCollapsed : false;
 

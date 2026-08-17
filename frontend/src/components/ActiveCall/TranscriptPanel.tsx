@@ -4,9 +4,13 @@ import type { Speaker, TranscriptEntry } from "../../types";
 interface TranscriptPanelProps {
   transcripts: TranscriptEntry[];
   speakers: Speaker[];
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export default function TranscriptPanel({ transcripts, speakers }: TranscriptPanelProps) {
+const PANEL_ID = "live-transcription-panel";
+
+export default function TranscriptPanel({ transcripts, speakers, collapsed = false, onToggleCollapse }: TranscriptPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -59,12 +63,55 @@ export default function TranscriptPanel({ transcripts, speakers }: TranscriptPan
     return now - ts < 2000;
   };
 
+  // Collapsed: a rail on desktop, a single bar on mobile. The transcript keeps
+  // arriving; it just stops taking a column of the call screen.
+  if (collapsed) {
+    return (
+      <div className="flex h-full w-full items-center gap-2 px-2 py-2 md:flex-col md:justify-start md:gap-3 md:py-3">
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          aria-expanded={false}
+          aria-controls={PANEL_ID}
+          title="Show live transcription"
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal focus:ring-2 focus:ring-brand-teal-light"
+        >
+          <svg className="h-4 w-4 -rotate-90 md:rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m15 19-7-7 7-7" />
+          </svg>
+        </button>
+        <span className="font-display text-xs font-semibold uppercase tracking-wide text-brand-teal md:[writing-mode:vertical-rl]">
+          Live Transcription
+        </span>
+        {transcripts.length > 0 && (
+          <span className="font-mono text-[11px] tabular-nums text-brand-mid-gray">
+            {transcripts.length}
+          </span>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-brand-light-gray-1 px-4 pb-3">
+    <div className="flex h-full flex-col" id={PANEL_ID}>
+      <div className="flex items-start justify-between gap-2 border-b border-brand-light-gray-1 px-4 pb-3">
         <h3 className="font-display text-sm font-semibold uppercase tracking-wide text-brand-teal">
           Live Transcription
         </h3>
+        {onToggleCollapse && (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            aria-expanded
+            aria-controls={PANEL_ID}
+            title="Hide live transcription"
+            className="-mt-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal focus:ring-2 focus:ring-brand-teal-light"
+          >
+            <svg className="h-4 w-4 rotate-90 md:rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m9 5 7 7-7 7" />
+            </svg>
+          </button>
+        )}
       </div>
 
       <div

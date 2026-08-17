@@ -5,6 +5,10 @@
  * the active view stays mounted through that gap. Acceptance four measured
  * sixteen seconds of "Connection to the backend was lost" and a Resume Audio
  * button after the user had deliberately ended the call.
+ *
+ * Also holds the call screen's density contract (ALP-305): the top bar carries
+ * meters and controls but not setup information the operator typed themselves,
+ * diagnostics stay out of the way, and the transcript column can be put away.
  */
 
 import assert from "node:assert/strict";
@@ -142,4 +146,107 @@ test("the bar receives the ask handler and model props", () => {
   assert.match(src, /onAsk=\{/);
   assert.match(src, /modelId=\{/);
   assert.match(src, /localOnly=\{/);
+});
+
+test("the top bar drops the meeting information the operator already entered", () => {
+  const html = render(
+    props({
+      status: "connected",
+      isCapturing: true,
+      session: {
+        ...props().session,
+        meeting_type: "client_sales",
+        meeting_context: "Renewal call with the platform team",
+      },
+    }),
+  );
+
+  assert.doesNotMatch(html, /Client \/ prospect/);
+  assert.doesNotMatch(html, /Conversation type/);
+  assert.doesNotMatch(html, /Renewal call with the platform team/);
+  // What belongs there stays: the meters, the timer and End Call.
+  assert.match(html, /Microphone input level/);
+  assert.match(html, /End Call/);
+});
+
+test("a healthy call says it is listening exactly once", () => {
+  const html = render(
+    props({ status: "connected", isCapturing: true, systemAudioActive: true }),
+  );
+
+  // Two meters and a status word used to give the bar three copies of it.
+  assert.equal(html.match(/Listening/g)?.length, 1);
+  // Both meters are still there and still distinguishable.
+  assert.match(html, /Microphone input level/);
+  assert.match(html, /Meeting audio input level/);
+});
+
+test("a call that is not simply listening still says what it is doing", () => {
+  assert.match(render(props({ isStarting: true })), /Starting audio\.\.\./);
+  assert.match(render(props({ status: "connecting" })), /connecting/);
+});
+
+test("diagnostics are an unlabeled icon whose readout stays closed", () => {
+  const html = render(props({ status: "connected", isCapturing: true }));
+
+  assert.match(html, /aria-label="Audio diagnostics"/);
+  // No wide "Debug" pill in the flow of the bar, and no readout until asked.
+  assert.doesNotMatch(html, />Debug</);
+  assert.doesNotMatch(html, /audio sent:/);
+});
+
+test("the transcript column can be put away", () => {
+  const html = render(props({ status: "connected", isCapturing: true }));
+
+  assert.match(html, /Live Transcription/);
+  assert.match(html, /Hide live transcription/);
+});
+
+test("captured strategic signals reach the insight list as a Strategic filter", () => {
+  const signal = (title, seen) => ({
+    section: "strategic_signals",
+    title,
+    summary: `${title} detail`,
+    rationale: "",
+    first_seen: seen,
+    last_seen: seen,
+    count: 1,
+  });
+
+  const html = render(
+    props({
+      status: "connected",
+      isCapturing: true,
+      synthesis: {
+        mode: "live",
+        status: "completed",
+        strategic_signals: [],
+        top_outcomes: [],
+        top_opportunities: [],
+        risks_blockers: [],
+        action_plan: [],
+        unresolved_discovery_questions: [],
+        clusters: [],
+        signal_history: [
+          signal("Budget owner changed", "2026-08-16T10:00:00Z"),
+          signal("Security review is the gate", "2026-08-16T10:05:00Z"),
+        ],
+        signal_history_count: 2,
+        created_at: "2026-08-16T10:05:00Z",
+        updated_at: "2026-08-16T10:05:00Z",
+      },
+    }),
+  );
+
+  // The chip is present and counts every captured signal, not just the panelled ones.
+  assert.match(html, /Strategic/);
+  assert.match(html, /aria-pressed="false"[^>]*>Strategic/);
+  // Closed by default: All is still the selected filter.
+  assert.doesNotMatch(html, /Budget owner changed/);
+});
+
+test("the Strategic chip stays hidden when no signal has been captured", () => {
+  const html = render(props({ status: "connected", isCapturing: true }));
+
+  assert.doesNotMatch(html, />Strategic</);
 });

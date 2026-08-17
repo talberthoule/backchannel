@@ -1,17 +1,26 @@
 import { useMemo, useState } from "react";
-import type { Question } from "../../types";
+import type { Question, SignalHistoryItem } from "../../types";
 import QuestionCard from "./QuestionCard";
+import StrategicSignalCard, { signalKey } from "../StrategicSignalCard";
 import { sortQuestionsForLiveDisplay } from "./questionOrdering";
 import { BUILTIN_TYPE_META, BUILTIN_TYPE_ORDER, presentTypes, typeGroupLabel } from "../../utils/insightTypes";
 
-// "all", an item_type slug (built-in or custom lens type), or a status key
+// "all", "strategic", an item_type slug (built-in or custom lens type), or a
+// status key
 type Filter = string;
 
 const STATUS_KEYS = new Set(["starred", "answered", "prioritized", "enhanced"]);
 
+// Strategic lists the call's captured signals rather than filtering insights,
+// so - like All - it is exclusive and never intersects the other chips.
+const STRATEGIC_KEY = "strategic";
+const EXCLUSIVE_KEYS = new Set(["all", STRATEGIC_KEY]);
+
 interface QuestionListProps {
   questions: Question[];
   strategicSignalQuestionIds?: string[];
+  /** Every strategic signal captured on this call, newest first. */
+  strategicSignals?: SignalHistoryItem[];
   showEnhanced?: boolean;
   emptyMessage?: string;
   onStar: (id: string, starred: boolean) => void;
@@ -20,20 +29,21 @@ interface QuestionListProps {
   onMakeDirective?: (question: Question) => void;
 }
 
-export default function QuestionList({ questions, strategicSignalQuestionIds = [], showEnhanced = false, emptyMessage, onStar, onDismiss, onVote, onMakeDirective }: QuestionListProps) {
+export default function QuestionList({ questions, strategicSignalQuestionIds = [], strategicSignals = [], showEnhanced = false, emptyMessage, onStar, onDismiss, onVote, onMakeDirective }: QuestionListProps) {
   const [activeFilters, setActiveFilters] = useState<Set<Filter>>(new Set(["all"]));
   const strategicSignalIdSet = useMemo(
     () => new Set(strategicSignalQuestionIds),
     [strategicSignalQuestionIds]
   );
+  const showStrategic = activeFilters.has(STRATEGIC_KEY) && strategicSignals.length > 0;
 
   const toggleFilter = (key: Filter) => {
     setActiveFilters((prev) => {
-      const next = new Set(prev);
-      if (key === "all") {
-        return new Set(["all"]);
+      if (EXCLUSIVE_KEYS.has(key)) {
+        return new Set([prev.has(key) ? "all" : key]);
       }
-      next.delete("all");
+      const next = new Set(prev);
+      for (const exclusive of EXCLUSIVE_KEYS) next.delete(exclusive);
       if (next.has(key)) {
         next.delete(key);
         if (next.size === 0) return new Set(["all"]);
@@ -65,7 +75,9 @@ export default function QuestionList({ questions, strategicSignalQuestionIds = [
       return sorted.filter((q) => !q.dismissed);
     }
 
-    const typeFilters = new Set([...activeFilters].filter((f) => !STATUS_KEYS.has(f)));
+    const typeFilters = new Set(
+      [...activeFilters].filter((f) => !STATUS_KEYS.has(f) && !EXCLUSIVE_KEYS.has(f))
+    );
 
     return sorted.filter((q) => {
       const hasStarred = activeFilters.has("starred");
@@ -93,6 +105,7 @@ export default function QuestionList({ questions, strategicSignalQuestionIds = [
 
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: "All" },
+    ...(strategicSignals.length > 0 ? [{ key: STRATEGIC_KEY, label: "Strategic" }] : []),
     ...typeFilterDefs,
     { key: "starred", label: "Starred" },
     { key: "answered", label: "Answered" },
@@ -106,6 +119,7 @@ export default function QuestionList({ questions, strategicSignalQuestionIds = [
     const counts = new Map<Filter, number>();
     const live = questions.filter((q) => !q.dismissed);
     counts.set("all", live.length);
+    counts.set(STRATEGIC_KEY, strategicSignals.length);
     const bump = (key: Filter) => counts.set(key, (counts.get(key) || 0) + 1);
     for (const q of live) {
       bump(q.item_type || "question");
@@ -115,7 +129,7 @@ export default function QuestionList({ questions, strategicSignalQuestionIds = [
       if (q.enhanced) bump("enhanced");
     }
     return counts;
-  }, [questions]);
+  }, [questions, strategicSignals]);
 
   return (
     <div className="flex h-full flex-col">
@@ -153,7 +167,17 @@ export default function QuestionList({ questions, strategicSignalQuestionIds = [
 
       {/* Scrollable list */}
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
-        {filtered.length === 0 ? (
+        {showStrategic ? (
+          <>
+            <p className="font-body text-xs text-brand-mid-gray">
+              Every strategic signal this call has captured, newest first. The top three
+              are on the panel above; all of them keep feeding later analysis.
+            </p>
+            {strategicSignals.map((item, index) => (
+              <StrategicSignalCard key={signalKey(item, index)} item={item} />
+            ))}
+          </>
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <p className="font-body text-sm text-brand-mid-gray">
               {activeFilters.has("all")

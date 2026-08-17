@@ -11,6 +11,12 @@ interface AudioIndicatorProps {
    * reader; the neighbouring visual caption is not part of the accessible name.
    */
   label: string;
+  /**
+   * Draw the "Listening..." / "Mic off" caption. Off for a second meter beside
+   * a first one that already says it, which would otherwise repeat the same
+   * word across the bar.
+   */
+  showStatusText?: boolean;
 }
 
 const BAR_COUNT = 5;
@@ -26,7 +32,7 @@ function activeBarCount(level: number) {
   return level > 0.015 ? Math.max(1, Math.ceil(level * BAR_COUNT)) : 0;
 }
 
-export default function AudioIndicator({ isCapturing, level, label }: AudioIndicatorProps) {
+export default function AudioIndicator({ isCapturing, level, label, showStatusText = true }: AudioIndicatorProps) {
   const meterRef = useRef<HTMLDivElement | null>(null);
   const barsRef = useRef<(HTMLDivElement | null)[]>([]);
   const paintedBarsRef = useRef(-1);
@@ -116,9 +122,11 @@ export default function AudioIndicator({ isCapturing, level, label }: AudioIndic
       </div>
 
       {/* Status text */}
-      <span className="font-body text-sm text-brand-gray">
-        {isCapturing ? "Listening..." : "Mic off"}
-      </span>
+      {showStatusText && (
+        <span className="font-body text-sm text-brand-gray">
+          {isCapturing ? "Listening..." : "Mic off"}
+        </span>
+      )}
     </div>
   );
 }

@@ -1074,7 +1074,6 @@ export default function App() {
             askError={runtimeMatchesView ? askError : null}
             askDisabled={!runtimeMatchesView}
             onMakeDirective={handleMakeDirective}
-            onUpdateSessionContext={handleUpdateSessionContext}
             audioLevel={audioLevelRef}
             systemAudioLevel={liveSessionId === session.id ? systemAudioLevelRef : SILENT_AUDIO_LEVEL}
             systemAudioActive={liveSessionId === session.id && systemAudioActive}
@@ -1136,6 +1135,7 @@ export default function App() {
       showingOfferings={showOfferings}
       showingKnowledge={showKnowledge}
       showingAdmin={showAdmin}
+      liveCallActive={session?.state === "active" && !showOfferings && !showKnowledge && !showAdmin}
       onDeleteSession={handleDeleteSessionById}
       onRefreshGroups={refreshGroups}
       onRefreshSessions={refreshSessions}

@@ -25,7 +25,10 @@ after(async () => {
   await rm(outputDir, { recursive: true, force: true });
 });
 
-test("signal history is requested only through an explicit opt-in", async () => {
+// The client passes the opt-in through verbatim. The live call view no longer
+// needs it - the server returns history for mode=live either way (ALP-305) -
+// but the post-call panel still loads on demand.
+test("the synthesis request carries the history opt-in it was given", async () => {
   const urls = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {

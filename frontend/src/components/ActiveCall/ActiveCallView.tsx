@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SILENT_AUDIO_LEVEL, type AudioLevelSource } from "../../hooks/useAudioCapture";
-import type { AgentActivitySnapshot, AudioSendStats, MeetingType, ModelInfo, PostProcessingProgress as PostProcessingProgressState, Question, Session, SessionSynthesis, Speaker, StopDrainMode, TranscriptEntry } from "../../types";
+import type { AgentActivitySnapshot, AudioSendStats, ModelInfo, PostProcessingProgress as PostProcessingProgressState, Question, Session, SessionSynthesis, Speaker, StopDrainMode, TranscriptEntry } from "../../types";
 import AgentActivityPanel, { activityEmptyMessage } from "./AgentActivityPanel";
 import AudioIndicator from "./AudioIndicator";
 import DirectiveBar from "./DirectiveBar";
 import PostProcessingProgress from "./PostProcessingProgress";
 import QuestionList from "./QuestionList";
-import SynthesisSignals, { getLiveSignalInsightIds } from "./SynthesisSignals";
+import SynthesisSignals, { getLiveSignalInsightIds, getStrategicSignalItems } from "./SynthesisSignals";
 import TranscriptPanel from "./TranscriptPanel";
 
 interface ActiveCallViewProps {
@@ -28,7 +28,6 @@ interface ActiveCallViewProps {
   askError: string | null;
   askDisabled: boolean;
   onMakeDirective?: (question: Question) => void;
-  onUpdateSessionContext: (data: { meeting_type?: MeetingType; meeting_context?: string }) => Promise<void>;
   // Live meter levels, read per animation frame rather than rendered (ALP-291).
   audioLevel: AudioLevelSource;
   systemAudioLevel?: AudioLevelSource;
@@ -47,15 +46,6 @@ interface ActiveCallViewProps {
   synthesis: SessionSynthesis | null;
   activity: AgentActivitySnapshot | null;
 }
-
-const MEETING_TYPE_OPTIONS: { value: MeetingType; label: string }[] = [
-  { value: "general", label: "General" },
-  { value: "client_sales", label: "Client / prospect" },
-  { value: "customer_delivery", label: "Customer delivery" },
-  { value: "internal_enablement", label: "Internal enablement" },
-  { value: "internal_checkin", label: "Internal check-in" },
-  { value: "vendor_partner", label: "Vendor / partner" },
-];
 
 function useSessionTimer(startedAt: string | null) {
   const [elapsed, setElapsed] = useState(0);
@@ -109,7 +99,6 @@ export default function ActiveCallView({
   askError,
   askDisabled,
   onMakeDirective,
-  onUpdateSessionContext,
   audioLevel,
   systemAudioLevel,
   systemAudioActive,
@@ -127,9 +116,10 @@ export default function ActiveCallView({
   activity,
 }: ActiveCallViewProps) {
   const [debugOpen, setDebugOpen] = useState(false);
-  const [contextExpanded, setContextExpanded] = useState(false);
+  const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
   const [endMenuOpen, setEndMenuOpen] = useState(false);
   const endMenuRef = useRef<HTMLDivElement | null>(null);
+  const debugRef = useRef<HTMLDivElement | null>(null);
   const autoUpvotedSignalIds = useRef<Set<string>>(new Set());
   const timerDisplay = useSessionTimer(callSegmentStart);
   const postProcessingActive = postProcessing?.active ?? false;
@@ -172,6 +162,9 @@ export default function ActiveCallView({
     [strategicSignalQuestionIds]
   );
 
+  // Everything the signals agent has surfaced, not just the three on the panel.
+  const strategicSignals = useMemo(() => getStrategicSignalItems(synthesis), [synthesis]);
+
   useEffect(() => {
     for (const id of strategicSignalQuestionIds) {
       const question = normalizedQuestions.find((q) => q.id === id);
@@ -195,6 +188,17 @@ export default function ActiveCallView({
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [endMenuOpen]);
+
+  useEffect(() => {
+    if (!debugOpen) return;
+    function handlePointerDown(event: MouseEvent) {
+      if (debugRef.current && !debugRef.current.contains(event.target as Node)) {
+        setDebugOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [debugOpen]);
 
   const displayQuestions = useMemo(
     () =>
@@ -223,71 +227,58 @@ export default function ActiveCallView({
                 isCapturing={isCapturing}
                 level={systemAudioLevel ?? SILENT_AUDIO_LEVEL}
                 label="Meeting audio input level"
+                showStatusText={false}
               />
             </span>
           )}
-          {captureStatus && (
+          {/* Only when it says something the meters do not: the mic meter
+              already reads "Listening..." on a healthy call. */}
+          {captureStatus && captureStatus !== "Listening" && (
             <span className="font-body text-xs text-brand-mid-gray">{captureStatus}</span>
           )}
           {captureError && (
             <span className="font-body text-xs text-red-600">{captureError}</span>
           )}
-          <select
-            value={session.meeting_type || "general"}
-            onChange={(event) => {
-              void onUpdateSessionContext({ meeting_type: event.target.value as MeetingType });
-            }}
-            disabled={postProcessingActive}
-            className="rounded-md border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-gray focus:border-brand-teal-light disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
-            title="Conversation type"
-          >
-            {MEETING_TYPE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          {session.meeting_context.trim() && (
-            <button
-              type="button"
-              onClick={() => setContextExpanded((open) => !open)}
-              title={contextExpanded ? "Collapse context" : session.meeting_context}
-              className={`min-w-0 rounded-md border border-brand-light-gray-1 bg-brand-light-gray-2 px-2 py-1 text-left font-body text-xs text-brand-mid-gray transition-colors hover:text-brand-gray ${
-                contextExpanded ? "w-full basis-full whitespace-pre-wrap break-words" : "max-w-xs truncate"
-              }`}
-            >
-              {session.meeting_context.trim()}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setDebugOpen((open) => !open)}
-            aria-expanded={debugOpen}
-            className={`rounded-md border px-2 py-1 font-body text-xs font-semibold transition-colors ${
-              debugOpen
-                ? "border-brand-teal bg-brand-teal/10 text-brand-teal"
-                : "border-brand-light-gray-1 text-brand-mid-gray hover:bg-brand-light-gray-2"
-            }`}
-          >
-            Debug
-          </button>
-          {debugOpen && (
-            <div className="flex min-w-0 max-w-2xl flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-brand-light-gray-1 bg-brand-light-gray-2 px-2 py-1">
-              <span className="whitespace-nowrap font-body text-xs text-brand-mid-gray">
-                audio sent: {audioSeconds}s / {audioStats.chunksSent} chunks
-                {audioStats.chunksDropped > 0 ? `, dropped ${audioStats.chunksDropped}` : ""}
-                {lastAudioAge !== null ? `, last ${lastAudioAge}s ago` : ""}
-              </span>
-              {backendAudioStatus && (
-                <span className="min-w-0 max-w-md truncate font-body text-xs text-brand-mid-gray" title={backendAudioStatus}>
-                  {backendAudioStatus}
-                </span>
-              )}
-            </div>
-          )}
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-4">
+          {/* Diagnostics: a quiet icon with its readout in a popover, so a
+              debugging aid never competes with the call for the bar. */}
+          <div className="relative flex" ref={debugRef}>
+            <button
+              type="button"
+              onClick={() => setDebugOpen((open) => !open)}
+              aria-expanded={debugOpen}
+              aria-label="Audio diagnostics"
+              title="Audio diagnostics"
+              className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors focus:ring-2 focus:ring-brand-teal-light ${
+                debugOpen
+                  ? "bg-brand-teal/10 text-brand-teal"
+                  : "text-brand-light-gray-1 hover:bg-brand-light-gray-2 hover:text-brand-mid-gray"
+              }`}
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z" />
+              </svg>
+            </button>
+            {debugOpen && (
+              <div className="absolute right-0 top-full z-20 mt-1 w-80 rounded-lg border border-brand-light-gray-1 bg-surface px-3 py-2 shadow-lg">
+                <p className="font-mono text-[9px] uppercase tracking-wider text-brand-mid-gray">
+                  Diagnostics
+                </p>
+                <p className="mt-1 font-body text-xs text-brand-gray">
+                  audio sent: {audioSeconds}s / {audioStats.chunksSent} chunks
+                  {audioStats.chunksDropped > 0 ? `, dropped ${audioStats.chunksDropped}` : ""}
+                  {lastAudioAge !== null ? `, last ${lastAudioAge}s ago` : ""}
+                </p>
+                {backendAudioStatus && (
+                  <p className="mt-1 break-words font-body text-xs text-brand-mid-gray">
+                    {backendAudioStatus}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
           {!ending && (!isCapturing || status !== "connected") && (
             <button
               onClick={onResumeAudio}
@@ -423,6 +414,7 @@ export default function ActiveCallView({
             <QuestionList
               questions={displayQuestions}
               strategicSignalQuestionIds={strategicSignalQuestionIds}
+              strategicSignals={strategicSignals}
               showEnhanced={Boolean(session.speaker_context_enhanced_at)}
               emptyMessage={emptyInsightMessage}
               onStar={onStarQuestion}
@@ -433,9 +425,19 @@ export default function ActiveCallView({
           </div>
         </div>
 
-        {/* Right column: Transcript (below insights on mobile) */}
-        <div className="flex h-64 min-h-0 w-full flex-shrink-0 flex-col overflow-hidden border-t border-brand-light-gray-1 bg-surface pt-3 md:h-auto md:w-80 md:border-l md:border-t-0 xl:w-96">
-          <TranscriptPanel transcripts={transcripts} speakers={speakers} />
+        {/* Right column: Transcript (below insights on mobile), collapsible so
+            the insight list can have the whole screen. */}
+        <div
+          className={`flex min-h-0 w-full flex-shrink-0 flex-col overflow-hidden border-t border-brand-light-gray-1 bg-surface transition-[width] md:h-auto md:border-l md:border-t-0 ${
+            transcriptCollapsed ? "md:w-12" : "h-64 pt-3 md:w-80 xl:w-96"
+          }`}
+        >
+          <TranscriptPanel
+            transcripts={transcripts}
+            speakers={speakers}
+            collapsed={transcriptCollapsed}
+            onToggleCollapse={() => setTranscriptCollapsed((open) => !open)}
+          />
         </div>
       </div>
 

@@ -1523,6 +1523,10 @@ def _synthesis_payload(synthesis) -> dict:
         "action_plan": synthesis.action_plan or [],
         "unresolved_discovery_questions": synthesis.unresolved_discovery_questions or [],
         "strategic_signals": synthesis.strategic_signals or [],
+        # The live call view lists every captured signal behind its Strategic
+        # filter, so the history travels with the update rather than needing a
+        # second fetch. _merge_signal_history caps it at SIGNAL_HISTORY_MAX_ENTRIES.
+        "signal_history": synthesis.signal_history or [],
         "signal_history_count": len(synthesis.signal_history or []),
         "evidence_refs": synthesis.evidence_refs or [],
         "lens_meeting": synthesis.lens_meeting or {},

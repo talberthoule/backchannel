@@ -60,5 +60,7 @@ def _synthesis_response(
     history = synthesis.signal_history or []
     response = SessionSynthesisOut.model_validate(synthesis)
     response.signal_history_count = len(history)
-    response.signal_history = history if include_history else []
+    # Live callers always get the history: the call view lists every captured
+    # signal behind its Strategic filter rather than loading them on demand.
+    response.signal_history = history if include_history or synthesis.mode == "live" else []
     return response
