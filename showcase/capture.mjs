@@ -17,7 +17,9 @@ const { chromium } = require("playwright");
 
 const outArg = process.argv.indexOf("--out");
 const OUT = outArg > -1 ? process.argv[outArg + 1] : "showcase/screenshots";
-const BASE = "http://localhost:3000";
+// Aim BACKCHANNEL_SHOWCASE_BASE at the isolated capture stack
+// (showcase/docker-compose.capture.yml) rather than the long-lived dev stack.
+const BASE = process.env.BACKCHANNEL_SHOWCASE_BASE || "http://localhost:3000";
 const SESSION = "Alderwake Health Network - recovery readiness review";
 // Matches the model named in the seeded asked rows' "Answered by" caption.
 const ASK_MODEL = "gemini-3.6-flash";
@@ -241,7 +243,9 @@ async function runLive(colorScheme, suffix) {
   try {
     await openDemo(page);
     const resume = page.getByRole("button", { name: "Resume Audio" });
-    const listening = page.getByText("Listening", { exact: true }).first();
+    // The mic meter's caption: since ALP-305 the top bar suppresses its own
+    // "Listening" status word on a healthy call, so the meter is the signal.
+    const listening = page.getByText("Listening...", { exact: true }).first();
     await resume.or(listening).first().waitFor({ timeout: 20000 });
     if (await resume.isVisible().catch(() => false)) await resume.click();
     await listening.waitFor({ timeout: 20000 });
@@ -271,6 +275,18 @@ async function runLive(colorScheme, suffix) {
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${OUT}/live-objections${suffix}.png` });
     log.push(`  live-objections${suffix} -- objection cards with drafted responses`);
+
+    // Filtered to questions: the newest card is the synthesizer's whole story
+    // on one card - marked Answered, the answer summarized, and the follow-up
+    // still owed spun off. Crop source for live-answered (FIG. 3). Type chips
+    // combine, so clear the objections chip through All first.
+    await page.getByRole("button", { name: /^All/ }).first().click();
+    await page.waitForTimeout(400);
+    await page.getByRole("button", { name: /^Questions/ }).first().click();
+    await page.getByText(/Will isolated validation satisfy/i).first().waitFor({ timeout: 20000 });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `${OUT}/live-questions${suffix}.png` });
+    log.push(`  live-questions${suffix} -- answered question with its spun-off follow-up`);
     await page.getByRole("button", { name: /^All/ }).first().click();
     await page.waitForTimeout(400);
 

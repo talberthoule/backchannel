@@ -10,13 +10,20 @@ account team and two customer-side leaders, seeded by `showcase/seed_demo.py`.
 
 ## Regenerating the whole set
 
+Capture against an isolated compose project, never the long-lived dev stack:
+`seed_demo.py --reset` deletes every session in whatever database it reaches
+(it nearly cost the ALP-295/ALP-301 validation sessions once).
+
 ```bash
-docker compose up -d                        # app at localhost:3000
-python showcase/seed_demo.py --reset
-node showcase/capture.mjs
+docker compose -f docker-compose.yml -f showcase/docker-compose.capture.yml \
+  -p backchannel-capture up --build -d    # app at localhost:3100
+COMPOSE_PROJECT_NAME=backchannel-capture BACKCHANNEL_SHOWCASE_BASE=http://localhost:3100 \
+  python showcase/seed_demo.py --reset
+BACKCHANNEL_SHOWCASE_BASE=http://localhost:3100 node showcase/capture.mjs
 python showcase/encode.py                   # PNG -> site/assets/shots/*.webp
 python showcase/crops.py                    # focused crops from those captures
 node showcase/og_card.mjs                   # site/assets/og-image.png
+docker compose -p backchannel-capture down -v
 ```
 
 Reseed immediately before capturing, and capture once. Reaching the live view
@@ -41,8 +48,9 @@ device and restores the session to completed when it finishes.
 | --- | --- | --- |
 | `live-call(-dark)` | Live recovery review: Listening status, the live strategic-signal strip, 125 saved insights, an answered mid-call question, and a speaker-attributed transcript | **Hero**, README, OG card, comparison pages |
 | `live-ask(-dark)` | The same call with a question typed into the command bar, unsent | "Ask the call a question" |
-| `live-objections(-dark)` | The live feed filtered to objections, leading with the offering-matched answered card | Crop source |
-| `live-answered(-dark)` | Crop: the answered objection card with its offering match and drafted response | "Questions answer themselves"; comparison pages |
+| `live-objections(-dark)` | The live feed filtered to objections, leading with the answered card and its drafted response | Comparison pages (objection handling) |
+| `live-questions(-dark)` | The live feed filtered to questions, leading with the synthesizer's full story on one card | Crop source |
+| `live-answered(-dark)` | Crop: the answered question card - marked Answered, answer summarized, follow-up spun off | "Questions answer themselves" |
 | `ask-bar(-dark)` | Crop: the command bar with its Chat/Directive modes and the answering model chip | Detail strip |
 | `postcall-briefing(-dark)` | Conversation briefing: at-a-glance strip, kept signal history, and TOP 3 OUTCOMES with named owners | Briefing / results section |
 | `postcall-signals(-dark)` | Strategic Signal History expanded: six kept signals with counts and first/last sighting | "Nothing raised is quietly dropped" |

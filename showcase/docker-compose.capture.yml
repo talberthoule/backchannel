@@ -1,0 +1,25 @@
+# Overlay for an isolated screenshot-capture stack. The showcase seed's
+# --reset deletes every session in whatever database it reaches, so captures
+# must never run against the long-lived dev stack. Usage (from the repo root):
+#
+#   docker compose -f docker-compose.yml -f showcase/docker-compose.capture.yml \
+#     -p backchannel-capture up --build -d
+#   COMPOSE_PROJECT_NAME=backchannel-capture \
+#     BACKCHANNEL_SHOWCASE_BASE=http://localhost:3100 \
+#     python showcase/seed_demo.py --reset
+#   BACKCHANNEL_SHOWCASE_BASE=http://localhost:3100 node showcase/capture.mjs
+#
+# The -p project gives the stack its own pgdata and backend_data volumes; the
+# shifted host ports keep it off 3000/8001/5432.
+services:
+  db:
+    ports: !override
+      - "5533:5432"
+  backend:
+    ports: !override
+      - "8101:8000"
+    environment:
+      BACKEND_RELOAD: "false"
+  frontend:
+    ports: !override
+      - "3100:80"

@@ -19,6 +19,7 @@ FULL = {
     "live-call": (1440, 900),
     "live-ask": (1440, 900),
     "live-objections": (1440, 900),
+    "live-questions": (1440, 900),
     "postcall-briefing": (1440, 900),
     "postcall-signals": (1440, 900),
     "postcall-insights": (1440, 900),
@@ -34,7 +35,7 @@ FULL = {
     "knowledge-sources": (1185, 900),
 }
 CROPS = {
-    "live-answered": (732, 414),
+    "live-answered": (940, 492),
     "insights-attributed": (1032, 542),
     "session-header": (1032, 208),
     "ask-bar": (1120, 58),

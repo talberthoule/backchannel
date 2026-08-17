@@ -18,7 +18,7 @@ CROPS = {
     "session-header": ("postcall-insights", (336, 84, 1368, 292)),
     # The answered objection card with its offering match and drafted response,
     # taken from the objection-filtered live feed.
-    "live-answered": ("live-objections", (288, 404, 1020, 818)),
+    "live-answered": ("live-questions", (90, 340, 1030, 832)),
     # Insight cards carrying speaker attribution and follow-up state.
     "insights-attributed": ("postcall-attributed", (336, 68, 1368, 610)),
     # The call's command bar: chat/directive modes and the answering model.

@@ -13,6 +13,7 @@
 # neither has a fixture-oriented write endpoint.
 import argparse
 import json
+import os
 import subprocess
 import urllib.error
 import urllib.request
@@ -20,7 +21,11 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-BASE = "http://localhost:3000/api"
+# Point BACKCHANNEL_SHOWCASE_BASE (and COMPOSE_PROJECT_NAME, for psql) at the
+# isolated capture stack; see showcase/docker-compose.capture.yml. --reset
+# deletes every session in the database it reaches, so never aim this at the
+# long-lived dev stack.
+BASE = os.environ.get("BACKCHANNEL_SHOWCASE_BASE", "http://localhost:3000") + "/api"
 REPO = Path(__file__).resolve().parent.parent
 GROUP = "Alderwake Health Network"
 MAIN = "Alderwake Health Network - recovery readiness review"
@@ -140,14 +145,14 @@ LINES = [
 # item_type, agent_source, question, rationale, context, speaker, starred,
 # answered, answer_summary, needs_followup, followup, offering_match, enhanced
 CURATED_INSIGHTS = [
-    ("action_item", "action_tracker", "Send the fixed recovery pilot scope by Thursday noon", "Owen can sponsor the pilot once the stated guardrails and commercial boundary are in writing.", "I will send the fixed pilot scope, separate managed-operations option, and operating boundary by Thursday noon", "Me", False, False, "", False, "", "Recovery Implementation Pilot", True),
+    ("action_item", "action_tracker", "Send the fixed recovery pilot scope by Thursday noon", "Owen can sponsor the pilot once the stated guardrails and commercial boundary are in writing.", "I will send the fixed pilot scope, separate managed-operations option, and operating boundary by Thursday noon", "Me", False, False, "", False, "", "", True),
     ("action_item", "action_tracker", "Open the identity change request on day one", "The ten-working-day approval clock must run in parallel with discovery to protect the September evidence date.", "the change request opens on day one, in parallel with discovery", "Me", False, False, "", False, "", "", True),
     ("action_item", "action_tracker", "Confirm accountable clinical owners and their validation window", "Clinical sign-off is required for the evidence pack, but the role list is not complete yet.", "I can send the names tomorrow", "Owen", False, False, "", True, "Which accountable role will sign the medication reconciliation validation?", "", False),
     ("action_item", "action_tracker", "Hold the technical working session Tuesday at 2:00 Central", "Identity and interface owners need to validate access and sequence before the runbook is locked.", "Tuesday at two Central works", "Owen", False, False, "", False, "", "", False),
-    ("action_item", "action_tracker", "Include a board-ready evidence outline in the proposal", "Maya wants the insurer to clear the evidence shape before the recovery test.", "Add the board-ready evidence outline", "Maya", False, False, "", False, "", "Recovery Readiness Assessment", True),
-    ("objection", "objection_handler", "Clinical operations will not allow a production failover during the pilot", "A production-impacting test would stop the project before procurement.", "there can be no production failover during the pilot", "Maya", True, True, "Leah proposed an isolated recovery network with synthetic transactions and clinical validation, which Owen accepted.", False, "", "Recovery Implementation Pilot", True),
-    ("objection", "objection_handler", "The infrastructure team cannot absorb another operating platform", "Seven people, five remote, are already committed to the data center exit.", "My infrastructure team has seven people, five are remote", "Owen", False, True, "The pilot stays self-contained and managed recovery operations will be priced separately as an optional operating model.", False, "", "Managed Recovery Operations", True),
-    ("objection", "objection_handler", "The services integrator is not yet an approved supplier", "Supplier onboarding could miss the board deadline even though software can use an existing reseller agreement.", "You are not yet an approved services supplier", "Owen", True, True, "Keep the fixed pilot below the ninety-thousand-dollar single-source threshold while the broader supplier review continues.", False, "", "Recovery Implementation Pilot", True),
+    ("action_item", "action_tracker", "Include a board-ready evidence outline in the proposal", "Maya wants the insurer to clear the evidence shape before the recovery test.", "Add the board-ready evidence outline", "Maya", False, False, "", False, "", "", True),
+    ("objection", "objection_handler", "Clinical operations will not allow a production failover during the pilot", "A production-impacting test would stop the project before procurement.", "there can be no production failover during the pilot", "Maya", True, True, "Leah proposed an isolated recovery network with synthetic transactions and clinical validation, which Owen accepted.", False, "", "", True),
+    ("objection", "objection_handler", "The infrastructure team cannot absorb another operating platform", "Seven people, five remote, are already committed to the data center exit.", "My infrastructure team has seven people, five are remote", "Owen", False, True, "The pilot stays self-contained and managed recovery operations will be priced separately as an optional operating model.", False, "", "", True),
+    ("objection", "objection_handler", "The services integrator is not yet an approved supplier", "Supplier onboarding could miss the board deadline even though software can use an existing reseller agreement.", "You are not yet an approved services supplier", "Owen", True, True, "Keep the fixed pilot below the ninety-thousand-dollar single-source threshold while the broader supplier review continues.", False, "", "", True),
     ("objection", "objection_handler", "Legal will not allow production data in a recovery test", "Using copied clinical data would invalidate the safe pilot design.", "Legal will reject a test dataset copied from production", "Maya", False, True, "Use a minimal fictional dataset inside the isolated recovery network; no patient or employee records are required.", False, "", "", True),
     ("opportunity", "opportunity_scout", "Recovery Readiness Assessment", "Alderwake needs an evidence-backed gap analysis before committing to broader remediation.", "I need something defensible, not a polished diagram", "Maya", False, False, "", False, "", "Recovery Readiness Assessment", True),
     ("opportunity", "opportunity_specialist", "Recovery Implementation Pilot", "The customer has budget, a deadline, a narrow technical scope, and accepted non-disruptive validation guardrails.", "If the scope holds those guardrails, I can sponsor it", "Owen", False, False, "", False, "", "Recovery Implementation Pilot", True),
@@ -160,10 +165,13 @@ CURATED_INSIGHTS = [
     ("observation", "observer", "External evidence must use accountable roles, not personal names", "The customer explicitly limited personally identifying details in board and insurer artifacts.", "use accountable roles in every external artifact", "Me", False, False, "", False, "", "", True),
     ("question", "question_hunter", "Which failure created most of the six-hour recovery gap?", "The answer determines whether the pilot should prioritize tooling, sequencing, identity, or clinical validation.", "What did the latest exercise show", "Me", False, True, "Application sequencing was the largest delay; emergency-account authority was second.", False, "", "", True),
     ("question", "question_hunter", "Which services are tier zero for the pilot?", "A narrow critical-service boundary is required to finish before September.", "Which services are tier zero for the pilot", "Leah", False, True, "Identity, the interface engine, and the medication reconciliation feed.", False, "", "", True),
-    ("question", "question_hunter", "Will isolated validation satisfy the board and insurer?", "The pilot only works if evidence from a non-production environment is accepted.", "give the board enough evidence", "Me", False, True, "Yes, if the evidence records timings, owners, exceptions, and the next remediation decision.", False, "", "", True),
     ("question", "question_hunter", "Who approves emergency identity access during a recovery?", "The last exercise exposed an authority gap even though the recovery vault worked.", "nobody had confirmed who could authorize the emergency accounts", "Maya", False, False, "", True, "Which role is primary and who is the after-hours delegate?", "", False),
     ("question", "question_hunter", "Who owns exceptions when the two-hour objective is missed?", "Unowned remediation would weaken both the board decision and insurer evidence.", "Who owns the exception list", "Maya", False, True, "Infrastructure owns technical exceptions, security owns risk acceptance, and the integrator owns remediation recommendations.", False, "", "", True),
-    ("question", "question_hunter", "What evidence cadence will be required after September?", "A recurring requirement changes the managed-service scope and operating cost.", "The board and insurer need evidence of a tested recovery plan", "Maya", False, False, "", True, "Will quarterly validation satisfy both governance groups?", "Managed Recovery Operations", False),
+    ("question", "question_hunter", "What evidence cadence will be required after September?", "A recurring requirement changes the managed-service scope and operating cost.", "The board and insurer need evidence of a tested recovery plan", "Maya", False, False, "", True, "Will quarterly validation satisfy both governance groups?", "", False),
+    # Newest question on purpose: it leads the Questions filter as the
+    # synthesizer's whole story on one card - marked Answered, the answer
+    # summarized, and the follow-up still owed spun off (FIG. 3 crop source).
+    ("question", "question_hunter", "Will isolated validation satisfy the board and insurer?", "The pilot only works if evidence from a non-production environment is accepted.", "give the board enough evidence", "Me", False, True, "Yes, if the evidence records timings, owners, exceptions, and the next remediation decision.", True, "Will the insurer pre-clear the evidence outline before the recovery test?", "", True),
 ]
 
 # Questions asked through the call's command bar (ALP-178). The product stores
