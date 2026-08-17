@@ -40,11 +40,13 @@ async def refresh_synthesis(
     if not session:
         raise HTTPException(404, "Session not found")
 
-    synthesis = (
-        await run_strategic_signals_cycle(session_id)
-        if mode == "live"
-        else await run_session_synthesis(session_id, mode="post_call")
-    )
+    if mode == "live":
+        # The live cycle also files this round's signal insights, which the
+        # client refetches; only the panel update is returned here.
+        cycle = await run_strategic_signals_cycle(session_id)
+        synthesis = cycle[0] if cycle else None
+    else:
+        synthesis = await run_session_synthesis(session_id, mode="post_call")
     if not synthesis:
         raise HTTPException(400, "Briefing synthesis is disabled or no transcript is available")
     return _synthesis_response(synthesis)
@@ -60,7 +62,7 @@ def _synthesis_response(
     history = synthesis.signal_history or []
     response = SessionSynthesisOut.model_validate(synthesis)
     response.signal_history_count = len(history)
-    # Live callers always get the history: the call view lists every captured
-    # signal behind its Strategic filter rather than loading them on demand.
-    response.signal_history = history if include_history or synthesis.mode == "live" else []
+    # Signals reach the live call view as insight rows (ALP-308), so the raw
+    # history is only for the post-call panel that asks for it.
+    response.signal_history = history if include_history else []
     return response

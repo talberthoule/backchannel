@@ -19,6 +19,7 @@ from app.services.llm import generate_json
 from app.database import async_session
 from app.models import Question, Session, TranscriptEntry
 from app.services.agents.prompts import PRINCIPAL_AGENT_PROMPT
+from app.services.agents.signal_insights import SIGNAL_ITEM_TYPES
 from app.services.agents.speaker_context import format_transcript_segment, normalize_speaker_type
 from app.services.insight_refiner import _apply_operations
 from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
@@ -208,6 +209,10 @@ async def run_synthesizer_cycle(session_id: uuid.UUID, model_override: str | Non
                 # agent material: excluded so the Principal Agent cannot
                 # dismiss, adjust, or elevate an answer it did not produce.
                 Question.item_type != ASKED_ITEM_TYPE,
+                # Strategic signals are owned by their own agent, which
+                # rewrites them every cycle. Reconciling them here would have
+                # two agents editing the same rows in opposite directions.
+                Question.item_type.notin_(SIGNAL_ITEM_TYPES),
             )
             # Deterministic order: without it the payload is not byte-stable
             # between cycles, so no prompt cache can ever hit (ALP-285).

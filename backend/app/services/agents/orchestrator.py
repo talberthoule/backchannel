@@ -1162,6 +1162,26 @@ class AgentOrchestrator:
 
             return True
 
+    async def _send_signal_insights(self, signal_rows: dict | None) -> int:
+        """Push this cycle's signal insight rows to the browser.
+
+        New rows arrive as ordinary insights; a signal that aged into history,
+        or came back, arrives as an update to the row already on screen.
+        """
+        if not signal_rows:
+            return 0
+
+        created = signal_rows.get("created") or []
+        updated = signal_rows.get("updated") or []
+        for message_type, rows in (("question", created), ("insight_updated", updated)):
+            for row in rows:
+                try:
+                    await self.websocket.send_json({"type": message_type, "data": row})
+                except Exception as e:
+                    logger.info(f"[strategic_signals] signal insight broadcast failed: {e}")
+                    return len(created)
+        return len(created)
+
     def _validated_speaker_id(self, raw: object) -> str | None:
         """Keep insight attribution tied to the session speaker roster."""
         if not isinstance(raw, str) or not raw.strip():
@@ -1335,7 +1355,7 @@ class AgentOrchestrator:
                     logger.debug("[strategic_signals] Window unchanged, skipping cycle")
                 elif transcript_window != "(No recent transcript)":
                     last_window = transcript_window
-                    synthesis = await run_strategic_signals_cycle(
+                    cycle = await run_strategic_signals_cycle(
                         self.session_id,
                         agent_configs=self._agent_configs,
                         transcript_window=transcript_window,
@@ -1344,14 +1364,18 @@ class AgentOrchestrator:
                         speakers=self.speakers,
                         active_questions=self.active_questions,
                     )
+                    synthesis, signal_rows = cycle if cycle else (None, None)
                     if synthesis:
                         await self._send_synthesis_update(synthesis)
+                    filed = await self._send_signal_insights(signal_rows)
                     await self.activity.cycle_finished(
                         STRATEGIC_SIGNALS_SLUG,
                         {
                             "kind": "insights" if synthesis else "no_findings",
                             "detail": (
-                                "Live strategic signals updated."
+                                f"Live strategic signals updated; {filed} filed as insights."
+                                if synthesis and filed
+                                else "Live strategic signals updated."
                                 if synthesis
                                 else "No strategic signal changed."
                             ),
@@ -1523,10 +1547,9 @@ def _synthesis_payload(synthesis) -> dict:
         "action_plan": synthesis.action_plan or [],
         "unresolved_discovery_questions": synthesis.unresolved_discovery_questions or [],
         "strategic_signals": synthesis.strategic_signals or [],
-        # The live call view lists every captured signal behind its Strategic
-        # filter, so the history travels with the update rather than needing a
-        # second fetch. _merge_signal_history caps it at SIGNAL_HISTORY_MAX_ENTRIES.
-        "signal_history": synthesis.signal_history or [],
+        # Kept signals reach the live call view as insight rows now (ALP-308),
+        # so only the count travels here; the rows themselves are fetched on
+        # demand by the post-call history panel.
         "signal_history_count": len(synthesis.signal_history or []),
         "evidence_refs": synthesis.evidence_refs or [],
         "lens_meeting": synthesis.lens_meeting or {},

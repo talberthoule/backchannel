@@ -167,16 +167,16 @@ or by briefing synthesis at call end
 (`_send_synthesis_update` in `backend/app/services/agents/orchestrator.py`).
 `data` is the full persisted synthesis, the same shape
 `GET /api/sessions/{id}/synthesis` returns (`SessionSynthesis` in
-`frontend/src/types/index.ts`), including the kept signals: both
-`signal_history` and its `signal_history_count`. The live call view lists every
-captured signal behind the insight list's **Strategic** filter, so the rows
-travel with the update rather than needing a second fetch. The history is
-deduplicated and capped at `SIGNAL_HISTORY_MAX_ENTRIES` (200) before it is
-persisted, which bounds what the socket carries.
+`frontend/src/types/index.ts`), with one deliberate omission: kept signals
+arrive as a `signal_history_count` only, never as rows.
 
-`GET /api/sessions/{id}/synthesis` returns the rows unconditionally for
-`mode=live` and only under `include_history=true` for `mode=post_call`, where
-the briefing's History panel loads them on demand.
+The rows are not needed there because every signal is also an ordinary insight.
+The strategic-signals agent files each one as a `Question` row and those arrive
+over this same socket as `question` and `insight_updated` messages like any
+other insight, so the live call view reads them from the insight list rather
+than from the synthesis payload. `GET /api/sessions/{id}/synthesis` still
+returns the raw history under `include_history=true`, which is what the
+post-call briefing's History panel uses.
 
 ## Ordering and delivery notes
 

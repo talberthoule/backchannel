@@ -23,7 +23,7 @@ const bundle = await build({
       };
       const noop = () => {};
       export const live = renderToStaticMarkup(React.createElement(QuestionCard, {
-        question: asked, isStrategicSignal: true, onStar: noop, onDismiss: noop, onVote: noop,
+        question: asked, onStar: noop, onDismiss: noop, onVote: noop,
       }));
       export const postCall = renderToStaticMarkup(React.createElement(QuestionSummary, {
         questions: [asked], speakers: [],

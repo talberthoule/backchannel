@@ -7,6 +7,7 @@ import uuid
 from typing import Any
 
 from app.services.agents.prompts import STRATEGIC_SIGNALS_PROMPT
+from app.services.agents.signal_insights import sync_signal_insights
 from app.services.briefing_synthesis import (
     BriefArbiterOutput,
     _build_context,
@@ -33,6 +34,12 @@ async def run_strategic_signals_cycle(
     speakers: list[dict] | None = None,
     active_questions: list[dict] | None = None,
 ):
+    """Run one live signals cycle.
+
+    Returns ``(synthesis, {"created": [...], "updated": [...]})`` - the panel
+    update and the signal insight rows the cycle filed - or ``None`` when the
+    agent is disabled or there is nothing to read yet.
+    """
     configs = agent_configs or await load_agent_configs(session_id)
     cfg = configs.get(STRATEGIC_SIGNALS_SLUG)
     if not cfg or not cfg.enabled:
@@ -80,7 +87,7 @@ async def run_strategic_signals_cycle(
             provider_error_message(provider_for(cfg.model_id), exc),
         )
         raise
-    return await _persist_synthesis(
+    synthesis = await _persist_synthesis(
         session_id=session_id,
         mode="live",
         status="completed",
@@ -89,3 +96,14 @@ async def run_strategic_signals_cycle(
         arbiter_output=output,
         model_ids={STRATEGIC_SIGNALS_SLUG: cfg.model_id},
     )
+
+    # The signals that miss the panel are insights in their own right. Failing
+    # to file them must not lose the cycle's panel update, which is already
+    # persisted above.
+    try:
+        signal_rows = await sync_signal_insights(session_id, output)
+    except Exception:
+        logger.exception("[strategic_signals] could not sync signal insights")
+        signal_rows = {"created": [], "updated": []}
+
+    return synthesis, signal_rows

@@ -31,7 +31,7 @@ provider-specific starting point, not a forced choice.
 | `objection_handler` | text | Interval, default 10s, over only the last 90s of transcript | `backend/app/services/agents/objection_handler.py` | Low-latency objection scan; each `objection` insight pairs an immediate suggested response with the underlying concern and strategic angle |
 | `synthesizer` | meta | `new_insight` / `insight_updated` events, 75s cooldown, 120s fallback | `backend/app/services/agents/synthesizer.py` | Reconciles and enriches saved insights, detects answered questions, may elevate an item's type |
 | `opportunity_specialist` | db | `new_opportunity` events, 55s cooldown, plus final matching | `backend/app/services/agents/opportunity_specialist.py` | Matches opportunity insights against configured knowledge sources |
-| `strategic_signals` | meta | Interval, default 45s during the call | `backend/app/services/agents/strategic_signals.py` | Produces the live Signal, Risk, Next Question, Opportunity, and Action Cue cards in one call; evidence-linked insights are automatically upvoted |
+| `strategic_signals` | meta | Interval, default 45s during the call | `backend/app/services/agents/strategic_signals.py` | Produces and ranks the live Signal, Risk, Next Question, Opportunity, and Action Cue cards in one call; the top three take the panel and every signal is also filed as an insight |
 | `brief_meeting_lens` | meta | Full End Call or on demand | `backend/app/services/briefing_synthesis.py` | Drafts the factual meeting record |
 | `brief_discovery_lens` | meta | Full End Call or on demand | `backend/app/services/briefing_synthesis.py` | Drafts the broader discovery and sensemaking view |
 | `brief_arbiter` | meta | After the post-call lens drafts | `backend/app/services/briefing_synthesis.py` | Reconciles the two drafts into the settled briefing |
@@ -63,10 +63,13 @@ The three briefing agents never run on the live interval. Normal **End Call**
 runs them; **End without briefing** skips them; **Generate Briefing** runs them
 on demand. Live Strategic Signals is separately enabled and configured.
 
-Each Strategic Signals cycle scores five candidate slots - Signal, Risk, Next
-Question, Opportunity, Action Cue, in that priority order - and the call screen
-panels the first three of them that have content. The rest are captured, not
-discarded, and so is every signal a previous cycle produced. Every cycle folds
+Each Strategic Signals cycle can emit five kinds of card - Signal, Risk, Next
+Question, Opportunity, Action Cue - and ranks them itself. The prompt asks the
+model to number every item it emits 1, 2, 3... across all five kinds together,
+judged on what the user can act on at that moment rather than on which section
+it came from, and the call screen panels the three lowest numbers. Anything the
+model leaves unranked falls back to the section order above. The rest are
+captured, not discarded, and so is every signal a previous cycle produced. Every cycle folds
 its items into `signal_history` on the `live` synthesis row, matched on section
 plus a normalized title, so a repeat raises `count` and moves `last_seen`
 instead of appending a near-duplicate. A theme that recurred is therefore
@@ -75,9 +78,17 @@ history carries each observation once rather than several times in different
 words. The list is capped at the newest `SIGNAL_HISTORY_MAX_ENTRIES` (200)
 entries.
 
-During the call, the kept signals are listed in full under the insight list's
-**Strategic** filter, newest first. The post-call briefing keeps its own
-History control over the same record.
+Every signal is also filed as an ordinary insight row, so it can be starred,
+voted, dismissed and exported like consolidated-analyst output
+(`backend/app/services/agents/signal_insights.py`). A signal the latest cycle
+still emits carries item type `signal`; one it no longer emits becomes
+`signal_history`. The live insight list shows them under **Strategic** and
+**History** chips, and suppresses the two or three that are currently on the
+panel above so no signal appears twice. A dismissed signal stays dismissed even
+if the agent emits it again. These rows are kept out of the strategic-signals
+agent's own context and out of the synthesizer's corpus, so no second agent
+rewrites what the signals agent owns. The post-call briefing keeps its own
+History control over the durable `signal_history` record.
 
 The settled briefing leads with an at-a-glance summary strip (outcome, action,
 risk, and open-question counts plus synthesis status) and a Top Outcomes hero,

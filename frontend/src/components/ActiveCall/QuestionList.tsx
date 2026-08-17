@@ -1,26 +1,22 @@
 import { useMemo, useState } from "react";
-import type { Question, SignalHistoryItem } from "../../types";
+import type { Question } from "../../types";
 import QuestionCard from "./QuestionCard";
-import StrategicSignalCard, { signalKey } from "../StrategicSignalCard";
 import { sortQuestionsForLiveDisplay } from "./questionOrdering";
 import { BUILTIN_TYPE_META, BUILTIN_TYPE_ORDER, presentTypes, typeGroupLabel } from "../../utils/insightTypes";
 
-// "all", "strategic", an item_type slug (built-in or custom lens type), or a
-// status key
+// "all", an item_type slug (built-in or custom lens type), or a status key
 type Filter = string;
 
 const STATUS_KEYS = new Set(["starred", "answered", "prioritized", "enhanced"]);
 
-// Strategic lists the call's captured signals rather than filtering insights,
-// so - like All - it is exclusive and never intersects the other chips.
-const STRATEGIC_KEY = "strategic";
-const EXCLUSIVE_KEYS = new Set(["all", STRATEGIC_KEY]);
-
 interface QuestionListProps {
   questions: Question[];
-  strategicSignalQuestionIds?: string[];
-  /** Every strategic signal captured on this call, newest first. */
-  strategicSignals?: SignalHistoryItem[];
+  /**
+   * Normalized titles of the signals currently on the panel above. Their rows
+   * exist like any other insight, but listing one directly under its own panel
+   * card is the duplication the panel exists to avoid (ALP-308).
+   */
+  panelSignalIdentities?: Set<string>;
   showEnhanced?: boolean;
   emptyMessage?: string;
   onStar: (id: string, starred: boolean) => void;
@@ -29,21 +25,33 @@ interface QuestionListProps {
   onMakeDirective?: (question: Question) => void;
 }
 
-export default function QuestionList({ questions, strategicSignalQuestionIds = [], strategicSignals = [], showEnhanced = false, emptyMessage, onStar, onDismiss, onVote, onMakeDirective }: QuestionListProps) {
+// Matches signal_identity in backend/app/services/agents/signal_insights.py.
+function signalIdentity(value: string): string {
+  return (value || "").replace(/\s+/g, " ").toLowerCase().trim().replace(/[ .,:;!?]+$/, "");
+}
+
+export default function QuestionList({ questions, panelSignalIdentities, showEnhanced = false, emptyMessage, onStar, onDismiss, onVote, onMakeDirective }: QuestionListProps) {
   const [activeFilters, setActiveFilters] = useState<Set<Filter>>(new Set(["all"]));
-  const strategicSignalIdSet = useMemo(
-    () => new Set(strategicSignalQuestionIds),
-    [strategicSignalQuestionIds]
-  );
-  const showStrategic = activeFilters.has(STRATEGIC_KEY) && strategicSignals.length > 0;
+
+  // A signal on the panel keeps its row - so it holds its stars and votes, and
+  // reappears in the list the moment it loses the slot - but is not listed
+  // while the panel is showing it.
+  const listed = useMemo(() => {
+    if (!panelSignalIdentities?.size) return questions;
+    return questions.filter(
+      (q) =>
+        (q.item_type || "question") !== "signal"
+        || !panelSignalIdentities.has(signalIdentity(q.question)),
+    );
+  }, [questions, panelSignalIdentities]);
 
   const toggleFilter = (key: Filter) => {
     setActiveFilters((prev) => {
-      if (EXCLUSIVE_KEYS.has(key)) {
-        return new Set([prev.has(key) ? "all" : key]);
+      if (key === "all") {
+        return new Set(["all"]);
       }
       const next = new Set(prev);
-      for (const exclusive of EXCLUSIVE_KEYS) next.delete(exclusive);
+      next.delete("all");
       if (next.has(key)) {
         next.delete(key);
         if (next.size === 0) return new Set(["all"]);
@@ -57,26 +65,26 @@ export default function QuestionList({ questions, strategicSignalQuestionIds = [
   // Type chips: the five built-ins always, plus any custom lens types present
   // in the current insight list (labeled by their producing lens's heading).
   const typeFilterDefs = useMemo(() => {
-    const present = presentTypes(questions);
+    const present = presentTypes(listed);
     const customs = present.filter((t) => !BUILTIN_TYPE_META[t]);
     return [
       ...BUILTIN_TYPE_ORDER.map((t) => ({ key: t, label: BUILTIN_TYPE_META[t].plural })),
       ...customs.map((t) => ({
         key: t,
-        label: typeGroupLabel(t, questions.filter((q) => (q.item_type || "question") === t)),
+        label: typeGroupLabel(t, listed.filter((q) => (q.item_type || "question") === t)),
       })),
     ];
-  }, [questions]);
+  }, [listed]);
 
   const filtered = useMemo(() => {
-    const sorted = sortQuestionsForLiveDisplay(questions, strategicSignalIdSet);
+    const sorted = sortQuestionsForLiveDisplay(listed);
 
     if (activeFilters.has("all")) {
       return sorted.filter((q) => !q.dismissed);
     }
 
     const typeFilters = new Set(
-      [...activeFilters].filter((f) => !STATUS_KEYS.has(f) && !EXCLUSIVE_KEYS.has(f))
+      [...activeFilters].filter((f) => !STATUS_KEYS.has(f) && f !== "all")
     );
 
     return sorted.filter((q) => {
@@ -101,11 +109,10 @@ export default function QuestionList({ questions, strategicSignalQuestionIds = [
       if (hasTypeFilter && hasStatusFilter) return !q.dismissed && matchesType && matchesStatus;
       return !q.dismissed;
     });
-  }, [questions, activeFilters, strategicSignalIdSet, showEnhanced]);
+  }, [listed, activeFilters, showEnhanced]);
 
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: "All" },
-    ...(strategicSignals.length > 0 ? [{ key: STRATEGIC_KEY, label: "Strategic" }] : []),
     ...typeFilterDefs,
     { key: "starred", label: "Starred" },
     { key: "answered", label: "Answered" },
@@ -117,9 +124,8 @@ export default function QuestionList({ questions, strategicSignalQuestionIds = [
   // where the insights are before the user clicks it.
   const filterCounts = useMemo(() => {
     const counts = new Map<Filter, number>();
-    const live = questions.filter((q) => !q.dismissed);
+    const live = listed.filter((q) => !q.dismissed);
     counts.set("all", live.length);
-    counts.set(STRATEGIC_KEY, strategicSignals.length);
     const bump = (key: Filter) => counts.set(key, (counts.get(key) || 0) + 1);
     for (const q of live) {
       bump(q.item_type || "question");
@@ -129,14 +135,21 @@ export default function QuestionList({ questions, strategicSignalQuestionIds = [
       if (q.enhanced) bump("enhanced");
     }
     return counts;
-  }, [questions, strategicSignals]);
+  }, [listed]);
+
+  // An empty chip is a promise of nothing. Only All (the reset) and whatever is
+  // currently selected survive a zero count - the selected one so a filter that
+  // empties out can still be switched off.
+  const visibleFilters = filters.filter(
+    ({ key }) => key === "all" || activeFilters.has(key) || (filterCounts.get(key) || 0) > 0,
+  );
 
   return (
     <div className="flex h-full flex-col">
       {/* Filter controls: one consistent chip design for every tab; the
           selected tabs fill teal while the rest stay quiet outlines. */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-brand-light-gray-1 px-4 pb-3">
-        {filters.map(({ key, label }) => {
+        {visibleFilters.map(({ key, label }) => {
           const active = activeFilters.has(key);
           const count = filterCounts.get(key) || 0;
           return (
@@ -167,17 +180,7 @@ export default function QuestionList({ questions, strategicSignalQuestionIds = [
 
       {/* Scrollable list */}
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
-        {showStrategic ? (
-          <>
-            <p className="font-body text-xs text-brand-mid-gray">
-              Every strategic signal this call has captured, newest first. The top three
-              are on the panel above; all of them keep feeding later analysis.
-            </p>
-            {strategicSignals.map((item, index) => (
-              <StrategicSignalCard key={signalKey(item, index)} item={item} />
-            ))}
-          </>
-        ) : filtered.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <p className="font-body text-sm text-brand-mid-gray">
               {activeFilters.has("all")
@@ -190,7 +193,6 @@ export default function QuestionList({ questions, strategicSignalQuestionIds = [
             <QuestionCard
               key={q.id}
               question={q}
-              isStrategicSignal={strategicSignalIdSet.has(q.id)}
               showEnhanced={showEnhanced}
               onStar={(starred) => onStar(q.id, starred)}
               onDismiss={() => onDismiss(q.id)}

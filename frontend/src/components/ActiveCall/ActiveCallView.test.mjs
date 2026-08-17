@@ -202,51 +202,106 @@ test("the transcript column can be put away", () => {
   assert.match(html, /Hide live transcription/);
 });
 
-test("captured strategic signals reach the insight list as a Strategic filter", () => {
-  const signal = (title, seen) => ({
-    section: "strategic_signals",
-    title,
-    summary: `${title} detail`,
-    rationale: "",
-    first_seen: seen,
-    last_seen: seen,
-    count: 1,
-  });
+const signalInsight = (id, text, itemType = "signal") => ({
+  id,
+  session_id: "s1",
+  item_type: itemType,
+  lens_label: "Risk",
+  question: text,
+  rationale: "",
+  source_context: "",
+  directive_id: null,
+  starred: false,
+  dismissed: false,
+  created_at: "2026-08-17T10:00:00Z",
+  answered: false,
+  answer_summary: "",
+  needs_followup: false,
+  followup_question: "",
+  agent_source: "strategic_signals",
+  vote: 0,
+});
 
+const signalSynthesis = {
+  mode: "live",
+  status: "completed",
+  strategic_signals: [{ title: "On the panel", priority: 1 }],
+  top_outcomes: [],
+  top_opportunities: [],
+  risks_blockers: [],
+  action_plan: [],
+  unresolved_discovery_questions: [],
+  clusters: [],
+  signal_history: [],
+  signal_history_count: 0,
+  created_at: "2026-08-17T10:00:00Z",
+  updated_at: "2026-08-17T10:00:00Z",
+};
+
+test("signals that missed the panel are ordinary insight cards", () => {
   const html = render(
     props({
       status: "connected",
       isCapturing: true,
-      synthesis: {
-        mode: "live",
-        status: "completed",
-        strategic_signals: [],
-        top_outcomes: [],
-        top_opportunities: [],
-        risks_blockers: [],
-        action_plan: [],
-        unresolved_discovery_questions: [],
-        clusters: [],
-        signal_history: [
-          signal("Budget owner changed", "2026-08-16T10:00:00Z"),
-          signal("Security review is the gate", "2026-08-16T10:05:00Z"),
-        ],
-        signal_history_count: 2,
-        created_at: "2026-08-16T10:05:00Z",
-        updated_at: "2026-08-16T10:05:00Z",
-      },
+      synthesis: signalSynthesis,
+      questions: [
+        signalInsight("s-1", "Did not make the panel"),
+        signalInsight("s-2", "Aged out last cycle", "signal_history"),
+      ],
     }),
   );
 
-  // The chip is present and counts every captured signal, not just the panelled ones.
+  // Listed like any other insight, and each type earns its own chip.
+  assert.match(html, /Did not make the panel/);
+  assert.match(html, /Aged out last cycle/);
   assert.match(html, /Strategic/);
-  assert.match(html, /aria-pressed="false"[^>]*>Strategic/);
-  // Closed by default: All is still the selected filter.
-  assert.doesNotMatch(html, /Budget owner changed/);
+  assert.match(html, /History/);
+});
+
+test("a signal on the panel is not also listed underneath it", () => {
+  const html = render(
+    props({
+      status: "connected",
+      isCapturing: true,
+      synthesis: signalSynthesis,
+      questions: [signalInsight("s-1", "On the panel."), signalInsight("s-2", "Not on the panel")],
+    }),
+  );
+
+  // The panel card is the only copy. Its insight row carries a trailing period
+  // the panel title does not, so the row's own text is what must be absent -
+  // proving suppression matched on normalized identity rather than raw text.
+  assert.doesNotMatch(html, /On the panel\./);
+  // A signal that is not on the panel is still listed.
+  assert.match(html, /Not on the panel/);
+});
+
+test("the auto-prioritize rule is gone: a signal is not force-upvoted", () => {
+  const src = readFileSync(new URL("./ActiveCallView.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /autoUpvoted/);
+  assert.doesNotMatch(src, /getLiveSignalInsightIds/);
+});
+
+test("filter chips with nothing behind them are not rendered", () => {
+  const html = render(
+    props({
+      status: "connected",
+      isCapturing: true,
+      questions: [signalInsight("s-1", "Only a signal here")],
+    }),
+  );
+
+  // Only All and the one type present; the empty built-ins stay off screen.
+  assert.match(html, />All</);
+  assert.match(html, /Strategic/);
+  assert.doesNotMatch(html, />Objections</);
+  assert.doesNotMatch(html, />Opportunities</);
+  assert.doesNotMatch(html, />Answered</);
 });
 
 test("the Strategic chip stays hidden when no signal has been captured", () => {
   const html = render(props({ status: "connected", isCapturing: true }));
 
   assert.doesNotMatch(html, />Strategic</);
+  assert.doesNotMatch(html, />History</);
 });

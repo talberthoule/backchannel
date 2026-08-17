@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Session, SessionSynthesis, SignalHistoryItem, SynthesisSectionItem } from "../../types";
+import type { Session, SessionSynthesis, SynthesisSectionItem } from "../../types";
 
 interface SynthesisSignalsProps {
   session: Session;
@@ -12,55 +12,28 @@ export interface LiveSignalCard {
   item: SynthesisSectionItem;
 }
 
-// The call screen is busy enough for three panels (ALP-305). Every candidate
-// signal is still captured and scored - the ones past the cut stay available
-// under the insight list's Strategic filter and keep feeding later analysis.
+// The call screen is busy enough for three panels (ALP-305). Every signal past
+// the cut is filed as an ordinary insight instead, so nothing is dropped.
 export const LIVE_SIGNAL_CARD_LIMIT = 3;
 
-function first(items: SynthesisSectionItem[] | undefined): SynthesisSectionItem | null {
-  return items?.find((item) => itemText(item)) ?? null;
-}
+// Section order is the tie-break for anything the model left unranked, and the
+// label each card carries. Mirrors SIGNAL_SECTIONS in
+// backend/app/services/agents/signal_insights.py: both sides must agree on
+// which signals are on the panel, because the backend files the rest as
+// insights and the list hides whatever the panel drew (ALP-308).
+const SIGNAL_SECTIONS = [
+  { section: "strategic_signals", key: "signal", label: "Signal" },
+  { section: "risks_blockers", key: "risk", label: "Risk" },
+  { section: "unresolved_discovery_questions", key: "next-question", label: "Next Question" },
+  { section: "top_opportunities", key: "opportunity", label: "Opportunity" },
+  { section: "action_plan", key: "action-cue", label: "Action Cue" },
+] as const;
+
+// An unranked item sorts after every ranked one rather than ahead of rank 1.
+const UNRANKED = 10_000;
 
 function itemText(item: SynthesisSectionItem): string {
   return item.title?.trim() || item.summary?.trim() || "";
-}
-
-function refString(ref: Record<string, unknown>, key: string): string {
-  const value = ref[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function evidenceValues(refs: Record<string, unknown>[] | undefined): Set<string> {
-  const values = new Set<string>();
-  for (const ref of refs || []) {
-    for (const key of ["id", "insight_id", "transcript_id", "source_id"]) {
-      const value = refString(ref, key);
-      if (value) values.add(value);
-    }
-  }
-  return values;
-}
-
-function addInsightIds(ids: Set<string>, refs: Record<string, unknown>[] | undefined) {
-  for (const ref of refs || []) {
-    const type = refString(ref, "type").toLowerCase();
-    const insightId = refString(ref, "insight_id");
-    const id = refString(ref, "id");
-    const sourceId = refString(ref, "source_id");
-
-    if (insightId) ids.add(insightId);
-    if (!type || type === "insight") {
-      if (id) ids.add(id);
-      if (sourceId) ids.add(sourceId);
-    }
-  }
-}
-
-function intersects(a: Set<string>, b: Set<string>): boolean {
-  for (const value of a) {
-    if (b.has(value)) return true;
-  }
-  return false;
 }
 
 function opportunityLabel(meetingType?: Session["meeting_type"]): string {
@@ -78,19 +51,71 @@ function opportunityLabel(meetingType?: Session["meeting_type"]): string {
   }
 }
 
-export function getLiveSignalCards(synthesis: SessionSynthesis | null, session?: Pick<Session, "meeting_type">): LiveSignalCard[] {
+/**
+ * Every signal the current cycle produced, most important first.
+ *
+ * The model ranks its own output with `priority` (1 is the single thing the
+ * user most needs right now, numbered across all five sections together), so
+ * the panel is no longer stuck showing whichever sections happen to sort first.
+ * Anything left unranked falls back to section order.
+ */
+export function getRankedSignalCards(
+  synthesis: SessionSynthesis | null,
+  session?: Pick<Session, "meeting_type">,
+): LiveSignalCard[] {
   if (!synthesis || synthesis.mode !== "live") {
     return [];
   }
 
-  const signals = synthesis.strategic_signals || [];
-  return [
-    { key: "signal", label: "Signal", item: first(signals) || first(synthesis.top_outcomes) },
-    { key: "risk", label: "Risk", item: first(synthesis.risks_blockers) },
-    { key: "next-question", label: "Next Question", item: first(synthesis.unresolved_discovery_questions) },
-    { key: "opportunity", label: opportunityLabel(session?.meeting_type), item: first(synthesis.top_opportunities) },
-    { key: "action-cue", label: "Action Cue", item: first(synthesis.action_plan) },
-  ].filter((card): card is LiveSignalCard => card.item !== null);
+  const ranked: { card: LiveSignalCard; sort: [number, number, number] }[] = [];
+  SIGNAL_SECTIONS.forEach(({ section, key, label }, sectionIndex) => {
+    const items = (synthesis[section] as SynthesisSectionItem[] | undefined) || [];
+    items.forEach((item, itemIndex) => {
+      if (!itemText(item)) return;
+      const priority = item.priority ?? 0;
+      ranked.push({
+        card: {
+          key: itemIndex === 0 ? key : `${key}-${itemIndex}`,
+          label: section === "top_opportunities" ? opportunityLabel(session?.meeting_type) : label,
+          item,
+        },
+        sort: [priority > 0 ? priority : UNRANKED, sectionIndex, itemIndex],
+      });
+    });
+  });
+
+  ranked.sort((a, b) => a.sort[0] - b.sort[0] || a.sort[1] - b.sort[1] || a.sort[2] - b.sort[2]);
+
+  // Two sections can return the same observation; the higher-ranked one wins
+  // rather than the panel spending two of its three slots saying it twice.
+  const seen = new Set<string>();
+  const cards: LiveSignalCard[] = [];
+  for (const { card } of ranked) {
+    const identity = signalIdentity(itemText(card.item));
+    if (!identity || seen.has(identity)) continue;
+    seen.add(identity);
+    cards.push(card);
+  }
+  return cards;
+}
+
+/**
+ * Normalized titles of the signals currently on the panel.
+ *
+ * The backend files every signal as an insight row; the list uses this to hide
+ * the few that are already on screen above it, so a panel card and its own
+ * insight card never appear together.
+ */
+export function getPanelSignalIdentities(
+  synthesis: SessionSynthesis | null,
+  session?: Pick<Session, "meeting_type">,
+): Set<string> {
+  return new Set(
+    getRankedSignalCards(synthesis, session)
+      .slice(0, LIVE_SIGNAL_CARD_LIMIT)
+      .map((card) => signalIdentity(itemText(card.item)))
+      .filter(Boolean),
+  );
 }
 
 // Matches _signal_identity in backend/app/services/briefing_synthesis.py, so a
@@ -98,67 +123,6 @@ export function getLiveSignalCards(synthesis: SessionSynthesis | null, session?:
 // collapse to one entry here too.
 function signalIdentity(value: string | undefined): string {
   return (value || "").replace(/\s+/g, " ").toLowerCase().trim().replace(/[ .,:;!?]+$/, "");
-}
-
-/**
- * Every strategic signal this call has captured, newest first: the merged
- * history plus any current-cycle signal not yet in it. This is the full record
- * the panel's top three are drawn from, and what the Strategic insight filter
- * lists.
- */
-export function getStrategicSignalItems(synthesis: SessionSynthesis | null): SignalHistoryItem[] {
-  if (!synthesis || synthesis.mode !== "live") {
-    return [];
-  }
-
-  const byKey = new Map<string, SignalHistoryItem>();
-  for (const item of synthesis.signal_history || []) {
-    const identity = signalIdentity(item.title || item.summary);
-    if (identity) byKey.set(`${item.section}:${identity}`, item);
-  }
-
-  // A cycle's signals reach the client before the next history read does, so
-  // fill any gap from the current cycle. History wins where both have it: it
-  // carries first_seen and the seen count.
-  const stamp = synthesis.updated_at || synthesis.created_at;
-  for (const item of synthesis.strategic_signals || []) {
-    const identity = signalIdentity(item.title || item.summary);
-    if (!identity || byKey.has(`strategic_signals:${identity}`)) continue;
-    byKey.set(`strategic_signals:${identity}`, {
-      ...item,
-      section: "strategic_signals",
-      first_seen: stamp,
-      last_seen: stamp,
-      count: 1,
-    });
-  }
-
-  return [...byKey.values()].sort(
-    (a, b) => new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime(),
-  );
-}
-
-export function getLiveSignalInsightIds(synthesis: SessionSynthesis | null): Set<string> {
-  const ids = new Set<string>();
-  const cards = getLiveSignalCards(synthesis);
-
-  for (const card of cards) {
-    const cardEvidence = evidenceValues(card.item.evidence_refs);
-    addInsightIds(ids, card.item.evidence_refs);
-
-    for (const cluster of synthesis?.clusters || []) {
-      const clusterEvidence = evidenceValues(cluster.evidence_refs);
-      const sameTitle = itemText(card.item) && itemText(card.item) === cluster.title?.trim();
-      const sameSummary = card.item.summary?.trim() && card.item.summary.trim() === cluster.summary?.trim();
-      if (sameTitle || sameSummary || intersects(cardEvidence, clusterEvidence)) {
-        for (const id of cluster.related_question_ids || []) {
-          if (id) ids.add(id);
-        }
-      }
-    }
-  }
-
-  return ids;
 }
 
 function SignalItem({
@@ -231,7 +195,7 @@ function SignalItem({
 export default function SynthesisSignals({ session, synthesis }: SynthesisSignalsProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const cards = useMemo(
-    () => getLiveSignalCards(synthesis, session).slice(0, LIVE_SIGNAL_CARD_LIMIT),
+    () => getRankedSignalCards(synthesis, session).slice(0, LIVE_SIGNAL_CARD_LIMIT),
     [synthesis, session],
   );
 

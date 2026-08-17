@@ -13,10 +13,16 @@ export const BUILTIN_TYPE_META: Record<string, { label: string; plural: string; 
   observation: { label: "Observation", plural: "Observations", color: "#7c3aed" },
   opportunity: { label: "Opportunity", plural: "Opportunities", color: "#10b981" },
   action_item: { label: "Action Item", plural: "Action Items", color: "#e2231a" },
+  // Strategic signals the live panel did not have room for, and the ones that
+  // have since aged out of the current cycle (ALP-308). Each row's lens_label
+  // carries the section it came from, so the card badge still reads "Risk" or
+  // "Next Question" rather than a flat "Strategic".
+  signal: { label: "Strategic Signal", plural: "Strategic", color: "#0284c7" },
+  signal_history: { label: "Past Signal", plural: "History", color: "#64748b" },
 };
 
 // Display order for type groupings; custom types sort after built-ins.
-export const BUILTIN_TYPE_ORDER = ["asked", "action_item", "objection", "opportunity", "observation", "question"];
+export const BUILTIN_TYPE_ORDER = ["asked", "signal", "action_item", "objection", "opportunity", "observation", "question", "signal_history"];
 
 const CUSTOM_TYPE_COLORS = ["#0284c7", "#c026d3", "#ea580c", "#4f46e5", "#0891b2", "#65a30d", "#be185d", "#7c2d12"];
 

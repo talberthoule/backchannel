@@ -550,6 +550,12 @@ export interface SynthesisSectionItem {
   rationale?: string;
   owner?: string;
   status?: string;
+  /**
+   * Live strategic signals only: the model's own ranking across all of its
+   * sections, 1 being the most important right now. 0 or absent means it did
+   * not rank the item, which sorts it after everything it did.
+   */
+  priority?: number;
   evidence_refs?: Record<string, unknown>[];
 }
 

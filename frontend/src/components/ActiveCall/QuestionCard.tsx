@@ -18,7 +18,6 @@ const AGENT_LABELS: Record<string, string> = {
 
 interface QuestionCardProps {
   question: Question;
-  isStrategicSignal?: boolean;
   showEnhanced?: boolean;
   onStar: (starred: boolean) => void;
   onDismiss: () => void;
@@ -26,7 +25,7 @@ interface QuestionCardProps {
   onMakeDirective?: () => void;
 }
 
-export default function QuestionCard({ question, isStrategicSignal = false, showEnhanced = false, onStar, onDismiss, onVote, onMakeDirective }: QuestionCardProps) {
+export default function QuestionCard({ question, showEnhanced = false, onStar, onDismiss, onVote, onMakeDirective }: QuestionCardProps) {
   const [dismissing, setDismissing] = useState(false);
   const [showEnrichment, setShowEnrichment] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -51,12 +50,10 @@ export default function QuestionCard({ question, isStrategicSignal = false, show
 
   return (
     <div
-      className={`animate-slide-in-right rounded-lg border border-brand-light-gray-1 p-4 transition duration-300 ${
-        isStrategicSignal ? "bg-brand-teal/5 shadow-md ring-2 ring-brand-teal/25" : "bg-surface shadow-sm"
-      } ${
+      className={`animate-slide-in-right rounded-lg border border-brand-light-gray-1 bg-surface p-4 shadow-sm transition duration-300 ${
         dismissing ? "translate-x-4 opacity-0" : ""
       } ${question.dismissed ? "opacity-40" : ""} ${
-        isRefined && !isStrategicSignal ? "ring-1 ring-inset ring-brand-teal-light/20" : ""
+        isRefined ? "ring-1 ring-inset ring-brand-teal-light/20" : ""
       }`}
     >
       {/* Top row: badges + actions */}
@@ -75,11 +72,6 @@ export default function QuestionCard({ question, isStrategicSignal = false, show
           {showEnhanced && question.enhanced && (
             <span className="inline-flex items-center rounded-full bg-brand-teal-light/10 px-2 py-0.5 font-body text-xs font-medium text-brand-teal-light">
               Enhanced
-            </span>
-          )}
-          {isStrategicSignal && (
-            <span className="inline-flex items-center rounded-full bg-brand-teal/10 px-2 py-0.5 font-body text-xs font-semibold text-brand-teal">
-              Strategic Signal
             </span>
           )}
           {/* Refined badge */}

@@ -103,11 +103,12 @@ function StatChip({
     warn: "bg-amber-100 text-amber-800",
     bad: "bg-red-100 text-red-700",
   };
+  // A zero is not news. "0 blocked, 0 late, 0 failed" is the normal state of a
+  // healthy call, and printing it costs a row of the call screen to say nothing.
+  if (value === 0) return null;
   return (
     <span
-      className={`flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-1 font-body text-xs ${
-        tones[value > 0 ? tone : "neutral"]
-      } ${value === 0 ? "opacity-70" : ""}`}
+      className={`flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-1 font-body text-xs ${tones[tone]}`}
     >
       <span className="font-mono font-semibold tabular-nums">{value}</span>
       {label}

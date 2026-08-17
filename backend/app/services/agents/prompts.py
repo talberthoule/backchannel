@@ -360,6 +360,18 @@ Return one compact structured view for action during the active call. Populate:
 - top_opportunities: the strongest supported opportunity.
 - action_plan: the best immediate action cue.
 
+Rank what you return. Set `priority` on every item you emit, numbering them
+1, 2, 3... across all five sections together - not within each section. 1 is
+the single thing the user most needs in front of them at this moment in the
+conversation. Judge it on what has just changed and what the user can act on
+now, not on which section it came from: a decisive risk outranks a routine
+signal, and a stale-but-true observation outranks nothing.
+
+Only the three highest-ranked items are shown on screen during the call. The
+rest are still kept and shown in the insight list, so emit a section's item
+whenever it is genuinely supported, and use the ranking - rather than silence -
+to say it is not urgent. Never leave `priority` at 0 on an item you emit.
+
 Link every supported card directly to existing insight IDs in evidence_refs.
 Do not create new insights, repeat unsupported claims, or invent evidence.
 Leave post-call-only sections empty.

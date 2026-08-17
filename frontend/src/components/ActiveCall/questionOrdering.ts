@@ -9,18 +9,8 @@ function isPinned(question: Question): boolean {
   return question.starred || (question.vote ?? 0) > 0;
 }
 
-export function sortQuestionsForLiveDisplay(
-  questions: Question[],
-  strategicSignalIds: Set<string> = new Set(),
-): Question[] {
+export function sortQuestionsForLiveDisplay(questions: Question[]): Question[] {
   return [...questions].sort((a, b) => {
-    const strategicA = strategicSignalIds.has(a.id);
-    const strategicB = strategicSignalIds.has(b.id);
-
-    if (strategicA !== strategicB) {
-      return strategicA ? -1 : 1;
-    }
-
     const pinnedA = isPinned(a);
     const pinnedB = isPinned(b);
 

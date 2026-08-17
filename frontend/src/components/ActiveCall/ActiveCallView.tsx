@@ -6,7 +6,7 @@ import AudioIndicator from "./AudioIndicator";
 import DirectiveBar from "./DirectiveBar";
 import PostProcessingProgress from "./PostProcessingProgress";
 import QuestionList from "./QuestionList";
-import SynthesisSignals, { getLiveSignalInsightIds, getStrategicSignalItems } from "./SynthesisSignals";
+import SynthesisSignals, { getPanelSignalIdentities } from "./SynthesisSignals";
 import TranscriptPanel from "./TranscriptPanel";
 
 interface ActiveCallViewProps {
@@ -120,7 +120,6 @@ export default function ActiveCallView({
   const [endMenuOpen, setEndMenuOpen] = useState(false);
   const endMenuRef = useRef<HTMLDivElement | null>(null);
   const debugRef = useRef<HTMLDivElement | null>(null);
-  const autoUpvotedSignalIds = useRef<Set<string>>(new Set());
   const timerDisplay = useSessionTimer(callSegmentStart);
   const postProcessingActive = postProcessing?.active ?? false;
   // Once the user has ended the call, a closed socket is the expected outcome
@@ -152,31 +151,12 @@ export default function ActiveCallView({
     [questions]
   );
 
-  const strategicSignalQuestionIds = useMemo(() => {
-    const knownQuestionIds = new Set(normalizedQuestions.map((q) => q.id));
-    return [...getLiveSignalInsightIds(synthesis)].filter((id) => knownQuestionIds.has(id));
-  }, [normalizedQuestions, synthesis]);
-
-  const strategicSignalQuestionIdSet = useMemo(
-    () => new Set(strategicSignalQuestionIds),
-    [strategicSignalQuestionIds]
+  // The signals on the panel above; their insight rows are hidden from the
+  // list while they hold a slot (ALP-308).
+  const panelSignalIdentities = useMemo(
+    () => getPanelSignalIdentities(synthesis, session),
+    [synthesis, session],
   );
-
-  // Everything the signals agent has surfaced, not just the three on the panel.
-  const strategicSignals = useMemo(() => getStrategicSignalItems(synthesis), [synthesis]);
-
-  useEffect(() => {
-    for (const id of strategicSignalQuestionIds) {
-      const question = normalizedQuestions.find((q) => q.id === id);
-      if (!question || (question.vote ?? 0) > 0 || autoUpvotedSignalIds.current.has(id)) continue;
-
-      autoUpvotedSignalIds.current.add(id);
-      Promise.resolve(onVoteQuestion(id, 1)).catch((err) => {
-        autoUpvotedSignalIds.current.delete(id);
-        console.error("Failed to upvote live strategic signal insight", err);
-      });
-    }
-  }, [normalizedQuestions, onVoteQuestion, strategicSignalQuestionIds]);
 
   useEffect(() => {
     if (!endMenuOpen) return;
@@ -200,18 +180,9 @@ export default function ActiveCallView({
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [debugOpen]);
 
-  const displayQuestions = useMemo(
-    () =>
-      normalizedQuestions.map((q) =>
-        strategicSignalQuestionIdSet.has(q.id) && (q.vote ?? 0) <= 0
-          ? { ...q, vote: 1 }
-          : q
-      ),
-    [normalizedQuestions, strategicSignalQuestionIdSet]
-  );
   const emptyInsightMessage = activityEmptyMessage(
     activity,
-    displayQuestions.length > 0,
+    normalizedQuestions.length > 0,
   );
 
   return (
@@ -412,9 +383,8 @@ export default function ActiveCallView({
           )}
           <div className="flex-1 overflow-hidden">
             <QuestionList
-              questions={displayQuestions}
-              strategicSignalQuestionIds={strategicSignalQuestionIds}
-              strategicSignals={strategicSignals}
+              questions={normalizedQuestions}
+              panelSignalIdentities={panelSignalIdentities}
               showEnhanced={Boolean(session.speaker_context_enhanced_at)}
               emptyMessage={emptyInsightMessage}
               onStar={onStarQuestion}

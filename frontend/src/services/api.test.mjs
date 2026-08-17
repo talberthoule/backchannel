@@ -25,9 +25,9 @@ after(async () => {
   await rm(outputDir, { recursive: true, force: true });
 });
 
-// The client passes the opt-in through verbatim. The live call view no longer
-// needs it - the server returns history for mode=live either way (ALP-305) -
-// but the post-call panel still loads on demand.
+// The client passes the opt-in through verbatim. The live call view gets its
+// signals as insight rows instead (ALP-308); the post-call history panel is
+// what asks for the raw rows.
 test("the synthesis request carries the history opt-in it was given", async () => {
   const urls = [];
   const originalFetch = globalThis.fetch;

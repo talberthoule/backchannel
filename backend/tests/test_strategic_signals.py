@@ -305,10 +305,14 @@ class StrategicSignalsTests(unittest.IsolatedAsyncioTestCase):
         generate.assert_awaited_once()
         self.assertEqual("test-model", generate.await_args.args[0])
         persist.assert_awaited_once()
+        # The cycle returns the panel update alongside the signal insight rows
+        # it filed this round (ALP-308).
+        synthesis, signal_rows = result
         self.assertEqual(
             "insight-1",
-            result.strategic_signals[0]["evidence_refs"][0]["insight_id"],
+            synthesis.strategic_signals[0]["evidence_refs"][0]["insight_id"],
         )
+        self.assertEqual({"created", "updated"}, set(signal_rows))
 
     async def test_cycle_skips_when_agent_is_disabled(self):
         with patch(

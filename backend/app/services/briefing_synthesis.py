@@ -73,6 +73,11 @@ class BriefItem(BaseModel):
     rationale: str = ""
     owner: str = ""
     status: str = ""
+    # Live strategic signals only: the model's own ranking across all of its
+    # sections, 1 being the most important right now. The live panel shows the
+    # lowest few; the rest become insight rows. 0 means the model did not rank
+    # it, which sorts it after everything it did.
+    priority: int = 0
     evidence_refs: list[EvidenceRef] = Field(default_factory=list)
 
 
