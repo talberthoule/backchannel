@@ -3,8 +3,8 @@
 ## Desktop app (easiest)
 
 Prefer the shortest path? Download the latest desktop build from the
-[authenticated Backchannel portal](https://downloads.backchannel.page/).
-An approved Backchannel account is required; no GitHub identity or repository
+[Backchannel download portal](https://downloads.backchannel.page/).
+Downloads are open to everyone; no account, GitHub identity, or repository
 membership is required. See the public [v0.4.0 release notes](https://backchannel.page/releases/v0.4.0/)
 for the current asset inventory.
 

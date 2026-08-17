@@ -64,9 +64,11 @@ protected publication.
 
 ### Docs site and private admin
 
-`docs-site/` builds the public `backchannel.page` site and the private
-`admin.backchannel.page` operator console and authenticated
-`downloads.backchannel.page` recipient portal. Early access owns request and
+`docs-site/` builds the public `backchannel.page` site, the private
+`admin.backchannel.page` operator console, and the public
+`downloads.backchannel.page` download portal. Release listing and asset
+downloads are anonymous; recipient accounts and grants remain only for the
+deployed desktop updater's authorization flow. Early access owns request and
 consent review plus approve/reject only. Users owns recipient identity state,
 password reset, session sign-out, and revoke. Authorization owns Latest and
 explicit-version grants only, stored in `release_access_policies` and

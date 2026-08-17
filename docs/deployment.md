@@ -173,8 +173,10 @@ matching the launcher's `BACKCHANNEL_INSTANCE_TOKEN`
 ## Cloudflare release-access deployment gate
 
 The site Worker owns three separate boundaries: public interest capture,
-Cloudflare Access-protected administration, and recipient-authenticated desktop
-delivery. Run this production gate in order and stop on any failed check.
+Cloudflare Access-protected administration, and public desktop delivery.
+Release listing and asset downloads are anonymous; recipient accounts remain
+only to authorize the deployed desktop updater's grant flow. Run this
+production gate in order and stop on any failed check.
 
 ### Admin identity and authorization migration cutover
 

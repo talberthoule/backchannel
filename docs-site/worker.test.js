@@ -334,7 +334,7 @@ test('normalizes email and writes only consent metadata', async () => {
   assert.match(calls[0].sql, /ON CONFLICT\(email\) DO NOTHING/);
   assert.deepEqual(await response.json(), {
     ok: true,
-    message: 'Thanks - your early-access request is saved.',
+    message: 'Thanks - you are on the release updates list.',
   });
 });
 
@@ -2440,11 +2440,12 @@ function assetCalls(bucket, filename = defaultReleaseAsset.filename) {
   ));
 }
 
-test('recipient release listing resolves Latest plus explicit grants without leaking R2 metadata', async () => {
+test('release listing serves the full public catalog without sessions or R2 metadata leaks', async () => {
   const bucket = releaseBucket({ malformed: true });
   const bindingsValue = releaseBindings(bucket);
   const response = await workerModule.route(
-    releaseGet('/api/download/releases'), bindingsValue.env, undefined, downloadDependencies(),
+    downloadRequest('/api/download/releases', undefined, { method: 'GET' }),
+    bindingsValue.env, undefined, downloadDependencies(),
   );
 
   assert.equal(response.status, 200);
@@ -2455,13 +2456,15 @@ test('recipient release listing resolves Latest plus explicit grants without lea
   assert.deepEqual(Object.keys(body.items[0].assets[0]),
     ['id', 'platform', 'filename', 'size', 'sha256']);
   assert.doesNotMatch(JSON.stringify(body), /releases\/|content_type|commit/);
+  assert.equal(bindingsValue.calls.length, 0, 'public listing must not read recipient identity');
 });
 
-test('progressive release authorization exposes and downloads only completed platforms', async () => {
+test('progressive release publication exposes and downloads only completed platforms', async () => {
   const bucket = progressiveReleaseBucket();
   const bindingsValue = releaseBindings(bucket);
   const listing = await workerModule.route(
-    releaseGet('/api/download/releases'), bindingsValue.env, undefined, downloadDependencies(),
+    downloadRequest('/api/download/releases', undefined, { method: 'GET' }),
+    bindingsValue.env, undefined, downloadDependencies(),
   );
   assert.equal(listing.status, 200);
   const body = await listing.json();
@@ -2470,14 +2473,14 @@ test('progressive release authorization exposes and downloads only completed pla
   assert.doesNotMatch(JSON.stringify(body), /releases\/|content_type|commit/);
 
   const windows = await workerModule.route(
-    releaseGet('/api/download/releases/v2.0.0/windows-x64'),
+    downloadRequest('/api/download/releases/v2.0.0/windows-x64', undefined, { method: 'GET' }),
     bindingsValue.env, undefined, downloadDependencies(),
   );
   assert.equal(windows.status, 200);
 
   const callCount = bucket.calls.length;
   const linux = await workerModule.route(
-    releaseGet('/api/download/releases/v2.0.0/linux-x64'),
+    downloadRequest('/api/download/releases/v2.0.0/linux-x64', undefined, { method: 'GET' }),
     bindingsValue.env, undefined, downloadDependencies(),
   );
   assert.equal(linux.status, 404);
@@ -2486,22 +2489,22 @@ test('progressive release authorization exposes and downloads only completed pla
   )), false);
 });
 
-test('release APIs reject invalid sessions and paths before catalog or object access', async () => {
-  const invalidSessions = [
-    null,
-    { ...releaseSession, state: 'revoked' },
-    { ...releaseSession, password_change_only: 1 },
-    { ...releaseSession, expires_at: '2026-07-12T11:59:59.000Z' },
-  ];
-  for (const session of invalidSessions) {
-    const bucket = releaseBucket();
-    const response = await workerModule.route(
-      releaseGet('/api/download/releases'), releaseBindings(bucket, session).env,
-      undefined, downloadDependencies(),
-    );
-    assert.equal(response.status, 404);
-    assert.equal(bucket.calls.length, 0);
-  }
+test('release APIs ignore recipient sessions and reject invalid paths before catalog access', async () => {
+  const bucket = releaseBucket();
+  const bindingsValue = releaseBindings(bucket, null);
+  const anonymous = await workerModule.route(
+    downloadRequest('/api/download/releases', undefined, { method: 'GET' }),
+    bindingsValue.env, undefined, downloadDependencies(),
+  );
+  assert.equal(anonymous.status, 200);
+  assert.equal(bindingsValue.calls.length, 0);
+
+  const withSession = await workerModule.route(
+    releaseGet('/api/download/releases'), bindingsValue.env,
+    undefined, downloadDependencies(),
+  );
+  assert.equal(withSession.status, 200);
+  assert.equal(bindingsValue.calls.length, 0, 'a presented cookie must not trigger D1 reads');
 
   for (const path of [
     '/api/download/releases/1.0.0/windows-x64',
@@ -2521,7 +2524,7 @@ test('release APIs reject invalid sessions and paths before catalog or object ac
   }
 });
 
-test('unauthorized versions and missing asset IDs are indistinguishable private 404s', async () => {
+test('unknown versions and missing asset IDs are indistinguishable private 404s', async () => {
   const responses = [];
   for (const path of [
     '/api/download/releases/v3.0.0/windows-x64',
@@ -2538,7 +2541,7 @@ test('unauthorized versions and missing asset IDs are indistinguishable private 
   assert.equal(responses[0].headers.get('cache-control'), 'private, no-store');
 });
 
-test('authorized downloads stream full and ranged R2 bodies with exact headers and safe events', async () => {
+test('public downloads stream full and ranged R2 bodies with exact headers and no identity events', async () => {
   const cases = [
     [undefined, 200, 100, null],
     ['bytes=10-19', 206, 10, 'bytes 10-19/100'],
@@ -2569,11 +2572,8 @@ test('authorized downloads stream full and ranged R2 bodies with exact headers a
     const call = assetCalls(bucket)[0];
     assert.equal(call.options.range.get('range'), range || null);
     assert.equal(call.options.onlyIf.get('range'), range || null);
-    const event = bindingsValue.calls.find(({ sql }) => /download_start/.test(sql));
-    assert.deepEqual(event.values, [
-      'person@example.com', 'v1.0.0', '2026-07-12T12:00:00.000Z',
-    ]);
-    assert.doesNotMatch(JSON.stringify(event), /windows-x64|object-etag|Backchannel/);
+    assert.equal(bindingsValue.calls.some(({ sql }) => /download_start/.test(sql)), false,
+      'anonymous downloads must not record identity events');
   }
 });
 

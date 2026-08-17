@@ -89,10 +89,10 @@ function humanSize(bytes) {
 function renderReleases(payload) {
   releasesList.replaceChildren();
   if (!Array.isArray(payload.items) || payload.items.length === 0) {
-    releasesIntro.textContent = 'No releases are available for this account.';
+    releasesIntro.textContent = 'No releases are available yet.';
     return;
   }
-  releasesIntro.textContent = 'Choose an authorized release for your platform.';
+  releasesIntro.textContent = 'Choose a release for your platform.';
   const requested = new URLSearchParams(location.search).get('version');
   let requestedSection;
   for (const release of payload.items) {
@@ -299,4 +299,5 @@ for (const button of document.querySelectorAll('.logout')) {
   });
 }
 
-loadSession();
+if (updateRequest && globalThis.opener) loadSession();
+else showReleases();

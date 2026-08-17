@@ -175,8 +175,8 @@ Read more in [docs/architecture.md](docs/architecture.md).
 ### Option 1: Desktop app (easiest)
 
 Download the latest desktop release for your platform from the
-[authenticated Backchannel download portal](https://downloads.backchannel.page/).
-An approved Backchannel account is required; no GitHub identity or repository
+[Backchannel download portal](https://downloads.backchannel.page/).
+Downloads are open to everyone; no account, GitHub identity, or repository
 membership is needed. Public release notes for the current version are linked
 from the [backchannel.page](https://backchannel.page/) landing page and shown
 in-app under Admin -> About.

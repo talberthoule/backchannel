@@ -85,8 +85,10 @@ macOS arm64 zip (unsigned; Sortformer and ffmpeg are not bundled).
 `.github/workflows/deploy-site.yml`: the `site/` landing page at
 https://backchannel.page/ and the docs at `/docs/`.
 The same Worker serves the D1 operator console only on
-`https://admin.backchannel.page/` and the authenticated recipient portal on
-`https://downloads.backchannel.page/`. Cloudflare Access protects the complete
+`https://admin.backchannel.page/` and the public download portal on
+`https://downloads.backchannel.page/`. Release listing and asset downloads
+are anonymous; recipient accounts remain only to authorize the deployed
+desktop updater's grant flow. Cloudflare Access protects the complete
 admin hostname, and the Worker independently verifies the Access JWT issuer,
 audience, and exact `ADMIN_EMAIL`; those values are encrypted Worker secrets.
 Early access owns request and consent review plus approve/reject only. Users

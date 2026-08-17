@@ -880,12 +880,20 @@ async function entitledCatalog(env, authorization) {
   };
 }
 
-async function handleReleaseList(request, env, dependencies) {
-  const session = await releaseSession(request, env, dependencies);
-  if (session.response) return session.response;
+async function publicReleaseCatalog(env) {
+  const catalog = await loadReleaseCatalog(env.RELEASES);
+  if (catalog.diagnostics.includes('catalog-unavailable')
+    || catalog.diagnostics.includes('catalog-invalid')) throw new Error('catalog unavailable');
+  return {
+    catalog,
+    manifests: resolveEntitlements({ include_latest: 0 }, [...catalog.manifests.keys()], catalog),
+  };
+}
+
+async function handleReleaseList(request, env) {
   if (!env.RELEASES) return downloadUnavailable();
   try {
-    const { catalog, manifests } = await entitledCatalog(env, session.authorization);
+    const { catalog, manifests } = await publicReleaseCatalog(env);
     return downloadJson(200, {
       items: manifests.map(releaseSummary),
       latest_version: catalog.latestVersion,
@@ -1050,8 +1058,6 @@ function metadataResponse(status, metadata) {
 }
 
 async function handleReleaseDownload(request, env, dependencies) {
-  const session = await releaseSession(request, env, dependencies);
-  if (session.response) return session.response;
   const path = decodedReleasePath(new URL(request.url).pathname);
   if (!path) return releaseNotFound();
   if (!env.RELEASES) return downloadUnavailable();
@@ -1059,16 +1065,14 @@ async function handleReleaseDownload(request, env, dependencies) {
   let manifest;
   let asset;
   try {
-    const entitled = await entitledCatalog(env, session.authorization);
+    const entitled = await publicReleaseCatalog(env);
     manifest = entitled.manifests.find(({ version }) => version === path.version);
     asset = manifest?.assets.find(({ id }) => id === path.assetId);
   } catch {
     return downloadUnavailable();
   }
   if (!asset) return releaseNotFound();
-  return streamReleaseAsset(
-    request, env, manifest, asset, session.account.email, dependencies,
-  );
+  return streamReleaseAsset(request, env, manifest, asset, null, dependencies);
 }
 
 async function streamReleaseAsset(request, env, manifest, asset, email, dependencies) {
@@ -1110,13 +1114,15 @@ async function streamReleaseAsset(request, env, manifest, asset, email, dependen
   const status = range ? 206 : 200;
   const length = range ? range.length : asset.size;
   const headers = objectHeaders(asset, manifest.version, object, length, range?.contentRange);
-  try {
-    await statement(env, `
-      INSERT INTO release_access_events (email, action, version, created_at)
-      VALUES (?, 'download_start', ?, ?)
-    `, email, manifest.version, downloadNow(dependencies).toISOString()).run();
-  } catch {
-    return downloadUnavailable();
+  if (email) {
+    try {
+      await statement(env, `
+        INSERT INTO release_access_events (email, action, version, created_at)
+        VALUES (?, 'download_start', ?, ?)
+      `, email, manifest.version, downloadNow(dependencies).toISOString()).run();
+    } catch {
+      return downloadUnavailable();
+    }
   }
   return new Response(object.body, { status, headers });
 }
@@ -1646,7 +1652,7 @@ export async function handleInterest(request, env, fetcher = fetch) {
 
   return json(200, {
     ok: true,
-    message: 'Thanks - your early-access request is saved.',
+    message: 'Thanks - you are on the release updates list.',
   });
 }
 

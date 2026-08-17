@@ -162,10 +162,10 @@
             transcripts and real-time insight agents, with no bot in the call.
           </p>
           <div class="cta-row">
-            <a class="btn primary" href="#early-access">Request early access</a>
+            <a class="btn primary" href="https://downloads.backchannel.page/">Download the desktop app</a>
             <a class="btn ghost" href="#quickstart">Self-host in minutes</a>
           </div>
-          <p class="quickstart-note">Private desktop preview for Windows, macOS &amp; Linux &middot; self-host anytime with Docker Compose &middot; works with any meeting &mdash; Zoom, Meet, Teams, or in the room &middot; MIT licensed</p>
+          <p class="quickstart-note">Free desktop app for Windows, macOS &amp; Linux &middot; self-host anytime with Docker Compose &middot; works with any meeting &mdash; Zoom, Meet, Teams, or in the room &middot; MIT licensed</p>
         </div>
         <aside class="console" aria-label="Live listening console demonstration">
           <div class="console-bar">
@@ -459,7 +459,7 @@
         <article class="setup-panel featured">
           <span class="kicker">Desktop app</span>
           <h3>Download, unzip, run</h3>
-          <p>Windows, macOS, and Linux builds bundle the app, backend, and per-user database. Backchannel sits in your system tray or menu bar, opens in your browser, and needs no Docker. From v0.4.0 the app updates itself in place: it verifies the new build's signature before applying it, rolls back if the swap fails, and waits for recording and post-processing to finish first. Downloads require an approved Backchannel account; no GitHub identity or repository membership is required.</p>
+          <p>Windows, macOS, and Linux builds bundle the app, backend, and per-user database. Backchannel sits in your system tray or menu bar, opens in your browser, and needs no Docker. From v0.4.0 the app updates itself in place: it verifies the new build's signature before applying it, rolls back if the swap fails, and waits for recording and post-processing to finish first. Downloads are open to everyone; no account or GitHub sign-in is required.</p>
           <ul class="setup-list">
             <li><strong>Windows x64:</strong> unzip <code>Backchannel-windows-x64.zip</code> and run <code>Backchannel.exe</code>.</li>
             <li><strong>macOS Apple Silicon:</strong> unzip <code>Backchannel-macos-arm64.zip</code> and open <code>Backchannel.app</code>.</li>
@@ -467,7 +467,7 @@
             <li>Add provider keys after launch in <strong>Admin -&gt; Connections</strong>.</li>
           </ul>
           <div class="setup-actions">
-            <a class="btn primary" id="desktop-cta" href="#early-access">Request early access</a>
+            <a class="btn primary" href="https://downloads.backchannel.page/">Download for your platform</a>
             <a class="btn ghost" href="releases/v0.5.2/">Read v0.5.2 notes</a>
           </div>
         </article>
@@ -668,19 +668,23 @@ docker compose up --build
   <section id="early-access" class="early-access">
     <div class="wrap early-access-grid">
       <div class="early-access-copy">
-        <span class="kicker">Early access</span>
-        <h2>Get the next desktop build</h2>
-        <p class="sub">Request access to the private Windows, macOS, and Linux preview. We will also send meaningful release updates and occasional Backchannel news.</p>
-        <p class="early-access-proof">No weekly drip campaign. Just invites and product updates worth opening.</p>
+        <span class="kicker">Stay in the loop</span>
+        <h2>Follow the project on GitHub</h2>
+        <p class="sub">The source, issues, and release tags are all public. Star the repository, watch it for new releases, and read the <a href="/releases/">release notes</a> as they land &mdash; every desktop build is a free download, no account needed.</p>
+        <div class="cta-row">
+          <a class="btn primary" href="https://github.com/talberthoule/backchannel">Star on GitHub</a>
+          <a class="btn ghost" href="https://github.com/talberthoule/backchannel/releases">Watch releases</a>
+        </div>
+        <p class="early-access-proof">Prefer email? No weekly drip campaign &mdash; just release notes and product updates worth opening.</p>
       </div>
       <form id="interest-form" class="interest-form" action="/api/interest" method="post">
         <label for="interest-email">Email address</label>
         <div class="interest-control-row">
           <input id="interest-email" name="email" type="email" autocomplete="email" inputmode="email" maxlength="254" aria-describedby="interest-consent interest-status" required />
-          <button class="btn primary" type="submit">Request early access</button>
+          <button class="btn primary" type="submit">Get release updates</button>
         </div>
         <div class="cf-turnstile" data-sitekey="0x4AAAAAADzsy7I_nGWf_fZB" data-action="interest" data-theme="auto"></div>
-        <p id="interest-consent" class="interest-consent">By requesting access, you agree to receive an invite and occasional Backchannel product news. Every update will include an unsubscribe option.</p>
+        <p id="interest-consent" class="interest-consent">By subscribing, you agree to receive release updates and occasional Backchannel product news. Every update will include an unsubscribe option.</p>
         <p id="interest-status" class="interest-status" role="status" aria-live="polite"></p>
       </form>
     </div>
@@ -751,24 +755,16 @@ docker compose up --build
 </script>
 
 <script>
-  // One unauthenticated GitHub API call (60 req/hr/IP) drives two progressive
-  // enhancements. (1) Star count on the nav CTA: silently keeps the plain
-  // "Star on GitHub" label on any failure or rate-limit, and hides small
-  // counts so a freshly open-sourced repo shows a clean CTA rather than weak
-  // social proof. (2) Desktop panel CTA: while the source repo is private the
-  // API returns 404, so the button stays on the early-access form; once the
-  // repo is publicly visible the same button flips to the download portal.
+  // One unauthenticated GitHub API call (60 req/hr/IP) adds a star count to
+  // the nav CTA. It silently keeps the plain "Star on GitHub" label on any
+  // failure or rate-limit, and hides small counts so a freshly open-sourced
+  // repo shows a clean CTA rather than weak social proof.
   (function () {
     var el = document.getElementById("gh-stars");
-    var cta = document.getElementById("desktop-cta");
     fetch("https://api.github.com/repos/talberthoule/backchannel")
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         if (!d) return;
-        if (cta) {
-          cta.href = "https://downloads.backchannel.page/";
-          cta.textContent = "Open download portal";
-        }
         var n = d.stargazers_count;
         if (el && typeof n === "number" && n >= 25) {
           el.textContent = " " + n.toLocaleString();

@@ -267,7 +267,9 @@ not AWS credentials or services.
 ## Update authorization and desktop trust
 
 Deploy `docs-site/migrations/0004_release_update_grants.sql` before enabling
-desktop update authorization. The authenticated recipient portal calls
+desktop update authorization. The update-authorization flow on the download
+portal requires a signed-in recipient account (release listing and downloads
+themselves are public) and calls
 `POST /api/download/update-grants`; the Worker stores only the grant hash with
 its exact account, version, asset, and 15-minute expiry. The desktop then
 streams `GET /api/update/assets/{version}/{asset_id}` with the raw grant once.

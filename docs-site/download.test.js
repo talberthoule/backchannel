@@ -74,7 +74,7 @@ test('recipient page exposes labelled controls and accessible feedback in every 
   assert.match(html, /type="submit"[^>]*>\s*Change password/i);
   assert.match(html, /id="update-confirm"[^>]*>\s*Authorize update/i);
   assert.match(html, /id="update-status"[^>]*role="status"[^>]*aria-live="polite"/);
-  assert.ok((html.match(/>\s*Log out\s*</gi) || []).length >= 3);
+  assert.ok((html.match(/>\s*Log out\s*</gi) || []).length >= 2);
 });
 
 test('recipient requests have exact methods, bodies, and same-origin credentials', () => {
@@ -163,7 +163,7 @@ test('recipient script resets Turnstile in login finally and uses safe browser A
   assert.doesNotMatch(script, /localStorage|sessionStorage|document\.cookie|console\./);
 });
 
-test('recipient UI renders entitled releases and validates optional deep links with safe DOM APIs', () => {
+test('recipient UI renders published releases and validates optional deep links with safe DOM APIs', () => {
   assert.match(script, /releasesList\.id\s*=\s*['"]releases-list['"]/);
   assert.match(script, /releasesList\.setAttribute\(['"]aria-live['"],\s*['"]polite['"]\)/);
   assert.match(script, /releasesIntro\.setAttribute\(['"]role['"],\s*['"]status['"]\)/);
@@ -285,7 +285,7 @@ test('recipient release rendering executes with safe fields, encoded links, and 
       await new Promise((resolve) => setImmediate(resolve));
     }
 
-    assert.deepEqual(fetchCalls, ['/api/download/session', '/api/download/releases']);
+    assert.deepEqual(fetchCalls, ['/api/download/releases']);
     const list = releasesPanel.children.find(({ id }) => id === 'releases-list');
     const release = list.children[0];
     const article = release.children.find(({ tagName }) => tagName === 'article');
@@ -310,7 +310,7 @@ test('recipient release rendering executes with safe fields, encoded links, and 
 
 test('logout buttons stay disabled during the logout request and ignore duplicate clicks', async () => {
   const start = script.indexOf("for (const button of document.querySelectorAll('.logout')) {");
-  const end = script.indexOf('loadSession();', start);
+  const end = script.indexOf('if (updateRequest', start);
   assert.ok(start >= 0 && end > start);
   const logoutLoop = script.slice(start, end);
   const state = { alert: '', fetchCalls: [], focused: '', shown: '' };
