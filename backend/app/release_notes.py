@@ -17,11 +17,27 @@ RELEASE_NOTES: list[dict] = [
     {
         "version": "0.5.2",
         "date": "2026-08-16",
-        "title": "Everything in 0.5.1, plus a briefing that reads properly",
+        "title": "Everything in 0.5.1, plus a call screen you can actually read",
         "body": """v0.5.1 was tagged but never distributed, so if you are coming
-from v0.5.0 this release carries all of its changes as well as the fix below.
+from v0.5.0 this release carries all of its changes as well as the ones below.
 See the v0.5.1 notes underneath for the rest.
 
+- The live call screen is quieter. It had grown five strategic signal panels
+  across the top, a conversation-type dropdown and a copy of the meeting context
+  you typed during setup, a Debug button whose readout unfolded into the bar and
+  pushed everything sideways, a separate signal History container, and the word
+  "Listening" three times over. The panel now shows the top three signals, the
+  setup information is gone from the bar, and Debug is a small icon whose
+  readout opens over the page instead of rearranging it.
+- Nothing is lost by showing fewer signals. Every signal the analysis produces
+  is still captured, still counted when it recurs, and still feeds later
+  analysis. The ones that do not make the panel are now listed in full under a
+  new Strategic filter in the insight list, newest first, which replaces the old
+  History container. The post-call briefing keeps its own signal history.
+- The live transcription column folds away. Collapse it to a narrow rail when
+  you want the insights to have the screen, and open it again in one click.
+  Starting a call also collapses the session sidebar, so the call view opens at
+  full width.
 - Briefing headings get the width of their card. In the post-call briefing, an
   item's title shared a line with its status and speaker labels. In the
   three-across cards at the bottom - objectives, opportunities, open questions -

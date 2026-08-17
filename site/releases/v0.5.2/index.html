@@ -106,14 +106,16 @@
     <div class="wrap">
       <div class="release-copy">
         <span class="kicker">Release v0.5.2</span>
-        <h1>Everything in 0.5.1, plus a briefing that reads properly.</h1>
+        <h1>Everything in 0.5.1, plus a call screen you can actually read.</h1>
         <p class="lede">
           v0.5.1 was tagged but never distributed, so this is the first release
           to carry its work: a Tokens tab that reports what a call cost rather
           than counting tokens, duplicate transcript entries suppressed on calls
           that capture both microphone and meeting audio, and bounded analysis
-          replies. Added here, the post-call briefing stops squeezing an item's
-          heading into a narrow column beside its labels.
+          replies. Added here, the live call screen sheds the panels, dropdowns
+          and duplicated labels it had accumulated, the transcript column folds
+          away, and the post-call briefing stops squeezing an item's heading into
+          a narrow column beside its labels.
         </p>
         <div class="cta-row">
           <a class="btn primary" href="https://downloads.backchannel.page/?version=v0.5.2">Download</a>
@@ -200,9 +202,21 @@
   <section>
     <div class="wrap">
       <h2>What changed</h2>
-      <p class="sub">v0.5.2 supersedes v0.5.1, which was tagged but never distributed, and adds a briefing layout fix on top of it.</p>
+      <p class="sub">v0.5.2 supersedes v0.5.1, which was tagged but never distributed, and adds a quieter call screen and a briefing layout fix on top of it.</p>
 
       <div class="release-notes">
+        <div>
+          <h3>The live call screen is quieter</h3>
+          <p>It had grown five strategic signal panels across the top, a conversation-type dropdown and a copy of the meeting context you typed during setup, a Debug button whose readout unfolded into the bar and pushed everything sideways, a separate signal History container, and the word "Listening" three times over. The panel now shows the top three signals, the setup information is gone from the bar, and Debug is a small icon whose readout opens over the page instead of rearranging it.</p>
+        </div>
+        <div>
+          <h3>Fewer panels, no lost signals</h3>
+          <p>Every signal the analysis produces is still captured, still counted when it recurs, and still feeds later analysis. The ones that do not make the panel are listed in full under a new Strategic filter in the insight list, newest first, which replaces the old History container. The post-call briefing keeps its own signal history.</p>
+        </div>
+        <div>
+          <h3>The transcript column folds away</h3>
+          <p>Collapse the live transcription to a narrow rail when you want the insights to have the screen, and open it again in one click. Starting a call also collapses the session sidebar, so the call view opens at full width.</p>
+        </div>
         <div>
           <h3>Briefing headings get the width of their card</h3>
           <p>In the post-call briefing, each item's title shared a line with its status and speaker labels. In the three-across cards at the bottom - objectives, opportunities, open questions - those labels claimed most of the available width and left a five-word heading wrapping over five lines beside a mostly empty card. The labels now drop to their own line when there is no longer room beside the title. Cards with room to spare are unchanged.</p>
