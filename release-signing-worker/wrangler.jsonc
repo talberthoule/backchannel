@@ -12,7 +12,7 @@
     "SIGNING_KEY_ID": "ed25519-2026-07b",
     "ACCESS_TEAM_DOMAIN": "polished-smoke-546b.cloudflareaccess.com",
     "ACCESS_AUD": "e3d1d7a18534d6e037a49f903676e2433c626c6ca0825f46c2822acf59f447a6",
-    "ACCESS_COMMON_NAME": "304b6a467f0f6975b2e2d5d386359db5.access"
+    "ACCESS_COMMON_NAME": "bf2f30ef18c19c829bbae8819467b602.access"
   },
   "secrets_store_secrets": [
     {
