@@ -10,34 +10,57 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.5.2"
+APP_VERSION = "0.5.3"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
     {
-        "version": "0.5.2",
-        "date": "2026-08-16",
-        "title": "Everything in 0.5.1, plus a call screen you can actually read",
-        "body": """v0.5.1 was tagged but never distributed, so if you are coming
-from v0.5.0 this release carries all of its changes as well as the ones below.
-See the v0.5.1 notes underneath for the rest.
+        "version": "0.5.3",
+        "date": "2026-08-25",
+        "title": "The quieter call screen arrives, and strategic signals become insights",
+        "body": """The v0.5.2 desktop bundles were built before the quieter call
+screen landed, so this is the first release to carry it, together with the
+follow-on work that turns strategic signals into insights you can act on.
 
 - The live call screen is quieter. It had grown five strategic signal panels
   across the top, a conversation-type dropdown and a copy of the meeting context
   you typed during setup, a Debug button whose readout unfolded into the bar and
   pushed everything sideways, a separate signal History container, and the word
-  "Listening" three times over. The panel now shows the top three signals, the
-  setup information is gone from the bar, and Debug is a small icon whose
-  readout opens over the page instead of rearranging it.
-- Nothing is lost by showing fewer signals. Every signal the analysis produces
-  is still captured, still counted when it recurs, and still feeds later
-  analysis. The ones that do not make the panel are now listed in full under a
-  new Strategic filter in the insight list, newest first, which replaces the old
-  History container. The post-call briefing keeps its own signal history.
+  "Listening" three times over. The panel now shows three signals, the setup
+  information is gone from the bar, and Debug is a small icon whose readout
+  opens over the page instead of rearranging it.
+- The model chooses which three signals you see. The panel used to fill its
+  slots in a fixed order - signal, then risk, then next question - so the same
+  two kinds always won and an opportunity or action cue only appeared when an
+  earlier slot was empty. The analysis now ranks everything it produces by what
+  you can act on right now, and the top three take the panel.
+- Every strategic signal is an insight. Each signal now appears in the insight
+  list as a card of its own, so you can star it, vote on it, dismiss it and
+  export it like any other insight, and a dismissed signal stays dismissed even
+  if the analysis raises it again. Signals still on the panel stay out of the
+  list so nothing shows twice; once the panel moves on they are listed under a
+  History filter. Filter chips with nothing behind them no longer render.
 - The live transcription column folds away. Collapse it to a narrow rail when
   you want the insights to have the screen, and open it again in one click.
   Starting a call also collapses the session sidebar, so the call view opens at
   full width.
+- The desktop updater introduces itself. Update checks were being turned away
+  at the download portal's edge because the request carried a generic Python
+  browser signature rather than the application's name, and the check gave up
+  after five seconds on a slow connection. From this version the updater
+  identifies itself as Backchannel and waits ten seconds. An install on v0.5.2
+  or earlier cannot see this release from inside the app, so fetch it from the
+  download portal once; updates after that are in-app again.
+""",
+    },
+    {
+        "version": "0.5.2",
+        "date": "2026-08-16",
+        "title": "Everything in 0.5.1, plus a briefing that reads properly",
+        "body": """v0.5.1 was tagged but never distributed, so if you are coming
+from v0.5.0 this release carries all of its changes as well as the fix below.
+See the v0.5.1 notes underneath for the rest.
+
 - Briefing headings get the width of their card. In the post-call briefing, an
   item's title shared a line with its status and speaker labels. In the
   three-across cards at the bottom - objectives, opportunities, open questions -
