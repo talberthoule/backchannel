@@ -109,7 +109,7 @@ class UpdateService:
         platform_id: str | None = None,
         descriptor_url: str = "https://downloads.backchannel.page/api/update/latest/{platform_id}",
         asset_url: str = "https://downloads.backchannel.page/api/update/assets/{version}/{platform_id}",
-        timeout: float = 5,
+        timeout: float = 10,
         apply_disabled: bool | None = None,
         helper_path: Path | str | None = None,
     ):
@@ -241,7 +241,10 @@ class UpdateService:
     def _fetch_descriptor(self) -> dict:
         request = urllib.request.Request(
             self.descriptor_url.format(platform_id=self.platform_id),
-            headers={"Accept": "application/json"},
+            headers={
+                "Accept": "application/json",
+                "User-Agent": f"Backchannel/{self.current_version}",
+            },
         )
         context = ssl.create_default_context(cafile=certifi.where())
         with urllib.request.urlopen(
@@ -402,6 +405,7 @@ class UpdateService:
         headers = {
             "Accept": "application/octet-stream",
             "Authorization": f"Bearer {grant}",
+            "User-Agent": f"Backchannel/{self.current_version}",
         }
         if start is not None:
             headers["Range"] = f"bytes={start}-"

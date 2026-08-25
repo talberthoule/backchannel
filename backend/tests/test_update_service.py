@@ -273,7 +273,8 @@ class UpdateServiceTests(unittest.TestCase):
 
         captured = {}
 
-        def open_request(_request, **kwargs):
+        def open_request(request, **kwargs):
+            captured["user_agent"] = request.get_header("User-agent")
             captured.update(kwargs)
             return Response(body)
 
@@ -281,7 +282,8 @@ class UpdateServiceTests(unittest.TestCase):
         with patch("app.services.update_service.urllib.request.urlopen", open_request):
             self.assertEqual(service.check(force=True)["state"], "available")
         self.assertIsInstance(captured["context"], ssl.SSLContext)
-        self.assertEqual(captured["timeout"], 5)
+        self.assertEqual(captured["timeout"], 10)
+        self.assertEqual(captured["user_agent"], "Backchannel/v0.3.8")
 
     def test_download_resumes_streams_verifies_and_stages(self):
         archive = zip_bundle()
@@ -297,6 +299,7 @@ class UpdateServiceTests(unittest.TestCase):
             self.assertEqual(service.status()["state"], "ready")
             self.assertEqual(fixture.asset_requests[0]["Range"], "bytes=7-")
             self.assertEqual(fixture.asset_requests[0]["Authorization"], f"Bearer {GRANT}")
+            self.assertEqual(fixture.asset_requests[0]["User-Agent"], "Backchannel/v0.3.8")
             self.assertTrue((service.staged_root / "Backchannel.exe").is_file())
             persisted = service.state_path.read_text()
             self.assertNotIn(GRANT, persisted)
