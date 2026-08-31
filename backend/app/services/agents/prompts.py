@@ -58,7 +58,7 @@ Rules:
 ## Pre-Call Context
 {document_summaries}
 
-## Active Questions (avoid repeating these):
+## Already on the board (avoid repeating any of these):
 {active_questions}
 
 ## Recent Transcript

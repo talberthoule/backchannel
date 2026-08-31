@@ -216,6 +216,7 @@ class ConsolidatedAnalystAgent:
         doc_summaries: str,
         speakers: list[dict],
         active_questions: list[dict] | None = None,
+        board_notes: list[dict] | None = None,
     ) -> list[dict]:
         """Execute one analysis cycle. Returns list of insight dicts with item_type and agent_source."""
         directives_text = "\n".join(f"- {d}" for d in directives) if directives else "(No directives set)"
@@ -225,6 +226,19 @@ class ConsolidatedAnalystAgent:
             aq_text = "\n".join(f'- "{q["question"]}"' for q in active_questions)
         else:
             aq_text = "(No questions suggested yet)"
+        # Everything else already on the board rides in the same placeholder,
+        # so installs whose stored prompt predates the heading change still get
+        # the full context. Stubbed and capped upstream (_MAX_BOARD_STUBS).
+        if board_notes:
+            notes_text = "\n".join(
+                f'- [{note.get("item_type") or "insight"}] {note.get("text") or ""}'
+                for note in board_notes
+            )
+            aq_text += (
+                "\n\nOther insights already captured this call (do not restate"
+                " any of these in any wording; only add what is genuinely"
+                " new):\n" + notes_text
+            )
 
         prompt = format_prompt_with_meeting_context(
             self._prompt_template,

@@ -627,7 +627,18 @@ async def _audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
                 Question.dismissed.is_(False),
             )
         )
-        existing_questions = [{"id": str(q.id), "question": q.question} for q in result.scalars().all()]
+        existing_questions = []
+        board_stubs = []
+        for q in result.scalars().all():
+            if q.item_type == "question":
+                existing_questions.append({"id": str(q.id), "question": q.question})
+            elif q.item_type not in ("signal", "signal_history", "asked"):
+                # Non-question insights seed the analyst's "already on the
+                # board" context on resume. Signal rows stay out (they belong
+                # to the strategic-signals agent) and so do the user's own
+                # asked answers. Truncation and the cap are applied by the
+                # orchestrator's _remember_board_stub.
+                board_stubs.append({"item_type": q.item_type, "text": q.question})
 
         # Load speakers for agent context
         result = await db.execute(
@@ -678,6 +689,7 @@ async def _audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         meeting_context=meeting_context,
         local_only=local_only,
         admitted_models=admitted_models,
+        board_stubs=board_stubs,
     )
 
     # --- Speaker diarization ---

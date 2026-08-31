@@ -117,5 +117,106 @@ class IdleWindowSkipTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, orchestrator.consolidated_agent.run_cycle.await_count)
 
 
+class BoardStubTests(unittest.TestCase):
+    """Non-question insights feed the analyst's already-on-the-board context.
+
+    The emission-time dedup only reaches back five minutes and active_questions
+    only carries item_type question, so nothing stopped the analyst from
+    re-proposing a minute-12 observation at minute 40 in fresh words.
+    """
+
+    def setUp(self):
+        self.orchestrator = make_orchestrator()
+
+    def test_non_question_insights_are_stubbed_and_capped(self):
+        from app.services.agents.orchestrator import _MAX_BOARD_STUBS
+
+        for index in range(_MAX_BOARD_STUBS * 2):
+            self.orchestrator._remember_board_stub("observation", f"observation {index}")
+        self.assertEqual(_MAX_BOARD_STUBS, len(self.orchestrator._board_stubs))
+        # The newest survive; the oldest are the ones dropped.
+        self.assertEqual(
+            f"observation {_MAX_BOARD_STUBS * 2 - 1}",
+            self.orchestrator._board_stubs[-1]["text"],
+        )
+
+    def test_long_text_is_cut_to_the_stub_budget(self):
+        from app.services.agents.orchestrator import _BOARD_STUB_CHARS
+
+        self.orchestrator._remember_board_stub("opportunity", "x" * 500)
+        stub = self.orchestrator._board_stubs[0]["text"]
+        self.assertLessEqual(len(stub), _BOARD_STUB_CHARS + 3)
+        self.assertTrue(stub.endswith("..."))
+
+    def test_empty_text_is_ignored(self):
+        self.orchestrator._remember_board_stub("observation", "   ")
+        self.assertEqual([], self.orchestrator._board_stubs)
+
+    def test_seeded_stubs_pass_through_the_same_budget_and_cap(self):
+        from app.services.agents.orchestrator import _MAX_BOARD_STUBS
+
+        seeds = [
+            {"item_type": "observation", "text": f"seed {index}"}
+            for index in range(_MAX_BOARD_STUBS + 10)
+        ]
+        with patch("app.services.agents.orchestrator.GeminiLiveSession", return_value=AsyncMock()):
+            orchestrator = AgentOrchestrator(
+                session_id=uuid4(),
+                websocket=AsyncMock(),
+                directives=[],
+                doc_summaries="",
+                active_questions=[],
+                speakers=[],
+                agent_configs={},
+                board_stubs=seeds,
+            )
+        self.assertEqual(_MAX_BOARD_STUBS, len(orchestrator._board_stubs))
+
+
+class AnalystBoardContextTests(unittest.IsolatedAsyncioTestCase):
+    """The stub list reaches the analyst prompt through {active_questions}, so
+    installs whose stored prompt predates the heading change still get it."""
+
+    async def _prompt_for(self, **cycle_kwargs) -> str:
+        from app.services.agents.consolidated_analyst import (
+            ConsolidatedAnalystAgent,
+            ConsolidatedAnalystOutput,
+        )
+
+        captured = {}
+
+        async def fake_generate_json(model, prompt, schema, **kwargs):
+            captured["prompt"] = prompt
+            return ConsolidatedAnalystOutput(items=[])
+
+        agent = ConsolidatedAnalystAgent()
+        with patch(
+            "app.services.agents.consolidated_analyst.generate_json",
+            fake_generate_json,
+        ):
+            await agent.run_cycle(
+                transcript_window="[S1]: words",
+                directives=[],
+                doc_summaries="",
+                speakers=[],
+                **cycle_kwargs,
+            )
+        return captured["prompt"]
+
+    async def test_board_notes_render_into_the_prompt(self):
+        prompt = await self._prompt_for(
+            active_questions=[{"question": "Who owns DR?"}],
+            board_notes=[{"item_type": "observation", "text": "Budget froze in Q3"}],
+        )
+        self.assertIn('- "Who owns DR?"', prompt)
+        self.assertIn("- [observation] Budget froze in Q3", prompt)
+        self.assertIn("do not restate", prompt)
+
+    async def test_without_notes_the_board_section_is_absent(self):
+        prompt = await self._prompt_for(active_questions=[], board_notes=[])
+        self.assertIn("(No questions suggested yet)", prompt)
+        self.assertNotIn("Other insights already captured", prompt)
+
+
 if __name__ == "__main__":
     unittest.main()

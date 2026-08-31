@@ -78,6 +78,17 @@ _DEDUP_WINDOW_SECONDS = 300
 # a re-proposal at minute 40 of something first raised at minute 12, so this
 # list is the only thing standing between the user and that repeat (ALP-287).
 _MAX_ACTIVE_QUESTIONS = 24
+
+# Non-question insights already saved this call, stubbed for the analyst's
+# "already on the board" context. The emission-time word-overlap dedup only
+# reaches back _DEDUP_WINDOW_SECONDS and active_questions only carries
+# item_type question, so nothing stopped the analyst from re-proposing a
+# minute-12 observation at minute 40 in fresh words; the synthesizer then had
+# to merge the copies after the user saw both. Stubs are head-truncated the
+# way the synthesizer's settled records are (ALP-283) and the cap bounds the
+# prompt cost on long calls: 48 stubs at 110 chars is roughly 1.5k tokens.
+_MAX_BOARD_STUBS = 48
+_BOARD_STUB_CHARS = 110
 ProgressCallback = Callable[[dict[str, object]], Awaitable[None]]
 
 # Drain modes for call finalization: "full" runs every post-call stage,
@@ -214,6 +225,7 @@ class AgentOrchestrator:
         meeting_context: str = "",
         local_only: bool = False,
         admitted_models: set[str] | None = None,
+        board_stubs: list[dict] | None = None,
     ):
         self.session_id = session_id
         self.websocket = websocket
@@ -452,6 +464,16 @@ class AgentOrchestrator:
         # Recent insights for dedup (text -> timestamp)
         self._recent_insights: dict[str, float] = {}
 
+        # Non-question insights on the board, stubbed for the analyst's
+        # context (see _MAX_BOARD_STUBS). Seeded from the session's saved
+        # insights so a resumed call remembers its own board.
+        self._board_stubs: list[dict] = []
+        for note in board_stubs or []:
+            self._remember_board_stub(
+                str(note.get("item_type") or "insight"),
+                str(note.get("text") or ""),
+            )
+
     def briefing_enabled(self) -> bool:
         # The arbiter settles the briefing, so its model decides whether the
         # stage can run at all; a lens on a refused model degrades to a partial
@@ -575,6 +597,18 @@ class AgentOrchestrator:
         if not item_id:
             return
         self.active_questions[:] = [aq for aq in self.active_questions if aq["id"] != item_id]
+
+    def _remember_board_stub(self, item_type: str, text: str):
+        """Track a non-question insight so the analyst stops restating it."""
+        text = text.strip()
+        if not text:
+            return
+        if len(text) > _BOARD_STUB_CHARS:
+            text = text[:_BOARD_STUB_CHARS].rstrip() + "..."
+        self._board_stubs.append({"item_type": item_type, "text": text})
+        overflow = len(self._board_stubs) - _MAX_BOARD_STUBS
+        if overflow > 0:
+            del self._board_stubs[:overflow]
 
     def _derive_meeting_context(self):
         """Recompute the fields derived from meeting_type/meeting_context."""
@@ -868,6 +902,7 @@ class AgentOrchestrator:
                 doc_summaries=self.doc_summaries,
                 speakers=self.speakers,
                 active_questions=self.active_questions,
+                board_notes=self._board_stubs,
             )
 
             for insight in insights:
@@ -1137,6 +1172,8 @@ class AgentOrchestrator:
 
             if question.item_type == "question":
                 self._remember_active_question(str(question.id), question.question, question.item_type)
+            else:
+                self._remember_board_stub(question.item_type, question.question)
 
             try:
                 await self.websocket.send_json({
