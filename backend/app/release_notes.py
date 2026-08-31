@@ -37,9 +37,14 @@ follow-on work that turns strategic signals into insights you can act on.
 - Every strategic signal is an insight. Each signal now appears in the insight
   list as a card of its own, so you can star it, vote on it, dismiss it and
   export it like any other insight, and a dismissed signal stays dismissed even
-  if the analysis raises it again. Signals still on the panel stay out of the
-  list so nothing shows twice; once the panel moves on they are listed under a
-  History filter. Filter chips with nothing behind them no longer render.
+  if the analysis raises it again. The Strategic filter is the whole strategic
+  picture: the three signals on the panel, everything else the current cycle
+  produced, and the three most recently retired signals, which also stay under
+  the History filter. Filter chips with nothing behind them no longer render.
+- The analyst stops repeating itself. Each analysis pass now sees a compact
+  list of everything already on the board - not just the open questions - and
+  is told to add only what is new, so an observation raised at minute 12 no
+  longer comes back at minute 40 in fresh words.
 - The live transcription column folds away. Collapse it to a narrow rail when
   you want the insights to have the screen, and open it again in one click.
   Starting a call also collapses the session sidebar, so the call view opens at
