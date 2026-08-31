@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { Question } from "../../types";
 import QuestionCard from "./QuestionCard";
 import { sortQuestionsForLiveDisplay } from "./questionOrdering";
-import { BUILTIN_TYPE_META, BUILTIN_TYPE_ORDER, presentTypes, typeGroupLabel } from "../../utils/insightTypes";
+import { BUILTIN_TYPE_META, BUILTIN_TYPE_ORDER, presentTypes, recentSignalHistoryIds, typeGroupLabel } from "../../utils/insightTypes";
 
 // "all", an item_type slug (built-in or custom lens type), or a status key
 type Filter = string;
@@ -11,12 +11,6 @@ const STATUS_KEYS = new Set(["starred", "answered", "prioritized", "enhanced"]);
 
 interface QuestionListProps {
   questions: Question[];
-  /**
-   * Normalized titles of the signals currently on the panel above. Their rows
-   * exist like any other insight, but listing one directly under its own panel
-   * card is the duplication the panel exists to avoid (ALP-308).
-   */
-  panelSignalIdentities?: Set<string>;
   showEnhanced?: boolean;
   emptyMessage?: string;
   onStar: (id: string, starred: boolean) => void;
@@ -25,25 +19,15 @@ interface QuestionListProps {
   onMakeDirective?: (question: Question) => void;
 }
 
-// Matches signal_identity in backend/app/services/agents/signal_insights.py.
-function signalIdentity(value: string): string {
-  return (value || "").replace(/\s+/g, " ").toLowerCase().trim().replace(/[ .,:;!?]+$/, "");
-}
-
-export default function QuestionList({ questions, panelSignalIdentities, showEnhanced = false, emptyMessage, onStar, onDismiss, onVote, onMakeDirective }: QuestionListProps) {
+export default function QuestionList({ questions, showEnhanced = false, emptyMessage, onStar, onDismiss, onVote, onMakeDirective }: QuestionListProps) {
   const [activeFilters, setActiveFilters] = useState<Set<Filter>>(new Set(["all"]));
 
-  // A signal on the panel keeps its row - so it holds its stars and votes, and
-  // reappears in the list the moment it loses the slot - but is not listed
-  // while the panel is showing it.
-  const listed = useMemo(() => {
-    if (!panelSignalIdentities?.size) return questions;
-    return questions.filter(
-      (q) =>
-        (q.item_type || "question") !== "signal"
-        || !panelSignalIdentities.has(signalIdentity(q.question)),
-    );
-  }, [questions, panelSignalIdentities]);
+  // The Strategic chip is the whole strategic picture: every current signal -
+  // the panel's top three included, so a panel card and its own insight row
+  // may both be visible (ALP-308's suppression, reversed by user request) -
+  // plus the most recently retired signals, which keep their place under
+  // History as well.
+  const strategicExtras = useMemo(() => recentSignalHistoryIds(questions), [questions]);
 
   const toggleFilter = (key: Filter) => {
     setActiveFilters((prev) => {
@@ -65,19 +49,19 @@ export default function QuestionList({ questions, panelSignalIdentities, showEnh
   // Type chips: the five built-ins always, plus any custom lens types present
   // in the current insight list (labeled by their producing lens's heading).
   const typeFilterDefs = useMemo(() => {
-    const present = presentTypes(listed);
+    const present = presentTypes(questions);
     const customs = present.filter((t) => !BUILTIN_TYPE_META[t]);
     return [
       ...BUILTIN_TYPE_ORDER.map((t) => ({ key: t, label: BUILTIN_TYPE_META[t].plural })),
       ...customs.map((t) => ({
         key: t,
-        label: typeGroupLabel(t, listed.filter((q) => (q.item_type || "question") === t)),
+        label: typeGroupLabel(t, questions.filter((q) => (q.item_type || "question") === t)),
       })),
     ];
-  }, [listed]);
+  }, [questions]);
 
   const filtered = useMemo(() => {
-    const sorted = sortQuestionsForLiveDisplay(listed);
+    const sorted = sortQuestionsForLiveDisplay(questions);
 
     if (activeFilters.has("all")) {
       return sorted.filter((q) => !q.dismissed);
@@ -97,7 +81,11 @@ export default function QuestionList({ questions, panelSignalIdentities, showEnh
       const hasStatusFilter = hasStarred || hasAnswered || hasPrioritized || hasEnhanced;
 
       const itemType = q.item_type || "question";
-      const matchesType = typeFilters.has(itemType);
+      // A recently retired signal answers to the Strategic chip too, so that
+      // filter shows the current cycle plus the freshest history.
+      const matchesType =
+        typeFilters.has(itemType)
+        || (itemType === "signal_history" && typeFilters.has("signal") && strategicExtras.has(q.id));
       const matchesStatus =
         (hasStarred && q.starred) ||
         (hasAnswered && q.answered) ||
@@ -109,7 +97,7 @@ export default function QuestionList({ questions, panelSignalIdentities, showEnh
       if (hasTypeFilter && hasStatusFilter) return !q.dismissed && matchesType && matchesStatus;
       return !q.dismissed;
     });
-  }, [listed, activeFilters, showEnhanced]);
+  }, [questions, strategicExtras, activeFilters, showEnhanced]);
 
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: "All" },
@@ -124,18 +112,21 @@ export default function QuestionList({ questions, panelSignalIdentities, showEnh
   // where the insights are before the user clicks it.
   const filterCounts = useMemo(() => {
     const counts = new Map<Filter, number>();
-    const live = listed.filter((q) => !q.dismissed);
+    const live = questions.filter((q) => !q.dismissed);
     counts.set("all", live.length);
     const bump = (key: Filter) => counts.set(key, (counts.get(key) || 0) + 1);
     for (const q of live) {
       bump(q.item_type || "question");
+      // A borrowed history row counts under Strategic too, matching the
+      // filter predicate above; it is deliberately in both chips' counts.
+      if ((q.item_type || "question") === "signal_history" && strategicExtras.has(q.id)) bump("signal");
       if (q.starred) bump("starred");
       if (q.answered) bump("answered");
       if ((q.vote ?? 0) > 0) bump("prioritized");
       if (q.enhanced) bump("enhanced");
     }
     return counts;
-  }, [listed]);
+  }, [questions, strategicExtras]);
 
   // An empty chip is a promise of nothing. Only All (the reset) and whatever is
   // currently selected survive a zero count - the selected one so a filter that

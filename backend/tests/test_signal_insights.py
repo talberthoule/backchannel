@@ -133,12 +133,53 @@ class SignalIdentityTests(unittest.TestCase):
 
 class PanelContractTests(unittest.TestCase):
     def test_panel_size_matches_the_client(self):
-        # LIVE_SIGNAL_CARD_LIMIT in SynthesisSignals.tsx must agree: the client
-        # hides exactly the signals it drew on the panel.
+        # LIVE_SIGNAL_CARD_LIMIT in SynthesisSignals.tsx must agree: both
+        # sides draw the same top three, listed alongside their panel cards.
         self.assertEqual(3, LIVE_SIGNAL_PANEL_SIZE)
 
     def test_the_two_lifecycle_types_are_distinct(self):
         self.assertNotEqual(SIGNAL_ITEM_TYPE, SIGNAL_HISTORY_ITEM_TYPE)
+
+
+class RowPayloadTests(unittest.TestCase):
+    """Retirement stamps updated_at so the client can rank recent history."""
+
+    @staticmethod
+    def _row(**overrides):
+        import uuid as uuid_module
+        from datetime import datetime, timezone
+
+        from app.models import Question
+
+        defaults = dict(
+            id=uuid_module.uuid4(),
+            session_id=uuid_module.uuid4(),
+            item_type=SIGNAL_HISTORY_ITEM_TYPE,
+            lens_label="Risk",
+            question="Security review is the gate",
+            rationale="",
+            source_context="",
+            agent_source="strategic_signals",
+            created_at=datetime(2026, 8, 31, 9, 0, tzinfo=timezone.utc),
+            updated_at=None,
+        )
+        defaults.update(overrides)
+        return Question(**defaults)
+
+    def test_payload_carries_the_retirement_stamp(self):
+        from datetime import datetime, timezone
+
+        from app.services.agents.signal_insights import _row_payload
+
+        payload = _row_payload(
+            self._row(updated_at=datetime(2026, 8, 31, 10, 30, tzinfo=timezone.utc))
+        )
+        self.assertEqual("2026-08-31T10:30:00+00:00", payload["updated_at"])
+
+    def test_payload_updated_at_is_null_before_any_change(self):
+        from app.services.agents.signal_insights import _row_payload
+
+        self.assertIsNone(_row_payload(self._row())["updated_at"])
 
 
 if __name__ == "__main__":

@@ -258,7 +258,7 @@ test("signals that missed the panel are ordinary insight cards", () => {
   assert.match(html, /History/);
 });
 
-test("a signal on the panel is not also listed underneath it", () => {
+test("a signal on the panel is also listed with the other strategic insights", () => {
   const html = render(
     props({
       status: "connected",
@@ -268,11 +268,11 @@ test("a signal on the panel is not also listed underneath it", () => {
     }),
   );
 
-  // The panel card is the only copy. Its insight row carries a trailing period
-  // the panel title does not, so the row's own text is what must be absent -
-  // proving suppression matched on normalized identity rather than raw text.
-  assert.doesNotMatch(html, /On the panel\./);
-  // A signal that is not on the panel is still listed.
+  // The panel card and its own insight row both render: the Strategic section
+  // is the complete strategic picture, panel included. The row keeps its
+  // trailing period, so matching it proves the row itself is present rather
+  // than only the panel card. (Reverses ALP-308's suppression, by request.)
+  assert.match(html, /On the panel\./);
   assert.match(html, /Not on the panel/);
 });
 

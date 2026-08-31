@@ -16,9 +16,10 @@ await build({
     contents: `
       import React from "react";
       import { renderToStaticMarkup } from "react-dom/server";
-      import SynthesisSignals, { getRankedSignalCards, getPanelSignalIdentities } from "./SynthesisSignals.tsx";
+      import SynthesisSignals, { getRankedSignalCards } from "./SynthesisSignals.tsx";
       import BriefingView from "../PostCall/BriefingView.tsx";
-      export { getRankedSignalCards, getPanelSignalIdentities };
+      import { recentSignalHistoryIds } from "../../utils/insightTypes.ts";
+      export { getRankedSignalCards, recentSignalHistoryIds };
       export function renderLive(session, synthesis) {
         return renderToStaticMarkup(React.createElement(SynthesisSignals, { session, synthesis }));
       }
@@ -42,7 +43,7 @@ await build({
   outfile: outputPath,
 });
 
-const { renderLive, renderPost, getRankedSignalCards, getPanelSignalIdentities } =
+const { renderLive, renderPost, getRankedSignalCards, recentSignalHistoryIds } =
   createRequire(import.meta.url)(outputPath);
 
 after(async () => {
@@ -140,32 +141,53 @@ test("an unranked signal sorts behind every ranked one, not ahead of rank 1", ()
   );
 });
 
-test("the panel identities are the top three, normalized for the insight list", () => {
-  const identities = getPanelSignalIdentities({
-    ...liveSynthesis,
-    strategic_signals: [
-      { title: "Budget owner changed.", priority: 1 },
-      { title: "Fourth signal", priority: 4 },
-    ],
-    risks_blockers: [{ title: "Security review is the gate", priority: 2 }],
-    unresolved_discovery_questions: [{ title: "Who chairs the board?", priority: 3 }],
-    top_opportunities: [],
-    action_plan: [],
-  });
-
-  // Trailing punctuation and case are stripped so these match the insight rows
-  // the backend filed under the same identity.
-  assert.deepEqual(
-    [...identities].sort(),
-    ["budget owner changed", "security review is the gate", "who chairs the board"],
-  );
-  assert.equal(identities.size, 3);
+const historyRow = (id, updatedAt, overrides = {}) => ({
+  id,
+  item_type: "signal_history",
+  question: `Signal ${id}`,
+  created_at: "2026-08-31T09:00:00Z",
+  updated_at: updatedAt,
+  dismissed: false,
+  ...overrides,
 });
 
-test("a post-call synthesis has no live panel and no panel identities", () => {
+test("the strategic filter borrows the three most recently retired signals", () => {
+  const ids = recentSignalHistoryIds([
+    historyRow("h-1", "2026-08-31T10:01:00Z"),
+    historyRow("h-2", "2026-08-31T10:04:00Z"),
+    historyRow("h-3", "2026-08-31T10:02:00Z"),
+    historyRow("h-4", "2026-08-31T10:03:00Z"),
+    { id: "s-1", item_type: "signal", question: "Current", created_at: "2026-08-31T10:05:00Z", dismissed: false },
+  ]);
+
+  // The oldest retiree drops; the current signal needs no borrowing.
+  assert.deepEqual([...ids].sort(), ["h-2", "h-3", "h-4"]);
+});
+
+test("a dismissed or still-current signal is never a strategic extra", () => {
+  const ids = recentSignalHistoryIds([
+    historyRow("h-1", "2026-08-31T10:01:00Z", { dismissed: true }),
+    { id: "s-1", item_type: "signal", question: "Current", created_at: "2026-08-31T10:05:00Z", dismissed: false },
+  ]);
+
+  assert.equal(ids.size, 0);
+});
+
+test("a history row without an update stamp falls back to its creation time", () => {
+  const ids = recentSignalHistoryIds([
+    historyRow("h-old", null, { created_at: "2026-08-31T08:00:00Z" }),
+    historyRow("h-1", "2026-08-31T10:01:00Z"),
+    historyRow("h-2", "2026-08-31T10:02:00Z"),
+    historyRow("h-3", "2026-08-31T10:03:00Z"),
+  ]);
+
+  assert.ok(!ids.has("h-old"));
+  assert.equal(ids.size, 3);
+});
+
+test("a post-call synthesis has no live panel", () => {
   const postCall = { ...liveSynthesis, mode: "post_call" };
   assert.deepEqual(getRankedSignalCards(postCall), []);
-  assert.equal(getPanelSignalIdentities(postCall).size, 0);
   assert.deepEqual(getRankedSignalCards(null), []);
 });
 

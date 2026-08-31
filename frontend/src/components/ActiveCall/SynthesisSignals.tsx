@@ -18,9 +18,9 @@ export const LIVE_SIGNAL_CARD_LIMIT = 3;
 
 // Section order is the tie-break for anything the model left unranked, and the
 // label each card carries. Mirrors SIGNAL_SECTIONS in
-// backend/app/services/agents/signal_insights.py: both sides must agree on
-// which signals are on the panel, because the backend files the rest as
-// insights and the list hides whatever the panel drew (ALP-308).
+// backend/app/services/agents/signal_insights.py. Every signal - the panel's
+// included - is also an ordinary insight row in the list below (ALP-308; the
+// original suppression of panel rows was reversed by user request).
 const SIGNAL_SECTIONS = [
   { section: "strategic_signals", key: "signal", label: "Signal" },
   { section: "risks_blockers", key: "risk", label: "Risk" },
@@ -97,25 +97,6 @@ export function getRankedSignalCards(
     cards.push(card);
   }
   return cards;
-}
-
-/**
- * Normalized titles of the signals currently on the panel.
- *
- * The backend files every signal as an insight row; the list uses this to hide
- * the few that are already on screen above it, so a panel card and its own
- * insight card never appear together.
- */
-export function getPanelSignalIdentities(
-  synthesis: SessionSynthesis | null,
-  session?: Pick<Session, "meeting_type">,
-): Set<string> {
-  return new Set(
-    getRankedSignalCards(synthesis, session)
-      .slice(0, LIVE_SIGNAL_CARD_LIMIT)
-      .map((card) => signalIdentity(itemText(card.item)))
-      .filter(Boolean),
-  );
 }
 
 // Matches _signal_identity in backend/app/services/briefing_synthesis.py, so a

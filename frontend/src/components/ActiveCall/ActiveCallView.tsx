@@ -6,7 +6,7 @@ import AudioIndicator from "./AudioIndicator";
 import DirectiveBar from "./DirectiveBar";
 import PostProcessingProgress from "./PostProcessingProgress";
 import QuestionList from "./QuestionList";
-import SynthesisSignals, { getPanelSignalIdentities } from "./SynthesisSignals";
+import SynthesisSignals from "./SynthesisSignals";
 import TranscriptPanel from "./TranscriptPanel";
 
 interface ActiveCallViewProps {
@@ -149,13 +149,6 @@ export default function ActiveCallView({
         created_at: q.created_at ?? new Date().toISOString(),
       })),
     [questions]
-  );
-
-  // The signals on the panel above; their insight rows are hidden from the
-  // list while they hold a slot (ALP-308).
-  const panelSignalIdentities = useMemo(
-    () => getPanelSignalIdentities(synthesis, session),
-    [synthesis, session],
   );
 
   useEffect(() => {
@@ -384,7 +377,6 @@ export default function ActiveCallView({
           <div className="flex-1 overflow-hidden">
             <QuestionList
               questions={normalizedQuestions}
-              panelSignalIdentities={panelSignalIdentities}
               showEnhanced={Boolean(session.speaker_context_enhanced_at)}
               emptyMessage={emptyInsightMessage}
               onStar={onStarQuestion}

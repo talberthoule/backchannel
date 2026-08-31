@@ -82,9 +82,12 @@ Every signal is also filed as an ordinary insight row, so it can be starred,
 voted, dismissed and exported like consolidated-analyst output
 (`backend/app/services/agents/signal_insights.py`). A signal the latest cycle
 still emits carries item type `signal`; one it no longer emits becomes
-`signal_history`. The live insight list shows them under **Strategic** and
-**History** chips, and suppresses the two or three that are currently on the
-panel above so no signal appears twice. A dismissed signal stays dismissed even
+`signal_history`, and the row's `updated_at` is stamped at that moment. The
+live insight list shows them under **Strategic** and **History** chips. The
+Strategic chip is the whole strategic picture: every current signal including
+the panel's top three (a panel card and its own insight row may both be
+visible), plus the three most recently retired signals, which also remain
+under History. A dismissed signal stays dismissed even
 if the agent emits it again. These rows are kept out of the strategic-signals
 agent's own context and out of the synthesizer's corpus, so no second agent
 rewrites what the signals agent owns. The post-call briefing keeps its own

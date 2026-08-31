@@ -69,6 +69,32 @@ export function typeGroupLabel(itemType: string, questions: Question[]): string 
   return BUILTIN_TYPE_META[itemType]?.plural ?? humanizeTypeSlug(itemType);
 }
 
+// The Strategic filter carries every current signal plus this many of the most
+// recently retired ones, so it reads as "the strategic picture right now"
+// rather than only the current cycle's output. The full trail stays under
+// History; the borrowed rows appear in both.
+export const RECENT_HISTORY_IN_STRATEGIC = 3;
+
+// The signal_history rows the Strategic filter borrows: the most recently
+// retired first. Retirement stamps updated_at (see sync_signal_insights);
+// created_at is the fallback for rows that predate that stamp.
+export function recentSignalHistoryIds(
+  questions: Question[],
+  limit: number = RECENT_HISTORY_IN_STRATEGIC,
+): Set<string> {
+  const retiredAtMs = (q: Question) => {
+    const value = Date.parse(q.updated_at || q.created_at);
+    return Number.isFinite(value) ? value : 0;
+  };
+  return new Set(
+    questions
+      .filter((q) => (q.item_type || "question") === "signal_history" && !q.dismissed)
+      .sort((a, b) => retiredAtMs(b) - retiredAtMs(a) || a.id.localeCompare(b.id))
+      .slice(0, limit)
+      .map((q) => q.id),
+  );
+}
+
 // Ordered distinct item types present in a question list: built-ins in fixed
 // order first, then custom types in first-seen order.
 export function presentTypes(questions: Question[]): string[] {

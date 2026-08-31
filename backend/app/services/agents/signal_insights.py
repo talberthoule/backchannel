@@ -11,11 +11,12 @@ Two item types carry the lifecycle:
 - ``signal``          - emitted by the most recent cycle.
 - ``signal_history``  - emitted by an earlier cycle and no longer current.
 
-The few signals currently on the panel keep their ``signal`` row but are hidden
-from the list by the client, which already knows which cards it drew: listing a
-signal directly under its own panel card is the duplication this change set
-exists to remove, and suppressing it in the view costs no database churn when
-the panel turns over.
+The signals currently on the panel are listed alongside their cards: the
+Strategic filter is the complete strategic picture, panel included (the
+original ALP-308 suppression of panel rows was reversed by user request). A
+row's ``updated_at`` is stamped whenever a cycle changes it - in particular
+when it retires into ``signal_history`` - so the client can surface the most
+recently retired signals under the Strategic filter as well.
 
 Ownership note: these rows belong to the strategic-signals agent. They are kept
 out of the context fed back to that agent (its own output is not evidence) and
@@ -28,6 +29,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from sqlalchemy import select
@@ -122,6 +124,7 @@ def _row_payload(question: Question) -> dict:
         "directive_id": None,
         "is_followup": False,
         "timestamp": question.created_at.isoformat(),
+        "updated_at": question.updated_at.isoformat() if question.updated_at else None,
         "agent_source": question.agent_source,
         "offering_match": "",
         "enhanced": False,
@@ -183,6 +186,7 @@ async def sync_signal_insights(
                 row.rationale = fresh_rationale
                 changed = True
             if changed:
+                row.updated_at = datetime.now(timezone.utc)
                 updated.append(_row_payload(row))
 
         # Anything the current cycle did not emit has aged out into history.
@@ -191,6 +195,9 @@ async def sync_signal_insights(
                 continue
             if row.item_type != SIGNAL_HISTORY_ITEM_TYPE:
                 row.item_type = SIGNAL_HISTORY_ITEM_TYPE
+                # The retirement moment, so the client can show the most
+                # recently retired signals under the Strategic filter.
+                row.updated_at = datetime.now(timezone.utc)
                 updated.append(_row_payload(row))
 
         await db.commit()
