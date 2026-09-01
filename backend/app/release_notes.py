@@ -49,6 +49,11 @@ follow-on work that turns strategic signals into insights you can act on.
   you want the insights to have the screen, and open it again in one click.
   Starting a call also collapses the session sidebar, so the call view opens at
   full width.
+- The live transcript is searchable. A quiet magnifier in the transcription
+  column's header - or Ctrl+F while the transcript is focused - opens an
+  inline search: matches highlight in place, Enter and Shift+Enter step
+  through them, and Esc returns to the live tail. While a search is open the
+  view holds its place instead of following new speech.
 - The desktop updater introduces itself. Update checks were being turned away
   at the download portal's edge because the request carried a generic Python
   browser signature rather than the application's name, and the check gave up
