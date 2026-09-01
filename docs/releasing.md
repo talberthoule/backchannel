@@ -10,7 +10,7 @@ delivered through `https://downloads.backchannel.page/`.
 | --- | --- | --- |
 | Docker Compose | Source commit or tag; users rebuild locally | Public source-built `backend` and `frontend` images; no container registry image is published |
 | Documentation site | Push to `master` changing site/docs inputs | Cloudflare deploy of `backchannel.page`, `admin.backchannel.page`, and `downloads.backchannel.page` |
-| Desktop | `scripts/release_desktop.ps1 -Version vX.Y.Z` after an annotated tag exists | Windows and Linux build locally while macOS builds in GitHub; each smoke-tested platform publishes to private R2 as soon as it finishes |
+| Desktop | `scripts/release_desktop.ps1 -Version vX.Y.Z` after an annotated tag exists | Windows and Linux build locally while macOS builds in GitHub; each smoke-tested platform publishes to private R2 as soon as it finishes. The `desktop-release.yml` workflow's `platforms` input can instead build and publish any platform entirely inside GitHub when local egress to the R2 storage domain is blocked |
 
 The coordinator dispatches the macOS workflow and builds Windows before Linux.
 The protected macOS publication job is the only GitHub job with R2 credentials.
@@ -399,6 +399,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command '& ./scripts/release_desk
 `-Command` binds the switch correctly where `-File` does not: the same probe
 under `-Command` reports `ConfirmPreference=None`, under `-File`
 `ConfirmPreference=High`.
+
+### Publishing platforms from GitHub instead
+
+When the local network cannot reach `*.r2.cloudflarestorage.com` (some
+corporate networks block the storage domain by SNI; this stranded the v0.5.3
+Windows and Linux publication), any platform can be built and published
+entirely inside GitHub by dispatching the desktop workflow directly with the
+`platforms` input:
+
+```bash
+gh workflow run desktop-release.yml --ref master \
+    -f "release_ref=vX.Y.Z" -f "expected_commit=<peeled tag commit>" \
+    -f "correlation_id=<32 hex>" -f "platforms=windows-x64 linux-x64"
+```
+
+Each platform follows the macOS pattern exactly: a credential-free build job
+verifies the annotated tag, builds from the tag source, runs the platform's
+native and archive smokes, and hands the archive to the protected publisher
+through a SHA-256-keyed Actions cache that a cleanup job deletes afterwards.
+The publisher derives `commit` and `published_at` from the same annotated tag
+as every other publication path, so platforms published locally and from
+GitHub for one version stay byte-consistent. The input defaults to
+`macos-arm64`, which keeps the coordinator's own dispatch building only macOS
+while Windows and Linux build locally; never list a platform in a dispatch
+while the coordinator is also building it locally, or the two publications
+race to create conflicting immutable metadata.
 
 The run ends with a per-platform outcome summary. Read that rather than the
 exit code alone; cleanup failures after a successful publish are warnings and

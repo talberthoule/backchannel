@@ -50,7 +50,9 @@ and tag-built Linux x64, macOS arm64, and Windows x64 desktop bundles. Follow
 `docs/releasing.md` and run `scripts/release_desktop.ps1 -Version vX.Y.Z` from
 clean synchronized `master`. The coordinator builds Windows and Linux locally,
 dispatches macOS, and publishes each smoke-tested platform independently using
-immutable progressive R2 metadata. Historical aggregate manifests remain
+immutable progressive R2 metadata. When local egress to the R2 storage domain
+is blocked, the desktop-release workflow's `platforms` input builds and
+publishes Windows and Linux from GitHub the same way it does macOS. Historical aggregate manifests remain
 supported, but mixed progressive and aggregate metadata for one version is
 invalid. A `master` push does not update existing desktop downloads. GitHub
 releases keep source tags and notes only.
@@ -75,8 +77,10 @@ from `desktop/` with the repository root on `PYTHONPATH` - two modules import
 `desktop.*`, so without it discovery silently drops them and reports 94 tests
 instead of 111. Local build: `pyinstaller desktop/backchannel.spec`. The
 release coordinator creates the Windows x64 zip natively and the Linux x64
-tarball through Docker; `.github/workflows/desktop-release.yml` builds only the
-macOS arm64 zip (unsigned; Sortformer and ffmpeg are not bundled).
+tarball through Docker; `.github/workflows/desktop-release.yml` builds the
+macOS arm64 zip by default (unsigned; Sortformer and ffmpeg are not bundled)
+and, via its `platforms` input, can also build and publish the Windows x64
+zip and Linux x64 tarball.
 
 ### Docs Site
 
