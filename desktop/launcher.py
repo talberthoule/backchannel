@@ -491,6 +491,12 @@ def run(headless: bool = False) -> int:
     instance_token = secrets.token_urlsafe()
     os.environ["DATABASE_URL"] = pg.database_url(pg_port)
     os.environ["DATA_DIR"] = str(data_dir / "data")
+    if sys.platform == "win32":
+        # Wrap the credentials master key with DPAPI so a copied AppData
+        # folder cannot decrypt the stored provider keys (see
+        # app.services.secrets). Only the same Windows user on this machine
+        # can unwrap it; the file is upgraded in place on first read.
+        os.environ.setdefault("CREDENTIALS_MASTER_KEY_PROTECTION", "dpapi")
     os.environ["FRONTEND_DIST"] = str(resource("frontend"))
     _configure_update_environment(instance_token, headless)
     ffmpeg = resource("ffmpeg") / (

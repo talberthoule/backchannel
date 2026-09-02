@@ -103,6 +103,15 @@ screenshots that include it. If a key leaks, revoke it on the provider page
 (both consoles support deleting a key) and save a replacement in
 Admin -> Connections.
 
+On its side, Backchannel stores keys encrypted, shows only the last four
+characters after saving, never returns a key from its API, sends keys to
+providers in request headers rather than URLs, scrubs key values out of its
+logs and error messages, and refuses requests from web pages on other
+origins. On the Windows desktop build the master key that unlocks the stored
+credentials is additionally wrapped with Windows DPAPI, so a copied data
+folder cannot be read by another user or machine. Details in
+[Configuration](configuration.md#api-credentials).
+
 ## Troubleshooting
 
 - **Test fails immediately** -- re-copy the key; a missing character or a

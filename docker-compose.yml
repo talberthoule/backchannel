@@ -5,8 +5,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-callhelper}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-callhelper}
+    # Published for local tools (psql, a native backend) only. Bound to
+    # loopback: the default password is public, and the database holds every
+    # transcript plus the encrypted credential rows.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -21,8 +24,11 @@ services:
       args:
         INSTALL_SORTFORMER: ${INSTALL_SORTFORMER:-true}
         PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-auto}
+    # The frontend container reaches the backend over the Compose network;
+    # this mapping exists for direct API access from the host and is bound to
+    # loopback because the API has no login of its own.
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8000"
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-callhelper}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-callhelper}

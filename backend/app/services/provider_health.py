@@ -12,6 +12,7 @@ import logging
 import httpx
 
 from app.services.app_settings import get_app_setting, set_app_setting
+from app.services.redaction import redact_text
 from app.services.llm_endpoint import (
     auth_headers,
     fallback_base_url,
@@ -52,7 +53,9 @@ async def run_connection_test(provider: str, key: str, base_url: str = "") -> tu
                 resp.raise_for_status()
         return True, "Connection successful"
     except Exception as e:
-        return False, str(e)[:300]
+        # The message is shown in Admin and stored on the endpoint row, so it
+        # is scrubbed here rather than trusting every SDK to omit the key.
+        return False, redact_text(str(e))[:300]
 
 
 async def record_test_outcome(db, provider: str, key: str, ok: bool) -> None:

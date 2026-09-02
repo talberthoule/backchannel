@@ -16,7 +16,13 @@ from app.services.provider_health import (
     record_test_outcome,
     run_connection_test,
 )
-from app.services.secrets import PROVIDERS, get_provider_key, set_secret
+from app.services.secrets import (
+    PROVIDERS,
+    MasterKeyUnavailable,
+    get_provider_key,
+    master_key_recovery_message,
+    set_secret,
+)
 
 router = APIRouter(prefix="/api/credentials", tags=["credentials"])
 
@@ -66,7 +72,12 @@ async def save_credential(provider: str, body: CredentialIn, db: AsyncSession = 
     key = body.api_key.strip()
     if not key:
         raise HTTPException(status_code=400, detail="api_key must not be empty")
-    await set_secret(db, f"credentials.{provider}.api_key", key)
+    try:
+        await set_secret(db, f"credentials.{provider}.api_key", key)
+    except MasterKeyUnavailable as exc:
+        # Nothing the user types can be stored until the master key is
+        # replaced; say so, with the file to remove, instead of a bare 500.
+        raise HTTPException(status_code=503, detail=master_key_recovery_message(exc)) from exc
     await db.commit()
     ok, message = await run_connection_test(provider, key, await resolve_base_url(db, provider))
     await record_test_outcome(db, provider, key, ok)

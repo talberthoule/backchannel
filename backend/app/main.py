@@ -14,10 +14,18 @@ from app.routers import agents, analyze, artifacts, ask, chat, credentials, retr
 from app.services.privacy import LocalOnlyModeError
 from app.services.llm import LLMModelNotSelected
 from app.services.audio_store import cleanup_orphan_track_audio
-from app.services import runtime_activity
+from app.services import redaction, request_guard, runtime_activity
 from app.ws import audio_handler
 
 logging.basicConfig(level=logging.INFO)
+# Every log record in the process scrubs provider keys before any handler
+# formats it (root stream, the desktop file log, uvicorn's own loggers).
+redaction.install_log_redaction()
+# httpx logs every request URL at INFO and websockets echoes handshake
+# headers (including Authorization) at DEBUG; neither may drop below INFO
+# even if the root level is lowered for debugging.
+for _name in ("httpx", "httpcore", "websockets", "websockets.client"):
+    logging.getLogger(_name).setLevel(logging.INFO)
 
 
 def _add_revalidation_model_columns(connection, inspector, tables):
@@ -348,14 +356,23 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Backchannel", version=APP_VERSION, lifespan=lifespan)
 
+# The API has no login, so the browser's same-origin policy is the only thing
+# between a hostile web page and the user's transcripts and provider budget.
+# CORS therefore admits local origins only (plus BACKCHANNEL_ALLOWED_ORIGINS);
+# the frontend is always served same-origin (nginx proxy, Vite proxy, or the
+# backend itself on desktop), so nothing legitimate needs a wildcard.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=request_guard.cors_allowed_origins(),
+    allow_origin_regex=request_guard.CORS_ORIGIN_REGEX,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 updates.configure_app(app)
+# Outermost: a request with a foreign Host (DNS rebinding) or a foreign
+# Origin on a state-changing method never reaches a router.
+app.add_middleware(request_guard.RequestGuardMiddleware)
 
 app.include_router(sessions.router)
 app.include_router(agents.router)

@@ -10,8 +10,8 @@ desktop releases.
 
 | Service | Image/build | Ports | Notes |
 | --- | --- | --- | --- |
-| `db` | `postgres:16-alpine` | `5432:5432` | Credentials from `POSTGRES_*` (defaults `callhelper`/`changeme`/`callhelper`); healthcheck gates backend start |
-| `backend` | `./backend` Dockerfile | `8001:8000` | Reads `.env`; `DATABASE_URL` is composed from the `POSTGRES_*` values; runs `python scripts/start_backend.py` |
+| `db` | `postgres:16-alpine` | `127.0.0.1:5432:5432` | Credentials from `POSTGRES_*` (defaults `callhelper`/`changeme`/`callhelper`); healthcheck gates backend start; published on loopback only because the default password is public |
+| `backend` | `./backend` Dockerfile | `127.0.0.1:8001:8000` | Reads `.env`; `DATABASE_URL` is composed from the `POSTGRES_*` values; runs `python scripts/start_backend.py`; published on loopback only because the API has no login |
 | `frontend` | `./frontend` Dockerfile (Vite build + nginx) | `3000:80` | Proxies `/api` and `/ws` to the backend |
 
 Named volumes:
@@ -26,6 +26,12 @@ The backend service also bind-mounts `./backend/app` into the container and
 starts uvicorn with reload by default (`BACKEND_RELOAD=true`), so code edits
 apply without rebuilding -- a development convenience to disable for
 production-like deployments.
+
+If people open the frontend by a hostname rather than `localhost` or an IP
+address (`http://backchannel.lan:3000`), the backend refuses the proxied
+requests with `400 Host header is not allowed` until that name is listed in
+`BACKCHANNEL_ALLOWED_HOSTS` in `.env`. Names are the only thing a
+DNS-rebinding page can forge, which is why addresses need no listing.
 
 ## Backend build arguments
 

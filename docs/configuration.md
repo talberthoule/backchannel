@@ -26,11 +26,17 @@ Configuration comes from three layers, lowest precedence first:
 | `BACKCHANNEL_FFMPEG` | empty | Explicit path to the ffmpeg executable used for compressed-audio decoding; the desktop launcher sets it to the bundled copy on Windows and Linux, and `PATH` lookup is the fallback |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `callhelper` / `changeme` / `callhelper` | Consumed by the db container and interpolated into `DATABASE_URL` in Compose |
 | `CREDENTIALS_MASTER_KEY` | auto-generated | Overrides the Fernet master key used for encrypted credentials |
+| `CREDENTIALS_MASTER_KEY_PROTECTION` | empty (`dpapi` on the Windows desktop build) | `dpapi` wraps `DATA_DIR/master.key` with Windows DPAPI so only the same Windows user on the same machine can read it; a plaintext file is upgraded in place on first read |
+| `BACKCHANNEL_ALLOWED_HOSTS` | empty | Extra hostnames the API accepts in the `Host` header, comma-separated. Loopback names, any IP address, and the Compose service name are always accepted; a request for any other name is refused (DNS-rebinding defense). `*` disables the check |
+| `BACKCHANNEL_ALLOWED_ORIGINS` | empty | Extra browser origins (`https://tools.example`) allowed to call the API cross-origin, also granted by CORS. Local origins are always allowed; a state-changing request from any other origin is refused. `*` disables the origin check |
 
-`DATA_DIR`, `BACKCHANNEL_FFMPEG`, and `CREDENTIALS_MASTER_KEY` are read
-straight from the process environment (`os.environ`), not through the
-pydantic `Settings` object, so they must be set as real environment
-variables; a `.env` entry alone does not reach them.
+`DATA_DIR`, `BACKCHANNEL_FFMPEG`, `CREDENTIALS_MASTER_KEY`,
+`CREDENTIALS_MASTER_KEY_PROTECTION`, `BACKCHANNEL_ALLOWED_HOSTS`, and
+`BACKCHANNEL_ALLOWED_ORIGINS` are read straight from the process
+environment (`os.environ`), not through the pydantic `Settings` object, so
+they must be set as real environment variables; in Compose the backend's
+`env_file: .env` makes a `.env` entry reach them, but a bare local run needs
+them exported.
 
 Copy `.env.example` to `.env` as a starting point; it contains only
 commented-out entries for `GEMINI_API_KEY`, the Sortformer
@@ -46,6 +52,23 @@ supplied via `CREDENTIALS_MASTER_KEY`. Environment variables remain
 fallbacks when no credential row exists for a provider.
 `POST /api/credentials/{provider}/test` validates a stored key with a real
 provider call.
+
+What the app does to keep a stored key from getting out:
+
+- No API response ever carries a key or its ciphertext. The credentials and
+  endpoints listings report only whether a key exists plus the last four
+  characters; endpoint rows carry `has_api_key`, never the value.
+- Keys travel to providers in request headers, never in URLs, and every log
+  record in the process is scrubbed of registered key values and key-shaped
+  text (bearer tokens, `x-goog-api-key`, `?key=` parameters, URL userinfo,
+  `AIza...` / `sk-...` prefixes) before any handler writes it. Provider error
+  text shown in Admin or stored on an endpoint row is scrubbed the same way.
+- The API has no login, so the server refuses requests whose `Host` is not a
+  local name or address and state-changing requests from a foreign browser
+  `Origin`; see `BACKCHANNEL_ALLOWED_HOSTS` and `BACKCHANNEL_ALLOWED_ORIGINS`
+  above for deployments reached by another name.
+- The Docker stack publishes the backend and database ports on loopback
+  only; the frontend on `:3000` is the only LAN-reachable surface.
 
 ## Transcription and audio
 

@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import CustomEndpoint
 from app.services.privacy_state import get_local_only
+from app.services.redaction import exempt_from_redaction, redact_text
 from app.services.secrets import decrypt_value, encrypt_value
 
 logger = logging.getLogger(__name__)
@@ -212,11 +213,22 @@ async def list_endpoints(db: AsyncSession) -> list[CustomEndpoint]:
         .where(CustomEndpoint.deleted_at.is_(None))
         .order_by(CustomEndpoint.display_order, CustomEndpoint.created_at)
     )
-    return list(result.scalars().all())
+    endpoints = list(result.scalars().all())
+    for endpoint in endpoints:
+        _remember_slug(endpoint.id)
+    return endpoints
+
+
+def _remember_slug(slug: str) -> None:
+    """An endpoint's slug is part of every model id and log line about it, so
+    it must never be scrubbed - even if the user reused the word as its key."""
+    exempt_from_redaction(slug)
 
 
 async def get_endpoint(db: AsyncSession, endpoint_id: str) -> CustomEndpoint | None:
     endpoint = await db.get(CustomEndpoint, endpoint_id)
+    if endpoint is not None:
+        _remember_slug(endpoint.id)
     return endpoint if endpoint is not None and endpoint.deleted_at is None else None
 
 
@@ -244,6 +256,7 @@ async def create_endpoint(
         raise EndpointError("Name is required")
     url = validate_base_url(base_url)
     slug = await _unique_slug(db, label)
+    _remember_slug(slug)
     entries = normalize_models(models)
     _validate_model_ids(slug, entries)
     existing = await list_endpoints(db)
@@ -328,7 +341,9 @@ async def delete_endpoint(db: AsyncSession, endpoint: CustomEndpoint) -> None:
 
 async def record_probe(db: AsyncSession, endpoint: CustomEndpoint, ok: bool, message: str) -> None:
     endpoint.last_status = "ok" if ok else "error"
-    endpoint.last_error = "" if ok else message[:500]
+    # last_error is returned by GET /api/endpoints, so it is scrubbed on the
+    # way in rather than trusting every message source.
+    endpoint.last_error = "" if ok else redact_text(message)[:500]
     endpoint.last_checked_at = datetime.now(timezone.utc)
     await db.flush()
 
@@ -356,9 +371,9 @@ async def probe(base_url: str, api_key: str = "", timeout: float = 10.0) -> tupl
     except httpx.HTTPStatusError as exc:
         return False, f"Server returned HTTP {exc.response.status_code}", []
     except httpx.ConnectError:
-        return False, f"Could not connect to {url}. Is the server running and reachable?", []
-    except Exception as exc:  # noqa: BLE001 - surfaced verbatim to the operator
-        return False, str(exc)[:300], []
+        return False, f"Could not connect to {redact_text(url)}. Is the server running and reachable?", []
+    except Exception as exc:  # noqa: BLE001 - surfaced to the operator, minus any credential
+        return False, redact_text(str(exc))[:300], []
     served = [
         str(item.get("id"))
         for item in (payload.get("data") or [])
@@ -443,6 +458,7 @@ async def resolve_target(db: AsyncSession, model_id: str) -> EndpointTarget | No
     endpoint = await db.get(CustomEndpoint, endpoint_id)
     if endpoint is None:
         return None
+    _remember_slug(endpoint.id)
     if endpoint.deleted_at is not None:
         raise EndpointError(
             f"Endpoint '{endpoint.name}' was deleted at {endpoint.deleted_at.isoformat()}; "

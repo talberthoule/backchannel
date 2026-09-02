@@ -17,6 +17,8 @@ import httpx
 from fastapi import HTTPException
 from google.genai import errors as genai_errors
 
+from app.services.redaction import redact_text
+
 logger = logging.getLogger(__name__)
 
 # google-genai wraps API failures in APIError (ClientError/ServerError);
@@ -60,7 +62,9 @@ def _short_message(exc: Exception) -> str:
             text = f"HTTP {exc.response.status_code}"
     else:
         text = str(exc) or type(exc).__name__
-    text = " ".join(str(text).split())
+    # Provider and transport errors quote the request they failed on; a key
+    # that ended up in a URL or header must not ride into an HTTP response.
+    text = redact_text(" ".join(str(text).split()))
     return text if len(text) <= 300 else text[:297] + "..."
 
 

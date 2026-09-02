@@ -23,6 +23,15 @@ interface ApiKeysCardProps {
   onChanged?: () => void;
 }
 
+// The backend answers a save with 503 when the credentials master key cannot
+// be used (an unwrappable DPAPI blob after a password reset, a corrupt file);
+// its detail carries the recovery steps, so show that text rather than the
+// "API error 503:" prefix the client wraps every failure in.
+export function describeKeyError(err: unknown, fallback: string): string {
+  if (!(err instanceof Error)) return fallback;
+  return err.message.replace(/^API error \d+:\s*/, "") || fallback;
+}
+
 export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
   const { confirm, toast } = useConfirm();
   const [credentials, setCredentials] = useState<CredentialInfo[]>([]);
@@ -55,7 +64,7 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
       await load();
       onChanged?.();
     } catch (err) {
-      setResult(provider, false, err instanceof Error ? err.message : "Save failed");
+      setResult(provider, false, describeKeyError(err, "Save failed"));
     } finally {
       setBusy(null);
     }
@@ -69,7 +78,7 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
       await load();
       onChanged?.();
     } catch (err) {
-      setResult(provider, false, err instanceof Error ? err.message : "Test failed");
+      setResult(provider, false, describeKeyError(err, "Test failed"));
     } finally {
       setBusy(null);
     }
@@ -91,7 +100,7 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
       await load();
       onChanged?.();
     } catch (err) {
-      setResult(provider, false, err instanceof Error ? err.message : "Remove failed");
+      setResult(provider, false, describeKeyError(err, "Remove failed"));
     } finally {
       setBusy(null);
     }
@@ -151,6 +160,9 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
               <div className="flex items-center gap-2">
                 <input
                   type="password"
+                  autoComplete="new-password"
+                  spellCheck={false}
+                  aria-label={`${PROVIDER_LABELS[cred.provider] || cred.provider} API key`}
                   placeholder={cred.configured ? "Replace key..." : "Paste API key..."}
                   value={inputs[cred.provider] || ""}
                   onChange={(e) => setInputs((prev) => ({ ...prev, [cred.provider]: e.target.value }))}

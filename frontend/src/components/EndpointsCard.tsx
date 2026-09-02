@@ -210,6 +210,8 @@ function EndpointForm({
           </label>
           <input
             type="password"
+            autoComplete="new-password"
+            spellCheck={false}
             value={form.apiKey}
             placeholder={editing?.has_api_key ? "Replace stored key..." : "Usually not needed"}
             onChange={(e) => set({ apiKey: e.target.value, keyTouched: true })}

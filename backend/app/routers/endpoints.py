@@ -22,7 +22,8 @@ from app.services.custom_endpoints import (
     to_dict,
     update_endpoint,
 )
-from app.services.secrets import decrypt_value
+from app.services.redaction import redact_text
+from app.services.secrets import MasterKeyUnavailable, decrypt_value, master_key_recovery_message
 
 router = APIRouter(prefix="/api/endpoints", tags=["endpoints"])
 
@@ -88,6 +89,8 @@ async def add(body: EndpointIn, db: AsyncSession = Depends(get_db)):
         )
     except EndpointError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except MasterKeyUnavailable as exc:
+        raise HTTPException(status_code=503, detail=master_key_recovery_message(exc)) from exc
     await db.commit()
     await db.refresh(endpoint)
     return to_dict(endpoint)
@@ -109,6 +112,8 @@ async def edit(endpoint_id: str, body: EndpointPatch, db: AsyncSession = Depends
         )
     except EndpointError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except MasterKeyUnavailable as exc:
+        raise HTTPException(status_code=503, detail=master_key_recovery_message(exc)) from exc
     await db.commit()
     await db.refresh(endpoint)
     return to_dict(endpoint)
@@ -128,6 +133,9 @@ async def test(endpoint_id: str, db: AsyncSession = Depends(get_db)):
     """Probe a saved endpoint and record the outcome for its status badge."""
     endpoint = await _require(db, endpoint_id)
     ok, message, served = await probe(endpoint.base_url, decrypt_value(endpoint.api_key))
+    # probe() already scrubs its messages; scrubbing again here means a
+    # future message source cannot reintroduce the key into this response.
+    message = redact_text(message)
     await record_probe(db, endpoint, ok, message)
     await db.commit()
     await db.refresh(endpoint)
@@ -144,7 +152,7 @@ async def probe_unsaved(body: ProbeIn):
     ok, message, served = await probe(body.base_url, body.api_key.strip())
     return {
         "ok": ok,
-        "message": message,
+        "message": redact_text(message),
         "served_models": served,
         "on_prem": is_on_prem(body.base_url),
     }
