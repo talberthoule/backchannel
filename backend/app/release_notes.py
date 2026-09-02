@@ -10,10 +10,66 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.5.3"
+APP_VERSION = "0.5.4"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.5.4",
+        "date": "2026-09-02",
+        "title": "A post-call Overview that opens first, a sidebar you can find things in, and truer cost numbers",
+        "body": """This release reworks the post-call review and the session
+sidebar, and closes two audits: one on token spend, one on how provider keys
+are kept.
+
+- A completed session now opens on an Overview. It leads with the briefing's
+  top outcome, then a row of counts - commitments, open loops, opportunities,
+  risks and estimated spend - a two-column digest of those lists with owners
+  and status, who spoke how much, and when in the call the insights arrived
+  (a resumed call is drawn as call time, with a seam at each resume). Every
+  count links to the tab that holds the rows behind it; when a briefing
+  exists the counts follow it, and the live insight totals are stated
+  alongside. The Insights tab is unchanged and remains the raw record.
+- The Insights tab no longer shows two groups both called "Action Cue". Every
+  strategic signal carries its section badge (Signal, Risk, Next Question,
+  Opportunity, Action Cue), and the group headings were borrowing the most
+  common badge. They now read "Strategic Signals" and "Signal History"; the
+  badges on the cards and the live-call chips are as they were.
+- The session sidebar was rebuilt. Sessions come first, the tools moved to a
+  compact footer, the whole list scrolls as one, and with six or more
+  sessions a find box filters by session or group name. Each row shows its
+  state as a small dot, the active session is marked, and a quiet menu on
+  each row covers Rename, Move to a group and Delete. Collapsing to the icon
+  rail is smooth and remembers your choice, and the sidebar now opens
+  expanded by default. Everything works by keyboard and on touch screens.
+- The Briefing tab reads like a one-page brief: numbered top outcomes, plain
+  section headings with counts, the action plan beside the risks, and each
+  item's reasoning behind a single "Why this matters" toggle. Empty sections
+  are left out and named once at the foot of the page.
+- Token totals for the live audio gateway were far too low. Each usage report
+  from the live model was treated as a running total and only the increase
+  was kept, which on a talking call dropped most of what was billed. Usage is
+  now recorded once per turn. Audio tokens and cached prompt tokens are priced
+  at their own published rates rather than the text rate, and the Tokens tab
+  shows cached and audio columns when a session has them. New sessions will
+  show higher, truer live totals; sessions recorded before this release keep
+  the figures they had.
+- Provider keys are harder to reach. The local API now refuses requests from
+  other websites and from hostnames it does not recognize, so a page open in
+  your browser cannot read transcripts or spend your provider budget through
+  it. Provider error messages and logs are scrubbed of anything key-shaped,
+  and a saved key is shown as its last four characters only. On Windows the
+  desktop app now protects its key file with your Windows account, so a
+  copied data folder cannot be read elsewhere; an administrator-forced
+  password reset means re-entering provider keys once. If you run the Docker
+  stack and reach it by a DNS hostname rather than an IP address or
+  localhost, list that name in BACKCHANNEL_ALLOWED_HOSTS; the database and API
+  ports are also bound to the local machine only.
+- Smaller things: the post-call Export menu and tab strip work by keyboard,
+  the completion banners and the logo read correctly in dark mode, and small
+  teal text meets the contrast bar in both themes.
+""",
+    },
     {
         "version": "0.5.3",
         "date": "2026-08-25",
