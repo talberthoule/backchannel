@@ -1093,6 +1093,7 @@ export default function App() {
       case "completed":
         return (
           <PostCallView
+            key={session.id}
             session={session}
             questions={allQuestions}
             transcripts={reviewTranscripts}

@@ -251,11 +251,13 @@ test("signals that missed the panel are ordinary insight cards", () => {
     }),
   );
 
-  // Listed like any other insight, and each type earns its own chip.
+  // Listed like any other insight, and each type earns its own chip. The chip
+  // label is followed by its count span, so match the label at the chip's
+  // text boundary rather than anywhere in the page.
   assert.match(html, /Did not make the panel/);
   assert.match(html, /Aged out last cycle/);
-  assert.match(html, /Strategic/);
-  assert.match(html, /History/);
+  assert.match(html, />Strategic<span/);
+  assert.match(html, />History<span/);
 });
 
 test("a signal on the panel is also listed with the other strategic insights", () => {
@@ -292,16 +294,19 @@ test("filter chips with nothing behind them are not rendered", () => {
   );
 
   // Only All and the one type present; the empty built-ins stay off screen.
-  assert.match(html, />All</);
-  assert.match(html, /Strategic/);
-  assert.doesNotMatch(html, />Objections</);
-  assert.doesNotMatch(html, />Opportunities</);
-  assert.doesNotMatch(html, />Answered</);
+  assert.match(html, />All<span/);
+  assert.match(html, />Strategic<span/);
+  assert.doesNotMatch(html, />History<span/);
+  assert.doesNotMatch(html, />Objections<span/);
+  assert.doesNotMatch(html, />Opportunities<span/);
+  assert.doesNotMatch(html, />Answered<span/);
 });
 
 test("the Strategic chip stays hidden when no signal has been captured", () => {
   const html = render(props({ status: "connected", isCapturing: true }));
 
-  assert.doesNotMatch(html, />Strategic</);
-  assert.doesNotMatch(html, />History</);
+  // The All chip proves the strip rendered, so the absences below are real.
+  assert.match(html, />All<span/);
+  assert.doesNotMatch(html, />Strategic<span/);
+  assert.doesNotMatch(html, />History<span/);
 });

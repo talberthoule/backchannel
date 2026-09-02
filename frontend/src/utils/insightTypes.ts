@@ -21,6 +21,19 @@ export const BUILTIN_TYPE_META: Record<string, { label: string; plural: string; 
   signal_history: { label: "Past Signal", plural: "History", color: "#64748b" },
 };
 
+// Types whose lens_label is a per-row section badge (Signal, Risk, Next
+// Question, Opportunity, Action Cue - see SIGNAL_SECTIONS in
+// backend/app/services/agents/signal_insights.py) rather than the heading of
+// the lens that produced the whole group. Group labels for these must never
+// be derived from the rows: a cycle with one row per section and a history of
+// mostly action cues both used to render as a second "Action Cue" group.
+// The live chips keep the short plurals above (Strategic, History; see
+// docs/agents.md); the post-call group headings get these fuller names.
+const SIGNAL_GROUP_LABELS: Record<string, string> = {
+  signal: "Strategic Signals",
+  signal_history: "Signal History",
+};
+
 // Display order for type groupings; custom types sort after built-ins.
 export const BUILTIN_TYPE_ORDER = ["asked", "signal", "action_item", "objection", "opportunity", "observation", "question", "signal_history"];
 
@@ -51,7 +64,11 @@ export function typeLabel(itemType: string, lensLabel?: string): string {
 
 // Group/section heading for a set of same-type insights: prefer the most
 // common lens heading among them so renamed lenses surface everywhere.
+// Signal rows are the exception - their lens_label is the section badge of
+// each individual row, so a fixed group name is the only honest one.
 export function typeGroupLabel(itemType: string, questions: Question[]): string {
+  const fixed = SIGNAL_GROUP_LABELS[itemType];
+  if (fixed) return fixed;
   const counts = new Map<string, number>();
   for (const q of questions) {
     const label = (q.lens_label || "").trim();

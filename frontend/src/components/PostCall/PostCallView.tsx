@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { CallSegment, Directive, Document, ModelPricingResponse, PostProcessingProgress, Question, Session, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptEntry } from "../../types";
 import TranscriptReview from "./TranscriptReview";
 import CallAudioPanel from "./CallAudioPanel";
 import MeetingChat from "./MeetingChat";
 import QuestionSummary from "./QuestionSummary";
 import BriefingView from "./BriefingView";
+import OverviewView, { type OverviewTarget } from "./OverviewView";
+import PostCallTabs, { panelId, tabId, type PostCallTabDef } from "./PostCallTabs";
+import ExportMenu from "./ExportMenu";
+import TokenUsagePanel from "./TokenUsagePanel";
 import SpeakerNameMapper from "../SpeakerNameMapper";
 import EditableSessionName from "../EditableSessionName";
 import * as api from "../../services/api";
 import { formatPostProcessingSummary, parseSavedDrainSummary } from "../../lib/postProcessingSummary";
-import { estimateCostUsd, estimateSessionCostUsd, formatAudioDuration, formatEstimatedCost } from "../../lib/modelPricing";
 
 interface PostCallViewProps {
   session: Session;
@@ -70,7 +73,9 @@ function formatFileSize(mimeType: string): string {
   return parts[parts.length - 1].replace("vnd.openxmlformats-officedocument.", "").replace("spreadsheetml.sheet", "xlsx").replace("presentationml.presentation", "pptx").replace("wordprocessingml.document", "docx").toUpperCase();
 }
 
-type Tab = "briefing" | "insights" | "transcript" | "chat" | "speakers" | "directives" | "documents" | "tokens";
+// Overview is the landing worksheet: the executive read over everything the
+// session captured. Insights stays the raw record behind it.
+type Tab = "overview" | "briefing" | "insights" | "transcript" | "chat" | "speakers" | "directives" | "documents" | "tokens";
 
 export default function PostCallView({
   session,
@@ -93,10 +98,19 @@ export default function PostCallView({
   onRetranscribed,
   postProcessing,
 }: PostCallViewProps) {
-  const [activeTab, setActiveTab] = useState<Tab>("briefing");
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  // The Insights group an Overview tile deep-links into. QuestionSummary reads
+  // it at mount (it mounts on every tab switch), and it resets to "all" when
+  // the reader leaves Insights or clicks the tab directly, so a deep link
+  // never lingers as a hidden filter.
+  const [insightsFilter, setInsightsFilter] = useState("all");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [refreshingBriefing, setRefreshingBriefing] = useState(false);
   const [tokenUsage, setTokenUsage] = useState<TokenUsageSummary | null>(null);
-  const [tokenUsageLoading, setTokenUsageLoading] = useState(false);
+  // Overview is the landing tab, so the usage request starts at mount: begin
+  // in the loading state rather than flashing "unavailable" for one frame.
+  const [tokenUsageLoading, setTokenUsageLoading] = useState(true);
   const [tokenUsageError, setTokenUsageError] = useState(false);
   const [tokenUsageRequest, setTokenUsageRequest] = useState(0);
   const [modelPricing, setModelPricing] = useState<ModelPricingResponse | null>(null);
@@ -110,8 +124,13 @@ export default function PostCallView({
   const savedDrainSummary = savedDrain ? formatPostProcessingSummary(savedDrain) : null;
   const showSavedDrain = Boolean(savedDrain) && !(postProcessing?.state === "completed" && postProcessing.confirmed);
 
+  // Overview's cost tile and the Tokens tab share one fetch. Keying the effect
+  // on the boolean rather than the tab means moving between the two does not
+  // re-request; leaving for another tab and coming back does.
+  const wantsUsage = activeTab === "overview" || activeTab === "tokens";
+
   useEffect(() => {
-    if (activeTab !== "tokens") return;
+    if (!wantsUsage) return;
     let cancelled = false;
     setTokenUsageLoading(true);
     setTokenUsageError(false);
@@ -126,12 +145,12 @@ export default function PostCallView({
         if (!cancelled) setTokenUsageLoading(false);
       });
     return () => { cancelled = true; };
-  }, [activeTab, postProcessing?.state, session.id, tokenUsageRequest]);
+  }, [wantsUsage, postProcessing?.state, session.id, tokenUsageRequest]);
 
   // Pricing powers the Est. cost column; best-effort so a failed fetch just
   // hides the column instead of breaking the token tables.
   useEffect(() => {
-    if (activeTab !== "tokens" || modelPricing) return;
+    if (!wantsUsage || modelPricing) return;
     let cancelled = false;
     api.getModelPricing()
       .then((response) => {
@@ -139,7 +158,42 @@ export default function PostCallView({
       })
       .catch(() => { /* leave modelPricing null; tables render without costs */ });
     return () => { cancelled = true; };
-  }, [activeTab, modelPricing]);
+  }, [wantsUsage, modelPricing]);
+
+  useEffect(() => {
+    if (activeTab !== "insights") setInsightsFilter("all");
+  }, [activeTab]);
+
+  const selectTab = (tab: Tab) => {
+    if (tab === "insights") setInsightsFilter("all");
+    setActiveTab(tab);
+  };
+
+  const navigateFromOverview = (target: OverviewTarget) => {
+    if (target.tab === "insights") setInsightsFilter(target.filter ?? "all");
+    setActiveTab(target.tab);
+  };
+
+  // Post-call analysis for a session that only has a transcript (an import
+  // that was never processed, or a call whose agents were all off). Runs the
+  // same endpoint the pre-call import flow uses, then pulls the briefing.
+  const handleAnalyze = async () => {
+    setAnalyzing(true);
+    setAnalyzeError(null);
+    try {
+      await api.analyzeSession(session.id);
+      try {
+        await api.refreshSynthesis(session.id);
+      } catch (err) {
+        setAnalyzeError(err instanceof Error ? `Analysis finished, but the briefing failed: ${err.message}` : "Analysis finished, but the briefing failed.");
+      }
+    } catch (err) {
+      setAnalyzeError(err instanceof Error ? err.message : "Transcript analysis failed.");
+    } finally {
+      await Promise.allSettled([onRefreshQuestions(), onRefreshSession(), onRefreshSynthesis()]);
+      setAnalyzing(false);
+    }
+  };
 
   const handleRenameSpeaker = async (speakerId: string, newName: string) => {
     await api.updateSpeaker(session.id, speakerId, { name: newName });
@@ -149,7 +203,8 @@ export default function PostCallView({
 
   const userDocuments = documents;
 
-  const tabs: { key: Tab; label: string; count?: number }[] = [
+  const tabs: PostCallTabDef<Tab>[] = [
+    { key: "overview", label: "Overview" },
     { key: "briefing", label: "Briefing" },
     { key: "insights", label: "Insights", count: questions.length },
     { key: "transcript", label: "Transcript" },
@@ -179,24 +234,26 @@ export default function PostCallView({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      {/* Completion notes take the accent tint through the semantic tokens,
+          like the amber notice below, so they sit quietly on both themes. */}
       {postProcessing?.state === "completed" && postProcessing.confirmed && (
-        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-          <p className="font-body text-sm font-semibold text-green-800">
+        <div role="status" className="rounded-lg border border-brand-teal/30 bg-brand-teal/10 px-4 py-3">
+          <p className="font-body text-sm font-semibold text-brand-dark-gray">
             {postProcessing.message || "Post-processing complete"}
           </p>
           {progressSummary && (
-            <p className="mt-1 font-body text-xs text-green-700">{progressSummary}</p>
+            <p className="mt-1 font-body text-xs text-brand-gray">{progressSummary}</p>
           )}
         </div>
       )}
 
       {showSavedDrain && savedDrain && (
-        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-          <p className="font-body text-sm font-semibold text-green-800">
+        <div role="status" className="rounded-lg border border-brand-teal/30 bg-brand-teal/10 px-4 py-3">
+          <p className="font-body text-sm font-semibold text-brand-dark-gray">
             {savedDrain.message || "Post-processing complete"}
           </p>
           {savedDrainSummary && (
-            <p className="mt-1 font-body text-xs text-green-700">{savedDrainSummary}</p>
+            <p className="mt-1 font-body text-xs text-brand-gray">{savedDrainSummary}</p>
           )}
         </div>
       )}
@@ -230,10 +287,11 @@ export default function PostCallView({
                     key={seg.id}
                     className="flex items-center gap-4 text-sm"
                   >
+                    {/* A resume is ordinary, not a warning: neutral rather than amber. */}
                     <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
                       seg.segment_number === 1
                         ? "bg-brand-teal/10 text-brand-teal"
-                        : "bg-brand-amber/10 text-brand-amber"
+                        : "bg-brand-light-gray-2 text-brand-gray"
                     }`}>
                       {seg.segment_number === 1 ? "Call" : `Resume ${seg.segment_number - 1}`}
                     </span>
@@ -290,31 +348,7 @@ export default function PostCallView({
             >
               Resume Call
             </button>
-            <div className="relative group">
-              <button className="rounded-lg border border-brand-light-gray-1 px-4 py-2 text-sm font-medium text-brand-teal transition-colors hover:bg-brand-light-gray-2">
-                Export
-              </button>
-              <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-brand-light-gray-1 bg-surface shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
-                <a
-                  href={`/api/sessions/${session.id}/artifacts/summary-export`}
-                  className="block px-4 py-2.5 text-sm text-brand-dark-gray hover:bg-brand-light-gray-2 rounded-t-lg"
-                >
-                  Full Summary (HTML)
-                </a>
-                <a
-                  href={`/api/sessions/${session.id}/artifacts/questions-export`}
-                  className="block px-4 py-2.5 text-sm text-brand-dark-gray hover:bg-brand-light-gray-2"
-                >
-                  Insights (Excel)
-                </a>
-                <a
-                  href={`/api/sessions/${session.id}/artifacts/transcript-export`}
-                  className="block px-4 py-2.5 text-sm text-brand-dark-gray hover:bg-brand-light-gray-2 rounded-b-lg"
-                >
-                  Transcript (TXT)
-                </a>
-              </div>
-            </div>
+            <ExportMenu sessionId={session.id} />
             <button
               onClick={onDeleteSession}
               className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 hover:border-red-300"
@@ -326,27 +360,28 @@ export default function PostCallView({
       </div>
 
       {/* Tab navigation */}
-      <div className="flex flex-wrap gap-1 rounded-lg bg-brand-light-gray-2 p-1" aria-label="Post-call review">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            aria-pressed={activeTab === tab.key}
-            className={`min-w-24 flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              activeTab === tab.key
-                ? "bg-surface text-brand-teal shadow-sm"
-                : "text-brand-gray hover:text-brand-dark-gray"
-            }`}
-          >
-            {tab.label}
-            {tab.count !== undefined && (
-              <span className="ml-1.5 text-xs text-brand-mid-gray">({tab.count})</span>
-            )}
-          </button>
-        ))}
-      </div>
+      <PostCallTabs tabs={tabs} activeTab={activeTab} onSelect={selectTab} />
 
-      {/* Tab content */}
+      {/* Tab content: one panel, named by whichever tab is selected. */}
+      <div role="tabpanel" id={panelId(activeTab)} aria-labelledby={tabId(activeTab)}>
+      {activeTab === "overview" && (
+        <OverviewView
+          session={session}
+          questions={questions}
+          transcripts={transcripts}
+          speakers={speakers}
+          segments={segments}
+          synthesis={synthesis}
+          tokenUsage={tokenUsage}
+          tokenUsageLoading={tokenUsageLoading}
+          tokenUsageError={tokenUsageError}
+          modelPricing={modelPricing}
+          onNavigate={navigateFromOverview}
+          onAnalyze={transcripts.length > 0 && questions.length === 0 ? handleAnalyze : undefined}
+          analyzing={analyzing}
+          analyzeError={analyzeError}
+        />
+      )}
       {activeTab === "briefing" && (
         <BriefingView
           session={session}
@@ -375,6 +410,7 @@ export default function PostCallView({
           questions={questions}
           speakers={speakers}
           showEnhanced={Boolean(session.speaker_context_enhanced_at)}
+          initialFilter={insightsFilter}
         />
       )}
       {activeTab === "chat" && <MeetingChat key={session.id} session={session} />}
@@ -419,7 +455,7 @@ export default function PostCallView({
                       key={doc.id}
                       className="flex items-center gap-4 rounded-lg border border-brand-light-gray-1 p-4 hover:bg-brand-light-gray-2/50 transition-colors"
                     >
-                      <span className="text-2xl">{fileIcon(doc.mime_type)}</span>
+                      <span className="text-2xl" aria-hidden="true">{fileIcon(doc.mime_type)}</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-brand-dark-gray truncate">
                           {doc.filename}
@@ -491,166 +527,15 @@ export default function PostCallView({
       )}
 
       {activeTab === "tokens" && (
-        <div className="rounded-xl bg-surface p-6 shadow-sm">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="font-display text-lg font-semibold text-brand-dark-gray">Token usage</h2>
-              <p className="mt-1 text-sm text-brand-mid-gray">LLM activity recorded for this session.</p>
-            </div>
-            {!tokenUsageLoading && (
-              <button
-                type="button"
-                onClick={() => setTokenUsageRequest((value) => value + 1)}
-                className="rounded-md border border-brand-light-gray-1 px-3 py-1.5 text-sm font-medium text-brand-teal hover:bg-brand-light-gray-2"
-              >
-                Refresh
-              </button>
-            )}
-          </div>
-
-          {tokenUsageLoading ? (
-            <p className="mt-6 text-sm text-brand-mid-gray" role="status">Loading token usage...</p>
-          ) : tokenUsageError ? (
-            <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4" role="alert">
-              <p className="text-sm text-red-700">Token usage could not be loaded.</p>
-            </div>
-          ) : tokenUsage ? (
-            <div className="mt-6 space-y-6">
-              <div className="rounded-lg border border-brand-teal/20 bg-brand-teal/5 p-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-brand-gray">Estimated cost</p>
-                <p className="mt-1 font-display text-3xl font-semibold tabular-nums text-brand-dark-gray">
-                  {formatEstimatedCost(
-                    modelPricing ? estimateSessionCostUsd(tokenUsage.by_model, modelPricing.models) : null,
-                  )}
-                </p>
-                <p className="mt-2 text-sm text-brand-mid-gray">
-                  {tokenUsage.total_tokens.toLocaleString()} tokens
-                  {" ("}
-                  {tokenUsage.input_tokens.toLocaleString()} input / {tokenUsage.output_tokens.toLocaleString()} output
-                  {tokenUsage.thinking_tokens > 0 && (
-                    <> / {tokenUsage.thinking_tokens.toLocaleString()} thinking</>
-                  )}
-                  {")"}
-                  {tokenUsage.audio_seconds > 0 && (
-                    <> plus {formatAudioDuration(tokenUsage.audio_seconds)} of audio</>
-                  )}
-                </p>
-                {tokenUsage.thinking_tokens > 0 && (
-                  <p className="mt-1 text-xs text-brand-mid-gray">
-                    Thinking tokens are billed at output rates.
-                  </p>
-                )}
-                {tokenUsage.audio_seconds > 0 && (
-                  <p className="mt-1 text-xs text-brand-mid-gray">
-                    The live gateway is billed per minute of audio, not per token.
-                  </p>
-                )}
-              </div>
-
-              {tokenUsage.total_tokens === 0 && tokenUsage.audio_seconds === 0 ? (
-                <p className="text-sm text-brand-mid-gray">No usage was recorded for this session.</p>
-              ) : (
-                <>
-                  <TokenBreakdownTable title="By source" rows={tokenUsage.by_source} showSource pricing={modelPricing} showRateNote={false} />
-                  <TokenBreakdownTable title="By model" rows={tokenUsage.by_model} pricing={modelPricing} />
-                </>
-              )}
-            </div>
-          ) : null}
-        </div>
+        <TokenUsagePanel
+          tokenUsage={tokenUsage}
+          loading={tokenUsageLoading}
+          error={tokenUsageError}
+          pricing={modelPricing}
+          onRefresh={() => setTokenUsageRequest((value) => value + 1)}
+        />
       )}
-    </div>
-  );
-}
-
-function TokenBreakdownTable({
-  title,
-  rows,
-  showSource = false,
-  pricing = null,
-  showRateNote = true,
-}: {
-  title: string;
-  rows: TokenUsageSummary["by_source"];
-  showSource?: boolean;
-  // When set, adds an Est. cost column plus a session total row.
-  pricing?: ModelPricingResponse | null;
-  // Both tables price their rows, but the rate caveat only needs saying once.
-  showRateNote?: boolean;
-}) {
-  const sessionCost = pricing ? estimateSessionCostUsd(rows, pricing.models) : null;
-  // The API orders by tokens, which ranks a duration-billed row (zero tokens,
-  // real money) last. Cost is the only axis the two billing units share, and
-  // it is only known here, so the re-sort happens at render.
-  const ordered = useMemo(() => {
-    if (!pricing) return rows;
-    const cost = (row: TokenUsageSummary["by_source"][number]) =>
-      estimateCostUsd(pricing.models[row.model_id], row.input_tokens, row.output_tokens, row.thinking_tokens, row.audio_seconds ?? 0) ?? -1;
-    return [...rows].sort((a, b) => cost(b) - cost(a));
-  }, [rows, pricing]);
-  // Only surface the thinking column when something actually thought, so
-  // non-reasoning sessions keep the narrower table. Same for audio, which is
-  // non-zero only when a duration-billed model ran.
-  const showThinking = rows.some((row) => row.thinking_tokens > 0);
-  const showAudio = rows.some((row) => (row.audio_seconds ?? 0) > 0);
-  return (
-    <section>
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-brand-gray">{title}</h3>
-      <div className="overflow-x-auto rounded-lg border border-brand-light-gray-1">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-brand-light-gray-2 text-xs uppercase tracking-wide text-brand-gray">
-            <tr>
-              {showSource && <th scope="col" className="px-4 py-3 font-semibold">Source</th>}
-              <th scope="col" className="px-4 py-3 font-semibold">Model</th>
-              <th scope="col" className="px-4 py-3 text-right font-semibold">Input</th>
-              <th scope="col" className="px-4 py-3 text-right font-semibold">Output</th>
-              {showThinking && <th scope="col" className="px-4 py-3 text-right font-semibold">Thinking</th>}
-              {showAudio && <th scope="col" className="px-4 py-3 text-right font-semibold">Audio</th>}
-              <th scope="col" className="px-4 py-3 text-right font-semibold">Total</th>
-              {pricing && <th scope="col" className="px-4 py-3 text-right font-semibold">Est. cost</th>}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-brand-light-gray-1">
-            {ordered.map((row) => (
-              <tr key={`${row.source ?? "model"}-${row.model_id}`}>
-                {showSource && <th scope="row" className="px-4 py-3 font-medium text-brand-dark-gray">{row.source}</th>}
-                <td className="px-4 py-3 font-mono text-xs text-brand-gray">{row.model_id}</td>
-                <td className="px-4 py-3 text-right tabular-nums text-brand-gray">{row.input_tokens.toLocaleString()}</td>
-                <td className="px-4 py-3 text-right tabular-nums text-brand-gray">{row.output_tokens.toLocaleString()}</td>
-                {showThinking && (
-                  <td className="px-4 py-3 text-right tabular-nums text-brand-gray">{row.thinking_tokens.toLocaleString()}</td>
-                )}
-                {showAudio && (
-                  <td className="px-4 py-3 text-right tabular-nums text-brand-gray">{formatAudioDuration(row.audio_seconds ?? 0)}</td>
-                )}
-                <td className="px-4 py-3 text-right font-semibold tabular-nums text-brand-dark-gray">{row.total_tokens.toLocaleString()}</td>
-                {pricing && (
-                  <td className="px-4 py-3 text-right tabular-nums text-brand-gray">
-                    {formatEstimatedCost(estimateCostUsd(pricing.models[row.model_id], row.input_tokens, row.output_tokens, row.thinking_tokens, row.audio_seconds ?? 0))}
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-          {pricing && (
-            <tfoot className="border-t border-brand-light-gray-1 bg-brand-light-gray-2/60">
-              <tr>
-                <th scope="row" colSpan={(showSource ? 5 : 4) + (showThinking ? 1 : 0) + (showAudio ? 1 : 0)} className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-brand-gray">
-                  Session estimate
-                </th>
-                <td className="px-4 py-3 text-right font-semibold tabular-nums text-brand-dark-gray">
-                  {formatEstimatedCost(sessionCost)}
-                </td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
       </div>
-      {pricing && showRateNote && (
-        <p className="mt-2 text-xs text-brand-mid-gray">
-          Est. cost is an estimate at standard text rates, or at the published per-minute rate for models billed by audio duration (prices as of {pricing.as_of}); models without published pricing show - and are excluded from the total.
-        </p>
-      )}
-    </section>
+    </div>
   );
 }

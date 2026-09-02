@@ -10,6 +10,9 @@ interface QuestionSummaryProps {
   questions: Question[];
   speakers: Speaker[];
   showEnhanced?: boolean;
+  // Type filter to open with (an item_type slug), so another worksheet can
+  // deep-link into one group. Read once at mount; remount to change it.
+  initialFilter?: FilterType;
 }
 
 function speakerLabel(speaker: Speaker): string {
@@ -172,9 +175,9 @@ function StatCard({
   );
 }
 
-export default function QuestionSummary({ questions, speakers, showEnhanced = false }: QuestionSummaryProps) {
+export default function QuestionSummary({ questions, speakers, showEnhanced = false, initialFilter = "all" }: QuestionSummaryProps) {
   const [showDismissed, setShowDismissed] = useState(false);
-  const [filter, setFilter] = useState<FilterType>("all");
+  const [filter, setFilter] = useState<FilterType>(initialFilter);
 
   // Separate dismissed first
   const dismissed = questions.filter((q) => q.dismissed);

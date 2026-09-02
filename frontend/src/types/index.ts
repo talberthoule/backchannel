@@ -35,6 +35,13 @@ export interface TokenUsageBreakdown {
   // Audio duration, for models billed per minute instead of per token
   // (the live gateway). Zero for every token-billed model.
   audio_seconds: number;
+  // Slices of input_tokens / output_tokens that bill at their own rate:
+  // cached prompt tokens at the cached-input rate, audio tokens at the
+  // audio rate. Subsets, already counted in the totals above. Optional so a
+  // response from a backend that predates them still renders.
+  cached_input_tokens?: number;
+  audio_input_tokens?: number;
+  audio_output_tokens?: number;
 }
 
 export interface TokenUsageSummary {
@@ -43,6 +50,9 @@ export interface TokenUsageSummary {
   thinking_tokens: number;
   total_tokens: number;
   audio_seconds: number;
+  cached_input_tokens?: number;
+  audio_input_tokens?: number;
+  audio_output_tokens?: number;
   by_source: TokenUsageBreakdown[];
   by_model: TokenUsageBreakdown[];
 }
@@ -323,8 +333,10 @@ export interface EndpointProbeResult {
   on_prem?: boolean;
 }
 
-// USD per 1M tokens at standard text-tier rates (no long-context or
-// cache-storage surcharges); null means no published rate.
+// USD per 1M tokens at standard paid-tier rates (no long-context or
+// cache-storage surcharges); null means no published rate. The cached and
+// audio rates apply to the matching slices of a usage row; when one is null
+// that slice prices at the plain input or output rate.
 export interface ModelPricing {
   input_per_million: number | null;
   output_per_million: number | null;
@@ -333,6 +345,7 @@ export interface ModelPricing {
   // USD per minute of audio. Set only for duration-billed models, whose
   // token rates are null in turn.
   per_minute: number | null;
+  audio_output_per_million?: number | null;
 }
 
 // GET /api/models/pricing: rates keyed by model id; a null entry means the
