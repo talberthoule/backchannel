@@ -65,6 +65,12 @@ action items you would otherwise reconstruct from memory afterwards.
   pipeline on your own hardware with no API key from anyone -- and because
   Privacy First recognizes endpoints on your machine or network, you can
   leave the switch on and keep the agents working
+- **PII Shield** -- names, companies, contact details and identifiers are
+  replaced with tokens such as `[PERSON_1]` the moment they are written, so
+  every model prompt, local or cloud, and the database itself hold only
+  tokens. The real values sit in an encrypted vault on the machine and are put
+  back only on your screen; detection is entirely on-device, and the switch
+  tells you honestly which audio paths it cannot cover
 - **Nothing chosen on your behalf** -- a fresh install seeds no cloud model.
   Every agent starts unselected, models are grouped by Google, OpenAI, and
   local, and one role-appropriate recommendation is marked in each provider you

@@ -10,10 +10,75 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.5.4"
+APP_VERSION = "0.6.0"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.6.0",
+        "date": "2026-09-02",
+        "title": "The PII Shield: no model, local or cloud, reads a name it does not need",
+        "body": """This release adds a privacy layer that keeps personal data out of
+every model prompt and out of the database itself, and makes a new session
+faster to set up.
+
+- A PII Shield, in Admin -> Privacy. With it on, people's names, company
+  names, email addresses, phone numbers, card and national-id numbers, IP
+  addresses and street addresses are replaced with tokens such as [PERSON_1]
+  the moment a transcript line, directive, document excerpt, session name or
+  speaker name is written. Every agent, the briefing, chat and Ask then work
+  from tokenized text, whether the model is on this machine or in the cloud,
+  and the database holds only tokens. The real values live in a vault
+  encrypted under the same master key that protects your provider keys, and
+  are put back only on the screen in front of you. Tokens stay consistent
+  within a session so the models can follow who said what; nothing links a
+  person across sessions.
+- Detection runs entirely on this machine: pattern checks for structured
+  identifiers, the session's own speaker roster and a protected-terms list
+  you maintain (client companies, code names), and a small on-device
+  name-recognition model that downloads once. No detection ever involves a
+  cloud call. The Privacy tab has a scratch box to see exactly what a model
+  would receive for any sentence.
+- Audio never leaves while the shield is on. Audio cannot be tokenized, so
+  the shield holds transcription to a local model and switches off cloud
+  live captions, the way Privacy First does but for audio alone; cloud text
+  models stay available because they receive tokens only. The Privacy tab
+  shows each path, including a cloud caption gateway that is configured but
+  paused, and the live call says "Live captions off: PII Shield" rather
+  than going quiet. Uploaded documents are read on this machine and never
+  sent as files.
+- A Transcript Refiner agent, off by default, closes the quality gap of
+  local-only transcription. It sends the tokenized transcript to any text
+  model, local or cloud, to fix punctuation, casing, sentence boundaries and
+  obvious mishearings, live every 45 seconds, at call end, and before
+  post-import analysis. A rewrite is kept only if it carries exactly the
+  original tokens, and the transcriber's own wording is kept alongside.
+- You can watch it work. "Record outbound prompts" on the Privacy tab keeps
+  a log of every prompt exactly as it left for a model, badged "tokens only"
+  or "blocked", so the claim that no name reaches a model is something you
+  check rather than trust. Independently, while the shield is on a prompt
+  that still carries a vault value is refused before it is sent.
+- Local Whisper's noise artifacts, a phrase looping a dozen times or a line
+  of bracketed non-words, no longer reach the transcript.
+- Exports carry tokens unless you tick "Include personal data" in the Export
+  menu; every reveal, on screen or in a file, is counted in an audit trail
+  the Privacy tab summarizes. A completed session shows how many values it
+  holds shielded. Sessions recorded before the shield was on keep what they
+  hold until you protect them (POST /api/sessions/{id}/pii/protect).
+- Setting up a session is shorter. The Start Call and Process Transcript
+  buttons now sit at the top of the pre-call screen and stay there while you
+  scroll. Context is open; documents, imports, directives, participants and
+  agent choices are collapsed cards whose headers say what they hold, and
+  the recording notice is one line with the detail behind it.
+- Gemini 3.8 Flash, released the day of this build, is in the model list
+  and is now the recommended Google model for every text agent and Live
+  Ask, at the same price as 3.7 Flash. Gemini 3.7 Flash stays selectable;
+  an agent already set to it keeps running on it until you change it.
+- The session sidebar's find box also understands dates. Typing October,
+  oct 8, 8, 08, 8-, 8/, 10/8, 10-08 or 2026-10-08 finds the sessions created
+  or started on that day, with nothing to add to the session name.
+""",
+    },
     {
         "version": "0.5.4",
         "date": "2026-09-02",
