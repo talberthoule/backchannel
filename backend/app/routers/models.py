@@ -24,6 +24,9 @@ class ModelPricing(BaseModel):
     # tokens. Omitting it here silently stripped the live gateway's only
     # published rate from the response (ALP-300).
     per_minute: float | None = None
+    # Audio output tokens (the live gateway answers in audio) bill above the
+    # text output rate where published.
+    audio_output_per_million: float | None = None
 
 
 class ModelRecommendation(BaseModel):

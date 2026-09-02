@@ -5,11 +5,20 @@ unit is whatever the provider bills in. OpenAI Realtime transcription bills by
 audio duration and reports ``{"type": "duration", "seconds": N}``; before
 ALP-300 that shape matched no known field and was discarded, so an agent that
 cost real money showed nothing at all on the cost page.
+
+Not every input token costs the same either. Providers bill cached prompt
+tokens at a fraction of the text rate (Gemini implicit caching reports them in
+``cached_content_token_count``, OpenAI under ``prompt_tokens_details``), and
+audio tokens at a multiple of it (Gemini breaks the prompt down per modality in
+``prompt_tokens_details``, OpenAI reports ``audio_tokens``). Both counts are
+subsets of the input total. They are recorded alongside it so the cost estimate
+can price each slice at its own published rate instead of pricing a live
+audio gateway, whose input is almost entirely audio, at the text rate.
 """
 
 import logging
 import uuid
-from typing import Any, Iterable
+from typing import Any, Iterable, NamedTuple
 
 from app.database import async_session
 from app.models import TokenUsage
@@ -34,7 +43,42 @@ _THINKING_DETAIL_FIELDS = ("completion_tokens_details", "output_tokens_details")
 # Realtime reports "seconds" on the transcription-completed event; the other
 # spellings are defensive against sibling shapes.
 _DURATION_FIELDS = ("seconds", "audio_duration_seconds", "duration_seconds")
+# Cached prompt tokens. Gemini reports them flat; OpenAI nests cached_tokens
+# under the input details object (prompt_tokens_details on chat completions,
+# input_tokens_details on the Responses API).
+_CACHED_FIELDS = ("cached_content_token_count",)
+_CACHED_DETAIL_FIELDS = ("cached_tokens",)
+# OpenAI-shaped per-slice detail containers. Gemini reuses the name
+# prompt_tokens_details for something else: a LIST of per-modality counts, so
+# the readers below check the shape rather than trusting the name.
+_INPUT_DETAIL_FIELDS = ("prompt_tokens_details", "input_tokens_details", "input_token_details")
+_OUTPUT_DETAIL_FIELDS = ("completion_tokens_details", "output_tokens_details", "output_token_details")
+_AUDIO_DETAIL_FIELDS = ("audio_tokens",)
+# Gemini per-modality breakdowns: generate_content reports
+# candidates_tokens_details, the Live API response_tokens_details.
+_GEMINI_INPUT_MODALITY_FIELDS = ("prompt_tokens_details",)
+_GEMINI_OUTPUT_MODALITY_FIELDS = ("candidates_tokens_details", "response_tokens_details")
+_AUDIO_MODALITY = "AUDIO"
 _warned_usage_sources: set[str] = set()
+
+
+class UsageCounts(NamedTuple):
+    """One provider response, normalized.
+
+    A tuple so the original positional readers keep working; the trailing
+    fields are subsets of the ones before them, never additions: cached and
+    audio input tokens are part of input_tokens, audio output tokens part of
+    output_tokens. Summing them into a total double-counts.
+    """
+
+    input_tokens: int
+    output_tokens: int
+    thinking_tokens: int
+    total_tokens: int
+    audio_seconds: float
+    cached_input_tokens: int = 0
+    audio_input_tokens: int = 0
+    audio_output_tokens: int = 0
 
 
 def _value(usage: Any, *names: str) -> int | None:
@@ -77,6 +121,70 @@ def _seconds_value(usage: Any) -> float | None:
     return None
 
 
+def _detail_value(usage: Any, containers: tuple[str, ...], *names: str) -> int | None:
+    """A count nested in an OpenAI-shaped details object (dict or attributes).
+
+    A list under the same name is a Gemini modality breakdown, which
+    _modality_tokens reads instead; it is skipped here rather than mistaken
+    for a details object.
+    """
+    for container in containers:
+        details = _attr(usage, container)
+        if details is None or isinstance(details, (list, tuple)):
+            continue
+        value = _value(details, *names)
+        if value is not None:
+            return value
+    return None
+
+
+def _modality_name(entry: Any) -> str:
+    """AUDIO from MediaModality.AUDIO, "AUDIO", or "MediaModality.AUDIO"."""
+    modality = _attr(entry, "modality")
+    if modality is None:
+        return ""
+    label = getattr(modality, "value", modality)
+    return str(label).upper().rsplit(".", 1)[-1]
+
+
+def _modality_tokens(usage: Any, containers: tuple[str, ...], modality: str) -> int | None:
+    """Tokens of one modality from a Gemini per-modality breakdown list."""
+    total: int | None = None
+    for container in containers:
+        details = _attr(usage, container)
+        if not isinstance(details, (list, tuple)):
+            continue
+        for entry in details:
+            if _modality_name(entry) != modality:
+                continue
+            count = _value(entry, "token_count")
+            if count is None:
+                continue
+            total = (total or 0) + count
+    return total
+
+
+def _cached_input_value(usage: Any) -> int | None:
+    direct = _value(usage, *_CACHED_FIELDS)
+    if direct is not None:
+        return direct
+    return _detail_value(usage, _INPUT_DETAIL_FIELDS, *_CACHED_DETAIL_FIELDS)
+
+
+def _audio_input_value(usage: Any) -> int | None:
+    by_modality = _modality_tokens(usage, _GEMINI_INPUT_MODALITY_FIELDS, _AUDIO_MODALITY)
+    if by_modality is not None:
+        return by_modality
+    return _detail_value(usage, _INPUT_DETAIL_FIELDS, *_AUDIO_DETAIL_FIELDS)
+
+
+def _audio_output_value(usage: Any) -> int | None:
+    by_modality = _modality_tokens(usage, _GEMINI_OUTPUT_MODALITY_FIELDS, _AUDIO_MODALITY)
+    if by_modality is not None:
+        return by_modality
+    return _detail_value(usage, _OUTPUT_DETAIL_FIELDS, *_AUDIO_DETAIL_FIELDS)
+
+
 def _has_known_field(usage: Any) -> bool:
     fields = _INPUT_FIELDS + _OUTPUT_FIELDS + _TOTAL_FIELDS + _THINKING_FIELDS + _DURATION_FIELDS
     if isinstance(usage, dict):
@@ -87,12 +195,15 @@ def _has_known_field(usage: Any) -> bool:
     return any(_attr(usage, name) is not None for name in _THINKING_DETAIL_FIELDS)
 
 
-def normalize_usage(usage: Any, source: str = "") -> tuple[int, int, int, int, float] | None:
-    """Return (input, output, thinking, total, audio_seconds), or None when
-    nothing is usable.
+def normalize_usage(usage: Any, source: str = "") -> UsageCounts | None:
+    """Return UsageCounts, or None when nothing is usable.
 
-    The tuple grew a fifth field for duration-billed models; callers that only
-    read the token counts can keep indexing 0..3 unchanged.
+    The result is a tuple whose first five fields are (input, output,
+    thinking, total, audio_seconds); callers that only read the token counts
+    can keep indexing 0..3 unchanged. The cached and audio slices that follow
+    are clamped to the totals they are part of - and cached plus audio input
+    to the input count together - so a provider quirk can never report or
+    price more cached or audio tokens than there were input tokens.
     """
     if usage is None:
         return None
@@ -113,7 +224,23 @@ def normalize_usage(usage: Any, source: str = "") -> tuple[int, int, int, int, f
                 type(usage).__name__,
             )
         return None
-    return input_tokens, output_tokens, thinking_tokens, total_tokens, audio_seconds
+    cached_input = min(input_tokens, _cached_input_value(usage) or 0)
+    # Jointly, not just per side: cached and audio are both slices of the same
+    # input count, so together they can never exceed it. Cached wins the
+    # tokens, mirroring the cost formula in frontend/src/lib/modelPricing.ts,
+    # so the stored row and the priced row agree.
+    audio_input = min(input_tokens - cached_input, _audio_input_value(usage) or 0)
+    audio_output = min(output_tokens, _audio_output_value(usage) or 0)
+    return UsageCounts(
+        input_tokens,
+        output_tokens,
+        thinking_tokens,
+        total_tokens,
+        audio_seconds,
+        cached_input,
+        audio_input,
+        audio_output,
+    )
 
 
 async def record_token_usage(
@@ -131,18 +258,30 @@ async def record_token_usage(
                 session_id=uuid.UUID(str(session_id)),
                 source=source,
                 model_id=model_id,
-                input_tokens=normalized[0],
-                output_tokens=normalized[1],
-                thinking_tokens=normalized[2],
-                total_tokens=normalized[3],
-                audio_seconds=normalized[4],
+                input_tokens=normalized.input_tokens,
+                output_tokens=normalized.output_tokens,
+                thinking_tokens=normalized.thinking_tokens,
+                total_tokens=normalized.total_tokens,
+                audio_seconds=normalized.audio_seconds,
+                cached_input_tokens=normalized.cached_input_tokens,
+                audio_input_tokens=normalized.audio_input_tokens,
+                audio_output_tokens=normalized.audio_output_tokens,
             ))
             await db.commit()
     except Exception:
         logger.exception("Failed to record token usage for %s", source)
 
 
-_ZERO_USAGE = {"input_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "total_tokens": 0, "audio_seconds": 0.0}
+_ZERO_USAGE = {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "thinking_tokens": 0,
+    "total_tokens": 0,
+    "audio_seconds": 0.0,
+    "cached_input_tokens": 0,
+    "audio_input_tokens": 0,
+    "audio_output_tokens": 0,
+}
 
 
 def summarize_usage(rows: Iterable[TokenUsage]) -> dict:
@@ -153,10 +292,13 @@ def summarize_usage(rows: Iterable[TokenUsage]) -> dict:
         values = {
             "input_tokens": row.input_tokens,
             "output_tokens": row.output_tokens,
-            # Rows written before the column existed read as NULL, not 0.
+            # Rows written before a column existed read as NULL, not 0.
             "thinking_tokens": getattr(row, "thinking_tokens", 0) or 0,
             "total_tokens": row.total_tokens,
             "audio_seconds": getattr(row, "audio_seconds", 0.0) or 0.0,
+            "cached_input_tokens": getattr(row, "cached_input_tokens", 0) or 0,
+            "audio_input_tokens": getattr(row, "audio_input_tokens", 0) or 0,
+            "audio_output_tokens": getattr(row, "audio_output_tokens", 0) or 0,
         }
         for key, value in values.items():
             total[key] += value

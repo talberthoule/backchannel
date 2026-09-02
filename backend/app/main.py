@@ -41,7 +41,9 @@ def _add_thinking_token_column(connection, inspector, tables):
 
     thinking_tokens predates ALP-284; audio_seconds predates ALP-300, which
     gave duration-billed models (OpenAI Realtime transcription) somewhere to
-    land instead of being discarded.
+    land instead of being discarded. The cached and audio token slices let
+    the cost estimate price those tokens at their own published rates instead
+    of the text rate.
 
     Extracted rather than inlined with its siblings: _check_and_add is a long
     chain of table/column guards already sitting at the structural complexity
@@ -58,6 +60,11 @@ def _add_thinking_token_column(connection, inspector, tables):
         connection.execute(
             text("ALTER TABLE token_usage ADD COLUMN audio_seconds DOUBLE PRECISION NOT NULL DEFAULT 0")
         )
+    for column in ("cached_input_tokens", "audio_input_tokens", "audio_output_tokens"):
+        if column not in columns:
+            connection.execute(
+                text(f"ALTER TABLE token_usage ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0")
+            )
 
 
 async def _add_missing_columns(conn):

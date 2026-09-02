@@ -12,6 +12,7 @@ RATE_FIELDS = (
     "cached_input_per_million",
     "audio_input_per_million",
     "per_minute",
+    "audio_output_per_million",
 )
 
 
@@ -70,6 +71,34 @@ class ModelPricingTableTests(unittest.TestCase):
         self.assertEqual(0.017, pricing["per_minute"])
         self.assertIsNone(pricing["input_per_million"])
         self.assertIsNone(pricing["output_per_million"])
+
+    def test_live_gateway_prices_audio_on_both_sides(self):
+        """The gateway's input is nearly all audio and it answers in audio.
+
+        Both slices bill well above the text rates (4x on input), so the row
+        has to carry them or the estimate is a fraction of the bill.
+        """
+        pricing = pricing_for("gemini-3.1-flash-live-preview")
+        self.assertEqual(3.00, pricing["audio_input_per_million"])
+        self.assertEqual(12.00, pricing["audio_output_per_million"])
+        self.assertGreater(pricing["audio_input_per_million"], pricing["input_per_million"])
+
+    def test_gemini_audio_rates_where_published(self):
+        # Verified against the Gemini API pricing page on 2026-09-01. The 3.x
+        # Flash rows publish a single rate for every modality and stay None.
+        for model_id, rate in (
+            ("gemini-2.5-flash", 1.00),
+            ("gemini-2.5-flash-lite", 0.30),
+            ("gemini-3.1-flash-lite", 0.50),
+        ):
+            self.assertEqual(rate, pricing_for(model_id)["audio_input_per_million"], model_id)
+        self.assertIsNone(pricing_for("gemini-3.5-flash-lite")["audio_input_per_million"])
+
+    def test_cached_rates_are_below_input_rates(self):
+        for model_id, pricing in MODEL_PRICING.items():
+            if pricing is None or pricing["cached_input_per_million"] is None:
+                continue
+            self.assertLess(pricing["cached_input_per_million"], pricing["input_per_million"], model_id)
 
     def test_local_models_are_free(self):
         for model in MODEL_REGISTRY:

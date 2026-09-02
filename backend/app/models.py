@@ -162,6 +162,13 @@ class TokenUsage(Base):
     # entirely (ALP-300). Seconds rather than minutes because that is the unit
     # the provider reports; the per-minute rate is applied at display time.
     audio_seconds: Mapped[float] = mapped_column(Float, default=0.0)
+    # Slices of input_tokens / output_tokens that bill at their own rate:
+    # cached prompt tokens at the provider's cached-input rate, audio tokens
+    # at the audio rate. Subsets, never additions - input_tokens already
+    # includes them, so a total must not add them again.
+    cached_input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    audio_input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    audio_output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     session = relationship("Session", back_populates="token_usage")

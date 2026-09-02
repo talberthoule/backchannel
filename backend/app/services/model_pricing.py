@@ -5,11 +5,13 @@ Kept as a parallel table (keyed by model id) rather than inline in
 touch capability metadata in ``app.config``.
 
 Simplifications (also stated in the UI):
-- Standard paid-tier text rates only (Gemini "paid tier" / OpenAI standard).
+- Standard paid-tier rates only (Gemini "paid tier" / OpenAI standard).
 - No long-context surcharges (Gemini Pro rates are the <=200k-token tier).
-- No cache-storage rates; cached-input is the discounted read rate only.
-- Audio-token input rates are recorded where published (live/transcribe
-  models) but cost estimates in the app use the text-tier input rate.
+- No cache-storage rates; cached-input is the discounted read rate only, and
+  it is applied to the cached_input_tokens slice of a usage row.
+- Audio-token rates are applied to the audio_input_tokens and
+  audio_output_tokens slices where published; a model without a published
+  audio rate prices its audio tokens at the text rate.
 
 All token rates are USD per 1 million tokens; ``per_minute`` is USD per
 minute of audio, for models billed by duration instead. A model mapped to
@@ -21,13 +23,13 @@ sync with ``MODEL_REGISTRY``, so adding or removing a registry model
 without updating this table fails the suite.
 """
 
-# Date the rates below were verified against provider pricing pages.
+# Date the rates below were last verified against BOTH provider pricing
+# pages. The Google rows were re-verified against ai.google.dev/gemini-api/
+# docs/pricing on 2026-09-01 (cached and audio rates filled in from it); the
+# OpenAI pricing page refused the fetch that day (HTTP 403), so the OpenAI
+# rows still date from this verification and are worth a sweep before any
+# cost figure is quoted externally.
 PRICING_AS_OF = "2026-07-23"
-
-# gemini-3.7-flash and gemini-3.6-flash re-verified 2026-08-14 and corrected;
-# see the note on those rows. The other Gemini rows have NOT been re-checked
-# against the same promotional-versus-standard distinction and may carry the
-# same error. Worth a sweep before any cost figure is quoted externally.
 
 
 def _price(
@@ -36,6 +38,7 @@ def _price(
     cached_input_per_million: float | None = None,
     audio_input_per_million: float | None = None,
     per_minute: float | None = None,
+    audio_output_per_million: float | None = None,
 ) -> dict:
     """A model's published rates.
 
@@ -51,6 +54,9 @@ def _price(
         "audio_input_per_million": audio_input_per_million,
         # USD per minute of audio, for duration-billed models (ALP-300).
         "per_minute": per_minute,
+        # Audio output tokens: the live gateway answers in audio, which Gemini
+        # bills well above the text output rate.
+        "audio_output_per_million": audio_output_per_million,
     }
 
 
@@ -63,16 +69,23 @@ MODEL_PRICING: dict[str, dict | None] = {
     # every Gemini row leaving it None, which blocks measuring cache savings.
     "gemini-3.7-flash": _price(0.75, 3.75, cached_input_per_million=0.075),
     "gemini-3.6-flash": _price(0.75, 3.75, cached_input_per_million=0.075),
-    "gemini-3.5-flash": _price(1.50, 9.00),
-    "gemini-3.5-flash-lite": _price(0.30, 2.50),
+    # The 3.x Flash family publishes one input rate for every modality, so
+    # audio tokens price at the text rate and audio_input stays None.
+    "gemini-3.5-flash": _price(1.50, 9.00, cached_input_per_million=0.15),
+    "gemini-3.5-flash-lite": _price(0.30, 2.50, cached_input_per_million=0.03),
+    # Not listed on the pricing page as of 2026-09-01; rates unchanged.
     "gemini-3-flash-preview": _price(0.50, 3.00),
-    "gemini-3.1-pro-preview": _price(2.00, 12.00),  # <=200k-token tier
-    "gemini-3.1-flash-lite": _price(0.25, 1.50),
-    # Live model: text rates; audio input is billed at 3.00/1M.
-    "gemini-3.1-flash-live-preview": _price(0.75, 4.50, audio_input_per_million=3.00),
-    "gemini-2.5-flash": _price(0.30, 2.50),
-    "gemini-2.5-flash-lite": _price(0.10, 0.40),
-    "gemini-2.5-pro": _price(1.25, 10.00),  # <=200k-token tier
+    "gemini-3.1-pro-preview": _price(2.00, 12.00, cached_input_per_million=0.20),  # <=200k-token tier
+    "gemini-3.1-flash-lite": _price(0.25, 1.50, cached_input_per_million=0.025, audio_input_per_million=0.50),
+    # Live model: text rates; audio input bills at 3.00/1M and audio output
+    # at 12.00/1M. The gateway's input is nearly all audio and it answers in
+    # audio, so before these slices were priced its estimate was 4x low.
+    "gemini-3.1-flash-live-preview": _price(
+        0.75, 4.50, audio_input_per_million=3.00, audio_output_per_million=12.00
+    ),
+    "gemini-2.5-flash": _price(0.30, 2.50, cached_input_per_million=0.03, audio_input_per_million=1.00),
+    "gemini-2.5-flash-lite": _price(0.10, 0.40, cached_input_per_million=0.01, audio_input_per_million=0.30),
+    "gemini-2.5-pro": _price(1.25, 10.00, cached_input_per_million=0.125),  # <=200k-token tier
     # --- OpenAI (standard tier) ---
     "gpt-5.6-sol": _price(5.00, 30.00, cached_input_per_million=0.50),
     "gpt-5.6-terra": _price(2.50, 15.00, cached_input_per_million=0.25),

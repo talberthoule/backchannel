@@ -49,6 +49,10 @@ class TokenUsageSourceOut(BaseModel):
     total_tokens: int
     # Non-zero only for duration-billed models (ALP-300).
     audio_seconds: float = 0.0
+    # Subsets of input_tokens / output_tokens that bill at their own rate.
+    cached_input_tokens: int = 0
+    audio_input_tokens: int = 0
+    audio_output_tokens: int = 0
 
 
 class TokenUsageModelOut(BaseModel):
@@ -58,6 +62,9 @@ class TokenUsageModelOut(BaseModel):
     thinking_tokens: int = 0
     total_tokens: int
     audio_seconds: float = 0.0
+    cached_input_tokens: int = 0
+    audio_input_tokens: int = 0
+    audio_output_tokens: int = 0
 
 
 class TokenUsageSummaryOut(BaseModel):
@@ -66,6 +73,9 @@ class TokenUsageSummaryOut(BaseModel):
     thinking_tokens: int = 0
     total_tokens: int
     audio_seconds: float = 0.0
+    cached_input_tokens: int = 0
+    audio_input_tokens: int = 0
+    audio_output_tokens: int = 0
     by_source: list[TokenUsageSourceOut]
     by_model: list[TokenUsageModelOut]
 

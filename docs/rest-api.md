@@ -55,6 +55,25 @@ matching `per_minute` rate alongside the per-million token rates; a model
 priced one way has `null` for the other. Cost estimates sum both, so a row can
 show zero tokens and a non-zero cost.
 
+Not every token bills at the same rate either. Each row also carries
+`cached_input_tokens` and `audio_input_tokens` (slices of `input_tokens`) and
+`audio_output_tokens` (a slice of `output_tokens`), taken from the provider's
+usage breakdown: Gemini `cached_content_token_count` and the per-modality
+`prompt_tokens_details`, OpenAI `prompt_tokens_details.cached_tokens` and
+`audio_tokens`. They are subsets already counted in the totals, never added to
+them. The pricing endpoint publishes `cached_input_per_million`,
+`audio_input_per_million`, and `audio_output_per_million` where the provider
+does; the cost estimate prices each slice at its own rate and falls back to
+the plain input or output rate when a slice's rate is unpublished. The Gemini
+Live gateway is the case that matters: its input is almost entirely audio,
+billed at four times the text rate, and each turn is one billed generation
+whose prompt is the whole session so far. The gateway keeps one pending
+`usage_metadata` per turn (each new one replaces it) and records it once when
+the turn ends (`turn_complete` or `interrupted`), when the stream ends, or
+when the session closes, so it counts correctly whether the API reports usage
+once per turn or on every chunk with growing counts. Earlier versions stored
+only the increase between messages, which under-reported live calls.
+
 ## Session groups (`routers/groups.py`)
 
 | Method | Path | Purpose |
@@ -175,7 +194,7 @@ paying for the rows. Signals accumulate in `signal_history` with a per-signal
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/models` | Model registry with capabilities and key requirements |
-| GET | `/api/models/pricing` | Published USD-per-1M-token rates keyed by model id, plus the as-of date (standard text-tier rates; `null` = no published pricing) |
+| GET | `/api/models/pricing` | Published USD-per-1M-token rates keyed by model id, plus the as-of date (standard paid-tier text, cached-input, audio-input and audio-output rates, and per-minute rates for duration-billed models; `null` = no published rate) |
 
 ### Privacy First (`routers/privacy.py`)
 
