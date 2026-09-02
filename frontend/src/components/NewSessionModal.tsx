@@ -81,7 +81,8 @@ export default function NewSessionModal({ open, onClose, onCreate }: Props) {
               New Session
             </h2>
             <p className="mt-0.5 font-body text-xs text-brand-mid-gray">
-              Name the conversation and pick a type so the agents know what to listen for.
+              A name and a conversation type is all it takes. Documents, directives and participants
+              can wait for the setup screen.
             </p>
           </div>
           <button
@@ -172,7 +173,7 @@ export default function NewSessionModal({ open, onClose, onCreate }: Props) {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z" />
               </svg>
             )}
-            {creating ? "Creating..." : "Create Session"}
+            {creating ? "Creating..." : "Create"}
           </button>
         </div>
       </div>

@@ -18,6 +18,7 @@ await build({
       import { renderToStaticMarkup } from "react-dom/server";
       import { DndContext } from "@dnd-kit/core";
       import {
+        dateSearchTerms,
         deleteGroupWithConfirmation,
         DroppableGroup,
         filterSessions,
@@ -26,7 +27,7 @@ await build({
         sessionStateLabel,
         SEARCH_THRESHOLD,
       } from "./Layout.tsx";
-      export { deleteGroupWithConfirmation, filterSessions, orderSessions, scrollClosesMenu, sessionStateLabel, SEARCH_THRESHOLD };
+      export { dateSearchTerms, deleteGroupWithConfirmation, filterSessions, orderSessions, scrollClosesMenu, sessionStateLabel, SEARCH_THRESHOLD };
       export function renderGroup(props) {
         return renderToStaticMarkup(
           React.createElement(
@@ -48,6 +49,7 @@ await build({
 });
 
 const {
+  dateSearchTerms,
   deleteGroupWithConfirmation,
   filterSessions,
   orderSessions,
@@ -206,6 +208,41 @@ test("filterSessions also matches on the session's group name", () => {
 
 test("filterSessions returns nothing when nothing matches", () => {
   assert.deepEqual(filterSessions(sessions, groups, "zzz"), []);
+});
+
+// Noon UTC keeps the local calendar date stable in every time zone a test
+// machine is likely to sit in.
+const dated = [
+  session({ id: "oct8", name: "Renewal review", created_at: "2026-10-08T12:00:00Z" }),
+  session({ id: "oct18", name: "Board prep", created_at: "2026-10-18T12:00:00Z" }),
+  session({ id: "aug3", name: "Kickoff", created_at: "2026-07-30T12:00:00Z", started_at: "2026-08-03T12:00:00Z" }),
+];
+
+test("dateSearchTerms spells a date every way a person might type it", () => {
+  const terms = dateSearchTerms("2026-10-08T12:00:00Z");
+  for (const expected of ["october", "oct", "8", "08", "10/8", "10/08", "10-8", "10-08", "2026-10-08", "oct 8", "october 8", "8-oct", "10/8/2026", "2026"]) {
+    assert.ok(terms.includes(expected), `missing ${expected}`);
+  }
+  assert.deepEqual(dateSearchTerms(null), []);
+  assert.deepEqual(dateSearchTerms("not a date"), []);
+});
+
+test("filterSessions matches hidden date metadata by prefix", () => {
+  const ids = (query) => filterSessions(dated, groups, query).map((s) => s.id);
+  assert.deepEqual(ids("October"), ["oct8", "oct18"]);
+  assert.deepEqual(ids("oct 8"), ["oct8"]);
+  assert.deepEqual(ids("8"), ["oct8", "aug3"]);
+  assert.deepEqual(ids("08"), ["oct8", "aug3"]);
+  assert.deepEqual(ids("8-"), ["oct8", "aug3"]);
+  assert.deepEqual(ids("8/"), ["aug3"]);
+  assert.deepEqual(ids("10/8"), ["oct8"]);
+  assert.deepEqual(ids("10-18"), ["oct18"]);
+  assert.deepEqual(ids("2026-10-08"), ["oct8"]);
+  // The start date counts as well as the creation date.
+  assert.deepEqual(ids("aug"), ["aug3"]);
+  assert.deepEqual(ids("july"), ["aug3"]);
+  // A bare digit inside a name still only matches the name by substring.
+  assert.deepEqual(ids("board"), ["oct18"]);
 });
 
 test("orderSessions puts live sessions first and otherwise keeps order", () => {
