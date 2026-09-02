@@ -46,6 +46,14 @@
 
   /* Focus ring token */
   --focus: var(--p-teal);
+
+  /* Accent as small text: brand teal is fine for fills, icons and large
+     numerals but reads below 4.5:1 as 13-14px text on either surface
+     (3.74:1 here). teal-dark measures 5.47:1 on --surface. */
+  --accent-text: var(--p-teal-dark);
+  /* Brand mark backdrop: dark on the light header, lifted on the dark one so
+     the rounded square keeps its shape instead of vanishing. */
+  --brand-mark-bg: var(--p-slate-900);
 }
 
 :root[data-theme="dark"] {
@@ -67,6 +75,9 @@
   --text-tertiary: var(--p-slate-400);
 
   --focus: var(--p-teal-light);
+
+  --accent-text: var(--p-teal-light); /* 7.86:1 on --surface */
+  --brand-mark-bg: var(--p-slate-600);
 }
 
 /* Follow the OS when the user has not made an explicit choice. */
@@ -82,6 +93,8 @@
     --text-secondary: var(--p-slate-300);
     --text-tertiary: var(--p-slate-400);
     --focus: var(--p-teal-light);
+    --accent-text: var(--p-teal-light);
+    --brand-mark-bg: var(--p-slate-600);
   }
 }
 
@@ -198,4 +211,68 @@ h1, h2, h3, h4, h5, h6 {
 .chat-markdown hr {
   border: 0;
   border-top: 1px solid rgb(var(--border-subtle));
+}
+
+/* ==========================================================================
+   Sidebar helpers (Layout.tsx)
+   ========================================================================== */
+
+/* Row actions stay out of the way until the row is hovered or holds focus.
+   Touch screens have no hover, so there they are always shown. Opacity only:
+   the actions keep their width, so a name never reflows on hover. */
+.bc-reveal {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.group:hover > .bc-reveal,
+.group:focus-within > .bc-reveal,
+.bc-reveal:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .bc-reveal { opacity: 1; }
+}
+
+/* The rail and the panel swap as whole trees while the width animates; a
+   short fade keeps the swap from popping. */
+@keyframes bc-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.bc-fade-in {
+  animation: bc-fade-in 160ms ease-out both;
+}
+
+/* A thin, quiet scrollbar for the session list so it does not compete with
+   the page's own. */
+.bc-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border-subtle)) transparent;
+}
+
+/* The find box draws its own clear button. */
+.bc-search::-webkit-search-cancel-button,
+.bc-search::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Accent-colored small text (active session, active tool, text links). */
+.bc-accent-text {
+  color: rgb(var(--accent-text));
+}
+
+/* Touch targets: 28-32px visuals for desktop pointers; 44px hit areas where
+   there is no hover (touch screens) and inside the mobile drawer (< md). The
+   drag grip is a pointer affordance; on touch the row menu's Move to covers
+   it, so it is dropped instead of being made 44px wide. */
+@media (hover: none), (max-width: 767.98px) {
+  .bc-row { min-height: 44px; }
+  .bc-action { min-width: 44px; min-height: 44px; }
+  .bc-grip { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bc-reveal { transition: none; }
+  .bc-fade-in { animation: none; }
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   DragOverlay,
@@ -9,6 +10,27 @@ import {
   useDraggable,
 } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
+import {
+  BookOpen,
+  Check,
+  ChevronRight,
+  Ellipsis,
+  FolderPlus,
+  GripVertical,
+  Menu,
+  Moon,
+  Package,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Pencil,
+  Plus,
+  Search,
+  Settings,
+  Sun,
+  Trash2,
+  X,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { Session, SessionGroup } from "../types";
 import * as api from "../services/api";
 import { useConfirm } from "./ConfirmProvider";
@@ -33,28 +55,340 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
-const stateBadge = (state: Session["state"]) => {
+// The find box appears once the list is long enough that scanning beats
+// scrolling; below this, a search field is more chrome than help.
+export const SEARCH_THRESHOLD = 6;
+
+// Only explicit toggles are remembered. The live-call auto-collapse is a
+// per-call convenience and must not become next launch's default.
+const SIDEBAR_STORAGE_KEY = "bc-sidebar-collapsed";
+
+function readStoredCollapsed(): boolean {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function storeCollapsed(collapsed: boolean) {
+  try {
+    localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? "1" : "0");
+  } catch {
+    /* storage unavailable (private mode); the choice just does not persist */
+  }
+}
+
+const THEME_STORAGE_KEY = "bc-theme";
+
+function readStoredTheme(): "light" | "dark" | null {
+  try {
+    const saved = typeof localStorage !== "undefined" ? localStorage.getItem(THEME_STORAGE_KEY) : null;
+    return saved === "light" || saved === "dark" ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeTheme(theme: "light" | "dark") {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    /* see storeCollapsed */
+  }
+}
+
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      : false,
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(mq.matches);
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return reduced;
+}
+
+// Everything a keyboard can land on inside the drawer, for the focus trap.
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const SIDEBAR_ID = "bc-sidebar";
+
+// ── Pure helpers (exported for tests) ──────────────────────────────────
+
+export function normalizeQuery(query: string): string {
+  return query.trim().toLowerCase();
+}
+
+/** Sessions whose name or group name contains the query, case-insensitively.
+ *  An empty query returns the list untouched. */
+export function filterSessions(sessions: Session[], groups: SessionGroup[], query: string): Session[] {
+  const needle = normalizeQuery(query);
+  if (!needle) return sessions;
+  const groupNames = new Map(groups.map((g) => [g.id, g.name.toLowerCase()]));
+  return sessions.filter((session) => {
+    if (session.name.toLowerCase().includes(needle)) return true;
+    const groupName = session.group_id ? groupNames.get(session.group_id) : undefined;
+    return groupName ? groupName.includes(needle) : false;
+  });
+}
+
+/** Live sessions first; otherwise the server's order (newest first) is kept. */
+export function orderSessions(list: Session[]): Session[] {
+  return [...list].sort((a, b) => {
+    if (a.state === "active" && b.state !== "active") return -1;
+    if (a.state !== "active" && b.state === "active") return 1;
+    return 0;
+  });
+}
+
+export function sessionStateLabel(state: Session["state"]): string {
   switch (state) {
     case "pre_call":
-      return <span className="inline-flex items-center rounded-full bg-brand-teal/15 px-2 py-0.5 text-xs font-medium text-brand-teal">Pre-Call</span>;
+      return "Not started";
     case "active":
-      return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
-          </span>
-          Active
-        </span>
-      );
+      return "Live";
     case "completed":
-      return <span className="inline-flex items-center rounded-full bg-brand-light-gray-1/60 px-2 py-0.5 text-xs font-medium text-brand-gray">Completed</span>;
+      return "Completed";
   }
-};
+}
+
+// ── Small presentational pieces ────────────────────────────────────────
+
+// State is carried by shape as well as color: hollow ring = not started,
+// pulsing green = live, solid muted = completed.
+function StateDot({ state }: { state: Session["state"] }) {
+  if (state === "active") {
+    return (
+      <span className="relative flex h-2 w-2" aria-hidden="true">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75 motion-reduce:animate-none" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+      </span>
+    );
+  }
+  if (state === "pre_call") {
+    return <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full border-[1.5px] border-brand-teal" />;
+  }
+  return <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full bg-brand-light-gray-1" />;
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-mid-gray">{children}</span>;
+}
+
+function ToolLink({ icon: Icon, label, active, onClick, compact }: {
+  icon: LucideIcon;
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        aria-current={active ? "page" : undefined}
+        title={label}
+        className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${
+          active ? "bg-brand-teal/10 text-brand-teal" : "text-brand-gray hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
+        }`}
+      >
+        <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      className={`bc-row flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-left text-[13px] transition-colors ${
+        active ? "bc-accent-text bg-brand-teal/10 font-semibold" : "font-medium text-brand-gray hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
+      }`}
+    >
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+// ── Session row menu (portaled so the sidebar can clip its own overflow) ─
+
+const MENU_WIDTH = 192;
+const MENU_ROW = 30;
+
+/** Whether a scroll should close the row menu: any scroll except one inside
+ *  the menu itself, so a Move to list taller than the viewport can still be
+ *  wheel-scrolled to its lower groups. Duck-typed on nodeType so it runs
+ *  outside a DOM. */
+export function scrollClosesMenu(menu: { contains(node: Node): boolean } | null, target: EventTarget | null): boolean {
+  if (!menu || !target) return true;
+  const node = target as Node;
+  if (typeof node.nodeType !== "number") return true;
+  return !menu.contains(node);
+}
+
+function SessionMenu({ id, anchor, session, groups, onClose, onRename, onMove, onDelete }: {
+  id: string;
+  anchor: HTMLElement;
+  session: Session;
+  groups: SessionGroup[];
+  onClose: () => void;
+  onRename: () => void;
+  onMove: (groupId: string | null) => void;
+  onDelete: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  // The parent re-renders on every WebSocket message during a live call and
+  // hands down a fresh onClose each time; the listeners read it through a ref
+  // so they are wired once and never re-run (which would also re-focus).
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  const position = useMemo(() => {
+    const rect = anchor.getBoundingClientRect();
+    const estimated = (3 + groups.length) * MENU_ROW + 40;
+    const height = Math.min(estimated, window.innerHeight - 16);
+    const below = window.innerHeight - rect.bottom > height + 8;
+    const top = below ? rect.bottom + 4 : Math.max(8, rect.top - height - 4);
+    const left = Math.max(8, Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8));
+    return { top, left };
+  }, [anchor, groups.length]);
+
+  // Focus the first item once, on open.
+  useEffect(() => {
+    menuRef.current?.querySelector<HTMLElement>("[role^=menuitem]")?.focus();
+  }, []);
+
+  useEffect(() => {
+    const close = () => onCloseRef.current();
+    const onPointer = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node) && !anchor.contains(event.target as Node)) {
+        close();
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        // Capture phase, so the mobile drawer's own Escape handler does not
+        // also fire: one Escape closes the menu, the next closes the drawer.
+        event.stopPropagation();
+        close();
+        anchor.focus();
+        return;
+      }
+      if (event.key === "Tab") {
+        // Menu button pattern: Tab leaves the menu and continues from its
+        // button, in whichever direction was pressed.
+        close();
+        anchor.focus();
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role^=menuitem]") ?? []);
+        if (items.length === 0) return;
+        event.preventDefault();
+        const index = items.indexOf(document.activeElement as HTMLElement);
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        items[(index + step + items.length) % items.length].focus();
+      }
+    };
+    // A fixed menu cannot follow its row; scrolling elsewhere or resizing
+    // closes it. Scrolling the menu's own list must not.
+    const onScroll = (event: Event) => {
+      if (scrollClosesMenu(menuRef.current, event.target)) close();
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [anchor]);
+
+  // Activating an item closes the menu and hands focus back to its button, so
+  // a keyboard user is not dropped on <body>.
+  const activate = (action: () => void) => {
+    onClose();
+    anchor.focus();
+    action();
+  };
+
+  const itemClass = "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-brand-dark-gray transition-colors hover:bg-brand-light-gray-2 focus-visible:bg-brand-light-gray-2";
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      id={id}
+      role="menu"
+      aria-label={`Actions for ${session.name}`}
+      className="bc-scroll fixed z-50 max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg border border-brand-light-gray-1 bg-surface py-1 shadow-lg"
+      style={{ top: position.top, left: position.left, width: MENU_WIDTH }}
+    >
+      <button type="button" role="menuitem" className={itemClass} onClick={() => activate(onRename)}>
+        <Pencil className="h-3.5 w-3.5 text-brand-mid-gray" aria-hidden="true" />
+        Rename
+      </button>
+      <div className="my-1 border-t border-brand-light-gray-1" />
+      <div role="group" aria-labelledby={`${id}-move`}>
+        <p id={`${id}-move`} className="px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-brand-mid-gray">Move to</p>
+        <button
+          type="button"
+          role="menuitemradio"
+          aria-checked={!session.group_id}
+          className={itemClass}
+          onClick={() => activate(() => onMove(null))}
+        >
+          <span className="flex h-3.5 w-3.5 items-center justify-center">
+            {!session.group_id && <Check className="h-3.5 w-3.5 text-brand-teal" aria-hidden="true" />}
+          </span>
+          No group
+        </button>
+        {groups.map((group) => (
+          <button
+            key={group.id}
+            type="button"
+            role="menuitemradio"
+            aria-checked={session.group_id === group.id}
+            className={itemClass}
+            onClick={() => activate(() => onMove(group.id))}
+          >
+            <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+              {session.group_id === group.id && <Check className="h-3.5 w-3.5 text-brand-teal" aria-hidden="true" />}
+            </span>
+            <span className="truncate">{group.name}</span>
+          </button>
+        ))}
+      </div>
+      <div className="my-1 border-t border-brand-light-gray-1" />
+      <button
+        type="button"
+        role="menuitem"
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-red-600 transition-colors hover:bg-red-500/10 focus-visible:bg-red-500/10 dark:text-red-400"
+        onClick={() => activate(onDelete)}
+      >
+        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+        Delete
+      </button>
+    </div>,
+    document.body,
+  );
+}
 
 // ── Draggable session row ──────────────────────────────────────────────
 
-function DraggableSession({ session, isActive, onClick, groups, onMoveToGroup, onRename, onDelete }: {
+function SessionRow({ session, isActive, onClick, groups, onMoveToGroup, onRename, onDelete }: {
   session: Session;
   isActive: boolean;
   onClick: () => void;
@@ -63,14 +397,25 @@ function DraggableSession({ session, isActive, onClick, groups, onMoveToGroup, o
   onRename: (sessionId: string, name: string) => Promise<void>;
   onDelete: (sessionId: string) => Promise<void>;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: session.id });
-  const [showMenu, setShowMenu] = useState(false);
-  const [editingName, setEditingName] = useState(false);
-  const [draftName, setDraftName] = useState(session.name);
-  const nameInputRef = useRef<HTMLInputElement>(null);
-  const menuBtnRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const { listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({ id: session.id });
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(session.name);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuId = `bc-session-menu-${session.id}`;
   const { confirm } = useConfirm();
+
+  const startRename = () => {
+    setDraft(session.name);
+    setEditing(true);
+  };
+
+  const commitRename = async () => {
+    setEditing(false);
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== session.name) await onRename(session.id, trimmed);
+    else setDraft(session.name);
+  };
 
   const handleDelete = async () => {
     const ok = await confirm({
@@ -82,128 +427,83 @@ function DraggableSession({ session, isActive, onClick, groups, onMoveToGroup, o
     if (ok) await onDelete(session.id);
   };
 
-  // Close menu on outside click
-  useEffect(() => {
-    if (!showMenu) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node) &&
-          menuBtnRef.current && !menuBtnRef.current.contains(e.target as Node)) {
-        setShowMenu(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showMenu]);
-
   return (
-    <div ref={setNodeRef} className={`group relative ${isDragging ? "opacity-30" : ""}`}>
-      <div
-        className={`mb-0.5 flex w-full items-start rounded-lg px-3 py-2 text-left transition-colors cursor-pointer ${
-          isActive ? "bg-brand-teal/10 ring-1 ring-brand-teal/20" : "hover:bg-brand-light-gray-2"
-        }`}
-        onClick={onClick}
-      >
-        {/* Drag handle */}
-        <span
-          {...attributes}
-          {...listeners}
-          className="mr-1.5 mt-1 cursor-grab text-brand-light-gray-1 opacity-0 group-hover:opacity-100 transition-opacity active:cursor-grabbing"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M7 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" />
-          </svg>
-        </span>
-
-        <div className="flex-1 min-w-0">
-          {editingName ? (
-            <input
-              ref={nameInputRef}
-              value={draftName}
-              onChange={(e) => setDraftName(e.target.value)}
-              onBlur={async () => {
-                setEditingName(false);
-                const trimmed = draftName.trim();
-                if (trimmed && trimmed !== session.name) await onRename(session.id, trimmed);
-                else setDraftName(session.name);
-              }}
-              onKeyDown={async (e) => {
-                if (e.key === "Enter") { (e.target as HTMLInputElement).blur(); }
-                if (e.key === "Escape") { setDraftName(session.name); setEditingName(false); }
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className={`text-sm font-medium w-full bg-transparent border-b border-brand-teal ${isActive ? "text-brand-teal" : "text-brand-dark-gray"}`}
-              autoFocus
-            />
-          ) : (
-            <span
-              className={`text-sm font-medium truncate block ${isActive ? "text-brand-teal" : "text-brand-dark-gray"}`}
-              onDoubleClick={(e) => { e.stopPropagation(); setDraftName(session.name); setEditingName(true); }}
-              title="Double-click to rename"
-            >
-              {session.name}
-            </span>
-          )}
-          <div className="mt-0.5 flex items-center gap-1.5">
-            {stateBadge(session.state)}
-            <button
-              ref={menuBtnRef}
-              onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-              className="rounded p-0.5 text-brand-mid-gray opacity-0 group-hover:opacity-100 hover:bg-brand-light-gray-2 hover:text-brand-dark-gray transition-all"
-              title="Move to group"
-            >
-              <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Delete button — top-right, away from group button */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            void handleDelete();
+    <div
+      ref={setNodeRef}
+      className={`group relative flex items-center rounded-md transition-colors ${isDragging ? "opacity-30" : ""} ${
+        isActive ? "bg-brand-teal/10" : "hover:bg-brand-light-gray-2"
+      }`}
+    >
+      {editing ? (
+        <input
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => void commitRename()}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") (event.target as HTMLInputElement).blur();
+            if (event.key === "Escape") { setDraft(session.name); setEditing(false); }
           }}
-          className="ml-1 mt-0.5 flex-shrink-0 rounded p-1 text-brand-light-gray-1 opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 transition-all"
-          title="Delete session"
+          aria-label="Session name"
+          className="my-1 ml-2 h-6 w-full min-w-0 rounded border border-brand-teal bg-surface px-1.5 text-sm text-brand-dark-gray"
+          autoFocus
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={onClick}
+          onDoubleClick={startRename}
+          aria-current={isActive ? "page" : undefined}
+          title={session.name}
+          className={`bc-row flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md pl-2 pr-1 text-left text-sm ${
+            isActive ? "bc-accent-text font-semibold" : "font-medium text-brand-dark-gray"
+          }`}
         >
-          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-          </svg>
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+            <StateDot state={session.state} />
+          </span>
+          <span className="truncate">{session.name}</span>
+          <span className="sr-only">, {sessionStateLabel(session.state)}</span>
+        </button>
+      )}
+
+      {/* Row actions: reserved width so the name never reflows on hover. */}
+      <div className="bc-reveal flex shrink-0 items-center pr-1">
+        <span
+          ref={setActivatorNodeRef}
+          {...listeners}
+          aria-hidden="true"
+          title="Drag to another group"
+          className="bc-grip flex h-7 w-5 cursor-grab items-center justify-center rounded text-brand-mid-gray hover:text-brand-dark-gray active:cursor-grabbing"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </span>
+        <button
+          ref={menuButtonRef}
+          type="button"
+          onClick={() => setMenuOpen((open) => !open)}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-controls={menuOpen ? menuId : undefined}
+          aria-label={`Actions for ${session.name}`}
+          title="More actions"
+          className="bc-action flex h-7 w-7 items-center justify-center rounded text-brand-mid-gray transition-colors hover:bg-brand-light-gray-1/60 hover:text-brand-dark-gray"
+        >
+          <Ellipsis className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
 
-      {/* Fixed-position menu portal */}
-      {showMenu && menuBtnRef.current && (() => {
-        const rect = menuBtnRef.current!.getBoundingClientRect();
-        const spaceBelow = window.innerHeight - rect.bottom;
-        const menuHeight = (groups.length + 1) * 28 + 8;
-        const top = spaceBelow > menuHeight ? rect.bottom + 4 : rect.top - menuHeight - 4;
-        return (
-          <div
-            ref={menuRef}
-            className="fixed z-50 w-44 rounded-lg border border-brand-light-gray-1 bg-surface py-1 shadow-lg"
-            style={{ top, left: rect.right + 4 }}
-          >
-            <button
-              onClick={() => { onMoveToGroup(session.id, null); setShowMenu(false); }}
-              className={`block w-full px-3 py-1.5 text-left text-xs transition-colors ${!session.group_id ? "font-semibold text-brand-teal" : "text-brand-dark-gray hover:bg-brand-light-gray-2"}`}
-            >
-              No group
-            </button>
-            {groups.map((g) => (
-              <button
-                key={g.id}
-                onClick={() => { onMoveToGroup(session.id, g.id); setShowMenu(false); }}
-                className={`block w-full px-3 py-1.5 text-left text-xs transition-colors ${session.group_id === g.id ? "font-semibold text-brand-teal" : "text-brand-dark-gray hover:bg-brand-light-gray-2"}`}
-              >
-                {g.name}
-              </button>
-            ))}
-          </div>
-        );
-      })()}
+      {menuOpen && menuButtonRef.current && (
+        <SessionMenu
+          id={menuId}
+          anchor={menuButtonRef.current}
+          session={session}
+          groups={groups}
+          onClose={() => setMenuOpen(false)}
+          onRename={startRename}
+          onMove={(groupId) => onMoveToGroup(session.id, groupId)}
+          onDelete={() => void handleDelete()}
+        />
+      )}
     </div>
   );
 }
@@ -248,38 +548,44 @@ export function DroppableGroup({ group, children, isExpanded, onToggle, onDelete
   sessionCount: number;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `group-${group.id}` });
+  const sessionsId = `bc-group-${group.id}-sessions`;
 
   return (
-    <div ref={setNodeRef} className={`mt-1 rounded-lg transition-colors ${isOver ? "bg-brand-teal/5 ring-1 ring-brand-teal/20" : ""}`}>
-      <div className="flex items-center gap-1 px-1 py-1">
-        <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-1 text-left transition-colors hover:bg-brand-light-gray-2">
-          <svg className={`h-3 w-3 text-brand-mid-gray transition-transform ${isExpanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-          <svg className="h-3.5 w-3.5 text-brand-mid-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
-          </svg>
-          <span className="text-sm font-semibold text-brand-dark-gray truncate">{group.name}</span>
-          <span className="shrink-0 text-[10px] font-medium text-brand-mid-gray bg-brand-light-gray-2 px-1.5 py-0.5 rounded-full">{sessionCount}</span>
+    <div ref={setNodeRef} className={`rounded-md transition-colors ${isOver ? "bg-brand-teal/5 ring-1 ring-brand-teal/20" : ""}`}>
+      <div className="group flex items-center rounded-md transition-colors hover:bg-brand-light-gray-2">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={isExpanded}
+          aria-controls={sessionsId}
+          className="bc-row flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md pl-1 pr-1 text-left"
+        >
+          <ChevronRight
+            className={`h-3.5 w-3.5 shrink-0 text-brand-mid-gray transition-transform duration-150 motion-reduce:transition-none ${isExpanded ? "rotate-90" : ""}`}
+            aria-hidden="true"
+          />
+          <span className="truncate text-sm font-semibold text-brand-dark-gray" title={group.name}>{group.name}</span>
+          <span className="ml-auto shrink-0 pl-2 text-xs tabular-nums text-brand-mid-gray" aria-label={`${sessionCount} sessions`}>
+            {sessionCount}
+          </span>
         </button>
         <button
           type="button"
           onClick={onDelete}
           aria-label={`Delete ${group.name} group`}
           title="Delete group"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-brand-mid-gray transition-colors hover:bg-red-50 hover:text-red-600"
+          className="bc-reveal bc-action mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-brand-mid-gray transition-colors hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
         >
-          <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.35 9m-4.78 0L9.26 9m9.97-3.21c.34.05.68.1 1.02.16m-1.02-.16L18.16 19.67A2.25 2.25 0 0 1 15.92 21H8.08a2.25 2.25 0 0 1-2.24-1.33L4.77 5.79m14.46 0A48.1 48.1 0 0 0 15.75 5.25m-10.98.54c-.34.05-.68.1-1.02.16m1.02-.16A48.1 48.1 0 0 1 8.25 5.25m7.5 0V4.33c0-1.18-.91-2.16-2.09-2.2a52.7 52.7 0 0 0-3.32 0c-1.18.04-2.09 1.02-2.09 2.2v.92m7.5 0a48.7 48.7 0 0 0-7.5 0" />
-          </svg>
+          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
       </div>
-      {isExpanded && <div className="pl-4">{children}</div>}
-      {isExpanded && sessionCount === 0 && (
-        <p className="pl-6 py-2 text-[10px] text-brand-mid-gray italic">
-          {isOver ? "Drop here" : "Empty group"}
-        </p>
-      )}
+      {/* Always in the DOM so aria-controls resolves; hidden when collapsed. */}
+      <div id={sessionsId} hidden={!isExpanded} className="ml-[11px] border-l border-brand-light-gray-1/70 pl-1.5">
+        {isExpanded && children}
+        {isExpanded && sessionCount === 0 && (
+          <p className="py-1.5 pl-2 text-xs text-brand-mid-gray">{isOver ? "Drop here" : "No sessions"}</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -288,7 +594,7 @@ export function DroppableGroup({ group, children, isExpanded, onToggle, onDelete
 function DroppableUngrouped({ children }: { children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: "group-ungrouped" });
   return (
-    <div ref={setNodeRef} className={`rounded-lg transition-colors ${isOver ? "bg-brand-teal/5" : ""}`}>
+    <div ref={setNodeRef} className={`rounded-md transition-colors ${isOver ? "bg-brand-teal/5 ring-1 ring-brand-teal/20" : ""}`}>
       {children}
     </div>
   );
@@ -314,14 +620,18 @@ export default function Layout({
   onRefreshSessions,
   children,
 }: LayoutProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(readStoredCollapsed);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set(groups.map((g) => g.id)));
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+  const [query, setQuery] = useState("");
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const { confirm, toast } = useConfirm();
+  const reducedMotion = usePrefersReducedMotion();
+  const asideRef = useRef<HTMLElement>(null);
+  const hamburgerRef = useRef<HTMLButtonElement>(null);
 
   // Track the md breakpoint so the sidebar is an off-canvas drawer on mobile
   // (full width, never the icon rail) and an in-flow collapsible rail on desktop.
@@ -338,6 +648,45 @@ export default function Layout({
     setMobileOpen(false);
   }, [activeSessionId, showingOfferings, showingKnowledge, showingAdmin]);
 
+  // The drawer is a modal dialog: focus moves in when it opens, Tab stays
+  // inside, Escape closes it, and focus returns to the menu button on every
+  // close path (Escape, backdrop, navigation).
+  const drawerOpen = mobileOpen && !isDesktop;
+  const drawerWasOpen = useRef(false);
+  useEffect(() => {
+    if (drawerOpen) {
+      drawerWasOpen.current = true;
+      asideRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+      const onKey = (event: KeyboardEvent) => {
+        if (event.key === "Escape") {
+          setMobileOpen(false);
+          return;
+        }
+        if (event.key !== "Tab" || !asideRef.current) return;
+        const focusables = Array.from(asideRef.current.querySelectorAll<HTMLElement>(FOCUSABLE))
+          .filter((el) => el.offsetParent !== null);
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const current = document.activeElement as HTMLElement | null;
+        const inside = current ? asideRef.current.contains(current) : false;
+        if (event.shiftKey && (!inside || current === first)) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && (!inside || current === last)) {
+          event.preventDefault();
+          first.focus();
+        }
+      };
+      document.addEventListener("keydown", onKey);
+      return () => document.removeEventListener("keydown", onKey);
+    }
+    if (drawerWasOpen.current) {
+      drawerWasOpen.current = false;
+      hamburgerRef.current?.focus();
+    }
+  }, [drawerOpen]);
+
   // Opening a live call collapses the rail: the call view is the dense screen
   // and the session list is not what you are reading during a meeting. Only on
   // the transition in, so expanding it mid-call sticks.
@@ -347,15 +696,20 @@ export default function Layout({
 
   const collapsed = isDesktop ? sidebarCollapsed : false;
 
+  const setCollapsedExplicitly = (next: boolean) => {
+    setSidebarCollapsed(next);
+    storeCollapsed(next);
+  };
+
   // Theme: explicit user choice wins over OS preference; persisted in storage.
   const [theme, setTheme] = useState<"light" | "dark">(() => {
-    const saved = typeof localStorage !== "undefined" ? localStorage.getItem("bc-theme") : null;
-    if (saved === "light" || saved === "dark") return saved;
+    const saved = readStoredTheme();
+    if (saved) return saved;
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   });
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("bc-theme", theme);
+    storeTheme(theme);
   }, [theme]);
 
   // Keep expanded groups in sync when new groups are created
@@ -371,24 +725,30 @@ export default function Layout({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  const grouped = useMemo(() => {
-    // Sort helper: active sessions first, then by name
-    const withActiveFirst = (list: Session[]) =>
-      [...list].sort((a, b) => {
-        if (a.state === "active" && b.state !== "active") return -1;
-        if (a.state !== "active" && b.state === "active") return 1;
-        return 0;
-      });
+  const showSearch = sessions.length >= SEARCH_THRESHOLD;
+  // A query only filters while the box that can clear it is on screen.
+  const filtering = showSearch && normalizeQuery(query).length > 0;
 
-    const ungrouped = withActiveFirst(sessions.filter((s) => !s.group_id));
-    const byGroup = groups.map((g) => ({
-      group: g,
-      sessions: withActiveFirst(sessions.filter((s) => s.group_id === g.id)),
-    }));
-    return { ungrouped, byGroup };
-  }, [sessions, groups]);
+  // If the list shrinks below the threshold the box unmounts; a query left
+  // behind would keep hiding rows with nothing to clear it.
+  useEffect(() => {
+    if (!showSearch) setQuery("");
+  }, [showSearch]);
+
+  const grouped = useMemo(() => {
+    const visible = filtering ? filterSessions(sessions, groups, query) : sessions;
+    const ungrouped = orderSessions(visible.filter((s) => !s.group_id));
+    const byGroup = groups
+      .map((g) => ({ group: g, sessions: orderSessions(visible.filter((s) => s.group_id === g.id)) }))
+      // While filtering, a group with no matches is noise; when not, every group shows.
+      .filter(({ sessions: list }) => !filtering || list.length > 0);
+    return { ungrouped, byGroup, visibleCount: visible.length };
+  }, [sessions, groups, query, filtering]);
 
   const toggleGroup = (id: string) => {
+    // Groups are held open while filtering; flipping the stored state then
+    // would only show up as a surprise collapse after the search is cleared.
+    if (filtering) return;
     setExpandedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
@@ -452,24 +812,59 @@ export default function Layout({
   };
 
   const draggedSession = draggedId ? sessions.find((s) => s.id === draggedId) : null;
+  const hasGroups = groups.length > 0;
+  // While filtering, the heading only earns its place above a visible group.
+  const showGroupsHeading = creatingGroup || (hasGroups && (!filtering || grouped.byGroup.length > 0));
+
+  const renderSession = (session: Session) => (
+    <SessionRow
+      key={session.id}
+      session={session}
+      isActive={session.id === activeSessionId}
+      onClick={() => onSelectSession(session.id)}
+      groups={groups}
+      onMoveToGroup={handleMoveToGroup}
+      onRename={handleRenameSession}
+      onDelete={handleDeleteSessionFromSidebar}
+    />
+  );
+
+  const newGroupInput = (
+    <div className="px-1 py-1">
+      <input
+        autoFocus
+        value={newGroupName}
+        onChange={(e) => setNewGroupName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") void handleCreateGroup();
+          if (e.key === "Escape") { setCreatingGroup(false); setNewGroupName(""); }
+        }}
+        onBlur={() => { if (!newGroupName.trim()) setCreatingGroup(false); }}
+        placeholder="Group name"
+        aria-label="New group name"
+        className="h-8 w-full rounded-md border border-brand-teal bg-surface px-2 text-sm text-brand-dark-gray placeholder:text-brand-mid-gray"
+      />
+    </div>
+  );
 
   return (
     <div className="flex h-screen flex-col bg-canvas font-body">
       <header className="flex items-center justify-between border-b border-brand-light-gray-1 bg-surface px-4 py-3 shadow-sm md:px-6">
         <div className="flex items-center gap-2.5">
           <button
+            ref={hamburgerRef}
             type="button"
             onClick={() => setMobileOpen(true)}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal md:hidden"
             aria-label="Open menu"
+            aria-expanded={mobileOpen}
+            aria-controls={SIDEBAR_ID}
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
-            </svg>
+            <Menu className="h-5 w-5" aria-hidden="true" />
           </button>
-          {/* Brand mark — matches site/assets/favicon.svg on the landing page */}
+          {/* Brand mark: matches site/assets/favicon.svg on the landing page */}
           <svg className="h-7 w-7" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-            <rect width="64" height="64" rx="14" fill="#0f172a" />
+            <rect width="64" height="64" rx="14" style={{ fill: "rgb(var(--brand-mark-bg))" }} />
             <rect x="10" y="26" width="7" height="18" rx="3.5" fill="#0d9488" />
             <rect x="21" y="16" width="7" height="38" rx="3.5" fill="#0d9488" />
             <rect x="32" y="8" width="7" height="48" rx="3.5" fill="#2dd4bf" />
@@ -486,13 +881,9 @@ export default function Layout({
           title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
         >
           {theme === "dark" ? (
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
-            </svg>
+            <Sun className="h-5 w-5" aria-hidden="true" />
           ) : (
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
-            </svg>
+            <Moon className="h-5 w-5" aria-hidden="true" />
           )}
         </button>
       </header>
@@ -507,74 +898,47 @@ export default function Layout({
           />
         )}
         <aside
-          className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-brand-light-gray-1 bg-surface transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:transition-[width] ${
+          ref={asideRef}
+          id={SIDEBAR_ID}
+          role={drawerOpen ? "dialog" : undefined}
+          aria-modal={drawerOpen ? true : undefined}
+          className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col overflow-hidden border-r border-brand-light-gray-1 bg-surface transition-transform duration-200 ease-out motion-reduce:transition-none md:static md:z-auto md:transform-none md:transition-[width] ${
             mobileOpen ? "translate-x-0" : "-translate-x-full"
-          } ${collapsed ? "md:w-16" : "md:w-64"}`}
+          } ${collapsed ? "md:w-16" : "md:w-72"}`}
+          aria-label="Sidebar"
         >
           {collapsed ? (
-            <>
-              <div className="flex flex-col items-center gap-2 p-2">
+            <div key="rail" className="bc-fade-in flex h-full w-full flex-col items-center">
+              <div className="flex flex-col items-center gap-1 p-2">
                 <button
                   type="button"
-                  onClick={() => setSidebarCollapsed(false)}
-                  className="flex h-11 w-11 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal focus:ring-2 focus:ring-brand-teal-light"
+                  onClick={() => setCollapsedExplicitly(false)}
+                  className="flex h-11 w-11 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
                   aria-label="Expand sidebar"
                   aria-expanded={false}
+                  aria-controls={SIDEBAR_ID}
                   title="Expand sidebar"
                 >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m9 5 7 7-7 7" />
-                  </svg>
+                  <PanelLeftOpen className="h-[18px] w-[18px]" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
                   onClick={onNewSession}
-                  className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand-teal text-white shadow-sm transition-colors hover:bg-brand-teal-dark focus:ring-2 focus:ring-brand-teal-light"
+                  className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand-teal text-white shadow-sm transition-colors hover:bg-brand-teal-dark"
                   aria-label="New session"
                   title="New session"
                 >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
+                  <Plus className="h-[18px] w-[18px]" aria-hidden="true" />
                 </button>
               </div>
 
-              <div className="mx-auto mb-2 h-px w-8 bg-brand-light-gray-1" />
-
-              <div className="flex flex-col items-center gap-2 px-2 pb-2">
-                <button
-                  type="button"
-                  onClick={onOpenOfferings}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors focus:ring-2 focus:ring-brand-teal-light ${showingOfferings ? "bg-brand-teal/10 text-brand-teal ring-1 ring-brand-teal/20" : "text-brand-gray hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"}`}
-                  aria-label="Offerings Catalog"
-                  title="Offerings Catalog"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 0 0 .75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 0 0-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0 1 12 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 0 1-.673-.38m0 0A2.18 2.18 0 0 1 3 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 0 1 3.413-.387m7.5 0V5.25A2.25 2.25 0 0 0 13.5 3h-3a2.25 2.25 0 0 0-2.25 2.25v.894m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
-                </button>
-                <button
-                  type="button"
-                  onClick={onOpenKnowledge}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors focus:ring-2 focus:ring-brand-teal-light ${showingKnowledge ? "bg-brand-teal/10 text-brand-teal ring-1 ring-brand-teal/20" : "text-brand-gray hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"}`}
-                  aria-label="Knowledge Sources"
-                  title="Knowledge Sources"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg>
-                </button>
-                <button
-                  type="button"
-                  onClick={onOpenAdmin}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors focus:ring-2 focus:ring-brand-teal-light ${showingAdmin ? "bg-brand-teal/10 text-brand-teal ring-1 ring-brand-teal/20" : "text-brand-gray hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"}`}
-                  aria-label="Administration"
-                  title="Administration"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
-                </button>
-              </div>
-
-              <div className="mx-auto mb-2 h-px w-8 bg-brand-light-gray-1" />
-
-              <nav className="flex flex-1 flex-col items-center gap-2 overflow-y-auto px-2 pb-4" aria-label="Sessions">
-                {sessions.map((session) => {
+              {/* overflow-x-hidden: the 44px targets plus a Windows scrollbar can
+                  exceed the 64px rail; clip rather than grow a second scrollbar. */}
+              <nav
+                className="bc-scroll flex w-full flex-1 flex-col items-center gap-1 overflow-x-hidden overflow-y-auto border-t border-brand-light-gray-1 px-1 py-2"
+                aria-label="Sessions"
+              >
+                {orderSessions(sessions).map((session) => {
                   const isActive = session.id === activeSessionId;
                   const initial = session.name.trim().charAt(0).toUpperCase() || "S";
                   return (
@@ -582,169 +946,183 @@ export default function Layout({
                       key={session.id}
                       type="button"
                       onClick={() => onSelectSession(session.id)}
-                      className={`relative flex h-11 w-11 items-center justify-center rounded-lg text-xs font-semibold transition-colors focus:ring-2 focus:ring-brand-teal-light ${
+                      className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-xs font-semibold transition-colors ${
                         isActive ? "bg-brand-teal text-white shadow-sm" : "bg-brand-light-gray-2 text-brand-gray hover:bg-brand-teal/10 hover:text-brand-teal"
                       }`}
-                      aria-label={`Open ${session.name}`}
+                      aria-label={`Open ${session.name}, ${sessionStateLabel(session.state).toLowerCase()}`}
                       aria-current={isActive ? "page" : undefined}
-                      title={session.name}
+                      title={`${session.name} (${sessionStateLabel(session.state)})`}
                     >
                       {initial}
                       {session.state === "active" && (
-                        <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-green-400 ring-1 ring-white" />
+                        <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-green-400 ring-1 ring-surface" aria-hidden="true" />
                       )}
                     </button>
                   );
                 })}
               </nav>
-            </>
+
+              <div className="flex w-full flex-col items-center gap-1 border-t border-brand-light-gray-1 p-2">
+                <ToolLink compact icon={Package} label="Offerings Catalog" active={showingOfferings} onClick={onOpenOfferings} />
+                <ToolLink compact icon={BookOpen} label="Knowledge Sources" active={showingKnowledge} onClick={onOpenKnowledge} />
+                <ToolLink compact icon={Settings} label="Administration" active={showingAdmin} onClick={onOpenAdmin} />
+              </div>
+            </div>
           ) : (
-            <>
-              <div className="flex items-center gap-2 p-4">
-                <button onClick={onNewSession} className="flex-1 rounded-lg bg-brand-teal px-4 py-2 font-display text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-dark">
-                  + New Session
+            <div key="panel" className="bc-fade-in flex h-full w-full flex-col">
+              <div className="flex items-center gap-2 p-3">
+                <button
+                  type="button"
+                  onClick={onNewSession}
+                  className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-brand-teal px-3 font-display text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-dark"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  New session
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setSidebarCollapsed(true); setMobileOpen(false); }}
-                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal focus:ring-2 focus:ring-brand-teal-light"
+                  onClick={() => setCollapsedExplicitly(true)}
+                  className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray md:flex"
                   aria-label="Collapse sidebar"
                   aria-expanded={true}
+                  aria-controls={SIDEBAR_ID}
                   title="Collapse sidebar"
                 >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m15 19-7-7 7-7" />
-                  </svg>
+                  <PanelLeftClose className="h-[18px] w-[18px]" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray md:hidden"
+                  aria-label="Close menu"
+                >
+                  <X className="h-[18px] w-[18px]" aria-hidden="true" />
                 </button>
               </div>
 
-              {/* Tool links */}
-              <div className="px-4 pb-2 space-y-1">
-                <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-brand-mid-gray">
-                  Tools
+              {showSearch && (
+                <div className="px-3 pb-2">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-brand-mid-gray" aria-hidden="true" />
+                    <input
+                      type="search"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Escape" && query) { e.stopPropagation(); setQuery(""); } }}
+                      placeholder="Find a session"
+                      aria-label="Find a session"
+                      className="bc-search h-8 w-full rounded-md border border-brand-light-gray-1 bg-canvas pl-8 pr-8 text-sm text-brand-dark-gray transition-colors placeholder:text-brand-mid-gray focus:border-brand-teal"
+                    />
+                    {query && (
+                      <button
+                        type="button"
+                        onClick={() => setQuery("")}
+                        aria-label="Clear search"
+                        className="bc-action absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
+                      >
+                        <X className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <button
-                  onClick={onOpenOfferings}
-                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${showingOfferings ? "bg-brand-teal/10 text-brand-teal ring-1 ring-brand-teal/20" : "text-brand-gray hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"}`}
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 0 0 .75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 0 0-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0 1 12 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 0 1-.673-.38m0 0A2.18 2.18 0 0 1 3 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 0 1 3.413-.387m7.5 0V5.25A2.25 2.25 0 0 0 13.5 3h-3a2.25 2.25 0 0 0-2.25 2.25v.894m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
-                  Offerings Catalog
-                </button>
-                <button
-                  onClick={onOpenKnowledge}
-                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${showingKnowledge ? "bg-brand-teal/10 text-brand-teal ring-1 ring-brand-teal/20" : "text-brand-gray hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"}`}
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg>
-                  Knowledge Sources
-                </button>
-                <button
-                  onClick={onOpenAdmin}
-                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${showingAdmin ? "bg-brand-teal/10 text-brand-teal ring-1 ring-brand-teal/20" : "text-brand-gray hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"}`}
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
-                  Administration
-                </button>
-              </div>
-
-              <div className="mx-4 mb-2 border-t border-brand-light-gray-1" />
+              )}
 
               <DndContext sensors={sensors} onDragStart={(e) => setDraggedId(e.active.id as string)} onDragEnd={handleDragEnd}>
-                <nav className="flex-1 overflow-y-auto overflow-x-clip px-2 pb-4">
-                  {/* Groups first */}
-                  {grouped.byGroup.length > 0 && (
-                    <div className="mb-2 px-3 pt-2 text-[10px] font-bold uppercase tracking-wider text-brand-mid-gray">
-                      Groups
+                <nav className="bc-scroll flex-1 overflow-y-auto overflow-x-clip px-2 pb-3" aria-label="Sessions">
+                  {sessions.length === 0 ? (
+                    <div className="px-2 pt-6 text-center">
+                      <p className="text-sm font-medium text-brand-dark-gray">No sessions yet</p>
+                      <p className="mt-1 text-xs text-brand-mid-gray">Start one with New session.</p>
                     </div>
-                  )}
-                  {grouped.byGroup.map(({ group, sessions: groupSessions }) => (
-                    <DroppableGroup
-                      key={group.id}
-                      group={group}
-                      isExpanded={expandedGroups.has(group.id)}
-                      onToggle={() => toggleGroup(group.id)}
-                      onDelete={() => handleDeleteGroup(group)}
-                      sessionCount={groupSessions.length}
-                    >
-                      {groupSessions.map((session) => (
-                        <DraggableSession
-                          key={session.id}
-                          session={session}
-                          isActive={session.id === activeSessionId}
-                          onClick={() => onSelectSession(session.id)}
-                          groups={groups}
-                          onMoveToGroup={handleMoveToGroup}
-                          onRename={handleRenameSession}
-                          onDelete={handleDeleteSessionFromSidebar}
-                        />
-                      ))}
-                    </DroppableGroup>
-                  ))}
-
-                  {/* Ungrouped sessions below folders */}
-                  {grouped.ungrouped.length > 0 && (
-                    <>
-                      {(grouped.byGroup.length > 0 || creatingGroup) && (
-                        <div className="mx-3 my-4 border-t border-brand-light-gray-1" />
-                      )}
-                      <div className="mb-2 px-3 text-[10px] font-bold uppercase tracking-wider text-brand-mid-gray">
-                        Sessions
-                      </div>
-                      <DroppableUngrouped>
-                        {grouped.ungrouped.map((session) => (
-                          <DraggableSession
-                            key={session.id}
-                            session={session}
-                            isActive={session.id === activeSessionId}
-                            onClick={() => onSelectSession(session.id)}
-                            groups={groups}
-                            onMoveToGroup={handleMoveToGroup}
-                            onRename={handleRenameSession}
-                            onDelete={handleDeleteSessionFromSidebar}
-                          />
-                        ))}
-                      </DroppableUngrouped>
-                    </>
-                  )}
-
-                  {/* Create group */}
-                  {creatingGroup ? (
-                    <div className="mt-4 px-2">
-                      <input
-                        autoFocus
-                        value={newGroupName}
-                        onChange={(e) => setNewGroupName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleCreateGroup();
-                          if (e.key === "Escape") { setCreatingGroup(false); setNewGroupName(""); }
-                        }}
-                        onBlur={() => { if (!newGroupName.trim()) setCreatingGroup(false); }}
-                        placeholder="Group name..."
-                        className="w-full rounded border border-brand-teal-light bg-surface px-2 py-1 text-xs ring-1 ring-brand-teal-light/30"
-                      />
+                  ) : filtering && grouped.visibleCount === 0 ? (
+                    <div className="px-2 pt-6 text-center">
+                      <p className="text-sm text-brand-dark-gray">No sessions match &ldquo;{query.trim()}&rdquo;</p>
+                      <button
+                        type="button"
+                        onClick={() => setQuery("")}
+                        className="bc-accent-text mt-2 text-xs font-medium hover:underline"
+                      >
+                        Clear search
+                      </button>
                     </div>
                   ) : (
-                    <button onClick={() => setCreatingGroup(true)} className="mt-4 flex w-full items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-brand-mid-gray transition-colors hover:text-brand-teal">
-                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                      New Group
-                    </button>
-                  )}
+                    <>
+                      {showGroupsHeading && (
+                        <div className="flex h-8 items-center justify-between pl-2 pr-1">
+                          <SectionLabel>Groups</SectionLabel>
+                          {!filtering && (
+                            <button
+                              type="button"
+                              onClick={() => setCreatingGroup(true)}
+                              aria-label="New group"
+                              title="New group"
+                              className="bc-action flex h-7 w-7 items-center justify-center rounded text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
+                            >
+                              <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {creatingGroup && newGroupInput}
+                      {grouped.byGroup.map(({ group, sessions: groupSessions }) => (
+                        <DroppableGroup
+                          key={group.id}
+                          group={group}
+                          isExpanded={filtering || expandedGroups.has(group.id)}
+                          onToggle={() => toggleGroup(group.id)}
+                          onDelete={() => handleDeleteGroup(group)}
+                          sessionCount={groupSessions.length}
+                        >
+                          {groupSessions.map(renderSession)}
+                        </DroppableGroup>
+                      ))}
 
-                  {sessions.length === 0 && (
-                    <p className="px-3 pt-4 text-center text-xs text-brand-mid-gray">No sessions yet</p>
+                      {grouped.ungrouped.length > 0 && (
+                        <>
+                          {hasGroups && (
+                            <div className="mt-2 flex h-8 items-center pl-2">
+                              <SectionLabel>Sessions</SectionLabel>
+                            </div>
+                          )}
+                          <DroppableUngrouped>
+                            {grouped.ungrouped.map(renderSession)}
+                          </DroppableUngrouped>
+                        </>
+                      )}
+
+                      {!hasGroups && !creatingGroup && !filtering && (
+                        <button
+                          type="button"
+                          onClick={() => setCreatingGroup(true)}
+                          className="bc-row mt-2 flex h-8 w-full items-center gap-2 rounded-md px-2 text-xs font-medium text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
+                        >
+                          <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                          New group
+                        </button>
+                      )}
+                    </>
                   )}
                 </nav>
 
                 {/* Drag overlay */}
-                <DragOverlay>
+                <DragOverlay dropAnimation={reducedMotion ? null : undefined}>
                   {draggedSession && (
-                    <div className="rounded-lg bg-surface px-3 py-2 shadow-lg ring-1 ring-brand-teal/20 opacity-90 w-56">
-                      <span className="text-sm font-medium text-brand-teal truncate block">{draggedSession.name}</span>
-                      <div className="mt-0.5">{stateBadge(draggedSession.state)}</div>
+                    <div className="flex h-8 w-56 items-center gap-2 rounded-md bg-surface pl-2 pr-3 shadow-lg ring-1 ring-brand-teal/30">
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                        <StateDot state={draggedSession.state} />
+                      </span>
+                      <span className="truncate text-sm font-medium text-brand-dark-gray">{draggedSession.name}</span>
                     </div>
                   )}
                 </DragOverlay>
               </DndContext>
-            </>
+
+              <div className="border-t border-brand-light-gray-1 p-2">
+                <ToolLink icon={Package} label="Offerings Catalog" active={showingOfferings} onClick={onOpenOfferings} />
+                <ToolLink icon={BookOpen} label="Knowledge Sources" active={showingKnowledge} onClick={onOpenKnowledge} />
+                <ToolLink icon={Settings} label="Administration" active={showingAdmin} onClick={onOpenAdmin} />
+              </div>
+            </div>
           )}
         </aside>
 
