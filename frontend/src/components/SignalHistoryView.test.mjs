@@ -194,6 +194,6 @@ test("a post-call synthesis has no live panel", () => {
 test("post-call briefing exposes the durable history even without a generated briefing", () => {
   const html = renderPost(session, 2);
 
-  assert.match(html, /Strategic Signal History/);
+  assert.match(html, /Strategic signal history/);
   assert.match(html, /History \(2\)/);
 });

@@ -1,20 +1,16 @@
-import { useState, type ComponentType } from "react";
-import {
-  Activity,
-  AlertTriangle,
-  CheckSquare,
-  ChevronDown,
-  HelpCircle,
-  Layers,
-  ListChecks,
-  RefreshCw,
-  StickyNote,
-  Target,
-  TrendingUp,
-  Trophy,
-} from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ChevronDown, RefreshCw } from "lucide-react";
 import type { InsightCluster, Session, SessionSynthesis, SynthesisSectionItem } from "../../types";
 import SignalHistory from "../SignalHistory";
+import { buildBriefingLayout } from "./briefingSections";
+
+// The briefing is set like a one-page brief: one sheet, a reading measure,
+// small-caps section headings on hairline rules, and whitespace instead of
+// boxes. The Overview tab carries the stat tiles; this view is for reading.
+// Which sections appear, how they pair up, and what the footer says about
+// empty ones is decided by buildBriefingLayout in briefingSections.ts.
+
+export { formatList, presentItems, sectionLabels } from "./briefingSections";
 
 interface BriefingViewProps {
   session: Session;
@@ -25,259 +21,199 @@ interface BriefingViewProps {
   error?: string | null;
 }
 
-type Icon = ComponentType<{ className?: string }>;
-
-function sectionLabels(session: Session) {
-  switch (session.meeting_type) {
-    case "internal_enablement":
-      return {
-        objectives: "Learning Objectives",
-        opportunities: "Enablement Opportunities",
-        questions: "Open Learning Questions",
-      };
-    case "internal_checkin":
-      return {
-        objectives: "Objectives / Needs",
-        opportunities: "Support Opportunities",
-        questions: "Open Questions",
-      };
-    case "vendor_partner":
-      return {
-        objectives: "Vendor / Program Objectives",
-        opportunities: "Partner Opportunities",
-        questions: "Open Vendor / Program Questions",
-      };
-    case "customer_delivery":
-      return {
-        objectives: "Project Objectives",
-        opportunities: "Delivery Opportunities",
-        questions: "Open Delivery Questions",
-      };
-    case "client_sales":
-      return {
-        objectives: "Client Objectives",
-        opportunities: "Top Opportunities",
-        questions: "Unresolved Discovery Questions",
-      };
-    default:
-      return {
-        objectives: "Objectives",
-        opportunities: "Top Opportunities",
-        questions: "Open Questions",
-      };
-  }
-}
-
-// Semantic identity per section: icon + accent color, shared by the header
-// chip and every item row so the page reads by color/shape, not just text.
-type ToneKey = "objectives" | "opportunities" | "risks" | "action" | "questions" | "signals";
-
-interface ToneStyle {
-  headerIcon: Icon;
-  itemIcon: Icon;
-  border: string;
-  chip: string;
-  itemBorder: string;
-  iconColor: string;
-}
-
-const TONE: Record<ToneKey, ToneStyle> = {
-  objectives: {
-    headerIcon: Target,
-    itemIcon: Target,
-    border: "border-sky-200 dark:border-sky-900/50",
-    chip: "bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400",
-    itemBorder: "border-sky-300 dark:border-sky-800",
-    iconColor: "text-sky-500 dark:text-sky-400",
-  },
-  opportunities: {
-    headerIcon: TrendingUp,
-    itemIcon: TrendingUp,
-    border: "border-emerald-200 dark:border-emerald-900/50",
-    chip: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400",
-    itemBorder: "border-emerald-300 dark:border-emerald-800",
-    iconColor: "text-emerald-500 dark:text-emerald-400",
-  },
-  risks: {
-    headerIcon: AlertTriangle,
-    itemIcon: AlertTriangle,
-    border: "border-red-200 dark:border-red-900/50",
-    chip: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400",
-    itemBorder: "border-red-300 dark:border-red-800",
-    iconColor: "text-red-500 dark:text-red-400",
-  },
-  action: {
-    headerIcon: ListChecks,
-    itemIcon: CheckSquare,
-    border: "border-indigo-200 dark:border-indigo-900/50",
-    chip: "bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400",
-    itemBorder: "border-indigo-300 dark:border-indigo-800",
-    iconColor: "text-indigo-500 dark:text-indigo-400",
-  },
-  questions: {
-    headerIcon: HelpCircle,
-    itemIcon: HelpCircle,
-    border: "border-violet-200 dark:border-violet-900/50",
-    chip: "bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-400",
-    itemBorder: "border-violet-300 dark:border-violet-800",
-    iconColor: "text-violet-500 dark:text-violet-400",
-  },
-  signals: {
-    headerIcon: Activity,
-    itemIcon: Activity,
-    border: "border-amber-200 dark:border-amber-900/50",
-    chip: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400",
-    itemBorder: "border-amber-300 dark:border-amber-800",
-    iconColor: "text-amber-500 dark:text-amber-400",
-  },
+const MEETING_TYPE_LABELS: Record<string, string> = {
+  general: "General meeting",
+  client_sales: "Client sales",
+  customer_delivery: "Customer delivery",
+  internal_enablement: "Internal enablement",
+  internal_checkin: "Internal check-in",
+  vendor_partner: "Vendor and partner",
 };
 
-function statusChipTone(status: string): string {
+export function meetingTypeLabel(meetingType: string | undefined): string {
+  if (!meetingType) return "";
+  return MEETING_TYPE_LABELS[meetingType] || meetingType.replace(/_/g, " ");
+}
+
+// A status is quiet text unless it asks for something of the reader: blocked
+// or stalled work reads in red with a mark, open or pending work carries an
+// amber mark, and settled states (done, won, in progress) stay plain.
+export type StatusTone = "blocked" | "open" | "quiet";
+
+export function statusTone(status: string): StatusTone {
   const s = status.toLowerCase();
-  if (/(done|complete|resolved|closed|won|answered)/.test(s)) {
-    return "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400";
-  }
-  if (/(block|risk|stall|stuck|lost|urgent|escalat)/.test(s)) {
-    return "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400";
-  }
-  if (/(progress|active|pending|review)/.test(s)) {
-    return "bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400";
-  }
-  return "bg-brand-light-gray-2 text-brand-gray";
+  if (/(block|stuck|stall|urgent|escalat|overdue|at risk|lost)/.test(s)) return "blocked";
+  if (/(open|pending|todo|to do|not started|unresolved|waiting|needs)/.test(s)) return "open";
+  return "quiet";
 }
 
-function synthesisStatusTone(status: string): string {
-  switch (status) {
-    case "completed":
-      return "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400";
-    case "partial":
-      return "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400";
-    case "error":
-      return "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400";
-    default:
-      return "bg-brand-light-gray-2 text-brand-gray";
-  }
+export function formatUpdated(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const time = new Date(value);
+  if (!Number.isFinite(time.getTime())) return null;
+  return time.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
-function StatusChip({ status }: { status: string }) {
+// Middle dot, built from its code point so the source stays ASCII.
+const SEPARATOR = String.fromCharCode(0xb7);
+
+function Separator() {
   return (
-    <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 font-body text-xs font-medium ${statusChipTone(status)}`}>
+    <span aria-hidden="true" className="mx-2 text-brand-light-gray-1">
+      {SEPARATOR}
+    </span>
+  );
+}
+
+// Shared with the Overview tab so both surfaces read a status the same way.
+export function StatusText({ status }: { status: string }) {
+  const tone = statusTone(status);
+  if (tone === "quiet") return <span>{status}</span>;
+  const mark = tone === "blocked" ? "bg-red-500" : "bg-brand-amber";
+  const text = tone === "blocked" ? "font-medium text-red-700 dark:text-red-400" : "font-medium text-brand-gray";
+  return (
+    <span className={`inline-flex items-center gap-1.5 ${text}`}>
+      <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${mark}`} />
       {status}
     </span>
   );
 }
 
-function OwnerChip({ owner }: { owner: string }) {
-  const initial = owner.trim().charAt(0).toUpperCase() || "?";
+// Status before owner, on the title row when there is room and on their own
+// line when there is not. Both are plain small text; the only color on the
+// row is a status mark that asks for attention.
+function ItemMeta({ status, owner }: { status?: string; owner?: string }) {
+  if (!status && !owner) return null;
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-light-gray-2 px-2 py-0.5 font-body text-xs font-medium text-brand-dark-gray">
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brand-teal text-[10px] font-bold text-white">
-        {initial}
-      </span>
-      {owner}
+    <span className="flex shrink-0 flex-wrap items-center font-body text-xs text-brand-mid-gray">
+      {status && <StatusText status={status} />}
+      {status && owner && <Separator />}
+      {owner && <span>{owner}</span>}
     </span>
   );
 }
 
-// Progressive disclosure for the "why this matters" rationale text: collapsed
-// by default so the default view stays dense with signal, not prose.
-function RationaleToggle({ text }: { text?: string }) {
+// One affordance for the reasoning behind an item, closed by default so the
+// page reads as findings first and argument on request.
+function Disclosure({ text }: { text?: string }) {
   const [open, setOpen] = useState(false);
   if (!text) return null;
   return (
     <div className="mt-1.5">
+      {/* The label stays a quiet line of small text, but the button itself is
+          at least 32px tall (44px on touch screens) with the extra height
+          folded back through negative margins so the row keeps its rhythm. */}
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={open}
-        className="inline-flex items-center gap-1 font-body text-xs font-medium text-brand-mid-gray transition-colors hover:text-brand-teal"
+        className="-my-2 flex min-h-8 w-fit items-center gap-1 font-body text-xs font-medium text-brand-mid-gray transition-colors hover:text-brand-teal [@media(hover:none)]:min-h-11"
       >
-        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown
+          aria-hidden="true"
+          className={`h-3.5 w-3.5 transition-transform motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
+        />
         Why this matters
       </button>
       {open && (
-        <p className="mt-1 font-body text-xs italic leading-relaxed text-brand-mid-gray">{text}</p>
+        <p className="mt-1.5 max-w-prose font-body text-sm leading-relaxed text-brand-gray">{text}</p>
       )}
     </div>
   );
 }
 
-function SectionHeading({ icon: IconCmp, label, chipClass, count }: { icon: Icon; label: string; chipClass: string; count: number }) {
+// The list style every section shares: hairline dividers, no boxes. Exported
+// with SectionHeading so the Overview tab can set its lists the same way.
+export const DIVIDED_LIST_CLASS = "divide-y divide-brand-light-gray-1/60";
+
+// The optional id lands on the h3 so a caller's section can point at it
+// with aria-labelledby.
+export function SectionHeading({ label, count, id }: { label: string; count?: number; id?: string }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${chipClass}`}>
-        <IconCmp className="h-4 w-4" />
-      </span>
-      <h3 className="font-display text-sm font-bold text-brand-dark-gray">{label}</h3>
-      {count > 0 && (
-        <span className={`ml-auto shrink-0 rounded-full px-2 py-0.5 font-body text-xs font-semibold tabular-nums ${chipClass}`}>
-          {count}
+    <div className="flex items-baseline justify-between gap-3 border-b border-brand-light-gray-1 pb-2">
+      <h3 id={id} className="font-display text-[11px] font-semibold uppercase tracking-[0.12em] text-brand-mid-gray">
+        {label}
+      </h3>
+      {count !== undefined && count > 0 && (
+        <span className="font-body text-[11px] font-medium tabular-nums text-brand-mid-gray">{count}</span>
+      )}
+    </div>
+  );
+}
+
+// The lead list (top outcomes) uses display type and a hanging numeral; every
+// other section uses the same row at body size.
+function Item({ item, lead = false, index = 0 }: { item: SynthesisSectionItem; lead?: boolean; index?: number }) {
+  const heading = (item.title || "").trim();
+  const body = (item.summary || "").trim();
+  const title = heading || body;
+  const summary = heading && body ? body : "";
+  return (
+    <li className={`flex items-baseline gap-4 ${lead ? "py-4" : "py-3"} first:pt-0 last:pb-0`}>
+      {lead && (
+        <span className="bc-accent-text w-5 shrink-0 font-display text-sm font-semibold tabular-nums">
+          {index + 1}
         </span>
       )}
-    </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <p
+            className={`min-w-[14rem] flex-1 text-pretty text-brand-dark-gray ${
+              lead
+                ? "font-display text-lg font-semibold leading-snug tracking-tight"
+                : "font-body text-sm font-semibold leading-snug"
+            }`}
+          >
+            {title}
+          </p>
+          <ItemMeta status={item.status} owner={item.owner} />
+        </div>
+        {summary && (
+          <p className="mt-1 max-w-prose font-body text-sm leading-relaxed text-brand-gray">{summary}</p>
+        )}
+        <Disclosure text={item.rationale} />
+      </div>
+    </li>
   );
 }
 
-// A single briefing section: colored identity header, item rows with
-// status and a rationale disclosure, or a compact muted line
-// when nothing was captured (never a full empty card).
-function InsightSection({
-  tone,
-  label,
-  items,
-  className = "",
-}: {
-  tone: ToneKey;
-  label: string;
-  items: SynthesisSectionItem[];
-  className?: string;
-}) {
-  const style = TONE[tone];
-
-  if (items.length === 0) {
-    return (
-      <section className={`rounded-xl border border-dashed border-brand-light-gray-1 p-4 ${className}`}>
-        <SectionHeading icon={style.headerIcon} label={label} chipClass={style.chip} count={0} />
-        <p className="mt-2 font-body text-xs italic text-brand-mid-gray">Not captured in this briefing.</p>
-      </section>
-    );
-  }
-
-  const ItemIcon = style.itemIcon;
+// Items arrive already filtered to readable ones by buildBriefingLayout.
+function ItemSection({ label, items, lead = false }: { label: string; items: SynthesisSectionItem[]; lead?: boolean }) {
+  if (items.length === 0) return null;
+  const rows = items.map((item, index) => (
+    <Item key={`${item.title}-${index}`} item={item} lead={lead} index={index} />
+  ));
   return (
-    <section className={`rounded-xl border ${style.border} bg-surface p-4 shadow-sm ${className}`}>
-      <SectionHeading icon={style.headerIcon} label={label} chipClass={style.chip} count={items.length} />
-      <ul className="mt-3 space-y-3">
-        {items.map((item, index) => (
-          <li key={`${item.title}-${index}`} className={`border-l-2 pl-3 ${style.itemBorder}`}>
-            <div className="flex items-start gap-2">
-              <ItemIcon className={`mt-0.5 h-4 w-4 shrink-0 ${style.iconColor}`} />
-              <div className="min-w-0 flex-1">
-                {/* Wraps rather than sharing one line unconditionally. These
-                    sections render both full width (risks, action plan) and
-                    three-up (objectives, opportunities, questions); in the
-                    narrow case a status and an owner chip claim about 10rem,
-                    which left a four-word title wrapping over five lines. The
-                    title keeps a floor of 13rem, so the chips drop to their own
-                    row exactly when there is no longer room beside it. 13 rather
-                    than 11 because at 11 the two-up risks column still squeezed
-                    its title to 195px over three lines: the chips fit, barely,
-                    which is the case worth pushing over. */}
-                <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
-                  <p className="min-w-[13rem] flex-1 font-body text-sm font-semibold text-brand-dark-gray">
-                    {item.title || item.summary}
-                  </p>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {item.status && <StatusChip status={item.status} />}
-                    {item.owner && <OwnerChip owner={item.owner} />}
-                  </div>
-                </div>
-                {item.summary && item.title && (
-                  <p className="mt-0.5 font-body text-sm leading-relaxed text-brand-gray">{item.summary}</p>
-                )}
-                <RationaleToggle text={item.rationale} />
-              </div>
+    <section>
+      <SectionHeading label={label} count={items.length} />
+      {lead ? (
+        <ol className={`mt-4 ${DIVIDED_LIST_CLASS}`}>{rows}</ol>
+      ) : (
+        <ul className={`mt-4 ${DIVIDED_LIST_CLASS}`}>{rows}</ul>
+      )}
+    </section>
+  );
+}
+
+function ClustersSection({ clusters }: { clusters: InsightCluster[] }) {
+  if (clusters.length === 0) return null;
+  return (
+    <section>
+      <SectionHeading label="Insight clusters" count={clusters.length} />
+      <ul className={`mt-4 ${DIVIDED_LIST_CLASS}`}>
+        {clusters.map((cluster) => (
+          <li key={cluster.id} className="py-3 first:pt-0 last:pb-0">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <p className="min-w-[14rem] flex-1 text-pretty font-body text-sm font-semibold leading-snug text-brand-dark-gray">
+                {cluster.title}
+              </p>
+              {cluster.confidence && (
+                <span className="shrink-0 font-body text-xs text-brand-mid-gray">Confidence: {cluster.confidence}</span>
+              )}
             </div>
+            {cluster.summary && (
+              <p className="mt-1 max-w-prose font-body text-sm leading-relaxed text-brand-gray">{cluster.summary}</p>
+            )}
           </li>
         ))}
       </ul>
@@ -285,210 +221,40 @@ function InsightSection({
   );
 }
 
-// The hero: strongest typography on the page, full width, large numbered
-// treatment. This is what a first-time viewer should absorb first.
-function OutcomesHero({ items }: { items: SynthesisSectionItem[] }) {
+function ErrorNote({ text }: { text: string }) {
   return (
-    <section className="rounded-2xl border border-brand-teal/20 bg-gradient-to-br from-brand-teal/[0.06] to-transparent p-6 shadow-sm">
-      <div className="mb-1 flex items-center gap-2">
-        <Trophy className="h-5 w-5 text-brand-teal" />
-        <h3 className="font-display text-xs font-bold uppercase tracking-wide text-brand-teal">Top 3 Outcomes</h3>
-      </div>
-      {items.length === 0 ? (
-        <p className="mt-3 font-body text-sm italic text-brand-mid-gray">No outcomes captured yet.</p>
-      ) : (
-        <ol className="mt-2 divide-y divide-brand-teal/10">
-          {items.slice(0, 3).map((item, index) => (
-            <li key={`${item.title}-${index}`} className="flex gap-4 py-4 first:pt-3 last:pb-1">
-              <span className="w-10 shrink-0 font-display text-4xl font-black leading-none tabular-nums text-brand-teal/25 md:text-5xl">
-                {index + 1}
-              </span>
-              <div className="min-w-0 flex-1">
-                {/* Same wrap rule as ItemList. This one is always full width,
-                    so the chips stay inline on a desktop viewport; the floor
-                    matters on narrow screens, where a large display title has
-                    even less room to give. */}
-                <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
-                  <p className="min-w-[14rem] flex-1 font-display text-lg font-bold leading-snug text-brand-dark-gray">
-                    {item.title || item.summary}
-                  </p>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {item.status && <StatusChip status={item.status} />}
-                    {item.owner && <OwnerChip owner={item.owner} />}
-                  </div>
-                </div>
-                {item.summary && item.title && (
-                  <p className="mt-1 font-body text-sm leading-relaxed text-brand-gray">{item.summary}</p>
-                )}
-                <RationaleToggle text={item.rationale} />
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
-  );
-}
-
-function SignalStrip({ items }: { items: SynthesisSectionItem[] }) {
-  const style = TONE.signals;
-  return (
-    <section className={`rounded-xl border ${style.border} bg-surface p-4 shadow-sm`}>
-      <SectionHeading icon={style.headerIcon} label="Strategic Signals" chipClass={style.chip} count={items.length} />
-      <div className="mt-3 flex flex-wrap gap-3">
-        {items.map((item, index) => (
-          <div
-            key={`${item.title}-${index}`}
-            className={`w-full max-w-sm rounded-lg border ${style.itemBorder} bg-brand-light-gray-2/40 p-3 sm:w-auto sm:flex-1`}
-          >
-            <div className="flex items-start gap-2">
-              <Activity className={`mt-0.5 h-4 w-4 shrink-0 ${style.iconColor}`} />
-              <div className="min-w-0 flex-1">
-                <p className="font-body text-sm font-semibold text-brand-dark-gray">{item.title || item.summary}</p>
-                {item.summary && item.title && (
-                  <p className="mt-0.5 font-body text-xs leading-relaxed text-brand-gray">{item.summary}</p>
-                )}
-                <RationaleToggle text={item.rationale} />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ClusterRow({ clusters }: { clusters: InsightCluster[] }) {
-  return (
-    <section className="rounded-xl bg-surface p-4 shadow-sm">
-      <div className="flex items-center gap-2">
-        <Layers className="h-4 w-4 text-brand-mid-gray" />
-        <h3 className="font-display text-xs font-semibold uppercase tracking-wide text-brand-mid-gray">
-          Insight Clusters
-        </h3>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {clusters.map((cluster) => (
-          <div
-            key={cluster.id}
-            className="w-full max-w-xs rounded-lg border border-brand-light-gray-1 px-3 py-2 sm:w-auto sm:flex-1"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <p className="font-body text-sm font-semibold text-brand-dark-gray">{cluster.title}</p>
-              <span className="shrink-0 rounded-full bg-brand-light-gray-2 px-1.5 py-0.5 font-body text-[10px] font-medium uppercase tracking-wide text-brand-mid-gray">
-                {cluster.confidence}
-              </span>
-            </div>
-            <p className="mt-1 font-body text-xs leading-relaxed text-brand-gray">{cluster.summary}</p>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ArbiterFootnote({ text }: { text: string }) {
-  return (
-    <p className="flex items-start gap-2 rounded-lg border border-brand-light-gray-1 bg-brand-light-gray-2/40 px-4 py-3 font-body text-xs italic leading-relaxed text-brand-mid-gray">
-      <StickyNote className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-      <span><span className="font-semibold not-italic text-brand-gray">Arbiter notes:</span> {text}</span>
+    <p
+      role="alert"
+      className="rounded-md border border-red-200 bg-red-50 px-3 py-2 font-body text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400"
+    >
+      {text}
     </p>
   );
 }
 
-// Executive at-a-glance strip: five-second read of what happened, plus the
-// status/refresh controls. Replaces the old plain header card.
-function ExecutiveStrip({
-  synthesis,
-  onRefresh,
-  refreshing,
-  error,
-  actionLabel,
-}: {
-  synthesis: SessionSynthesis | null;
-  onRefresh: () => Promise<void>;
-  refreshing: boolean;
-  error?: string | null;
-  actionLabel: string;
-}) {
-  const updatedAt = synthesis?.updated_at || synthesis?.created_at || null;
-  // Outcomes chip matches the hero's teal identity rather than a TONE entry.
-  const outcomesChip = "bg-brand-teal/10 text-brand-teal";
-  const allStats: { key: string; label: string; count: number; icon: Icon; chip: string }[] = synthesis
-    ? [
-        { key: "outcomes", label: "Outcomes", count: synthesis.top_outcomes.length, icon: Trophy, chip: outcomesChip },
-        { key: "actions", label: "Actions", count: synthesis.action_plan.length, icon: ListChecks, chip: TONE.action.chip },
-        { key: "risks", label: "Risks", count: synthesis.risks_blockers.length, icon: AlertTriangle, chip: TONE.risks.chip },
-        { key: "questions", label: "Open Qs", count: synthesis.unresolved_discovery_questions.length, icon: HelpCircle, chip: TONE.questions.chip },
-      ]
-    : [];
-  const stats = allStats.filter((s) => s.count > 0);
-
-  return (
-    <div className="rounded-xl bg-surface p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="font-display text-lg font-bold text-brand-dark-gray">Conversation Briefing</h2>
-          <p className="mt-1 font-body text-sm text-brand-gray">
-            Dual-lens synthesis settled by the briefing arbiter.
-          </p>
-        </div>
-        <button
-          onClick={onRefresh}
-          disabled={refreshing}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-teal px-4 py-2 font-body text-sm font-semibold text-white transition-colors hover:bg-brand-teal-dark disabled:cursor-wait disabled:bg-brand-mid-gray"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          {actionLabel}
-        </button>
-      </div>
-
-      {synthesis && (stats.length > 0 || updatedAt) && (
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-brand-light-gray-1 pt-4">
-          {stats.map((s) => (
-            <span
-              key={s.key}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-body text-xs font-semibold ${s.chip}`}
-            >
-              <s.icon className="h-3.5 w-3.5" />
-              <span className="tabular-nums">{s.count}</span>
-              {s.label}
-            </span>
-          ))}
-          <span className={`inline-flex items-center rounded-full px-2.5 py-1 font-body text-xs font-semibold capitalize ${synthesisStatusTone(synthesis.status)}`}>
-            {synthesis.status}
-          </span>
-          {updatedAt && (
-            <span className="font-body text-xs text-brand-mid-gray">
-              Updated {new Date(updatedAt).toLocaleString()}
-            </span>
-          )}
-        </div>
-      )}
-
-      {error && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 dark:border-red-900/50 dark:bg-red-950/30">
-          <p className="font-body text-sm text-red-700 dark:text-red-400">{error}</p>
-        </div>
-      )}
-      {synthesis?.status === "error" && synthesis.error_message && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 dark:border-red-900/50 dark:bg-red-950/30">
-          <p className="font-body text-sm text-red-700 dark:text-red-400">{synthesis.error_message}</p>
-        </div>
-      )}
-      {!synthesis && (
-        <p className="mt-4 font-body text-sm text-brand-mid-gray">
-          No briefing was generated for this call (for example after "End without briefing" or a
-          dropped connection). Use Generate Briefing to run the briefing synthesis over the saved
-          transcript and insights now.
-        </p>
-      )}
-    </div>
-  );
+// The context line under the title: meeting type, freshness, and the
+// briefing's state only when it is something other than complete.
+function contextParts(session: Pick<Session, "meeting_type">, synthesis: SessionSynthesis | null): ReactNode[] {
+  const parts: ReactNode[] = [];
+  const typeLabel = meetingTypeLabel(session.meeting_type);
+  if (typeLabel) parts.push(<span key="type">{typeLabel}</span>);
+  if (!synthesis) {
+    parts.push(<span key="none">No briefing generated yet</span>);
+    return parts;
+  }
+  const updated = formatUpdated(synthesis.updated_at || synthesis.created_at);
+  if (updated) parts.push(<span key="updated">Updated {updated}</span>);
+  if (synthesis.status === "partial") {
+    parts.push(<span key="status" className="font-medium text-amber-700 dark:text-amber-400">Partial briefing</span>);
+  } else if (synthesis.status === "error") {
+    parts.push(<span key="status" className="font-medium text-red-700 dark:text-red-400">Briefing failed</span>);
+  } else if (synthesis.status === "pending") {
+    parts.push(<span key="status">Briefing in progress</span>);
+  }
+  return parts;
 }
 
 export default function BriefingView({ session, synthesis, signalHistoryCount, onRefresh, refreshing, error }: BriefingViewProps) {
-  const labels = sectionLabels(session);
   const actionLabel = refreshing
     ? synthesis
       ? "Refreshing..."
@@ -496,45 +262,108 @@ export default function BriefingView({ session, synthesis, signalHistoryCount, o
     : synthesis
       ? "Refresh Briefing"
       : "Generate Briefing";
+  // Generating a missing briefing is the page's one action, so it is the
+  // filled button; refreshing an existing one is secondary and stays quiet.
+  const buttonClass = synthesis
+    ? "border border-brand-light-gray-1 bg-surface font-medium text-brand-gray hover:border-brand-mid-gray hover:text-brand-dark-gray disabled:cursor-wait disabled:opacity-60"
+    : "bg-brand-teal font-semibold text-white hover:bg-brand-teal-dark disabled:cursor-wait disabled:bg-brand-mid-gray";
+
+  const context = contextParts(session, synthesis);
+  const layout = buildBriefingLayout(session, synthesis);
+  const arbiterNotes = synthesis?.arbiter_notes?.trim() || "";
+  const clusters = synthesis?.clusters || [];
 
   return (
-    <div className="space-y-4">
-      <ExecutiveStrip
-        synthesis={synthesis}
-        onRefresh={onRefresh}
-        refreshing={refreshing}
-        error={error}
-        actionLabel={actionLabel}
-      />
-
-      <SignalHistory
-        sessionId={session.id}
-        count={signalHistoryCount}
-        heading="Strategic Signal History"
-      />
-
-      {synthesis && (
-        <>
-          <OutcomesHero items={synthesis.top_outcomes} />
-
-          <div className="grid gap-4 lg:grid-cols-12">
-            <InsightSection tone="risks" label="Risks / Blockers" items={synthesis.risks_blockers} className="lg:col-span-5" />
-            <InsightSection tone="action" label="Action Plan" items={synthesis.action_plan} className="lg:col-span-7" />
+    <article className="rounded-xl bg-surface px-5 py-6 shadow-sm sm:px-10 sm:py-8">
+      <div className="mx-auto max-w-[52rem] space-y-10">
+        <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+          <div className="min-w-0">
+            <h2 className="font-display text-xl font-semibold tracking-tight text-brand-dark-gray">
+              Conversation briefing
+            </h2>
+            {context.length > 0 && (
+              <p className="mt-1 flex flex-wrap items-center font-body text-sm text-brand-gray">
+                {context.map((part, index) => (
+                  <span key={index} className="inline-flex items-center">
+                    {index > 0 && <Separator />}
+                    {part}
+                  </span>
+                ))}
+              </p>
+            )}
           </div>
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-3.5 py-2 font-body text-sm transition-colors ${buttonClass}`}
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={`h-4 w-4 ${refreshing ? "animate-spin motion-reduce:animate-none" : ""}`}
+            />
+            {actionLabel}
+          </button>
+        </header>
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <InsightSection tone="objectives" label={labels.objectives} items={synthesis.client_objectives} />
-            <InsightSection tone="opportunities" label={labels.opportunities} items={synthesis.top_opportunities} />
-            <InsightSection tone="questions" label={labels.questions} items={synthesis.unresolved_discovery_questions} />
-          </div>
+        {error && <ErrorNote text={error} />}
+        {synthesis?.status === "error" && synthesis.error_message && <ErrorNote text={synthesis.error_message} />}
 
-          {synthesis.strategic_signals.length > 0 && <SignalStrip items={synthesis.strategic_signals} />}
+        {!synthesis && (
+          <p className="max-w-prose font-body text-sm leading-relaxed text-brand-gray">
+            No briefing was generated for this call, for example after "End without briefing" or a
+            dropped connection. Generate Briefing runs the synthesis over the saved transcript and
+            insights now.
+          </p>
+        )}
 
-          {synthesis.clusters.length > 0 && <ClusterRow clusters={synthesis.clusters} />}
+        {synthesis && (
+          <>
+            {layout.blocks.map((block) =>
+              block.kind === "pair" ? (
+                <div key={`${block.sections[0].key}+${block.sections[1].key}`} className={`grid gap-8 ${block.cols}`}>
+                  {block.sections.map((section) => (
+                    <ItemSection key={section.key} label={section.label} items={section.items} />
+                  ))}
+                </div>
+              ) : (
+                <ItemSection
+                  key={block.section.key}
+                  label={block.section.label}
+                  items={block.section.items}
+                  lead={block.kind === "lead"}
+                />
+              ),
+            )}
 
-          {synthesis.arbiter_notes && <ArbiterFootnote text={synthesis.arbiter_notes} />}
-        </>
-      )}
-    </div>
+            <ClustersSection clusters={clusters} />
+          </>
+        )}
+
+        {signalHistoryCount > 0 && (
+          <section>
+            <SectionHeading label="Strategic signal history" count={signalHistoryCount} />
+            <p className="mt-2 max-w-prose font-body text-xs text-brand-mid-gray">
+              Durable signals observed across the conversation. They survive a briefing refresh.
+            </p>
+            <SignalHistory sessionId={session.id} count={signalHistoryCount} />
+          </section>
+        )}
+
+        {(arbiterNotes || layout.missingNote) && (
+          <footer className="space-y-3 border-t border-brand-light-gray-1 pt-6">
+            {arbiterNotes && (
+              <p className="max-w-prose font-body text-sm italic leading-relaxed text-brand-mid-gray">
+                <span className="font-semibold not-italic text-brand-gray">Arbiter notes. </span>
+                {arbiterNotes}
+              </p>
+            )}
+            {layout.missingNote && (
+              <p className="max-w-prose font-body text-xs text-brand-mid-gray">{layout.missingNote}</p>
+            )}
+          </footer>
+        )}
+      </div>
+    </article>
   );
 }
