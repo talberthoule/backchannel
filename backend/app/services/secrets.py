@@ -197,6 +197,19 @@ def _master_key() -> bytes:
     return key
 
 
+def derive_subkey(purpose: bytes, length: int = 32) -> bytes:
+    """A purpose-bound key derived from the master key (HKDF-SHA256).
+
+    Lets another store (the PII vault) share the master key's root of trust
+    without sharing its Fernet key: a leak of one derived key says nothing
+    about the other, and rotating the master key rotates them all.
+    """
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+    return HKDF(algorithm=hashes.SHA256(), length=length, salt=None, info=purpose).derive(_master_key())
+
+
 def _get_fernet() -> Fernet:
     global _fernet
     if _fernet is None:

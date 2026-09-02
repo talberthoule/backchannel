@@ -225,6 +225,10 @@ export default function App() {
 
   const [liveQuestions, setLiveQuestions] = useState<Question[]>([]);
   const [liveTranscripts, setLiveTranscripts] = useState<TranscriptEntry[]>([]);
+  // Rewrites from the transcript refiner, by entry id. Applied over both the
+  // saved and the live lists, because the saved copy of a row would
+  // otherwise shadow the refined live one in mergeTranscripts.
+  const [refinedEntries, setRefinedEntries] = useState<Record<string, TranscriptEntry>>({});
   const [interimText, setInterimText] = useState("");
   const [runtimeSynthesis, setRuntimeSynthesis] = useState<SessionSynthesis | null>(null);
   const [runtimeActivity, setRuntimeActivity] = useState<AgentActivitySnapshot | null>(null);
@@ -324,6 +328,11 @@ export default function App() {
           !speakers.some((s) => s.id === msg.data.speaker_id)
         ) {
           void refreshSpeakers();
+        }
+      } else if (msg.type === "transcript_updated") {
+        if (msg.data.id) {
+          const refined = msg.data;
+          setRefinedEntries((prev) => ({ ...prev, [refined.id as string]: refined }));
         }
       } else if (msg.type === "interim_transcript") {
         // Live API real-time transcription — show instantly as interim preview
@@ -466,7 +475,9 @@ export default function App() {
       : mergeQuestions(viewLiveQuestions, savedQuestions)
     : savedQuestions;
 
-  const persistedAndLiveTranscripts = mergeTranscripts(savedTranscripts, viewLiveTranscripts);
+  const persistedAndLiveTranscripts = mergeTranscripts(savedTranscripts, viewLiveTranscripts).map((entry) =>
+    entry.id && refinedEntries[entry.id] ? { ...entry, ...refinedEntries[entry.id] } : entry,
+  );
 
   // Combine final transcripts + current interim for display
   const displayTranscripts: TranscriptEntry[] = [

@@ -41,7 +41,49 @@ class Session(Base):
     token_usage = relationship("TokenUsage", back_populates="session", cascade="all, delete-orphan")
     speaker_mapping_revisions = relationship("SpeakerMappingRevision", cascade="all, delete-orphan")
     speaker_revalidation_runs = relationship("SpeakerRevalidationRun", cascade="all, delete-orphan")
+    pii_vault_entries = relationship("PiiVaultEntry", cascade="all, delete-orphan")
     group = relationship("SessionGroup", foreign_keys=[group_id])
+
+
+class PiiVaultEntry(Base):
+    """One protected value in one session: the token the models see and the
+    real value, encrypted under a key derived from the DATA_DIR master key.
+
+    Tokens are per session so nothing links a person across calls. The
+    value_hmac is keyed as well, so the table reveals neither the values nor
+    whether two sessions share one (see services/pii/vault.py).
+    """
+
+    __tablename__ = "pii_vault_entries"
+    __table_args__ = (
+        UniqueConstraint("session_id", "value_hmac", name="uq_pii_vault_session_value"),
+        UniqueConstraint("session_id", "token", name="uq_pii_vault_session_token"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("sessions.id"))
+    category: Mapped[str] = mapped_column(String(20))
+    ordinal: Mapped[int] = mapped_column(Integer)
+    token: Mapped[str] = mapped_column(String(40))
+    value_hmac: Mapped[str] = mapped_column(String(64))
+    value_encrypted: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class PiiRevealEvent(Base):
+    """Append-only record of every time protected values were substituted back
+    for the local interface: when, for which session, on which route, and how
+    many tokens. Bulk reveals are the signature of misuse, so the count is
+    kept per request rather than per token. No foreign key: the trail outlives
+    the session it describes."""
+
+    __tablename__ = "pii_reveal_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(), nullable=True)
+    route: Mapped[str] = mapped_column(String(160), default="")
+    token_count: Mapped[int] = mapped_column(Integer, default=0)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class SpeakerMappingRevision(Base):
@@ -214,6 +256,10 @@ class TranscriptEntry(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     sequence: Mapped[int] = mapped_column(Integer, default=0)
     speaker_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(), ForeignKey("speakers.id"), nullable=True)
+    # Set once by the transcript refiner: the text as the transcriber wrote it
+    # (already tokenized), kept so a refinement can be judged and undone.
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    refined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     session = relationship("Session", back_populates="transcript_entries")
     speaker = relationship("Speaker")

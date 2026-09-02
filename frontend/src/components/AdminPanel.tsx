@@ -5,7 +5,7 @@ import type {
   DesktopUpdateController,
   KnowledgeSource,
   ModelInfo,
-  PrivacyConfig,
+  PiiShieldStatus, PrivacyConfig,
 } from "../types";
 import * as api from "../services/api";
 import { groupModels, optionLabel, optionState, recommendationFor, runsLocally } from "../lib/modelOptions";
@@ -15,6 +15,7 @@ import BatchTranscriptionCard from "./BatchTranscriptionCard";
 import LocalModelFitCard from "./LocalModelFitCard";
 import ApiKeysCard from "./ApiKeysCard";
 import EndpointsCard from "./EndpointsCard";
+import PiiShieldCard from "./PiiShieldCard";
 import PrivacyModeCard from "./PrivacyModeCard";
 import ProviderOnboardingCard from "./ProviderOnboardingCard";
 import AboutCard from "./AboutCard";
@@ -35,6 +36,7 @@ const INTERVAL_DEFAULTS: Record<string, number> = {
   synthesizer: 75,
   opportunity_specialist: 55,
   strategic_signals: 45,
+  transcript_refiner: 45,
 };
 
 // Grouped by when agents run, not by their internal type: the Principal
@@ -48,7 +50,7 @@ const AGENT_SECTIONS: { slugs: string[]; title: string; blurb: string }[] = [
     blurb: "Streams call audio to a silent live listener for instant interim transcription.",
   },
   {
-    slugs: ["consolidated_analyst", "objection_handler", "synthesizer", "opportunity_specialist", "strategic_signals"],
+    slugs: ["consolidated_analyst", "objection_handler", "synthesizer", "opportunity_specialist", "strategic_signals", "transcript_refiner"],
     title: "Live Analysis",
     blurb: "Work the call as it happens: analysts surface and refine insights, specialists match them, and Strategic Signals keeps the live action cards current.",
   },
@@ -59,11 +61,12 @@ const AGENT_SECTIONS: { slugs: string[]; title: string; blurb: string }[] = [
   },
 ];
 
-export type AdminTab = "agents" | "transcription" | "keys" | "about";
+export type AdminTab = "agents" | "transcription" | "privacy" | "keys" | "about";
 
 const TABS: { id: AdminTab; label: string; hint: string }[] = [
   { id: "agents", label: "Agents", hint: "Models, prompts, and behavior for each analysis agent" },
   { id: "transcription", label: "Transcription & Audio", hint: "Speaker diarization and batch transcription settings" },
+  { id: "privacy", label: "Privacy", hint: "Keep personal data out of every model, local or cloud" },
   { id: "keys", label: "Connections", hint: "Connect AI providers and self-hosted model servers" },
   { id: "about", label: "About", hint: "Application version and release notes" },
 ];
@@ -343,6 +346,7 @@ function AgentCard({
   knowledgeSources,
   isSaving,
   localOnly,
+  lockLabel = "Privacy First",
   onUpdate,
   onResetPrompt,
   onDraftChange,
@@ -352,6 +356,8 @@ function AgentCard({
   knowledgeSources: KnowledgeSource[];
   isSaving: boolean;
   localOnly: boolean;
+  // Names the switch behind localOnly in the option suffix.
+  lockLabel?: string;
   onUpdate: (slug: string, field: string, value: string | boolean | number | null) => void;
   onResetPrompt: (slug: string) => void;
   onDraftChange: (slug: string, field: "prompt" | "interval_seconds" | "lenses", value: string | number) => void;
@@ -470,7 +476,7 @@ function AgentCard({
             {groupModels(modelOptions).map((group) => (
               <optgroup key={group.provider} label={group.provider}>
                 {group.models.map((m) => {
-                  const { locked, suffix } = optionState(m, agent.model_id, localOnly);
+                  const { locked, suffix } = optionState(m, agent.model_id, localOnly, lockLabel);
                   return (
                     <option key={m.id} value={m.id} disabled={locked}>
                       {optionLabel(m, agent.slug)}{suffix}
@@ -618,6 +624,9 @@ export default function AdminPanel({ onBack, desktopUpdate, initialTab, highligh
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>([]);
   const [privacy, setPrivacy] = useState<PrivacyConfig | null>(null);
+  // The PII Shield locks audio models alone (a cloud gateway or transcriber
+  // would hear the names it withholds); text models stay free.
+  const [piiShield, setPiiShield] = useState<PiiShieldStatus | null>(null);
   const [version, setVersion] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -628,18 +637,20 @@ export default function AdminPanel({ onBack, desktopUpdate, initialTab, highligh
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [a, m, k, p, meta] = await Promise.all([
+      const [a, m, k, p, meta, shield] = await Promise.all([
         api.listAgents(),
         api.listModels(),
         api.listKnowledgeSources(),
         api.getPrivacyConfig(),
         // Version is cosmetic here; never let it fail the whole panel
         api.getAppMeta().catch(() => null),
+        api.getPiiShield().catch(() => null),
       ]);
       setAgents(a);
       setModels(m);
       setKnowledgeSources(k);
       setPrivacy(p);
+      setPiiShield(shield);
       setVersion(meta?.version ?? null);
     } catch (err) {
       console.error("Failed to load agent configs", err);
@@ -714,6 +725,7 @@ export default function AdminPanel({ onBack, desktopUpdate, initialTab, highligh
 
   const enabledCount = agents.filter((a) => a.enabled).length;
   const activeTabInfo = TABS.find((t) => t.id === activeTab) || TABS[0];
+  const audioLocked = piiShield?.settings.enabled ?? false;
 
   return (
     <div className="flex h-full min-w-0 flex-col overflow-x-hidden bg-brand-light-gray-2">
@@ -818,7 +830,8 @@ export default function AdminPanel({ onBack, desktopUpdate, initialTab, highligh
                           models={models}
                           knowledgeSources={knowledgeSources}
                           isSaving={saving === agent.slug}
-                          localOnly={privacy?.local_only ?? false}
+                          localOnly={(privacy?.local_only ?? false) || (agent.agent_type === "audio" && audioLocked)}
+                          lockLabel={privacy?.local_only ? "Privacy First" : "the PII Shield"}
                           onUpdate={handleUpdate}
                           onResetPrompt={handleResetPrompt}
                           onDraftChange={handleDraftChange}
@@ -833,12 +846,19 @@ export default function AdminPanel({ onBack, desktopUpdate, initialTab, highligh
             <div className={activeTab === "transcription" ? "space-y-4" : "hidden"}>
               <BatchTranscriptionCard
                 models={models}
-                localOnly={privacy?.local_only ?? false}
+                localOnly={(privacy?.local_only ?? false) || audioLocked}
+                lockLabel={privacy?.local_only ? "Privacy First" : "the PII Shield"}
                 onLiveModelChanged={refreshAgents}
                 gatewayModelId={agents.find((a) => a.slug === "audio_gateway")?.model_id}
               />
               <LocalModelFitCard onIntervalsApplied={refreshAgents} />
               <DiarizationCapabilityCard />
+            </div>
+
+            {/* Privacy First (above, on every tab) decides where processing
+                happens; the shield decides what any model gets to read. */}
+            <div className={activeTab === "privacy" ? "space-y-4" : "hidden"}>
+              <PiiShieldCard onChanged={setPiiShield} />
             </div>
 
             <div className={activeTab === "keys" ? "space-y-4" : "hidden"}>

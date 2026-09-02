@@ -1,4 +1,4 @@
-import type { AgentConfig, AppMeta, AsrFitReport, CallSegment, CustomEndpoint, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EndpointProbeResult, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, LocalFitReport, LocalFitSummary, MeetingType, ModelInfo, ModelPricingResponse, Offering, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptEntry } from "../types";
+import type { AgentConfig, AppMeta, AsrFitReport, CallSegment, CustomEndpoint, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EndpointProbeResult, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, LocalFitReport, LocalFitSummary, MeetingType, ModelInfo, ModelPricingResponse, Offering, PiiEgressEntry, PiiPreview, PiiSessionSummary, PiiShieldSettings, PiiShieldStatus, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptEntry } from "../types";
 
 const BASE = "/api";
 
@@ -356,6 +356,33 @@ export const updatePrivacyConfig = (localOnly: boolean) =>
   request<PrivacyConfig>("/privacy", {
     method: "PUT",
     body: JSON.stringify({ local_only: localOnly }),
+  });
+
+export const getPiiShield = () => request<PiiShieldStatus>("/pii-shield");
+
+export const updatePiiShield = (update: Partial<PiiShieldSettings>) =>
+  request<PiiShieldStatus>("/pii-shield", { method: "PUT", body: JSON.stringify(update) });
+
+export const previewPiiShield = (text: string, sessionId?: string) =>
+  request<PiiPreview>("/pii-shield/preview", {
+    method: "POST",
+    body: JSON.stringify({ text, session_id: sessionId ?? null }),
+  });
+
+export const getPiiEgress = (limit = 50) =>
+  request<{ enabled: boolean; entries: PiiEgressEntry[] }>(`/pii-shield/egress?limit=${limit}`);
+
+export const clearPiiEgress = () => request<void>("/pii-shield/egress", { method: "DELETE" });
+
+export const installPiiNer = () =>
+  request<PiiShieldStatus["ner"]>("/pii-shield/ner/install", { method: "POST" });
+
+export const getSessionPiiSummary = (sessionId: string) =>
+  request<PiiSessionSummary>(`/sessions/${sessionId}/pii/summary`);
+
+export const protectSessionPii = (sessionId: string) =>
+  request<{ changed: Record<string, number>; vault_entries: number }>(`/sessions/${sessionId}/pii/protect`, {
+    method: "POST",
   });
 
 export const getTranscriptionConfig = () =>

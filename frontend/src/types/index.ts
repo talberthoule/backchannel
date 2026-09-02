@@ -526,6 +526,65 @@ export interface PrivacyConfig {
   };
 }
 
+export type PiiCategory =
+  | "PERSON" | "ORG" | "LOCATION" | "EMAIL" | "PHONE" | "SSN" | "CARD" | "IP" | "ADDRESS";
+
+export interface PiiProtectedTerm {
+  value: string;
+  category: PiiCategory;
+}
+
+export interface PiiShieldSettings {
+  enabled: boolean;
+  categories: PiiCategory[];
+  ner: boolean;
+  protected_terms: PiiProtectedTerm[];
+  // Record every outbound model prompt, exactly as sent, to the prompt log.
+  prompt_log: boolean;
+}
+
+export interface PiiEgressEntry {
+  at: string;
+  source: string;
+  model_id: string;
+  session_id: string | null;
+  chars: number;
+  tokens_present: boolean;
+  blocked: boolean;
+  leaks: { category: PiiCategory; value: string }[];
+  prompt: string;
+  truncated: boolean;
+}
+
+export interface PiiShieldStatus {
+  settings: PiiShieldSettings;
+  categories: { id: PiiCategory; label: string }[];
+  ner: { state: "off" | "ready" | "not_downloaded" | "unavailable"; error: string | null; model: string };
+  coverage: {
+    text: boolean;
+    // With the shield on, audio is locked to local models by enforcement.
+    enforced: boolean;
+    transcription: { covered: boolean; model_id: string };
+    // paused: a cloud gateway is configured but skipped while the shield is on.
+    live_gateway: { covered: boolean; model_id: string; paused: boolean };
+    documents: boolean;
+    refinement: { enabled: boolean; model_id: string; interval_seconds: number };
+  };
+  vault: { entries: number };
+  reveals_24h: { requests: number; tokens: number };
+}
+
+export interface PiiPreview {
+  protected: string;
+  findings: { text: string; category: PiiCategory; token: string; source: string; score: number }[];
+  enabled: boolean;
+}
+
+export interface PiiSessionSummary {
+  counts: Partial<Record<PiiCategory, number>>;
+  total: number;
+}
+
 export interface CallSegment {
   id: string;
   session_id: string;
@@ -555,6 +614,10 @@ export interface TranscriptEntry {
   timestamp: string;
   sequence?: number;
   speaker_id?: string | null;
+  // Set once the transcript refiner has rewritten the entry: the
+  // transcriber's own text and when the current text was produced.
+  raw_text?: string | null;
+  refined_at?: string | null;
 }
 
 export interface SynthesisSectionItem {
@@ -723,6 +786,8 @@ export interface AgentActivitySnapshot {
 export type WSMessage =
   | { type: "question"; data: Omit<Question, "session_id" | "starred" | "dismissed" | "created_at" | "answered" | "answer_summary" | "needs_followup" | "followup_question"> & { timestamp: string; is_followup?: boolean; item_type?: string } }
   | { type: "transcript"; data: TranscriptEntry }
+  // The transcript refiner rewrote an entry; replaces the entry with that id.
+  | { type: "transcript_updated"; data: TranscriptEntry }
   | { type: "interim_transcript"; data: { text: string } }
   | { type: "status"; data: WSStatusData }
   | { type: "agent_activity"; data: AgentActivitySnapshot }

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import Session, Question, Speaker, TranscriptEntry, SessionSynthesis
 from app.services import runtime_activity
+from app.services.pii import shield, vault
 from app.services.briefing_synthesis import get_session_synthesis
 from sqlalchemy import select
 
@@ -31,6 +32,12 @@ async def _stream_and_cleanup(file_path: str, media_type: str, filename: str):
                 pass
 
 
+_INSIGHT_TEXT_FIELDS = (
+    "question", "rationale", "source_context", "answer_summary",
+    "followup_question", "enrichment_notes", "offering_match", "lens_label",
+)
+
+
 def _stream_bytes(data: bytes):
     """Stream in-memory bytes — nothing ever touches disk."""
     with runtime_activity.track("artifact export"):
@@ -38,7 +45,7 @@ def _stream_bytes(data: bytes):
 
 
 @router.get("/transcript-export")
-async def export_transcript(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def export_transcript(session_id: uuid.UUID, reveal: bool = False, db: AsyncSession = Depends(get_db)):
     """Export session transcript as a downloadable text file. Generated in-memory, never stored."""
     session = await db.get(Session, session_id)
     if not session:
@@ -71,7 +78,10 @@ async def export_transcript(session_id: uuid.UUID, db: AsyncSession = Depends(ge
         ts = entry.timestamp.strftime("%H:%M:%S") if entry.timestamp else ""
         lines.append(f"[{ts}] {_apply_names(entry.text)}")
 
-    content = "\n".join(lines).encode("utf-8")
+    text = "\n".join(lines)
+    if reveal:
+        text = await shield.reveal_text(db, session_id, text, route="transcript-export")
+    content = text.encode("utf-8")
     filename = f"transcript-{session.name.replace(' ', '_')}.txt"
 
     return StreamingResponse(
@@ -84,6 +94,7 @@ async def export_transcript(session_id: uuid.UUID, db: AsyncSession = Depends(ge
 @router.get("/questions-export")
 async def export_insights(
     session_id: uuid.UUID,
+    reveal: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
     """Export all session insights."""
@@ -122,6 +133,22 @@ async def export_insights(
         for original, display in speaker_name_map.items():
             text = text.replace(original, display)
         return text
+
+    if reveal:
+        # Detached first: a revealed value must never be flushed back into
+        # the row it came from.
+        mapping = await vault.reveal_map(db, session_id)
+        revealed_total = 0
+        for q in questions:
+            db.expunge(q)
+            for attr in _INSIGHT_TEXT_FIELDS:
+                value = getattr(q, attr, None)
+                if isinstance(value, str) and value:
+                    value, count = shield.substitute(value, mapping)
+                    revealed_total += count
+                    setattr(q, attr, value)
+        if revealed_total:
+            await shield.record_reveal(session_id, "questions-export", revealed_total)
 
     headers = [
         "Type",
@@ -230,7 +257,7 @@ async def export_insights(
 
 
 @router.get("/summary-export")
-async def export_summary(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def export_summary(session_id: uuid.UUID, reveal: bool = False, db: AsyncSession = Depends(get_db)):
     """Export a full session briefing as HTML. Generated in-memory, never stored."""
     session = await db.get(Session, session_id)
     if not session:
@@ -245,6 +272,8 @@ async def export_summary(session_id: uuid.UUID, db: AsyncSession = Depends(get_d
         html = await _render_legacy_summary_html(session, session_id, db)
         prefix = "summary"
 
+    if reveal:
+        html = await shield.reveal_text(db, session_id, html, route="summary-export")
     content = html.encode("utf-8")
     filename = f"{prefix}-{session.name.replace(' ', '_')}.html"
 

@@ -202,6 +202,13 @@ paying for the rows. Signals accumulate in `signal_history` with a per-signal
 | --- | --- | --- |
 | GET | `/api/privacy` | Current Privacy First state: `local_only`, the effective batch transcription model, and an `impact` summary of what enabling it keeps and disables |
 | PUT | `/api/privacy` | Set `{"local_only": true\|false}`; returns the same payload |
+| GET | `/api/pii-shield` | PII Shield status: `settings` (enabled, categories, ner, protected_terms), the category list, the on-device NER model state, an honest `coverage` report (text, transcription audio, live gateway, documents), vault size, and reveals in the last 24 hours |
+| PUT | `/api/pii-shield` | Partial update of `enabled`, `categories`, `ner`, `protected_terms` (`[{"value","category"}]`); returns the status payload. Enabling with NER on starts the one-time model download |
+| POST | `/api/pii-shield/preview` | `{"text", "session_id"?}` -> what a model would receive (`protected`) and each finding; numbers tokens from 1 and touches no vault |
+| POST | `/api/pii-shield/ner/install` | Download and load the on-device NER model now; 503 with the reason when it cannot |
+| GET | `/api/sessions/{id}/pii/summary` | Protected value counts by category for one session; decrypts nothing |
+| GET | `/api/sessions/{id}/pii` | The session's ledger: `{category, ordinal, value}` per protected value; recorded as one reveal |
+| POST | `/api/sessions/{id}/pii/protect` | Run the encode path over a session's stored transcript, insights, directives, document excerpts, session fields and speakers (for sessions recorded before the shield was on); returns what changed |
 
 ### Credentials (`routers/credentials.py`)
 

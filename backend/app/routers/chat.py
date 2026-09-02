@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import Question, Session, SessionSynthesis, Speaker, TranscriptEntry
+from app.services.pii import shield
 from app.services.custom_endpoints import endpoint_model_entry
 from app.services.llm import generate_text, provider_for, registry_entry
 from app.services.provider_errors import PROVIDER_ERROR_TYPES, provider_error_to_http
@@ -201,7 +202,13 @@ async def chat(body: ChatIn, db: AsyncSession = Depends(get_db)):
         })
 
     sessions_data.sort(key=lambda data: data["sort_key"])
-    prompt = build_chat_prompt(sessions_data, [m.model_dump() for m in body.messages])
+    # A typed question can name people too. Tokens are minted in the first
+    # selected session's vault; the transcripts already carry their own.
+    messages = [
+        {"role": m.role, "content": await shield.protect_text(db, body.session_ids[0], m.content)}
+        for m in body.messages
+    ]
+    prompt = build_chat_prompt(sessions_data, messages)
 
     try:
         reply = await generate_text(
@@ -217,4 +224,7 @@ async def chat(body: ChatIn, db: AsyncSession = Depends(get_db)):
         raise provider_error_to_http(
             provider_for(body.model_id), e, context="Chat failed"
         ) from e
+    # Not session-scoped in the path, so the reveal middleware cannot see it.
+    for session_id in body.session_ids:
+        reply = await shield.reveal_text(db, session_id, reply, route="/api/chat")
     return {"reply": reply}

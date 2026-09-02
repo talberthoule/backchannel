@@ -32,6 +32,7 @@ provider-specific starting point, not a forced choice.
 | `synthesizer` | meta | `new_insight` / `insight_updated` events, 75s cooldown, 120s fallback | `backend/app/services/agents/synthesizer.py` | Reconciles and enriches saved insights, detects answered questions, may elevate an item's type |
 | `opportunity_specialist` | db | `new_opportunity` events, 55s cooldown, plus final matching | `backend/app/services/agents/opportunity_specialist.py` | Matches opportunity insights against configured knowledge sources |
 | `strategic_signals` | meta | Interval, default 45s during the call | `backend/app/services/agents/strategic_signals.py` | Produces and ranks the live Signal, Risk, Next Question, Opportunity, and Action Cue cards in one call; the top three take the panel and every signal is also filed as an insight |
+| `transcript_refiner` | text | Interval, default 45s, plus a final pass; off by default | `backend/app/services/transcript_refiner.py` | Sends the tokenized transcript to a text model, local or cloud, to fix punctuation, casing, sentence boundaries and obvious mishearings; a rewrite is kept only if it carries exactly the original tokens. Built for the PII Shield, where only local models may hear audio |
 | `brief_meeting_lens` | meta | Full End Call or on demand | `backend/app/services/briefing_synthesis.py` | Drafts the factual meeting record |
 | `brief_discovery_lens` | meta | Full End Call or on demand | `backend/app/services/briefing_synthesis.py` | Drafts the broader discovery and sensemaking view |
 | `brief_arbiter` | meta | After the post-call lens drafts | `backend/app/services/briefing_synthesis.py` | Reconciles the two drafts into the settled briefing |
@@ -49,10 +50,10 @@ Cloud recommendations are grouped by role:
 | Role | Google | OpenAI |
 | --- | --- | --- |
 | Audio gateway | `gemini-3.1-flash-live-preview` | `gpt-live-transcribe` |
-| Consolidated Analyst, Principal Agent, Strategic Signals, meeting/discovery briefing lenses, Live Ask | `gemini-3.7-flash` | `gpt-5.6-terra` |
+| Consolidated Analyst, Principal Agent, Strategic Signals, meeting/discovery briefing lenses, Live Ask | `gemini-3.8-flash` | `gpt-5.6-terra` |
 | Objection Handler | `gemini-3.5-flash-lite` | `gpt-5.6-luna` |
-| Opportunity Specialist | `gemini-3.7-flash` | `gpt-5.6-luna` |
-| Briefing Arbiter | `gemini-3.7-flash` | `gpt-5.6-sol` (high effort) |
+| Opportunity Specialist | `gemini-3.8-flash` | `gpt-5.6-luna` |
+| Briefing Arbiter | `gemini-3.8-flash` | `gpt-5.6-sol` (high effort) |
 | Batch transcription | `gemini-3.5-flash-lite` | `gpt-4o-mini-transcribe` |
 
 `gpt-5.6-sol` high effort is reserved for the Briefing Arbiter. Self-hosted

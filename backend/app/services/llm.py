@@ -29,6 +29,7 @@ from app.services.llm_endpoint import (
     requires_api_key,
     resolve_endpoint,
 )
+from app.services.pii import egress as pii_egress
 from app.services.privacy import LocalOnlyModeError, allows_local_only, is_local_only
 from app.services.secrets import resolve_provider_key
 from app.services.token_usage import record_token_usage
@@ -236,6 +237,9 @@ async def generate_text(
     source: str = "",
 ) -> str:
     target = await _prepare_call(model_id, "text generation", source)
+    # The PII Shield's model-call boundary: logs the prompt when asked and
+    # refuses one that still carries a vault value (services/pii/egress.py).
+    await pii_egress.guard(prompt, system=system, model_id=model_id, session_id=session_id, source=source)
     if target.endpoint is not None:
         text, usage = await _call_openai(
             model_id, target.endpoint, prompt, system, temperature, target.key
@@ -664,6 +668,7 @@ async def generate_json(
     usage is recorded per provider call so the Tokens tab stays accurate.
     """
     target = await _prepare_call(model_id, "structured generation", source)
+    await pii_egress.guard(prompt, model_id=model_id, session_id=session_id, source=source)
     hint = schema_hint or _default_schema_hint(response_schema)
     if target.endpoint is not None:
         return await _openai_json(

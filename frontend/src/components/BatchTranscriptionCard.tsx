@@ -6,6 +6,8 @@ import { groupModels, optionLabel, optionState, runsLocally } from "../lib/model
 interface BatchTranscriptionCardProps {
   models: ModelInfo[];
   localOnly?: boolean;
+  // Names the switch behind localOnly: Privacy First or the PII Shield.
+  lockLabel?: string;
   /** Called after the live preview model changes; it edits the Audio Gateway agent's model. */
   onLiveModelChanged?: () => void;
   /** Audio Gateway agent's current model (same underlying setting as the live
@@ -13,7 +15,7 @@ interface BatchTranscriptionCardProps {
   gatewayModelId?: string;
 }
 
-export default function BatchTranscriptionCard({ models, localOnly = false, onLiveModelChanged, gatewayModelId }: BatchTranscriptionCardProps) {
+export default function BatchTranscriptionCard({ models, localOnly = false, lockLabel = "Privacy First", onLiveModelChanged, gatewayModelId }: BatchTranscriptionCardProps) {
   const [config, setConfig] = useState<TranscriptionConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -78,7 +80,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
       {groupModels(available).map((group) => (
         <optgroup key={group.provider} label={group.provider}>
           {group.models.map((model) => {
-            const { locked, suffix } = optionState(model, currentId, localOnly);
+            const { locked, suffix } = optionState(model, currentId, localOnly, lockLabel);
             return (
               <option key={model.id} value={model.id} disabled={locked}>
                 {optionLabel(model, role)}{suffix}
@@ -157,10 +159,10 @@ export default function BatchTranscriptionCard({ models, localOnly = false, onLi
 
       {localOnly && (
         <p className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 font-body text-xs text-amber-900">
-          Privacy First mode is on: only local ONNX models can transcribe. Cloud live-caption gateways are
+          {lockLabel === "Privacy First" ? "Privacy First mode" : "The PII Shield"} is on: only local ONNX models can transcribe. Cloud live-caption gateways are
           off, but the experimental on-device captioner ({hasLocalLiveModel ? "Parakeet Live" : "when available"})
           can be selected here - it is CPU-heavy, so check the fit test&apos;s live-caption feasibility first.
-          Your previous cloud choices are restored when the mode is turned off.
+          Your previous cloud choices are restored when the switch is turned off.
         </p>
       )}
 

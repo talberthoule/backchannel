@@ -19,6 +19,7 @@ from app.services.agents.prompts import (
     PRINCIPAL_AGENT_PROMPT,
     STRATEGIC_SIGNALS_PROMPT,
 )
+from app.services.transcript_refiner import SYSTEM_PROMPT as TRANSCRIPT_REFINER_PROMPT
 from app.services.transcription_runtime import SETTING_BATCH_TRANSCRIBER_MODEL
 
 # Default prompt lookup by slug (used for reset endpoint)
@@ -29,6 +30,7 @@ DEFAULT_PROMPTS = {
     "synthesizer": PRINCIPAL_AGENT_PROMPT,
     "opportunity_specialist": OPPORTUNITY_SPECIALIST_PROMPT,
     "strategic_signals": STRATEGIC_SIGNALS_PROMPT,
+    "transcript_refiner": TRANSCRIPT_REFINER_PROMPT,
     "brief_meeting_lens": BRIEF_MEETING_LENS_PROMPT,
     "brief_discovery_lens": BRIEF_DISCOVERY_LENS_PROMPT,
     "brief_arbiter": BRIEF_ARBITER_PROMPT,
@@ -111,6 +113,18 @@ SEED_CONFIGS = [
         "sub_types": "",
         "interval_seconds": 45,
         "display_order": 9,
+    },
+    {
+        "slug": "transcript_refiner",
+        "name": "Transcript Refiner",
+        "description": "Sends the tokenized transcript to a text model, local or cloud, to fix punctuation, casing, sentence boundaries and obvious mishearings; a rewrite is kept only if it carries exactly the original tokens. Built for the PII Shield, where only local models may hear audio.",
+        "agent_type": "text",
+        "model_id": "",
+        "prompt": TRANSCRIPT_REFINER_PROMPT,
+        "enabled": False,
+        "sub_types": "",
+        "interval_seconds": 45,
+        "display_order": 10,
     },
     {
         "slug": "brief_meeting_lens",

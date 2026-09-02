@@ -10,7 +10,9 @@ from app.config import settings
 from app.database import engine
 from app.models import Base
 from app.release_notes import APP_VERSION
-from app.routers import agents, analyze, artifacts, ask, chat, credentials, retranscribe, diagnostics, directives, documents, endpoints, groups, imports, knowledge, meta, models, offerings, privacy, questions, sessions, speakers, synthesis, transcripts, updates
+from app.routers import agents, analyze, artifacts, ask, chat, credentials, retranscribe, diagnostics, directives, documents, endpoints, groups, imports, knowledge, meta, models, offerings, pii_shield, privacy, questions, sessions, speakers, synthesis, transcripts, updates
+from app.services.pii.egress import PiiEgressBlocked
+from app.services.pii.reveal_middleware import PiiRevealMiddleware
 from app.services.privacy import LocalOnlyModeError
 from app.services.llm import LLMModelNotSelected
 from app.services.audio_store import cleanup_orphan_track_audio
@@ -75,6 +77,17 @@ def _add_thinking_token_column(connection, inspector, tables):
             )
 
 
+def _add_transcript_refinement_columns(connection, inspector, tables) -> None:
+    """raw_text and refined_at on transcript_entries (transcript refiner, v0.6.0)."""
+    if "transcript_entries" not in tables:
+        return
+    columns = {c["name"] for c in inspector.get_columns("transcript_entries")}
+    if "raw_text" not in columns:
+        connection.execute(text("ALTER TABLE transcript_entries ADD COLUMN raw_text TEXT"))
+    if "refined_at" not in columns:
+        connection.execute(text("ALTER TABLE transcript_entries ADD COLUMN refined_at TIMESTAMP WITH TIME ZONE"))
+
+
 async def _add_missing_columns(conn):
     """Add columns that create_all won't add to existing tables."""
     from sqlalchemy import inspect
@@ -113,6 +126,8 @@ async def _add_missing_columns(conn):
                 connection.execute(
                     text("ALTER TABLE questions ALTER COLUMN item_type TYPE VARCHAR(50)")
                 )
+
+        _add_transcript_refinement_columns(connection, inspector, tables)
 
         if "speakers" in tables:
             columns = {c["name"] for c in inspector.get_columns("speakers")}
@@ -347,9 +362,19 @@ async def lifespan(app: FastAPI):
     from app.services.provider_health import verify_untested_provider_keys
     verify_task = asyncio.create_task(verify_untested_provider_keys())
     update_task = updates.start_background_check()
+    # With the PII Shield on, have the on-device NER model ready before the
+    # first transcript segment rather than downloading it mid-call.
+    from app.services.pii.shield import warm_up_ner
+
+    async def _warm_up_ner():
+        async with async_session() as db:
+            await warm_up_ner(db)
+
+    ner_task = asyncio.create_task(_warm_up_ner())
 
     yield
     verify_task.cancel()
+    ner_task.cancel()
     updates.stop_background_check(update_task)
     await engine.dispose()
 
@@ -370,6 +395,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 updates.configure_app(app)
+# Session-scoped JSON responses get their protected values substituted back
+# for the person at this machine; every reveal is audited.
+app.add_middleware(PiiRevealMiddleware)
 # Outermost: a request with a foreign Host (DNS rebinding) or a foreign
 # Origin on a state-changing method never reaches a router.
 app.add_middleware(request_guard.RequestGuardMiddleware)
@@ -412,6 +440,8 @@ app.include_router(chat.router)
 app.include_router(ask.router)
 app.include_router(diagnostics.router)
 app.include_router(privacy.router)
+app.include_router(pii_shield.router)
+app.include_router(pii_shield.session_router)
 app.include_router(updates.router)
 app.include_router(audio_handler.router)
 
@@ -423,6 +453,11 @@ async def local_only_mode_handler(request: Request, exc: LocalOnlyModeError):
 
 @app.exception_handler(LLMModelNotSelected)
 async def model_not_selected_handler(request: Request, exc: LLMModelNotSelected):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(PiiEgressBlocked)
+async def pii_egress_blocked_handler(request: Request, exc: PiiEgressBlocked):
     return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 

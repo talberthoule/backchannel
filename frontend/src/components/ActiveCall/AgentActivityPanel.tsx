@@ -143,6 +143,7 @@ export function summarizeAgents(agents: AgentActivityRecord[], now: number) {
       (agent) =>
         agent.state === "blocked"
         && agent.blocked_reason !== "privacy_first"
+        && agent.blocked_reason !== "pii_shield"
         && agent.blocked_reason !== "no_model",
     ).length,
     // Current state, not history: a transient error that the agent recovered
@@ -171,6 +172,9 @@ export default function AgentActivityPanel({
   );
   const privacyBlocked = snapshot?.agents.filter(
     (agent) => agent.blocked_reason === "privacy_first",
+  ).length || 0;
+  const shieldBlocked = snapshot?.agents.filter(
+    (agent) => agent.blocked_reason === "pii_shield",
   ).length || 0;
 
   return (
@@ -212,6 +216,11 @@ export default function AgentActivityPanel({
         {privacyBlocked > 0 && (
           <span className="flex-shrink-0 rounded-full bg-amber-100 px-2 py-1 font-body text-xs font-medium text-amber-800">
             {privacyBlocked} agent{privacyBlocked === 1 ? "" : "s"} off: Privacy First
+          </span>
+        )}
+        {shieldBlocked > 0 && (
+          <span className="flex-shrink-0 rounded-full bg-amber-100 px-2 py-1 font-body text-xs font-medium text-amber-800">
+            Live captions off: PII Shield
           </span>
         )}
         <span className="ml-auto flex-shrink-0 text-brand-mid-gray" aria-hidden="true">

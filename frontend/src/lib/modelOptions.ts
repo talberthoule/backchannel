@@ -50,14 +50,19 @@ export function optionLabel(model: ModelInfo, role?: string): string {
  * The currently stored model is never locked, so a picker always shows what
  * an agent is actually set to.
  */
-export function optionState(model: ModelInfo, currentId: string | undefined, localOnly: boolean) {
+export function optionState(
+  model: ModelInfo,
+  currentId: string | undefined,
+  localOnly: boolean,
+  lockLabel = "Privacy First",
+) {
   const cloudBlocked = localOnly && !runsLocally(model);
   const keyLocked = model.key_available === false;
   // An endpoint model is only "cloud" when its server is not on your machine or
   // LAN, so name that reason instead of implying the model itself is hosted.
   const cloudSuffix = model.endpoint_id
-    ? " - endpoint is not on your machine/LAN, off in Privacy First"
-    : " - cloud model, off in Privacy First";
+    ? ` - endpoint is not on your machine/LAN, off in ${lockLabel}`
+    : ` - cloud model, off in ${lockLabel}`;
   return {
     locked: (keyLocked || cloudBlocked) && model.id !== currentId,
     suffix: cloudBlocked

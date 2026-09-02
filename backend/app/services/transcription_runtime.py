@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import MODEL_REGISTRY
 from app.models import AgentConfig
 from app.services.app_settings import get_app_setting, set_app_setting
+from app.services.pii.state import shield_enabled
 from app.services.privacy import DEFAULT_LOCAL_BATCH_MODEL, get_local_only, is_local_model
 
 SETTING_BATCH_TRANSCRIBER_MODEL = "transcription.batch.model_id"
@@ -39,6 +40,21 @@ async def _get_audio_gateway_config(db: AsyncSession) -> AgentConfig | None:
     return result.scalar_one_or_none()
 
 
+async def audio_lock_reason(db: AsyncSession) -> str:
+    """Why call audio may not leave this machine right now, or "".
+
+    Two switches lock audio to local models. Privacy First locks everything.
+    The PII Shield locks audio alone: text can be tokenized before a cloud
+    model sees it, audio cannot, so with the shield on the batch transcriber
+    and the live gateway must be local while text models stay free.
+    """
+    if await get_local_only(db):
+        return "Privacy First mode is on"
+    if await shield_enabled(db):
+        return "The PII Shield is on"
+    return ""
+
+
 async def get_transcription_runtime_config(db: AsyncSession) -> TranscriptionRuntimeConfig:
     configured_model = await get_app_setting(
         db,
@@ -48,9 +64,9 @@ async def get_transcription_runtime_config(db: AsyncSession) -> TranscriptionRun
     if (
         is_supported_transcription_model(configured_model)
         and not is_local_model(configured_model)
-        and await get_local_only(db)
+        and await audio_lock_reason(db)
     ):
-        # Privacy First mode: never send audio to a cloud transcriber.
+        # Privacy First or the PII Shield: never send audio to a cloud transcriber.
         configured_model = DEFAULT_LOCAL_BATCH_MODEL
 
     # The live preview model is the Audio Gateway agent's model; keep the two
@@ -72,10 +88,10 @@ async def get_transcription_runtime_config(db: AsyncSession) -> TranscriptionRun
 async def set_batch_transcriber_model(db: AsyncSession, model_id: str) -> TranscriptionRuntimeConfig:
     if model_id and not is_supported_transcription_model(model_id):
         raise ValueError("Selected model is not available for batch audio transcription.")
-    if model_id and not is_local_model(model_id) and await get_local_only(db):
-        raise ValueError(
-            "Privacy First mode is on: only local transcription models can be selected."
-        )
+    if model_id and not is_local_model(model_id):
+        reason = await audio_lock_reason(db)
+        if reason:
+            raise ValueError(f"{reason}: only local transcription models can be selected.")
     await set_app_setting(db, SETTING_BATCH_TRANSCRIBER_MODEL, model_id)
     await db.commit()
     return await get_transcription_runtime_config(db)
@@ -84,11 +100,13 @@ async def set_batch_transcriber_model(db: AsyncSession, model_id: str) -> Transc
 async def set_live_preview_model(db: AsyncSession, model_id: str) -> TranscriptionRuntimeConfig:
     if model_id and not is_supported_live_model(model_id):
         raise ValueError("Selected model is not available for live interim transcription.")
-    if model_id and not is_local_model(model_id) and await get_local_only(db):
-        raise ValueError(
-            "Privacy First mode is on: the live audio gateway is disabled and only "
-            "local models can be selected."
-        )
+    if model_id and not is_local_model(model_id):
+        reason = await audio_lock_reason(db)
+        if reason:
+            raise ValueError(
+                f"{reason}: the cloud live audio gateway is disabled and only "
+                "local models can be selected."
+            )
     gateway = await _get_audio_gateway_config(db)
     if gateway is None:
         raise ValueError("Audio gateway agent is not configured.")

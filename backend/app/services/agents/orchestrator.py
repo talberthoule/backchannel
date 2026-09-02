@@ -22,6 +22,12 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import async_session
 from app.models import Directive, Question
+from app.services.transcript_refiner import (
+    REFINER_LIVE_WINDOW,
+    REFINER_SLUG as TRANSCRIPT_REFINER_SLUG,
+    refine_session,
+    update_payload as refiner_update_payload,
+)
 from app.services.agents.activity import (
     ActivityRegistry,
     classify_error,
@@ -98,6 +104,18 @@ DRAIN_MODE_FULL = "full"
 DRAIN_MODE_SKIP_ANALYSIS = "skip_analysis"
 DRAIN_MODE_MINIMAL = "minimal"
 
+_SHIELD_GATEWAY_REMEDY = (
+    "Cloud live captions would hear the names the shield withholds. "
+    "Switch the Audio Bridge to the on-device captioner (Admin -> Agents) "
+    "or turn off the PII Shield (Admin -> Privacy)."
+)
+
+
+def _shield_locks_gateway(slug: str, audio_local_only: bool, model_id: str) -> bool:
+    """The PII Shield admits only an on-device model as the audio gateway."""
+    return slug == "audio_gateway" and audio_local_only and not is_local_live_model(model_id)
+
+
 _ACTIVITY_AGENTS = (
     ("audio_gateway", "Audio Bridge", "stream", None, True),
     (
@@ -129,6 +147,7 @@ _ACTIVITY_AGENTS = (
         True,
     ),
     ("strategic_signals", "Strategic Signals", "interval", 45, False),
+    (TRANSCRIPT_REFINER_SLUG, "Transcript Refiner", "interval", 45, False),
     ("brief_meeting_lens", "Briefing Meeting Lens", "post_call", None, True),
     ("brief_discovery_lens", "Briefing Discovery Lens", "post_call", None, True),
     ("brief_arbiter", "Briefing Arbiter", "post_call", None, True),
@@ -226,6 +245,7 @@ class AgentOrchestrator:
         local_only: bool = False,
         admitted_models: set[str] | None = None,
         board_stubs: list[dict] | None = None,
+        audio_local_only: bool = False,
     ):
         self.session_id = session_id
         self.websocket = websocket
@@ -235,6 +255,10 @@ class AgentOrchestrator:
         self.speakers = speakers
         self._agent_configs = agent_configs or {}
         self.local_only = local_only
+        # The PII Shield locks audio alone: a cloud live gateway would hear
+        # the names the shield exists to withhold, so it is skipped while
+        # cloud text models (which receive tokens only) stay admitted.
+        self.audio_local_only = audio_local_only or local_only
         # Model ids Privacy First admits, resolved by the caller because the
         # verdict needs a database read (see privacy.admitted_model_ids) and
         # this constructor is synchronous. None means "not resolved": fall back
@@ -273,6 +297,8 @@ class AgentOrchestrator:
                 return False
             model_id = _get_model(slug)
             if not model_id:
+                return False
+            if _shield_locks_gateway(slug, self.audio_local_only, model_id):
                 return False
             if not self.local_only:
                 return enabled
@@ -387,6 +413,10 @@ class AgentOrchestrator:
                 state = "blocked"
                 blocked_reason = "no_model"
                 remedy = "Choose a model for this agent in Admin -> Agents."
+            elif not admitted and not self.local_only and _shield_locks_gateway(slug, self.audio_local_only, _get_model(slug)):
+                state = "blocked"
+                blocked_reason = "pii_shield"
+                remedy = _SHIELD_GATEWAY_REMEDY
             elif not admitted:
                 state = "blocked"
                 blocked_reason = "privacy_first"
@@ -459,6 +489,7 @@ class AgentOrchestrator:
         self._objection_task: asyncio.Task | None = None
         self._gateway_task: asyncio.Task | None = None
         self._strategic_signals_task: asyncio.Task | None = None
+        self._refiner_task = None
         self._stopped = False
 
         # Recent insights for dedup (text -> timestamp)
@@ -494,7 +525,12 @@ class AgentOrchestrator:
         """
         if mode == DRAIN_MODE_MINIMAL:
             return []
-        stages = ["final_insights", "insight_reconciliation"]
+        stages = []
+        # First, so the final insights and the briefing read the corrected
+        # wording rather than the transcriber's.
+        if self._is_enabled(TRANSCRIPT_REFINER_SLUG, False):
+            stages.append("transcript_refinement")
+        stages.extend(["final_insights", "insight_reconciliation"])
         if mode != DRAIN_MODE_SKIP_ANALYSIS:
             stages.append("opportunity_matching")
             if self.briefing_enabled():
@@ -557,6 +593,9 @@ class AgentOrchestrator:
             self._strategic_signals_task = asyncio.create_task(
                 self._strategic_signals_loop()
             )
+
+        if self._is_enabled(TRANSCRIPT_REFINER_SLUG, False):
+            self._refiner_task = asyncio.create_task(self._transcript_refiner_loop())
 
         ca_interval = self._get_interval("consolidated_analyst", settings.TEXT_AGENT_INTERVAL_SECONDS)
         logger.info(
@@ -724,6 +763,7 @@ class AgentOrchestrator:
             self._objection_task,
             self._gateway_task,
             self._strategic_signals_task,
+            self._refiner_task,
         ]:
             if task and not task.done():
                 task.cancel()
@@ -811,6 +851,12 @@ class AgentOrchestrator:
                 await self._strategic_signals_task
             except (asyncio.CancelledError, Exception):
                 pass
+        if self._refiner_task and not self._refiner_task.done():
+            self._refiner_task.cancel()
+            try:
+                await self._refiner_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
         result: dict = {
             "transcript_available": False,
@@ -833,6 +879,12 @@ class AgentOrchestrator:
         transcript_available = transcript_window != "(No recent transcript)"
         result["transcript_available"] = transcript_available
 
+        await self._run_transcript_refinement_stage(
+            stages,
+            progress_callback,
+            drain_total_steps,
+            result,
+        )
         await self._run_final_insights_stage(
             stages,
             progress_callback,
@@ -1379,6 +1431,81 @@ class AgentOrchestrator:
                 )
 
             await asyncio.sleep(interval)
+
+    async def _refine_recent_transcript(self, *, limit: int | None, source_label: str) -> int:
+        """Refine pending entries and push each rewrite to the interface."""
+        from app.database import async_session
+
+        model_id = self._get_model(TRANSCRIPT_REFINER_SLUG)
+        async with async_session() as db:
+            changed = await refine_session(db, self.session_id, model_id, limit=limit)
+            payloads = [refiner_update_payload(entry) for entry in changed]
+            await db.commit()
+        for payload in payloads:
+            try:
+                await self.websocket.send_json({"type": "transcript_updated", "data": payload})
+            except Exception:  # noqa: BLE001 - a closed socket must not stop the pass
+                break
+        if payloads:
+            logger.info("[%s] refined %d transcript entries", source_label, len(payloads))
+        return len(payloads)
+
+    async def _transcript_refiner_loop(self):
+        interval = self._get_interval(TRANSCRIPT_REFINER_SLUG, 45)
+        await asyncio.sleep(interval)
+        while not self._stopped:
+            await self.activity.cycle_started(TRANSCRIPT_REFINER_SLUG)
+            try:
+                count = await self._refine_recent_transcript(limit=REFINER_LIVE_WINDOW, source_label="transcript_refiner")
+                await self.activity.cycle_finished(
+                    TRANSCRIPT_REFINER_SLUG,
+                    {
+                        "kind": "insights" if count else "no_findings",
+                        "detail": f"{count} transcript lines refined." if count else "Nothing new to refine.",
+                        "items": count,
+                    },
+                )
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Transcript refiner loop error: {e}")
+                await self.activity.cycle_error(
+                    TRANSCRIPT_REFINER_SLUG,
+                    classify_error(e, self._get_model(TRANSCRIPT_REFINER_SLUG)),
+                )
+            await asyncio.sleep(interval)
+
+    async def _run_transcript_refinement_stage(
+        self,
+        stages: list[str],
+        progress_callback,
+        drain_total_steps: int,
+        result: dict,
+    ) -> None:
+        if "transcript_refinement" not in stages:
+            return
+        step = 1 + stages.index("transcript_refinement")
+        await _emit_progress(
+            progress_callback,
+            "transcript_refinement",
+            "Refining the transcript wording",
+            drain_progress_percent(step, drain_total_steps),
+        )
+        await self.activity.cycle_started(TRANSCRIPT_REFINER_SLUG)
+        try:
+            count = await self._refine_recent_transcript(limit=None, source_label="transcript_refinement")
+            result["transcript_refined"] = count
+            await self.activity.cycle_finished(
+                TRANSCRIPT_REFINER_SLUG,
+                {"kind": "insights" if count else "no_findings", "detail": f"{count} lines refined at call end.", "items": count},
+            )
+        except Exception as e:  # noqa: BLE001 - the drain degrades past a failed stage
+            logger.error(f"Transcript refinement stage failed: {e}")
+            result["stage_errors"].append({"stage": "transcript_refinement", "error": str(e)})
+            await self.activity.cycle_error(
+                TRANSCRIPT_REFINER_SLUG,
+                classify_error(e, self._get_model(TRANSCRIPT_REFINER_SLUG)),
+            )
 
     async def _strategic_signals_loop(self):
         interval = self._get_interval(STRATEGIC_SIGNALS_SLUG, 45)

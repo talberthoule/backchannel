@@ -124,6 +124,110 @@ selected cloud models. The enable flow in the UI shows the full list of
 features that stop working before the mode is applied
 (`privacy_impact()` in `backend/app/services/privacy.py`).
 
+## PII Shield (tokenized personal data)
+
+Privacy First decides *where* processing happens; the PII Shield decides
+*what* any model, local or cloud, gets to read. It lives in Admin -> Privacy
+(`GET/PUT /api/pii-shield`, persisted as the `pii.shield` app setting, off by
+default) and is implemented in `backend/app/services/pii/`.
+
+Encode at ingress. Every path that writes human text passes it through
+`shield.protect_text` before the row exists: live transcript segments
+(`ws/audio_handler.py`), transcript and audio imports and re-transcription
+(`routers/imports.py`), manual entries, directives (REST and the mid-call
+WebSocket message), session name, notes and meeting context, speaker names
+(`shield.protect_name`: a speaker's name is a person's name by definition),
+the local document excerpt, the typed question in Ask and the user turns in
+Chat. Because the stored text is already tokenized, every prompt builder
+(the analyst, objection handler, synthesizer, strategic signals, briefing,
+chat, ask, speaker-context enhancement) is clean by construction and needed
+no change.
+
+Tokens are `[CATEGORY_n]` (`[PERSON_1]`, `[EMAIL_2]`, `[ORG_1]`) and are
+numbered per session: the same value gets the same token within a session, so
+a model can follow referents across a call, while nothing links a person
+across sessions. Categories: PERSON, ORG, LOCATION (off by default), EMAIL,
+PHONE, SSN, CARD (Luhn-checked), IP, ADDRESS.
+
+Detection is layered and entirely on-device:
+
+- pattern recognizers for the structured categories
+  (`services/pii/recognizers.py`);
+- the session's roster matched as whole words: its speakers, the workspace
+  protected-terms list (client companies, code names), and every person,
+  organization and place the session's vault already holds, so a name
+  caught once is caught on every later line even without the model; each
+  capitalized part of a multi-word name maps to the same token;
+- introductions ("my name is", "this is") for people;
+- optionally `Xenova/bert-base-NER` (the CoNLL-2003 BERT NER model as a
+  quantized ONNX file, about 110 MB) with a WordPiece tokenizer implemented
+  in `services/pii/ner.py`, downloaded once into `DATA_DIR/pii-models/` and
+  run with the onnxruntime already shipped for diarization. When it cannot
+  be fetched the shield keeps working with the other layers and the status
+  says so.
+
+The vault (`services/pii/vault.py`, table `pii_vault_entries`) stores each
+value Fernet-encrypted under a key derived with HKDF from the credentials
+master key (`secrets.derive_subkey`), with a keyed HMAC of the normalized
+value for lookup, so the table reveals neither values nor whether two
+sessions share one.
+
+Decode only at the edge. `shield.reveal_text` is called from exactly three
+places: `PiiRevealMiddleware` (every session-scoped JSON response and the
+session list), `RevealingWebSocket` (every live message), and the exports
+and `/api/chat`, which are not session-scoped in the path. Nothing under
+`services/agents` or `services/llm.py` imports it. Exports carry tokens
+unless `?reveal=1` is passed (the Export menu's "Include personal data"
+box). Every reveal appends a row to `pii_reveal_events` (session, route,
+token count); the Privacy tab shows the last 24 hours.
+
+Audio is enforced, not advised. Audio cannot be tokenized, so while the
+shield is on `transcription_runtime.audio_lock_reason` locks audio to local
+models the way Privacy First does, but for audio alone: the batch
+transcriber is coerced to `local-whisper-base` when a cloud one is
+configured and the setters reject a cloud choice; the orchestrator skips a
+cloud live-caption gateway (blocked reason `pii_shield`, shown as "Live
+captions off: PII Shield" in the live activity panel) and admits only the
+on-device captioner. Cloud text models stay allowed because they receive
+tokens only. With the shield on, document upload takes the local extraction
+path and never sends the file. `shield.status` reports each row honestly,
+including a cloud gateway that is configured but paused.
+
+Transcript refinement closes the quality gap that local-only audio opens.
+The `transcript_refiner` agent (off by default; Admin -> Agents, any text
+model, local or cloud, interval default 45s) sends the tokenized text of
+recent entries to its model to fix punctuation, casing, sentence boundaries
+and obvious mishearings, and writes the result back to `transcript_entries`
+with the transcriber's text kept in `raw_text` and `refined_at` set. A
+rewrite is accepted only when it carries exactly the same multiset of
+tokens as the original and stays within a length band
+(`services/transcript_refiner.py`, `accept_refinement`), so a model can
+never drop, invent or renumber a token. It runs as a live interval agent
+(browser gets `transcript_updated` messages), as the first drain stage at
+call end, and before post-import analysis.
+
+Two ways to see that it works. The prompt log (`prompt_log` in the shield
+settings, "Record outbound prompts" on the Privacy tab) appends every prompt
+to `DATA_DIR/prompt-log/outbound.jsonl` exactly as it leaves for a model,
+with source, model and session; `GET /api/pii-shield/egress` lists the
+newest entries and the Privacy tab shows them with a "tokens only" or
+"blocked" badge. It is written raw, bypassing the log scrubber, because a
+scrubbed record could not show a leak; it never leaves the machine and
+`DELETE /api/pii-shield/egress` removes it. Independently of the log, while
+the shield is on every text prompt passes an egress tripwire
+(`services/pii/egress.py`, called from `generate_text` and `generate_json`):
+a prompt still carrying a value the vault has seen in plaintext is refused
+before it is sent (HTTP 409 `PiiEgressBlocked`, an audit row with route
+`egress-blocked:<source>`), so a gap upstream costs one model call rather
+than one disclosure. The transcribers log segment lengths, never words,
+because the shield has not seen a segment when it is transcribed.
+
+Per-session endpoints: `GET /api/sessions/{id}/pii/summary` (counts, no
+reveal), `GET /api/sessions/{id}/pii` (the ledger with values; audited), and
+`POST /api/sessions/{id}/pii/protect` to run the encode path over a session
+recorded before the shield was on. `POST /api/pii-shield/preview` shows what
+a sentence turns into without touching the vault.
+
 ## Self-hosted endpoints
 
 Any number of OpenAI-shaped chat servers can be registered in
@@ -273,7 +377,7 @@ Privacy First UI admission keys off; `endpoint_id` is set for models served
 by a saved custom endpoint.
 
 Current entries include Google Gemini text/audio models
-(`gemini-3.7-flash`, `gemini-3.5-flash-lite`, `gemini-3.5-flash`, `gemini-3-flash-preview`, `gemini-3.1-pro-preview`,
+(`gemini-3.8-flash`, `gemini-3.7-flash`, `gemini-3.5-flash-lite`, `gemini-3.5-flash`, `gemini-3-flash-preview`, `gemini-3.1-pro-preview`,
 `gemini-3.1-flash-lite`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`,
 `gemini-2.5-pro`), the live gateway model
 `gemini-3.1-flash-live-preview`, OpenAI text models (the GPT-5.6 family

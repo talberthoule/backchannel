@@ -116,7 +116,7 @@ class OpenAITranscriber:
         )
         if not text:
             return None
-        logger.info(f"Transcribed: '{text[:80]}'")
+        logger.info(f"Transcribed segment ({len(text)} chars)")
         return text
 
 
@@ -208,5 +208,5 @@ class OpenAIChatTranscriber:
         text = filter_transcript_text(_chat_completion_text(payload))
         if not text:
             return None
-        logger.info(f"Transcribed: '{text[:80]}'")
+        logger.info(f"Transcribed segment ({len(text)} chars)")
         return text

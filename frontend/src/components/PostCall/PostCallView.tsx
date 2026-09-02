@@ -129,6 +129,17 @@ export default function PostCallView({
   // re-request; leaving for another tab and coming back does.
   const wantsUsage = activeTab === "overview" || activeTab === "tokens";
 
+  // How many values the PII Shield holds for this session. Counts only: the
+  // request decrypts nothing, so it is not a reveal.
+  const [shieldedCount, setShieldedCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    api.getSessionPiiSummary(session.id)
+      .then((summary) => { if (!cancelled) setShieldedCount(summary.total); })
+      .catch(() => { if (!cancelled) setShieldedCount(0); });
+    return () => { cancelled = true; };
+  }, [session.id]);
+
   useEffect(() => {
     if (!wantsUsage) return;
     let cancelled = false;
@@ -348,7 +359,18 @@ export default function PostCallView({
             >
               Resume Call
             </button>
-            <ExportMenu sessionId={session.id} />
+            {shieldedCount > 0 && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border border-brand-teal/30 bg-brand-teal/10 px-2.5 py-1 font-body text-xs font-medium text-brand-teal"
+                title="Names, contact details and identifiers in this session are stored as tokens; the real values are shown only here."
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z" />
+                </svg>
+                {shieldedCount} shielded
+              </span>
+            )}
+            <ExportMenu sessionId={session.id} shielded={shieldedCount > 0} />
             <button
               onClick={onDeleteSession}
               className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 hover:border-red-300"

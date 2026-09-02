@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import CallSegment, Speaker, TranscriptEntry
+from app.services.pii import shield
 from app.services.audio_store import SegmentAudioWriter
 from app.services.batch_transcriber import TranscriptionError
 from app.services.file_parsing import parse_docx, parse_markdown, parse_text
@@ -109,6 +110,7 @@ async def _persist_diarized_segments(
             continue
         if not text:
             continue
+        text = await shield.protect_text(db, session_id, text)
 
         local_speaker = resolve_live_mic_speaker(seg.speaker_id, speakers, local_track)
         unknown_speaker = is_unknown_auto_speaker(seg.speaker_id)
@@ -304,7 +306,7 @@ async def import_transcript(
     count = 0
     for text in segments:
         seq = await get_next_sequence(session_id, db)
-        entry = TranscriptEntry(session_id=session_id, text=text, sequence=seq)
+        entry = TranscriptEntry(session_id=session_id, text=await shield.protect_text(db, session_id, text), sequence=seq)
         db.add(entry)
         count += 1
 

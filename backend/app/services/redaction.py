@@ -70,14 +70,18 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
-def register_secret(value: str | bytes | None) -> None:
-    """Remember a plaintext secret so any later text carrying it is scrubbed."""
+def register_secret(value: str | bytes | None, *, min_length: int = MIN_REGISTERED_LENGTH) -> None:
+    """Remember a plaintext secret so any later text carrying it is scrubbed.
+
+    ``min_length`` exists for the PII vault, whose values (a name, a phone
+    number) are shorter than any credential yet must never reach a log.
+    """
     if isinstance(value, bytes):
         value = value.decode("utf-8", "ignore")
     if not value:
         return
     value = value.strip()
-    if len(value) < MIN_REGISTERED_LENGTH:
+    if len(value) < min_length:
         return
     with _lock:
         if value in _exempt:

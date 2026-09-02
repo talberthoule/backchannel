@@ -72,6 +72,23 @@ _MIN_WORD_COUNT = 2
 _ENERGY_FLOOR = 0.005  # RMS energy below this is likely not real speech
 
 
+# A line that is one short thing said over and over ("Oh, my God. Oh, my
+# God. ..." / "In In In In ..." / "A... A... A...") is a decoder loop, not
+# speech. Nobody repeats a phrase this many times in one segment.
+_REPEAT_MIN_TOKENS = 6
+_REPEAT_MAX_DISTINCT_RATIO = 0.34
+# Whisper emits bracketed non-words ("[S] [S] [S]", "[BLANK_AUDIO]") on
+# noise; a line made only of those carries nothing.
+_BRACKET_JUNK = re.compile(r"^\s*(?:\[[A-Za-z_ ]{1,16}\]\s*[.,]?\s*)+$")
+
+
+def _is_repetitive(text: str) -> bool:
+    words = [w for w in re.split(r"[\s.,!?;:\-]+", text.lower()) if w]
+    if len(words) < _REPEAT_MIN_TOKENS:
+        return False
+    return len(set(words)) / len(words) <= _REPEAT_MAX_DISTINCT_RATIO
+
+
 def _is_hallucination(text: str) -> bool:
     """Check if transcribed text matches known hallucination patterns."""
     stripped = text.strip().rstrip(".")
@@ -80,6 +97,8 @@ def _is_hallucination(text: str) -> bool:
     for pattern in _HALLUCINATION_PATTERNS:
         if pattern.search(stripped):
             return True
+    if _BRACKET_JUNK.match(text) or _is_repetitive(text):
+        return True
     return False
 
 
@@ -96,10 +115,12 @@ def filter_transcript_text(text: str) -> str | None:
     if not text:
         return None
     if _is_hallucination(text):
-        logger.info(f"Filtered hallucinated transcript: '{text}'")
+        # Length only: transcript text is personal data and the PII Shield
+        # has not seen it yet at this point.
+        logger.info(f"Filtered hallucinated transcript ({len(text)} chars)")
         return None
     if len(text.split()) < _MIN_WORD_COUNT:
-        logger.info(f"Filtered short transcript: '{text}'")
+        logger.info(f"Filtered short transcript ({len(text)} chars)")
         return None
     return text
 
@@ -164,7 +185,7 @@ class BatchTranscriber:
             text = filter_transcript_text(response.text or "")
             if not text:
                 return None
-            logger.info(f"Transcribed: '{text[:80]}'")
+            logger.info(f"Transcribed segment ({len(text)} chars)")
             return text
 
         except Exception as e:

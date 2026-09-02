@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.services.pii import shield
 from app.services.secrets import data_dir
 from app.models import AgentConfig, CallSegment, Session, SessionAgentOverride, TokenUsage
 from app.schemas import (
@@ -43,12 +44,14 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 @router.post("", response_model=SessionOut, status_code=201)
 async def create_session(body: SessionCreate, db: AsyncSession = Depends(get_db)):
     session = Session(
+        id=uuid.uuid4(),
         name=body.name,
         notes=body.notes,
         meeting_type=normalize_meeting_type(body.meeting_type),
         meeting_context=body.meeting_context,
     )
     db.add(session)
+    await shield.protect_fields(db, session.id, session, ("name", "notes", "meeting_context"))
     await db.commit()
     await db.refresh(session)
     return session
@@ -74,7 +77,7 @@ async def update_session(session_id: uuid.UUID, body: SessionUpdate, db: AsyncSe
     if not session:
         raise HTTPException(404, "Session not found")
     if body.name is not None:
-        session.name = body.name
+        session.name = await shield.protect_text(db, session_id, body.name)
     if body.state is not None:
         if body.state == "active" and session.state == "pre_call":
             session.started_at = datetime.now(timezone.utc)
@@ -85,11 +88,11 @@ async def update_session(session_id: uuid.UUID, body: SessionUpdate, db: AsyncSe
             session.ended_at = datetime.now(timezone.utc)
         session.state = body.state
     if body.notes is not None:
-        session.notes = body.notes
+        session.notes = await shield.protect_text(db, session_id, body.notes)
     if body.meeting_type is not None:
         session.meeting_type = normalize_meeting_type(body.meeting_type)
     if body.meeting_context is not None:
-        session.meeting_context = body.meeting_context
+        session.meeting_context = await shield.protect_text(db, session_id, body.meeting_context)
     if body.group_id is not None:
         session.group_id = body.group_id
     await db.commit()
@@ -194,6 +197,7 @@ async def delete_session(session_id: uuid.UUID, db: AsyncSession = Depends(get_d
         raise HTTPException(404, "Session not found")
     await db.delete(session)
     await db.commit()
+    shield.forget_session(session_id)
 
 
 @router.post("/{session_id}/enhance-insights", response_model=EnhanceInsightsOut)

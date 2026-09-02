@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import Document, Question, Session, SessionSynthesis, Speaker, TranscriptEntry
 from app.schemas import QuestionOut
+from app.services.pii import shield
 from app.services.custom_endpoints import endpoint_model_entry
 from app.services.live_chat_context import (
     LIVE_SYSTEM_PROMPT,
@@ -159,8 +160,9 @@ async def ask(session_id: uuid.UUID, body: AskIn, db: AsyncSession = Depends(get
     if await is_local_only() and not await allows_local_only(body.model_id):
         raise LocalOnlyModeError("asking the call a question", body.model_id)
 
+    question = await shield.protect_text(db, session_id, body.question)
     context = await load_live_context(session_id, db)
-    prompt = build_live_prompt(context, body.question)
+    prompt = build_live_prompt(context, question)
 
     started = time.monotonic()
     try:
@@ -185,7 +187,7 @@ async def ask(session_id: uuid.UUID, body: AskIn, db: AsyncSession = Depends(get
 
     row = build_asked_row(
         session_id,
-        body.question,
+        question,
         answer,
         model_name=entry.get("name") or body.model_id,
         elapsed_seconds=time.monotonic() - started,

@@ -9,6 +9,9 @@ from sqlalchemy import func, select
 
 from app.database import async_session
 from app.models import AgentConfig, CallSegment, Question, Session, SessionAgentOverride, Speaker, TranscriptEntry
+from app.services.transcription_runtime import audio_lock_reason
+from app.services.pii.ws import RevealingWebSocket
+from app.services.pii import shield
 from app.services.agents.orchestrator import AgentOrchestrator, drain_progress_percent
 from app.services.privacy import admitted_model_ids
 from app.services.session_manager import get_active_directives, get_document_summaries, get_next_sequence
@@ -537,6 +540,12 @@ def _create_transcript_emitter(
 
     async def _emit_transcript(speaker_auto_id: str, pcm_bytes: bytes, text: str):
         """Persist an already-transcribed diarized segment in original audio order."""
+        # First of all: the dedupe and deferral paths below log an excerpt of
+        # the segment, and the agents' buffer is fed from this variable, so
+        # nothing downstream may see the text before the shield has (ALP-352).
+        async with async_session() as db:
+            text = await shield.protect_text(db, session_id, text)
+            await db.commit()
         # Ahead of speaker resolution on purpose: a suppressed twin must not
         # get as far as auto-creating the phantom speaker it would be
         # attributed to (ALP-301).
@@ -607,6 +616,9 @@ def _create_transcript_emitter(
 
 async def _audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
     await websocket.accept()
+    # Everything sent from here on - transcript lines, insights, briefings -
+    # passes through the shield's decode path on its way to the interface.
+    websocket = RevealingWebSocket(websocket, session_id)
 
     async with async_session() as db:
         session = await db.get(Session, session_id)
@@ -675,6 +687,10 @@ async def _audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         (cfg.model_id for cfg in agent_configs.values() if getattr(cfg, "model_id", "")),
         local_only,
     )
+    # Audio may not leave the machine while the PII Shield is on, whatever
+    # the text models are allowed to do (transcription_runtime.audio_lock_reason).
+    async with async_session() as db:
+        audio_local_only = bool(await audio_lock_reason(db))
 
     # --- Agent Orchestrator ---
     orchestrator = AgentOrchestrator(
@@ -690,6 +706,7 @@ async def _audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         local_only=local_only,
         admitted_models=admitted_models,
         board_stubs=board_stubs,
+        audio_local_only=audio_local_only,
     )
 
     # --- Speaker diarization ---

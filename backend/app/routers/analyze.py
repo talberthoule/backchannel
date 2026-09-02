@@ -5,12 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
 from app.services.llm import generate_text
 from app.database import get_db
 from app.models import Directive, Question, Session, TranscriptEntry
-from app.services.briefing_synthesis import agent_model_id
+from app.services.briefing_synthesis import agent_model_id, load_agent_configs
 from app.services.meeting_context import build_meeting_context_text
+from app.services.transcript_refiner import REFINER_SLUG, refine_session
 
 router = APIRouter(prefix="/api/sessions/{session_id}/analyze", tags=["analyze"])
 
@@ -31,6 +31,19 @@ async def analyze_transcript(session_id: uuid.UUID, db: AsyncSession = Depends(g
     entries = result.scalars().all()
     if not entries:
         raise HTTPException(400, "No transcript entries to analyze")
+
+    # The refiner, when enabled, corrects the wording first so the analysis
+    # reads what a person would. It works on tokenized text only.
+    refiner_cfg = (await load_agent_configs()).get(REFINER_SLUG)
+    if refiner_cfg and refiner_cfg.enabled and refiner_cfg.model_id:
+        await refine_session(db, session_id, refiner_cfg.model_id)
+        await db.commit()
+        result = await db.execute(
+            select(TranscriptEntry)
+            .where(TranscriptEntry.session_id == session_id)
+            .order_by(TranscriptEntry.sequence)
+        )
+        entries = result.scalars().all()
 
     # Load directives
     result = await db.execute(

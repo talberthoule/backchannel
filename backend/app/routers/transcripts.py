@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import TranscriptEntry
 from app.schemas import TranscriptEntryOut
+from app.services.pii import shield
 from app.services.session_manager import get_next_sequence
 
 router = APIRouter(prefix="/api/sessions/{session_id}/transcripts", tags=["transcripts"])
@@ -26,7 +27,8 @@ class TranscriptUpdate(BaseModel):
 async def create_transcript(session_id: uuid.UUID, body: TranscriptCreate, db: AsyncSession = Depends(get_db)):
     """Save a transcript entry from the browser's Speech Recognition API."""
     seq = await get_next_sequence(session_id, db)
-    entry = TranscriptEntry(session_id=session_id, text=body.text, sequence=seq, speaker_id=body.speaker_id)
+    text = await shield.protect_text(db, session_id, body.text)
+    entry = TranscriptEntry(session_id=session_id, text=text, sequence=seq, speaker_id=body.speaker_id)
     db.add(entry)
     await db.commit()
     return {"ok": True}

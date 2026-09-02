@@ -347,6 +347,9 @@ class TranscriptEntryOut(BaseModel):
     timestamp: datetime
     sequence: int
     speaker_id: uuid.UUID | None = None
+    # Present once the transcript refiner has rewritten the entry.
+    raw_text: str | None = None
+    refined_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

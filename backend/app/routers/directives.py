@@ -7,13 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import Directive
 from app.schemas import DirectiveCreate, DirectiveOut, DirectiveUpdate
+from app.services.pii import shield
 
 router = APIRouter(prefix="/api/sessions/{session_id}/directives", tags=["directives"])
 
 
 @router.post("", response_model=DirectiveOut, status_code=201)
 async def create_directive(session_id: uuid.UUID, body: DirectiveCreate, db: AsyncSession = Depends(get_db)):
-    directive = Directive(session_id=session_id, text=body.text)
+    directive = Directive(session_id=session_id, text=await shield.protect_text(db, session_id, body.text))
     db.add(directive)
     await db.commit()
     await db.refresh(directive)
@@ -36,7 +37,7 @@ async def update_directive(
     if not directive or directive.session_id != session_id:
         raise HTTPException(404, "Directive not found")
     if body.text is not None:
-        directive.text = body.text
+        directive.text = await shield.protect_text(db, session_id, body.text)
     if body.active is not None:
         directive.active = body.active
     await db.commit()

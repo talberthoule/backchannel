@@ -157,6 +157,8 @@ class AnalyzeModelTests(unittest.IsolatedAsyncioTestCase):
                 "app.routers.analyze.agent_model_id",
                 new=AsyncMock(return_value=resolved_model),
             ) as resolve,
+            # No transcript refiner row: the pre-analysis refinement pass is skipped.
+            patch("app.routers.analyze.load_agent_configs", new=AsyncMock(return_value={})),
             patch(
                 "app.routers.analyze.generate_text",
                 new=AsyncMock(return_value="[]"),

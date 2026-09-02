@@ -103,5 +103,7 @@ class LocalTranscriber:
         text = filter_transcript_text(raw if isinstance(raw, str) else "")
         if not text:
             return None
-        logger.info(f"Transcribed locally: '{text[:80]}'")
+        # No words in the log: transcript text is personal data and the PII
+        # Shield has not seen it yet at this point.
+        logger.info(f"Transcribed locally ({len(text)} chars)")
         return text

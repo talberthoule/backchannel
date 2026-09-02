@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import Document
 from app.schemas import DocumentOut
+from app.services.pii import shield
 from app.services.file_parsing import parse_docx, parse_markdown, parse_text
 from app.services.gemini_files import upload_and_summarize
 from app.services.privacy import is_local_only
@@ -20,7 +21,7 @@ LOCAL_EXTRACT_CHARS = 4000
 _LOCAL_EXTRACT_EXTS = {".txt", ".md", ".markdown", ".docx"}
 
 
-def local_extract_summary(content: bytes, filename: str) -> str:
+def local_extract_summary(content: bytes, filename: str, shielded: bool = False) -> str:
     """Bounded plain-text excerpt for Privacy First uploads; no cloud calls.
 
     ponytail: excerpt, not a summary - compressing through an admitted local
@@ -28,11 +29,13 @@ def local_extract_summary(content: bytes, filename: str) -> str:
     """
     ext = os.path.splitext(filename or "")[1].lower()
     if ext not in _LOCAL_EXTRACT_EXTS:
+        mode = "The PII Shield is on" if shielded else "Privacy First is on"
+        remedy = "turn the PII Shield off" if shielded else "turn Privacy First off"
         raise HTTPException(
             400,
-            "Privacy First is on, so documents are read on this machine instead "
+            f"{mode}, so documents are read on this machine instead "
             "of being uploaded. Only .txt, .md, and .docx files can be read "
-            "locally; turn Privacy First off to attach other formats.",
+            f"locally; {remedy} to attach other formats.",
         )
     if ext == ".docx":
         segments = parse_docx(content)
@@ -55,13 +58,19 @@ def local_extract_summary(content: bytes, filename: str) -> str:
 @router.post("", response_model=DocumentOut, status_code=201)
 async def upload_document(session_id: uuid.UUID, file: UploadFile, db: AsyncSession = Depends(get_db)):
     content = await file.read()
-    if await is_local_only():
+    shielded = (await shield.get_settings(db)).enabled
+    if await is_local_only() or shielded:
+        # With the PII Shield on, the file itself never leaves the machine:
+        # its text is read here and protected before it is stored or shown
+        # to any model.
         doc = Document(
             session_id=session_id,
             filename=file.filename,
             mime_type=file.content_type or "application/octet-stream",
             gemini_file_uri="",
-            summary=local_extract_summary(content, file.filename),
+            summary=await shield.protect_text(
+                db, session_id, local_extract_summary(content, file.filename, shielded=shielded)
+            ),
             summary_source="local_extract",
         )
     else:

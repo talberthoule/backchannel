@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import Speaker
 from app.schemas import SpeakerCreate, SpeakerMergeOut, SpeakerMergeRequest, SpeakerOut, SpeakerUpdate
+from app.services.pii import shield
 from app.services.speaker_context_enhancer import (
     mark_speaker_context_dirty_if_completed,
     speaker_update_changes_enhancement_context,
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/api/sessions/{session_id}/speakers", tags=["speakers
 async def create_speaker(session_id: uuid.UUID, body: SpeakerCreate, db: AsyncSession = Depends(get_db)):
     speaker = Speaker(
         session_id=session_id,
-        name=body.name,
+        name=await shield.protect_name(db, session_id, body.name),
         role=body.role,
         color=body.color,
         is_user=body.is_user,
@@ -51,6 +52,9 @@ async def update_speaker(
     if not speaker or speaker.session_id != session_id:
         raise HTTPException(status_code=404, detail="Speaker not found")
     updates = body.model_dump(exclude_unset=True)
+    for field in ("name", "display_name"):
+        if isinstance(updates.get(field), str):
+            updates[field] = await shield.protect_name(db, session_id, updates[field])
     if updates.get("is_user") is True:
         updates["speaker_type"] = "team"
     context_changed = speaker_update_changes_enhancement_context(speaker, updates)

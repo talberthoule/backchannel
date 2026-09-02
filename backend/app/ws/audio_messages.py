@@ -9,6 +9,7 @@ from typing import Any, Awaitable
 
 from fastapi import WebSocket
 
+from app.services.pii import shield
 from app.database import async_session
 from app.models import Directive
 from app.services.agents.activity import ActivityRegistry
@@ -191,6 +192,7 @@ async def _handle_text_message(
         directive_text = data.get("text", "")
         if directive_text:
             async with async_session() as db:
+                directive_text = await shield.protect_text(db, session_id, directive_text)
                 directive = Directive(session_id=session_id, text=directive_text)
                 db.add(directive)
                 await db.commit()
