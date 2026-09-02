@@ -67,6 +67,8 @@ MODEL_PRICING: dict[str, dict | None] = {
     # force through 2026-12-31 is half that, so estimates were 2x high.
     # Cached-input is published for both and is filled in here -- ALP-285 notes
     # every Gemini row leaving it None, which blocks measuring cache savings.
+    # 3.8 Flash (2026-09-02) is listed at the same rates as 3.7 and 3.6.
+    "gemini-3.8-flash": _price(0.75, 3.75, cached_input_per_million=0.075),
     "gemini-3.7-flash": _price(0.75, 3.75, cached_input_per_million=0.075),
     "gemini-3.6-flash": _price(0.75, 3.75, cached_input_per_million=0.075),
     # The 3.x Flash family publishes one input rate for every modality, so

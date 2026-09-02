@@ -115,7 +115,7 @@ class LLMRouterTests(unittest.IsolatedAsyncioTestCase):
         from app.config import MODEL_REGISTRY
 
         by_id = {model["id"]: model for model in MODEL_REGISTRY}
-        for model_id in ("gemini-3.7-flash", "gemini-3.5-flash-lite"):
+        for model_id in ("gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite"):
             model = by_id[model_id]
             self.assertEqual("Google", model["provider"])
             self.assertEqual("stable", model["tier"])

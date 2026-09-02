@@ -172,7 +172,7 @@ settings = Settings()
 
 DEFAULT_MODEL_RECOMMENDATION_ROLES: dict[str, tuple[str, ...]] = {
     "gemini-3.1-flash-live-preview": ("audio_gateway",),
-    "gemini-3.7-flash": (
+    "gemini-3.8-flash": (
         "consolidated_analyst",
         "synthesizer",
         "opportunity_specialist",
@@ -210,10 +210,21 @@ MODEL_REGISTRY: list[dict] = [
         "supports_live_audio": False,
     },
     {
+        "id": "gemini-3.8-flash",
+        "name": "Gemini 3.8 Flash",
+        "provider": "Google",
+        "description": "Current frontier-speed model (released 2026-09-02) for agentic, coding, and multimodal reasoning tasks; text, image, video, audio and PDF in, text out",
+        "tier": "stable",
+        "requires_key": "google",
+        "supports_text": True,
+        "supports_batch_audio": True,
+        "supports_live_audio": False,
+    },
+    {
         "id": "gemini-3.7-flash",
         "name": "Gemini 3.7 Flash",
         "provider": "Google",
-        "description": "Current frontier-speed model for agentic, coding, and multimodal reasoning tasks; thinking levels low/medium/high",
+        "description": "Previous frontier-speed model for agentic, coding, and multimodal reasoning tasks; thinking levels low/medium/high",
         "tier": "stable",
         "requires_key": "google",
         "supports_text": True,

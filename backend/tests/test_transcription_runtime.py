@@ -31,6 +31,7 @@ class TranscriptionRuntimeTests(unittest.TestCase):
     def test_supported_batch_models_are_registry_models(self):
         registry_ids = {model["id"] for model in MODEL_REGISTRY}
         self.assertIn("gemini-3.5-flash", registry_ids)
+        self.assertIn("gemini-3.8-flash", registry_ids)
         self.assertIn("gemini-3.7-flash", registry_ids)
         self.assertIn("gemini-3.5-flash-lite", registry_ids)
         self.assertIn("gemini-3.1-flash-lite", registry_ids)
@@ -40,7 +41,7 @@ class TranscriptionRuntimeTests(unittest.TestCase):
         self.assertNotIn("gemini-2.5-pro-preview-05-06", registry_ids)
 
     def test_latest_gemini_models_support_batch_not_live_audio(self):
-        for model_id in ("gemini-3.7-flash", "gemini-3.5-flash-lite"):
+        for model_id in ("gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite"):
             self.assertTrue(is_supported_transcription_model(model_id))
             self.assertFalse(is_supported_live_model(model_id))
 
