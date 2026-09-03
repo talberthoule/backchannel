@@ -13,6 +13,7 @@ from app.services.diarizer_runtime import get_diarizer_runtime_config
 from app.services.llm import registry_entry
 from app.services.privacy import get_local_only, is_local_model
 from app.services.secrets import data_dir
+from app.services.transcription_readiness import local_asr_status
 from app.services.speaker_diarizer import SpeakerRegistry
 
 logger = logging.getLogger(__name__)
@@ -116,6 +117,19 @@ async def retranscribe_session(session_id: uuid.UUID, body: RetranscribeIn, db: 
         raise HTTPException(400, f"Model {body.model_id} does not support batch transcription")
     if not is_local_model(body.model_id) and await get_local_only(db):
         raise HTTPException(400, "Privacy First mode is on: only local transcription models can be used")
+    # Prove the transcriber can run before wiping what the session already has.
+    # This endpoint deletes every transcript entry up front, so a transcriber
+    # that cannot run turns "re-transcribe" into "erase": that is how a broken
+    # local runtime emptied a finished session in v0.6.2 (ALP-376).
+    if is_local_model(body.model_id):
+        usable, why = local_asr_status()
+        if not usable:
+            raise HTTPException(
+                503,
+                f"Cannot re-transcribe with '{body.model_id}': {why}. "
+                "Nothing was changed. Pick a cloud transcription model, or "
+                "update the app.",
+            )
 
     result = await db.execute(
         select(CallSegment)

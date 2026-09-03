@@ -308,7 +308,8 @@ cleared) rather than removed
 | PUT | `/api/diagnostics/diarization/voice-profile` | Replace the voice profile from an uploaded clip (audio discarded, only the embedding is kept) |
 | DELETE | `/api/diagnostics/diarization/voice-profile` | Delete the enrolled voice profile |
 | GET | `/api/diagnostics/transcription` | Batch transcription config |
-| GET | `/api/diagnostics/transcription/readiness` | Whether the selected transcription models have usable credentials |
+| GET | `/api/diagnostics/transcription/readiness` | Whether the selected transcription model can actually run: a local model needs a working onnx-asr runtime, a cloud model needs usable credentials. The reason names the specific fault |
+| GET | `/api/diagnostics/local-asr` | `{usable, reason}` for the bundled local speech runtime. Imports onnx-asr and resolves the data files its preprocessors open, so it catches a bundle that imports cleanly and still cannot transcribe. The release smoke test fails the build on this |
 | GET | `/api/diagnostics/capacity` | Call-start capacity admission verdict: measured headroom for the selected config (`?track_count=1\|2`, default 2) |
 | PATCH | `/api/diagnostics/transcription/config` | Update the batch transcription model and/or the live-caption (audio gateway) model |
 | POST | `/api/diagnostics/diarization/sortformer/benchmark` | Benchmark Sortformer on an uploaded file (needs at least 15 seconds of audio) |

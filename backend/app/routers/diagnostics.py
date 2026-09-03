@@ -29,7 +29,7 @@ from app.services.local_fit import (
     summarize_local_fit,
 )
 from app.services.capacity_admission import assess_call_capacity
-from app.services.transcription_readiness import get_transcription_readiness
+from app.services.transcription_readiness import get_transcription_readiness, local_asr_status
 from app.services.transcription_runtime import (
     get_transcription_runtime_config,
     set_batch_transcriber_model,
@@ -174,6 +174,20 @@ async def get_transcription_config(db: AsyncSession = Depends(get_db)):
 async def get_transcription_readiness_status(db: AsyncSession = Depends(get_db)):
     readiness = await get_transcription_readiness(db)
     return readiness.to_dict()
+
+
+@router.get("/local-asr")
+async def get_local_asr_status():
+    """Whether the bundled local speech runtime can actually run.
+
+    Imports onnx-asr for real and resolves the data files its preprocessors
+    open. A desktop bundle can import the package and still be unable to
+    transcribe a single segment, which is exactly what shipped in v0.6.1 and
+    v0.6.2; the release smoke test calls this so that cannot ship again
+    (ALP-376).
+    """
+    usable, reason = local_asr_status()
+    return {"usable": usable, "reason": reason}
 
 
 @router.get("/capacity")
