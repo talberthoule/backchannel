@@ -17,7 +17,11 @@ from app.config import settings
 from app.services.agents.activity import classify_error
 from app.services.agents.prompts import CONSOLIDATED_ANALYST_BASE_PROMPT, DEFAULT_ANALYST_LENSES
 from app.services.llm import generate_json
-from app.services.agents.speaker_context import format_speakers_list
+from app.services.agents.speaker_context import (
+    build_speaker_aliases,
+    format_speakers_list,
+    resolve_speaker_reference,
+)
 from app.services.meeting_context import build_meeting_context_text, format_prompt_layers
 
 logger = logging.getLogger(__name__)
@@ -99,26 +103,27 @@ def compose_lens_sections(lenses: list[dict]) -> str:
 SPEAKER_ATTRIBUTION_APPENDIX = """
 
 ## Speaker Attribution Requirements
-- Transcript lines may include `speaker_id=<uuid>`. Use those UUIDs for attribution.
-- Participants lists `speaker_type=team` or `speaker_type=external` once per speaker. Look the speaker up there by `speaker_id`; transcript lines do not repeat it.
+- Transcript lines are tagged with a participant tag, like `[S3]: ...`. Participants binds each tag to a name, a side (`team` or `external`) and a role.
 - Treat `team` speakers as internal voices from the user's organization.
 - Treat `external` speakers as outside the internal team. Use Meeting Context to decide whether they are a client, vendor, partner, candidate, or other participant.
 - Do not treat external speaker statements as client evidence unless the Meeting Context or transcript supports that interpretation.
-- Return a `speaker_id` field on each JSON item. Use a UUID shown in Participants or Recent Transcript, or null if unclear.
-- Do not invent Speaker numbers, real names, or combined labels like "Speaker 1/Mark" in the insight text.
+- Return a `speaker_id` field on each JSON item. Use the participant tag exactly as Participants spells it, for example "S2", or null if unclear.
+- Never write a participant tag in text a person reads. In the insight, the rationale and the source context, always use the participant's name from Participants. Do not invent Speaker numbers or combined labels like "Speaker 1/Mark".
 """
 
 
-def _normalize_speaker_id(raw: object, valid_speaker_ids: set[str]) -> str | None:
-    """Return a known speaker UUID string, or None for invalid model output."""
-    if not isinstance(raw, str) or not raw.strip():
-        return None
-    candidate = raw.strip()
-    try:
-        normalized = str(uuid.UUID(candidate))
-    except ValueError:
-        return None
-    return normalized if normalized in valid_speaker_ids else None
+def _normalize_speaker_id(
+    raw: object,
+    valid_speaker_ids: set[str],
+    aliases: dict[str, str] | None = None,
+) -> str | None:
+    """Return a known speaker UUID string, or None for invalid model output.
+
+    Accepts a participant tag or a raw UUID. Both, deliberately: a user who
+    customized this prompt before aliases existed still asks for UUIDs, and
+    that prompt has to keep working (ALP-282).
+    """
+    return resolve_speaker_reference(raw, aliases, valid_speaker_ids)
 
 
 class ConsolidatedAnalystAgent:
@@ -220,7 +225,11 @@ class ConsolidatedAnalystAgent:
     ) -> list[dict]:
         """Execute one analysis cycle. Returns list of insight dicts with item_type and agent_source."""
         directives_text = "\n".join(f"- {d}" for d in directives) if directives else "(No directives set)"
-        speakers_text = format_speakers_list(speakers)
+        # Derived from the same ordered roster the transcript window was
+            # rendered against, so the legend and the lines agree without
+            # anything being stored or passed between them.
+        aliases = build_speaker_aliases(speakers)
+        speakers_text = format_speakers_list(speakers, aliases)
         valid_speaker_ids = {str(s["id"]) for s in speakers if s.get("id")}
         if active_questions:
             aq_text = "\n".join(f'- "{q["question"]}"' for q in active_questions)
@@ -280,7 +289,7 @@ class ConsolidatedAnalystAgent:
             return []
 
         raw_items = [item.model_dump(exclude_unset=True) for item in output.items]
-        items = self._parse_response(raw_items, valid_speaker_ids)
+        items = self._parse_response(raw_items, valid_speaker_ids, aliases)
         logger.info(f"[consolidated_analyst] parsed {len(items)} items from response")
 
         # Filter to enabled types, tag with agent_source, and attach the
@@ -345,6 +354,7 @@ class ConsolidatedAnalystAgent:
         self,
         items: list[object],
         valid_speaker_ids: set[str] | None = None,
+        aliases: dict[str, str] | None = None,
     ) -> list[dict]:
         """Normalize schema-validated model items for the insight pipeline."""
         valid_speaker_ids = valid_speaker_ids or set()
@@ -374,7 +384,9 @@ class ConsolidatedAnalystAgent:
                 )
                 continue
             item["item_type"] = itype
-            item["speaker_id"] = _normalize_speaker_id(item.get("speaker_id"), valid_speaker_ids)
+            item["speaker_id"] = _normalize_speaker_id(
+                item.get("speaker_id"), valid_speaker_ids, aliases
+            )
             valid.append(item)
 
         return valid

@@ -108,9 +108,13 @@ class SpeakerContextEnhancerTests(unittest.TestCase):
         self.assertIn("The client told us this is why we are here.", user)
         self.assertNotIn("Output Format", user)
 
-        # Nothing was dropped in the split.
-        both = system + user
-        self.assertIn("speaker_id=22222222-2222-2222-2222-222222222222", both)
+        # Aliases, not UUIDs: the legend binds each tag once and the lines
+        # carry the tag alone (ALP-282).
+        self.assertIn("- S1 = Account Manager [team] (AM)", system)
+        self.assertIn("- S2 = External 1 [external] (CISO)", system)
+        self.assertIn("[S1]: The client told us this is why we are here.", user)
+        self.assertNotIn("speaker_id=", user)
+        self.assertNotIn("22222222-2222-2222-2222-222222222222", user)
 
     def test_speaker_label_replacement_uses_enabled_display_names(self):
         replacements = build_speaker_label_replacements([

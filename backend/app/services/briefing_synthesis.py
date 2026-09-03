@@ -19,7 +19,12 @@ from app.config import settings
 from app.database import async_session
 from app.models import AgentConfig, Directive, InsightCluster, Question, Session, SessionAgentOverride, SessionSynthesis, Speaker, TranscriptEntry
 from app.services.agents.prompts import BRIEF_ARBITER_PROMPT, BRIEF_DISCOVERY_LENS_PROMPT, BRIEF_MEETING_LENS_PROMPT
-from app.services.agents.speaker_context import format_speakers_list, format_transcript_segment, speaker_display_name
+from app.services.agents.speaker_context import (
+    build_speaker_aliases,
+    format_speakers_list,
+    format_transcript_segment,
+    speaker_display_name,
+)
 from app.services.llm import generate_json, provider_for
 from app.services.meeting_context import build_meeting_context_text, format_prompt_layers
 from app.services.provider_errors import PROVIDER_ERROR_TYPES, provider_error_message
@@ -417,7 +422,9 @@ async def _build_context(
                 .order_by(TranscriptEntry.sequence)
             )
             transcript_entries = list(result.scalars().all())
-            transcript_text = _format_transcript_entries(transcript_entries)
+            transcript_text = _format_transcript_entries(
+                transcript_entries, build_speaker_aliases(speakers or [])
+            )
         else:
             transcript_text = transcript_window
 
@@ -436,7 +443,7 @@ async def _build_context(
         transcript_text=transcript_text,
         directives_text="\n".join(f"- {d}" for d in directives) if directives else "(No directives set)",
         document_summaries=doc_summaries or "(No documents uploaded)",
-        speakers_text=format_speakers_list(speakers or []),
+        speakers_text=format_speakers_list(speakers or [], build_speaker_aliases(speakers or [])),
         insights_text=insights_text,
     )
 
@@ -514,20 +521,33 @@ def _question_dict(question: Question) -> dict:
     }
 
 
-def _format_transcript_entries(entries: list[TranscriptEntry]) -> str:
+def _format_transcript_entries(
+    entries: list[TranscriptEntry],
+    aliases: dict[str, str] | None = None,
+) -> str:
+    """The post-call transcript, with a line reference the lenses can cite.
+
+    This carried a second UUID per line - transcript_id, alongside the
+    speaker's - which made the briefing variant the most expensive rendering
+    of the transcript in the app. Nothing has ever resolved that id: it lands
+    verbatim in EvidenceRef.transcript_id and its only consumer uses the
+    string for set-intersection card dedup. The sequence number identifies the
+    same row through (session_id, sequence), so it is what goes out now
+    (ALP-282).
+    """
     if not entries:
         return "(No transcript yet)"
     lines = []
     for entry in entries:
         speaker = _speaker_dict(entry.speaker) if entry.speaker else None
-        prefix = f"transcript_id={entry.id}; sequence={entry.sequence}"
         segment = format_transcript_segment(
             entry.text,
             speaker.get("name") if speaker else "Unknown",
             speaker_id=str(entry.speaker_id) if entry.speaker_id else None,
             speaker_type=speaker.get("speaker_type") if speaker else None,
+            alias=(aliases or {}).get(str(entry.speaker_id or "")),
         )
-        lines.append(f"[{prefix}] {segment}")
+        lines.append(f"[{entry.sequence}] {segment}")
     return "\n".join(lines)
 
 
@@ -713,8 +733,8 @@ def _response_contract(response_schema: type[BaseModel]) -> str:
         "status": "open|blocked|done|unknown or empty string",
         "evidence_refs": [
             {
-                "id": "transcript_id or insight_id if available",
-                "transcript_id": "transcript id if available",
+                "id": "transcript line number or insight_id if available",
+                "transcript_id": "transcript line number in brackets, if available",
                 "insight_id": "insight id if available",
                 "source_id": "other source id if available",
                 "type": "transcript|insight|document|directive or empty string",

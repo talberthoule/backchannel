@@ -121,7 +121,9 @@ class _Result:
 class _Session:
     def __init__(self, question):
         self.question = question
-        self._results = [_Result([question]), _Result([])]
+        # Insights, transcript entries, then the speaker roster the alias map
+        # is derived from (ALP-282).
+        self._results = [_Result([question]), _Result([]), _Result([])]
 
     async def __aenter__(self):
         return self

@@ -12,7 +12,8 @@ from app.database import async_session
 from app.models import Question, Session, Speaker, TranscriptEntry
 from app.services.agents import prompt_layout
 from app.services.agents.speaker_context import (
-    format_speaker_context,
+    build_speaker_aliases,
+    format_speakers_list,
     format_transcript_segment,
     speaker_display_name,
 )
@@ -44,9 +45,11 @@ Your job:
 - Mark every created, modified, or dismissed insight as enhanced by returning `"enhanced": true` in each operation.
 
 Critical interpretation rules:
-- `speaker_type=team` means an internal speaker from the user's organization.
-- `speaker_type=external` means outside the internal team; use Meeting Context to decide whether they are a client, vendor, partner, candidate, or other participant.
+- Transcript lines are tagged with a participant tag, like `[S3]: ...`; Corrected Speakers binds each tag to a name and a side.
+- A `team` speaker is an internal speaker from the user's organization.
+- An `external` speaker is outside the internal team; use Meeting Context to decide whether they are a client, vendor, partner, candidate, or other participant.
 - Do not treat external statements as client evidence unless the Meeting Context or transcript supports that.
+- Never write a participant tag in text a person reads; use the name from Corrected Speakers.
 - Do not change the item_type/category/tag of an existing insight. Enhancement should add corrected context, adjusted text, dismissal state, or a new enhanced insight, while preserving the original tag on existing items.
 - If an opportunity was based only on a team-member summary, do not convert the existing opportunity into another type. Dismiss it if it is unsupported, enrich/adjust it if the corrected context still supports it, or create a separate enhanced question/observation if useful.
 - If an insight is clearly bad, stale, duplicative, or no longer supported after corrected speaker context, dismiss it.
@@ -113,7 +116,8 @@ def build_enhancement_prompt(
     a run of several batches re-sent the contract behind data that changes
     every batch. Splitting it puts the contract in the prefix (ALP-285).
     """
-    speakers_text = "\n".join(format_speaker_context(speaker) for speaker in speakers) or "(No speaker information)"
+    aliases = build_speaker_aliases(speakers)
+    speakers_text = format_speakers_list(speakers, aliases)
     insights_json = json.dumps(insights, indent=2)
     transcript_text = "\n".join(
         format_transcript_segment(
@@ -121,6 +125,7 @@ def build_enhancement_prompt(
             line.get("speaker_name"),
             speaker_id=line.get("speaker_id"),
             speaker_type=line.get("speaker_type"),
+            alias=aliases.get(str(line.get("speaker_id") or "")),
         )
         for line in transcript_lines
     ) or "(No transcript)"
@@ -179,9 +184,10 @@ async def run_speaker_context_batch(
             .order_by(TranscriptEntry.sequence)
         )
         transcript_entries = list(transcript_result.scalars().all())
+        aliases = build_speaker_aliases(speakers)
         system, prompt = build_enhancement_prompt(
             speakers,
-            [_insight_dict(question) for question in questions],
+            [_insight_dict(question, aliases) for question in questions],
             [_transcript_dict(entry) for entry in transcript_entries],
             build_meeting_context_text(session),
         )
@@ -263,15 +269,24 @@ def _speaker_dict(speaker: Speaker) -> dict:
     }
 
 
-def _insight_dict(question: Question) -> dict:
+def _insight_dict(question: Question, aliases: dict[str, str] | None = None) -> dict:
+    """One insight as the enhancement prompt sees it.
+
+    ``speaker`` used to be the whole rendered legend line, which repeated the
+    UUID already in ``speaker_id`` -- two copies of a 36-character id on every
+    insight, on every batch. With a roster to derive from, both collapse to
+    the participant tag the transcript lines already use (ALP-282).
+    """
+    speaker_ref = str(question.speaker_id) if question.speaker_id else None
+    if speaker_ref and aliases:
+        speaker_ref = aliases.get(speaker_ref, speaker_ref)
     return {
         "id": str(question.id),
         "item_type": question.item_type,
         "question": question.question,
         "rationale": question.rationale,
         "source_context": question.source_context,
-        "speaker_id": str(question.speaker_id) if question.speaker_id else None,
-        "speaker": format_speaker_context(_speaker_dict(question.speaker)) if question.speaker else None,
+        "speaker": speaker_ref,
         "dismissed": question.dismissed,
         "answered": question.answered,
         "answer_summary": question.answer_summary,
