@@ -63,6 +63,12 @@ def psql(sql):
         env("POSTGRES_USER"),
         "-d",
         env("POSTGRES_DB"),
+        # Without this psql exits 0 even when a statement raised, so a failed
+        # DELETE reported "reset: demo tables cleared" and the seed then built
+        # a second workspace on top of the first. Every capture after that
+        # points at whichever duplicate the UI happened to list first.
+        "-v",
+        "ON_ERROR_STOP=1",
     ]
     result = subprocess.run(cmd, input=sql, capture_output=True, text=True, cwd=REPO)
     if result.returncode != 0:
@@ -269,10 +275,54 @@ FILLER_INSIGHTS = _filler_insights()
 HAND_WRITTEN = CURATED_INSIGHTS + ASKED_INSIGHTS
 INSIGHTS = HAND_WRITTEN + FILLER_INSIGHTS
 
+# Six sessions in all: the sidebar shows its find box from six upward
+# (SEARCH_THRESHOLD in frontend/src/components/Layout.tsx), and the
+# screenshots should show the sidebar as a working workspace sees it.
 OTHERS = [
     ("Alderwake Health Network - identity recovery workshop", "client_sales", "Technical follow-up on emergency identity authority and isolated validation.", True),
     ("Alderwake Health Network - managed operations due diligence", "client_sales", "Operating-boundary review for a recurring recovery service.", True),
+    ("Alderwake Health Network - evidence outline walkthrough", "client_sales", "Review of the board and insurer evidence outline before the scope freeze.", True),
     ("Quarterly services pipeline review", "internal_checkin", "Distributed account team review of open services opportunities.", False),
+    ("Recovery practice - delivery capacity planning", "internal_checkin", "Internal staffing review for the recovery pilot bench.", False),
+]
+
+# One session left in pre_call state, so the setup screen can be captured with
+# something in it: the redesigned pre-call view summarizes each collapsed card
+# in its header, and an empty session summarizes nothing.
+PRECALL = (
+    "Alderwake Health Network - pilot scope review",
+    "client_sales",
+    "Scope-freeze review before Thursday's package: confirm the isolated pilot "
+    "boundary, the managed-operations option, and the evidence outline the board "
+    "risk committee and the cyber insurer will both accept.",
+)
+PRECALL_DIRECTIVES = [
+    "Watch for anything that moves the September 18 board date, and name the owner each time.",
+    "Flag any work drifting from the fixed pilot into the optional managed-operations line.",
+]
+
+# Provider usage for the main call, as the product records it: one row per
+# source and model (backend/app/services/token_usage.py). Figures are what a
+# 46-minute call plausibly spends at the agents' seeded cadences -- the live
+# gateway's input is almost all audio, the batch transcriber sends every
+# diarized segment as audio, and the interval agents re-read a growing
+# transcript so much of their input is served from the prompt cache. Source
+# names match the strings each service writes; the models match the ones
+# named elsewhere in the fixture. Cached and audio counts are subsets of the
+# input total, never additions.
+#   (source, model_id, input, output, thinking, cached_input, audio_input, audio_output)
+TOKEN_USAGE = [
+    ("audio_gateway", "gemini-3.1-flash-live-preview", 91437, 4118, 0, 0, 88316, 0),
+    ("batch_transcriber", "gemini-3.6-flash", 99184, 6893, 0, 0, 88274, 0),
+    ("consolidated_analyst", "gemini-3.6-flash", 302416, 24587, 0, 168203, 0, 0),
+    ("objection_handler", "gemini-3.6-flash", 144872, 9791, 0, 61294, 0, 0),
+    ("synthesizer", "gemini-3.6-flash", 178341, 14226, 0, 92437, 0, 0),
+    ("strategic_signals", "gemini-3.6-flash", 271608, 18712, 0, 141905, 0, 0),
+    ("opportunity_specialist", "gemini-3.6-flash", 36793, 4108, 0, 0, 0, 0),
+    ("brief_meeting_lens", "gemini-3.6-flash", 21406, 3614, 0, 0, 0, 0),
+    ("brief_discovery_lens", "gemini-3.6-flash", 21406, 3877, 0, 0, 0, 0),
+    ("brief_arbiter", "gemini-3.6-flash", 12781, 4203, 0, 0, 0, 0),
+    ("live_chat", "gemini-3.6-flash", 12594, 412, 0, 0, 0, 0),
 ]
 
 BRIEFING = {
@@ -380,13 +430,72 @@ KNOWLEDGE_RECORDS = [
 ]
 
 
+# Every table holding a foreign key to sessions that is NOT declared
+# ON DELETE CASCADE, so each one has to be emptied before sessions itself.
+# Confirmed against information_schema on the v0.6.0 schema; the cascading
+# three (speaker_mapping_revisions, speaker_revalidation_runs, token_usage)
+# are listed anyway, because relying on a cascade that a later migration
+# might drop is how this list silently went stale before.
+#
+# Children first, then sessions, then the groups sessions point at. Add any
+# new session-scoped table here: with ON_ERROR_STOP set, a missing one now
+# stops the seed instead of leaving a half-cleared workspace behind.
+SESSION_SCOPED_TABLES = [
+    "insight_clusters",
+    "session_syntheses",
+    "session_agent_overrides",
+    "token_usage",
+    "pii_reveal_events",
+    "pii_vault_entries",
+    "questions",
+    "speaker_revalidation_runs",
+    "speaker_mapping_revisions",
+    "transcript_entries",
+    "call_segments",
+    "directives",
+    "documents",
+    "speakers",
+]
+
+
 def reset():
-    psql(
-        "DELETE FROM insight_clusters; DELETE FROM session_syntheses; "
-        "DELETE FROM questions; DELETE FROM transcript_entries; DELETE FROM call_segments; "
-        "DELETE FROM speakers; DELETE FROM sessions; DELETE FROM session_groups;"
-    )
+    statements = [f"DELETE FROM {table};" for table in SESSION_SCOPED_TABLES]
+    statements += ["DELETE FROM sessions;", "DELETE FROM session_groups;"]
+    psql(" ".join(statements))
     print("reset: demo tables cleared")
+
+
+def token_usage_sql(session_id, start):
+    rows = []
+    for index, (source, model_id, inp, out, thinking, cached, audio_in, audio_out) in enumerate(TOKEN_USAGE):
+        rows.append(
+            "("
+            + ", ".join(
+                [
+                    q(str(uuid.uuid4())),
+                    q(session_id),
+                    q(source),
+                    q(model_id),
+                    str(inp),
+                    str(out),
+                    str(thinking),
+                    str(inp + out + thinking),
+                    "0",
+                    str(cached),
+                    str(audio_in),
+                    str(audio_out),
+                    q((start + timedelta(minutes=2 + 4 * index)).isoformat()),
+                ]
+            )
+            + ")"
+        )
+    return (
+        "INSERT INTO token_usage (id, session_id, source, model_id, input_tokens, output_tokens, "
+        "thinking_tokens, total_tokens, audio_seconds, cached_input_tokens, audio_input_tokens, "
+        "audio_output_tokens, created_at) VALUES\n"
+        + ",\n".join(rows)
+        + ";\n"
+    )
 
 
 def seed_catalog_and_knowledge():
@@ -497,6 +606,30 @@ def main():
             update["group_id"] = group["id"]
         call("PATCH", f"/sessions/{session['id']}", update)
 
+    # The pre-call session keeps its default pre_call state; only its group is
+    # set, so the setup screen is what opens when it is selected.
+    precall_name, precall_type, precall_context = PRECALL
+    precall = call(
+        "POST",
+        "/sessions",
+        {"name": precall_name, "meeting_type": precall_type, "meeting_context": precall_context},
+    )
+    call("PATCH", f"/sessions/{precall['id']}", {"group_id": group["id"]})
+    for text in PRECALL_DIRECTIVES:
+        call("POST", f"/sessions/{precall['id']}/directives", {"text": text})
+    for name, role, color, is_user, speaker_type in SPEAKERS:
+        call(
+            "POST",
+            f"/sessions/{precall['id']}/speakers",
+            {
+                "name": name,
+                "role": role,
+                "color": color,
+                "is_user": is_user,
+                "speaker_type": speaker_type,
+            },
+        )
+
     speakers = {}
     for name, role, color, is_user, speaker_type in SPEAKERS:
         speaker = call(
@@ -547,7 +680,7 @@ def main():
             f"SELECT count(*) FROM questions WHERE session_id = {q(main_session['id'])};"
         )
         print(
-            f"seeded: 1 group, {1 + len(OTHERS)} sessions, {len(speakers)} speakers, "
+            f"seeded: 1 group, {2 + len(OTHERS)} sessions, {len(speakers)} speakers, "
             f"{len(LINES)} transcript lines, {count.split()[2]} generated insights"
         )
         return
@@ -624,6 +757,7 @@ def main():
         + ",\n".join(insight_rows)
         + ";\n"
         + timings
+        + token_usage_sql(main_session["id"], start)
         + briefing_sql(
             main_session["id"], start + timedelta(minutes=47), history=history
         )
@@ -636,10 +770,11 @@ def main():
         )
     )
     print(
-        f"seeded: 1 group, {1 + len(OTHERS)} sessions, {len(speakers)} speakers, "
+        f"seeded: 1 group, {2 + len(OTHERS)} sessions, {len(speakers)} speakers, "
         f"{len(LINES)} transcript lines, {len(CURATED_INSIGHTS)} curated + "
         f"{len(ASKED_INSIGHTS)} asked + {len(FILLER_INSIGHTS)} filler insights, "
-        f"{len(history)} kept signals, {len(KNOWLEDGE_RECORDS)} knowledge records"
+        f"{len(history)} kept signals, {len(KNOWLEDGE_RECORDS)} knowledge records, "
+        f"{len(TOKEN_USAGE)} usage rows"
     )
 
 

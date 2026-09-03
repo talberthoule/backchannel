@@ -23,6 +23,10 @@ CROPS = {
     "insights-attributed": ("postcall-attributed", (336, 68, 1368, 610)),
     # The call's command bar: chat/directive modes and the answering model.
     "ask-bar": ("live-ask", (288, 822, 1408, 880)),
+    # The PII Shield's scratch box: a sentence in, the tokens a model actually
+    # receives out, and a legend naming each token's value and how it was
+    # found. The whole privacy claim, small enough to read in one glance.
+    "pii-preview": ("admin-privacy-preview", (430, 584, 1298, 838)),
 }
 
 

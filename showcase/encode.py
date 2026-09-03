@@ -30,6 +30,7 @@ SKIP_PREFIXES = ("user-",)
 
 CROP_SIDEBAR = {
     "admin-agents", "admin-transcription", "admin-api-keys", "admin-about",
+    "admin-privacy", "admin-privacy-preview",
     "offerings-catalog", "knowledge-sources",
 }
 

@@ -71,7 +71,7 @@ const html = `
 <div class="copy">
   <img class="wordmark" src="${dataUri(WORDMARK, "image/svg+xml")}" alt="Backchannel" />
   <h1>Your meetings, transcribed live.<br />Your next move, <span>surfaced mid-call.</span></h1>
-  <p class="lede">Self-hosted, open-source AI meeting assistant. No bot joins the call.</p>
+  <p class="lede">Self-hosted, open-source AI meeting assistant. No bot in the call, and with the PII Shield on, no name in any prompt.</p>
 </div>
 <div class="foot"><b>backchannel.page</b> &nbsp;&middot;&nbsp; MIT licensed &nbsp;&middot;&nbsp; open source</div>
 <div class="shot"><img src="${dataUri(SHOT, "image/png")}" alt="" /></div>

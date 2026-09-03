@@ -20,6 +20,9 @@ FULL = {
     "live-ask": (1440, 900),
     "live-objections": (1440, 900),
     "live-questions": (1440, 900),
+    "precall-setup": (1440, 900),
+    "postcall-overview": (1440, 900),
+    "postcall-overview-digest": (1440, 900),
     "postcall-briefing": (1440, 900),
     "postcall-signals": (1440, 900),
     "postcall-insights": (1440, 900),
@@ -27,8 +30,11 @@ FULL = {
     "postcall-transcript": (1440, 900),
     "postcall-speakers": (1440, 900),
     "postcall-chat": (1440, 900),
+    "postcall-tokens": (1440, 900),
     "admin-agents": (1185, 900),
     "admin-transcription": (1185, 900),
+    "admin-privacy": (1185, 900),
+    "admin-privacy-preview": (1185, 900),
     "admin-api-keys": (1185, 900),
     "admin-about": (1185, 900),
     "offerings-catalog": (1185, 900),
@@ -39,6 +45,7 @@ CROPS = {
     "insights-attributed": (1032, 542),
     "session-header": (1032, 208),
     "ask-bar": (1120, 58),
+    "pii-preview": (868, 254),
 }
 OG_CARD = REPO / "site" / "assets" / "og-image.png"
 RETIRED_MARKERS = ("Northwind Logistics", "segmentation review", "cross-dock")
@@ -108,10 +115,55 @@ class ShowcaseFixtureTests(unittest.TestCase):
                 seed_demo.LINES,
                 seed_demo.INSIGHTS,
                 seed_demo.OTHERS,
+                seed_demo.PRECALL,
+                seed_demo.PRECALL_DIRECTIVES,
             )
         )
         for marker in RETIRED_MARKERS:
             self.assertNotIn(marker, current_story)
+
+    def test_workspace_is_large_enough_to_show_the_sidebar_find_box(self):
+        """Six sessions is the threshold the find box appears at.
+
+        SEARCH_THRESHOLD in frontend/src/components/Layout.tsx. Below it the
+        sidebar renders without a find box, and every screenshot carrying the
+        sidebar silently stops showing a feature the site describes.
+        """
+        threshold = int(
+            (REPO / "frontend" / "src" / "components" / "Layout.tsx")
+            .read_text(encoding="utf8")
+            .split("SEARCH_THRESHOLD = ")[1]
+            .split(";")[0]
+        )
+        self.assertGreaterEqual(1 + len(seed_demo.OTHERS) + 1, threshold)
+
+    def test_precall_session_carries_enough_to_summarize(self):
+        """The pre-call screen summarizes each collapsed card in its header.
+
+        An empty session summarizes nothing, so the capture would show a
+        screen of "optional" placeholders rather than the redesign.
+        """
+        _name, meeting_type, context = seed_demo.PRECALL
+        self.assertEqual("client_sales", meeting_type)
+        self.assertGreater(len(context), 80)
+        self.assertGreaterEqual(len(seed_demo.PRECALL_DIRECTIVES), 2)
+
+    def test_token_usage_fixture_covers_every_billed_path(self):
+        """The Overview spend tile and the Tokens tab both read these rows.
+
+        Cached and audio counts are slices of the input total, never additions
+        (backend/app/services/token_usage.py), so a fixture that lets either
+        exceed input would price the session above what it could have cost.
+        """
+        sources = {row[0] for row in seed_demo.TOKEN_USAGE}
+        for required in ("audio_gateway", "batch_transcriber", "consolidated_analyst"):
+            self.assertIn(required, sources)
+        for source, _model, inp, out, thinking, cached, audio_in, audio_out in seed_demo.TOKEN_USAGE:
+            self.assertGreater(inp, 0, source)
+            self.assertGreater(out, 0, source)
+            self.assertLessEqual(cached + audio_in, inp, source)
+            self.assertLessEqual(audio_out, out, source)
+            self.assertGreaterEqual(thinking, 0, source)
 
     def test_catalog_supports_the_recovery_services_story(self):
         offerings = _get_seed_data()

@@ -3,10 +3,13 @@
 Every asset here is captured from a **wholly fictional demo workspace**. No real
 employer, client, or person appears in any of them. Safe for public use.
 
-Sixteen surfaces, each with a light and a `-dark` variant, all 1440x900 before
-encoding. The source data is "Alderwake Health Network - recovery readiness
-review": an invented 46-minute services-integration call between a distributed
-account team and two customer-side leaders, seeded by `showcase/seed_demo.py`.
+Twenty-three surfaces, each with a light and a `-dark` variant, all 1440x900
+before encoding. The source data is "Alderwake Health Network - recovery
+readiness review": an invented 46-minute services-integration call between a
+distributed account team and two customer-side leaders, seeded by
+`showcase/seed_demo.py`. The fixture also seeds five sibling sessions (so the
+sidebar passes the six-session threshold where its find box appears) and one
+session left in `pre_call` state for the setup screen.
 
 ## Regenerating the whole set
 
@@ -30,6 +33,11 @@ Reseed immediately before capturing, and capture once. Reaching the live view
 resumes the session, so every extra capture run adds another call segment to
 the fixture and the session header drifts from "across 2 calls".
 
+The default fixture also inserts eleven `token_usage` rows, one per source
+and model, so the Overview's spend tile and the Tokens tab report a real
+figure instead of zero. Cached and audio counts are slices of the input total,
+never additions; `test_showcase_assets.py` enforces that.
+
 The default fixture is intentionally deterministic: it inserts 125 insights
 (24 curated, transcript-grounded rows plus 2 `asked` rows, which top every
 newest-first list and are the only cards visible in shots, plus 99 generated
@@ -52,6 +60,13 @@ device and restores the session to completed when it finishes.
 | `live-questions(-dark)` | The live feed filtered to questions, leading with the synthesizer's full story on one card | Crop source |
 | `live-answered(-dark)` | Crop: the answered question card - marked Answered, answer summarized, follow-up spun off | "Questions answer themselves" |
 | `ask-bar(-dark)` | Crop: the command bar with its Chat/Directive modes and the answering model chip | Detail strip |
+| `precall-setup(-dark)` | The redesigned setup screen: the action button pinned at the top with a readiness line, and the steps below as collapsed cards whose headers say what they hold | Pre-call / setup section |
+| `postcall-overview(-dark)` | The Overview a completed session opens on: the briefing's top outcome, the counts row including estimated spend, the "9 shielded" badge, and the head of the digest | Post-call results |
+| `postcall-overview-digest(-dark)` | The same page scrolled: the four digest lists with owners and status, the participation talk-share table, and the call-rhythm chart | Post-call results |
+| `postcall-tokens(-dark)` | The Tokens tab: estimated cost, then per-source and per-model tables with cached and audio columns | Cost transparency |
+| `admin-privacy(-dark)` | The PII Shield switched on: the "Personal data tokenized" badge, the four-row coverage list, and the vault count | **PII Shield section** |
+| `admin-privacy-preview(-dark)` | The same card in full: categories, the on-device model's state, protected terms, and the try-a-sentence box with its result | PII Shield section, crop source |
+| `pii-preview(-dark)` | Crop: a sentence in, the tokenized sentence a model actually receives out, and the legend naming each token's value and how it was found | **PII Shield hero crop** |
 | `postcall-briefing(-dark)` | Conversation briefing: at-a-glance strip, kept signal history, and TOP 3 OUTCOMES with named owners | Briefing / results section |
 | `postcall-signals(-dark)` | Strategic Signal History expanded: six kept signals with counts and first/last sighting | "Nothing raised is quietly dropped" |
 | `postcall-insights(-dark)` | Insights tab: 125 total, 2 asked, 24 action items, 16 objections, 18 opportunities, 31 observations, 34 questions | Post-call results |
@@ -69,8 +84,34 @@ device and restores the session to completed when it finishes.
 | `knowledge-sources(-dark)` | Selected recovery-delivery collection with three fictional playbooks | Docs |
 
 Admin and tool panels are cropped to drop the left sidebar (they are about the
-panel); post-call shots keep it, because session and group organization is part
-of what they demonstrate. See `CROP_SIDEBAR` in `showcase/encode.py`.
+panel); post-call and pre-call shots keep it, because session and group
+organization is part of what they demonstrate. See `CROP_SIDEBAR` in
+`showcase/encode.py`.
+
+## The PII Shield in the capture
+
+`capture.mjs` runs `POST /api/sessions/{id}/pii/protect` on the demo session
+before any page opens, then hands the shield straight back off. That is the
+product's documented path for data recorded before the shield existed, and it
+does two things for the asset family:
+
+- The Privacy card reports a real vault count instead of "0 protected values
+  across all sessions", which would read as a claim the product is not keeping.
+- Every other shot then carries real names on screen while the database holds
+  only tokens, so the screenshots are themselves the evidence that
+  reveal-at-the-edge works.
+
+The shield is left **off** for every non-privacy surface, because that is the
+state a new install is in. The privacy pass turns it on, shoots, and the
+`withShieldRestored` wrapper turns it off again - a later pass that started
+with it on would lock the audio models and change shots that are not about
+privacy.
+
+Note that `pii_vault_entries` holds a foreign key to `sessions` with no
+cascade. `reset()` therefore has to empty it (and every other session-scoped
+table) before deleting sessions, and `psql()` runs with `ON_ERROR_STOP=1`:
+without it psql exits 0 even when a statement raised, so a failed reset
+reported success and the seed built a second workspace on top of the first.
 
 ## Curation rules
 
