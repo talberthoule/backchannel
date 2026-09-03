@@ -5,6 +5,8 @@ import remarkGfm from "remark-gfm";
 import type { ModelInfo, Session } from "../../types";
 import * as api from "../../services/api";
 import { groupModels, optionLabel } from "../../lib/modelOptions";
+import { filterSessions, normalizeQuery } from "../../lib/sessionSearch";
+import { SEARCH_HINT } from "../SearchHint";
 
 interface MeetingChatProps {
   session: Session;
@@ -47,6 +49,7 @@ export default function MeetingChat({ session }: MeetingChatProps) {
   const [allSessions, setAllSessions] = useState<Session[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set([session.id]));
   const [search, setSearch] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelId, setModelId] = useState("");
@@ -82,11 +85,14 @@ export default function MeetingChat({ session }: MeetingChatProps) {
     [allSessions, session],
   );
 
+  // The same matching the sidebar's find box uses, so a date typed here finds
+  // the same sessions it finds there. Groups are not listed on this screen, so
+  // there are no group names to match against.
   const searchResults = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return [];
+    if (!normalizeQuery(search)) return [];
     const shown = new Set([session.id, ...groupSessions.map((s) => s.id)]);
-    return allSessions.filter((s) => !shown.has(s.id) && s.name.toLowerCase().includes(q)).slice(0, 8);
+    const candidates = allSessions.filter((s) => !shown.has(s.id));
+    return filterSessions(candidates, [], search).slice(0, 8);
   }, [search, allSessions, groupSessions, session.id]);
 
   const toggleSession = (id: string) => {
@@ -156,9 +162,18 @@ export default function MeetingChat({ session }: MeetingChatProps) {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
             placeholder="Add other sessions..."
+            aria-describedby="chat-scope-search-hint"
             className="w-44 rounded border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-dark-gray focus:border-brand-teal"
           />
+          <span
+            id="chat-scope-search-hint"
+            className={`font-body text-xs text-brand-mid-gray ${searchFocused ? "" : "sr-only"}`}
+          >
+            {SEARCH_HINT}
+          </span>
           <select
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
