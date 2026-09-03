@@ -1731,3 +1731,268 @@ footer.site .wrap.footer-compare {
     padding: 20px;
   }
 }
+
+/* v0.6.0 landing additions: the PII Shield exhibit, the console's shield
+   state, and the cost proof line. New classes only; nothing above is
+   repurposed, so the comparison, blog, and release pages are untouched. */
+
+/* Inline token chip: how a [PERSON_1] token reads in running text. Same
+   swatch as a slug in the agents table, so tokens and slugs share a voice. */
+.token {
+  font-family: var(--mono);
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  padding: 0.1em 0.45em;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+section h2 .token {
+  font-size: 0.72em;
+  vertical-align: 0.06em;
+  border-radius: 8px;
+  /* Tuck the sentence's full stop against the chip instead of its padding. */
+  margin-right: -0.12em;
+}
+
+/* Console bar: the shield's state sits between the listening wave and the
+   clock. The caption still names Owen because the screen is the one place
+   the real value is shown. */
+.console-bar .shield-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.console-bar .shield-state i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--console-accent);
+}
+
+/* The preview crop is 868px wide; hold it at native size, left-aligned under
+   the section header, rather than stretching it to the column. */
+figure.shot.pii {
+  max-width: 868px;
+  margin-left: 0;
+}
+
+/* The route of one value: five ruled stops read left to right. An ordered
+   list because the order is the point; the numerals are suppressed because
+   the arrows already carry it. */
+.shield-path {
+  margin: 56px 0 0;
+}
+
+.shield-stops {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.shield-stops li {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 20px 20px 24px 0;
+  min-width: 0;
+}
+
+.shield-stops li + li {
+  padding-left: 20px;
+  border-left: 1px solid var(--rule-soft);
+}
+
+.shield-stops li + li::before {
+  content: "\2192";
+  position: absolute;
+  left: 0;
+  top: 20px;
+  transform: translateX(-50%);
+  padding: 0 2px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--muted);
+  background: var(--paper);
+}
+
+.stop-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.stop-value {
+  font-family: var(--serif);
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.stop-value.name {
+  font-style: italic;
+  font-weight: 400;
+}
+
+.stop-value .token {
+  font-size: 14px;
+  vertical-align: 0.15em;
+}
+
+/* The last stop is the only one that gets the accent: it is the reader. */
+.shield-stops li:last-child .stop-value {
+  color: var(--accent);
+}
+
+.stop-note {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.feature-row.shield-row {
+  margin-top: 56px;
+  margin-bottom: 0;
+}
+
+/* Cost proof line: a seven-digit numeral needs less size than "125" to hold
+   one line beside its description. */
+.proof-line.cost .big {
+  font-size: clamp(40px, 5.4vw, 72px);
+}
+
+/* The landing page's Privacy anchor is hidden where the shared header is
+   already at its width limit; the other anchors keep their existing rules. */
+@media (max-width: 960px) {
+  nav.site-nav a.nav-privacy {
+    display: none;
+  }
+}
+
+/* Tablet band: the full anchor set plus the CTA needs 644px of a header that
+   has 558px to give at 721px wide, so the page itself scrolled sideways
+   rather than the nav. Below 721px the existing rule already drops every
+   anchor and keeps the CTA; this applies the same idea one step earlier and
+   more gently, dropping only the deeper in-page jumps and keeping the
+   destinations (Features, Quickstart, Writing, Docs) with the CTA.
+
+   Only the landing page and the release index carry these anchors, and they
+   spell them differently ("#agents" versus "../#agents"), hence *=. The
+   comparison pages and the blog have a four-link header that already fits,
+   and match none of these selectors. */
+@media (min-width: 721px) and (max-width: 900px) {
+  nav.site-nav a[href*="#how-it-works"],
+  nav.site-nav a[href*="#architecture"],
+  nav.site-nav a[href*="#agents"] {
+    display: none;
+  }
+}
+
+/* Below five-column width the route becomes a ledger: label beside value,
+   note beneath, one ruled row per stop, arrows on the dividers. */
+@media (max-width: 960px) {
+  .shield-stops {
+    grid-template-columns: 1fr;
+  }
+
+  .shield-stops li {
+    grid-template-columns: minmax(96px, 150px) minmax(0, 1fr);
+    grid-template-areas:
+      "label value"
+      "label note";
+    column-gap: 20px;
+    row-gap: 8px;
+    padding: 18px 0;
+  }
+
+  .stop-label {
+    grid-area: label;
+    padding-top: 7px;
+  }
+
+  .stop-value {
+    grid-area: value;
+  }
+
+  .stop-note {
+    grid-area: note;
+  }
+
+  .shield-stops li + li {
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--rule-soft);
+  }
+
+  .shield-stops li + li::before {
+    content: "\2193";
+    left: auto;
+    right: 0;
+    top: 0;
+    transform: translateY(-50%);
+  }
+
+  .feature-row.shield-row {
+    margin-top: 44px;
+  }
+}
+
+/* Phone width: the ledger stacks. */
+@media (max-width: 480px) {
+  .shield-stops li {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "label"
+      "value"
+      "note";
+    row-gap: 10px;
+  }
+
+  .stop-label {
+    padding-top: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .proof-line.cost .big {
+    font-size: clamp(34px, 10vw, 56px);
+  }
+}
+
+/* A section's pointer to its own long form. Sits under the closing strip as
+   one quiet line: the link carries the weight, the sentence after it says
+   what the reader gets, so the page hands off without a second CTA competing
+   with the hero's. */
+.deep-dive {
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rule-soft);
+}
+
+.deep-dive a {
+  font-weight: 600;
+}
+
+/* Private meeting AI page (/private-meeting-ai/): file paths and endpoint
+   names set in inline code may break anywhere rather than widen a single-
+   column grid cell past a 320px viewport. Scoped to that page; pre blocks
+   and .table-scroll keep their own horizontal scroll. */
+.pii-page p code,
+.pii-page li code {
+  overflow-wrap: anywhere;
+}

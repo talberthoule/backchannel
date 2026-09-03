@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Private Meeting AI: Keep Clients' Names Out of Every Model | Backchannel</title>
+  <meta name="description" content="Use an AI meeting assistant without handing over your clients' names. Backchannel tokenizes personal data the moment it is written, so every model, local or cloud, reads [PERSON_1] and not Owen. The mechanism, its limits, and where to verify each claim in the source." />
+  <link rel="canonical" href="https://backchannel.page/private-meeting-ai/" />
+  <meta property="og:title" content="Private Meeting AI: Keep Clients' Names Out of Every Model | Backchannel" />
+  <meta property="og:description" content="Use an AI meeting assistant without handing over your clients' names. Backchannel tokenizes personal data the moment it is written, so every model, local or cloud, reads [PERSON_1] and not Owen. The mechanism, its limits, and where to verify each claim in the source." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Backchannel" />
+  <meta property="og:url" content="https://backchannel.page/private-meeting-ai/" />
+  <meta property="og:image" content="https://backchannel.page/assets/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Backchannel: live meeting transcription and real-time insight agents, self-hosted." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <link rel="stylesheet" href="../style.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebPage",
+        "url": "https://backchannel.page/private-meeting-ai/",
+        "name": "Private Meeting AI: Keep Clients' Names Out of Every Model | Backchannel",
+        "description": "Use an AI meeting assistant without handing over your clients' names. Backchannel tokenizes personal data the moment it is written, so every model, local or cloud, reads [PERSON_1] and not Owen. The mechanism, its limits, and where to verify each claim in the source.",
+        "dateModified": "2026-09-03",
+        "isPartOf": {
+          "@id": "https://backchannel.page/#website"
+        },
+        "about": {
+          "@id": "https://backchannel.page/#software"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Backchannel",
+            "item": "https://backchannel.page/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Private meeting AI"
+          }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Can I use cloud models such as Gemini or GPT with the shield on?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes, for text. Every agent, the briefing, chat and Ask send tokenized text, so a cloud text model receives [PERSON_1] and never the name. Audio is different: while the shield is on, transcription is held to a local model and a cloud live-caption gateway is paused, because audio cannot be tokenized."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does any detection step call out to a service?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. Pattern matching, roster matching, introduction patterns and the optional on-device name model all run on this machine. The model is an ONNX file of about 110 MB downloaded once into DATA_DIR/pii-models/; if it cannot be fetched, the other layers keep working and the Privacy tab says so."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is this redaction? Can the names be recovered?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "It is tokenization, which is reversible by design. The real values sit in a vault encrypted under a key derived from the credentials master key, and they are put back only on the way to your screen, or into an export when you tick Include personal data. Anyone with the data directory and the master key can decode, so protect the master key."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What happens to sessions recorded before I turned it on?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "They keep their plain text until you protect them. POST /api/sessions/{id}/pii/protect runs the encode path over a stored session's transcript, insights, directives, document excerpts, session fields and speakers, and reports what changed. The product offers it for those sessions."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How do I verify that a prompt really left with tokens only?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Turn on Record outbound prompts. Every prompt is written to DATA_DIR/prompt-log/outbound.jsonl exactly as it was sent and badged tokens only or blocked in the Privacy tab. Separately, while the shield is on, a prompt still carrying a vault value is refused before it is sent."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What is the difference between Privacy First and the PII Shield?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Privacy First decides where processing happens: it keeps everything on this machine and turns off anything that needs an outside call. The PII Shield decides what any model, local or cloud, gets to read. They compose. Shield on with cloud text models gives frontier-model analysis with no name leaving the machine."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+<a class="skip-link" href="#top">Skip to content</a>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <img src="/assets/favicon.svg" alt="" />
+      backchannel
+    </a>
+    <nav class="site-nav">
+      <a href="/#features">Features</a>
+      <a href="/blog/">Writing</a>
+      <a href="/docs/">Docs</a>
+      <a class="btn primary nav-cta" href="https://github.com/talberthoule/backchannel">Star on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top" class="pii-page">
+
+  <section class="hero">
+    <div class="wrap">
+      <h1>Put AI in the meeting. Keep <span class="accent">the names</span> out of the model.</h1>
+      <p class="lede">
+        Backchannel is an open-source meeting assistant you run yourself. With
+        its PII Shield on, a client's name, company, email address or phone
+        number becomes a per-session token the moment it is written, and every
+        model, on this machine or in a cloud, reads the token. This page is the
+        long version of that claim: the mechanism, the parts that are enforced
+        rather than advised, the limits, and the file to open when you want to
+        check it yourself.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="#mechanism">Read the mechanism</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+      <p class="quickstart-note">Off by default &middot; detection runs on this machine &middot; MIT licensed &middot; free desktop downloads, no sign-in needed</p>
+    </div>
+  </section>
+
+  <section class="alt" id="promise">
+    <div class="wrap">
+      <span class="kicker">The promise</span>
+      <h2>What a model receives, and what you do</h2>
+      <p class="sub">Paste a sentence into the Privacy tab and it shows the sentence a model would receive, with a legend for every token and the layer that found it. Nothing typed there is stored. The same substitution runs on every transcript line, directive, document excerpt, session name and speaker name in a real session.</p>
+
+      <figure class="shot pii">
+        <div class="shot-strip">
+          <picture>
+            <source srcset="/assets/shots/pii-preview-dark.webp" media="(prefers-color-scheme: dark)" />
+            <img src="/assets/shots/pii-preview.webp" width="868" height="254" loading="lazy"
+                 alt="The Privacy tab's try-a-sentence box. Typed in: Owen Delacroix from Alderwake Health Network owns the identity approval, reach him at owen.delacroix@alderwake.example or 212-555-0142 before the board review. Shown as a model would receive it: [PERSON_1] from [ORG_1] owns the identity approval, reach him at [EMAIL_1] or [PHONE_1] before the board review. A legend lists each token's value and whether the on-device name model (ner) or a pattern found it." />
+          </picture>
+        </div>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 1</span><span>One sentence in, the sentence a model receives out. Two tokens came from the on-device name model, two from patterns. The email and phone number were never going to be missed; the name and the company are the harder catch.</span></figcaption>
+      </figure>
+
+      <div class="prose">
+        <h3>Nine categories, eight on by default</h3>
+        <p>
+          People, organizations, places, email addresses, phone numbers,
+          national identifiers, payment-card numbers, IP addresses and street
+          addresses. Card numbers must pass a Luhn check, so a long invoice
+          reference is not mistaken for a card. Places are off by default,
+          because &ldquo;we are expanding into Texas&rdquo; is analysis, not
+          identity; turn the category on if a city is sensitive in your work.
+        </p>
+        <h3>Numbered per session, unlinked across sessions</h3>
+        <p>
+          Tokens read <code class="token">[CATEGORY_n]</code>. Owen is
+          <code class="token">[PERSON_1]</code> on every line of one call, so
+          the analyst can follow who promised what to whom. In the next session
+          he is nobody in particular. The vault stores a keyed hash of each
+          value rather than the value, so nothing in the database links a
+          person from one session to another.
+        </p>
+      </div>
+
+      <div class="feature-row shield-row">
+        <div class="feature-copy">
+          <h3>The shield in ordinary use</h3>
+          <p>A protected session says so in its header: a count of shielded values beside the export button. The outcome line, the commitments and the open loops on this screen were all produced by models that never saw the names they are shown with. The names were put back on the way to the screen, and the badge is the only sign that anything happened.</p>
+        </div>
+        <div class="feature-visual">
+          <figure class="shot">
+            <div class="browser-frame">
+              <div class="bar" aria-hidden="true"></div>
+              <picture>
+                <source srcset="/assets/shots/postcall-overview-dark.webp" media="(prefers-color-scheme: dark)" />
+                <img src="/assets/shots/postcall-overview.webp" width="1440" height="900" loading="lazy"
+                     alt="A completed session's Overview for Alderwake Health Network's recovery readiness review, 46 minutes across two calls. The session header carries a 9 shielded badge beside the Export button. Below: the top outcome, Sponsor aligned on a non-disruptive pilot, then counts of 4 commitments, 3 open loops, 3 opportunities and 3 risks, and lists of commitments naming Owen and Leah." />
+              </picture>
+            </div>
+            <figcaption class="fig-caption"><span class="fig-no">FIG. 2</span><span>A shielded session after the call. The 9 shielded badge counts the values in this session's vault; Owen and Leah appear here because this is the screen, and nowhere else.</span></figcaption>
+          </figure>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="mechanism">
+    <div class="wrap">
+      <span class="kicker">The mechanism</span>
+      <h2>Tokenized at the door, not filtered at the exit</h2>
+      <div class="prose">
+        <p>
+          The usual design for this feature is an outbound filter. Text is
+          stored as spoken, and something scrubs it just before the model
+          call. A reviewer will recognise the failure mode: every new prompt
+          builder has to remember to call the filter, and the one that forgets
+          is the leak.
+        </p>
+        <p>
+          Backchannel encodes at ingress instead. Every path that writes human
+          text passes through <code>protect_text</code> (or
+          <code>protect_name</code>, for speakers) in
+          <code>backend/app/services/pii/shield.py</code> before the row
+          exists. The analyst, the objection handler, the synthesizer,
+          strategic signals, the briefing, chat and Ask all read stored text,
+          and stored text is already tokens. No prompt builder was changed to
+          add the shield, and none can bypass it, because there is nothing to
+          bypass. The plain value never reached the database.
+        </p>
+      </div>
+      <p class="sub" style="margin-top: 32px;">Every write path, and the file where the encode call sits. Paths are under <code>backend/app/</code>.</p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Text arrives as</th><th>Tokenized in</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Live transcript segments, as each diarized segment is transcribed</td>
+              <td><code>ws/audio_handler.py</code></td>
+            </tr>
+            <tr>
+              <td>Transcript imports (.txt, .md, .docx), audio imports and re-transcription</td>
+              <td><code>routers/imports.py</code></td>
+            </tr>
+            <tr>
+              <td>Manual transcript entries</td>
+              <td><code>routers/transcripts.py</code></td>
+            </tr>
+            <tr>
+              <td>Directives, typed before the call over REST or mid-call over the WebSocket</td>
+              <td><code>routers/directives.py</code>, <code>ws/audio_messages.py</code></td>
+            </tr>
+            <tr>
+              <td>Session name, notes and meeting context</td>
+              <td><code>routers/sessions.py</code></td>
+            </tr>
+            <tr>
+              <td>Speaker names, which are a person's name by definition</td>
+              <td><code>routers/speakers.py</code> via <code>protect_name</code></td>
+            </tr>
+            <tr>
+              <td>The document excerpt, extracted on this machine</td>
+              <td><code>routers/documents.py</code></td>
+            </tr>
+            <tr>
+              <td>The question you type into Ask during a call</td>
+              <td><code>routers/ask.py</code></td>
+            </tr>
+            <tr>
+              <td>Your turns in Chat</td>
+              <td><code>routers/chat.py</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt" id="detection">
+    <div class="wrap">
+      <span class="kicker">Detection</span>
+      <h2>Found on this machine, in four layers</h2>
+      <p class="sub">No layer makes a network call. Each catches what the one before it cannot, and the roster is what makes a name caught once stay caught.</p>
+      <div class="prose">
+        <h3>Patterns, for the structured categories</h3>
+        <p>
+          Email, phone, national identifier, card, IP and street address are
+          shapes, and shapes are what regular expressions are for
+          (<code>services/pii/recognizers.py</code>). A card candidate must
+          pass Luhn, so a thirteen-to-nineteen-digit reference number stays a
+          reference number.
+        </p>
+        <h3>The roster, matched as whole words</h3>
+        <p>
+          The session's speakers, the protected-terms list you maintain for the
+          workspace, and every person, organization and place already in the
+          session's vault. A name caught once by any layer is caught on every
+          later line, with or without the model. Each capitalized part of a
+          multi-word name maps to the same token, so a later
+          &ldquo;Delacroix&rdquo; on its own still becomes
+          <code class="token">[PERSON_1]</code>. The protected-terms list is
+          where you put what a model would miss: client companies, project code
+          names, a person who is never introduced.
+        </p>
+        <h3>Introductions</h3>
+        <p>
+          &ldquo;My name is&rdquo; and &ldquo;this is&rdquo; mark the name that
+          follows as a person, which is how most people enter a call.
+        </p>
+        <h3>An on-device name model, optional</h3>
+        <p>
+          <code>Xenova/bert-base-NER</code>, the CoNLL-2003 BERT model as a
+          quantized ONNX file of about 110 MB. It downloads once into
+          <code>DATA_DIR/pii-models/</code> and runs on the onnxruntime the app
+          already ships for speaker diarization, on the CPU. If it cannot be
+          fetched, the shield keeps working on the other three layers and the
+          Privacy tab says so rather than showing a green light.
+        </p>
+        <p>
+          When layers disagree, the roster wins, then patterns, then
+          introductions, then the model. The roster knows that Brown is Bill
+          Brown and that Cyberdyne is a company; the model only guesses a
+          category.
+        </p>
+      </div>
+
+      <figure class="shot">
+        <div class="browser-frame">
+          <div class="bar" aria-hidden="true"></div>
+          <picture>
+            <source srcset="/assets/shots/admin-privacy-preview-dark.webp" media="(prefers-color-scheme: dark)" />
+            <img src="/assets/shots/admin-privacy-preview.webp" width="1185" height="900" loading="lazy"
+                 alt="The Privacy tab in full: category checkboxes with Places unticked and the others on; an On-device name recognition block marked Ready with the model named as Xenova/bert-base-NER, about 110 MB; a Protected terms field with an Organization type selector and Add button; and the Try a sentence box with its tokenized result and legend below it." />
+          </picture>
+        </div>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 3</span><span>Everything you control, on one tab: which categories are on, whether the on-device model is used and whether it is ready, the protected terms you add, and a scratch box to test any of it.</span></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="vault">
+    <div class="wrap">
+      <span class="kicker">Storage and reveal</span>
+      <h2>Encrypted at rest, decoded only at the edge</h2>
+      <div class="prose">
+        <p>
+          The vault (<code>services/pii/vault.py</code>, table
+          <code>pii_vault_entries</code>) holds each value Fernet-encrypted
+          under a key derived with HKDF from the credentials master key, the
+          same root of trust that protects your provider API keys, through
+          <code>secrets.derive_subkey</code>. Lookup uses a keyed HMAC of the
+          normalized value. So the table reveals neither the values nor whether
+          two sessions share one; the same person in two sessions is two
+          unrelated rows.
+        </p>
+        <p>
+          Decoding is reachable from exactly three places, all of them on the
+          way to the person at this machine:
+        </p>
+        <ul>
+          <li><code>PiiRevealMiddleware</code> substitutes tokens in every session-scoped JSON response and in the session list.</li>
+          <li><code>RevealingWebSocket</code> does the same for every live message during a call.</li>
+          <li>The exports and <code>/api/chat</code>, whose session is not in the URL path, reveal explicitly through <code>shield.reveal_text</code>.</li>
+        </ul>
+        <p>
+          Nothing under <code>services/agents</code> and nothing in
+          <code>services/llm.py</code> imports the reveal path. That is an
+          invariant you can enforce with a grep, and the verification section
+          below gives you the command.
+        </p>
+      </div>
+
+      <div class="feature-row shield-row reverse">
+        <div class="feature-copy">
+          <h3>Your screen is the edge</h3>
+          <p>During this call the transcript shows Owen and Maya, the answered question quotes Owen's threshold, and the ask bar sends your questions to a Gemini model. Every one of those model calls carried <code class="token">[PERSON_1]</code>. The names on screen were put back by the WebSocket wrapper on the last hop, and each substitution was counted.</p>
+        </div>
+        <div class="feature-visual">
+          <figure class="shot">
+            <div class="browser-frame">
+              <div class="bar" aria-hidden="true"></div>
+              <picture>
+                <source srcset="/assets/shots/live-call-dark.webp" media="(prefers-color-scheme: dark)" />
+                <img src="/assets/shots/live-call.webp" width="1440" height="900" loading="lazy"
+                     alt="Backchannel during a live call: three strategic signals across the top, 125 live insights with a question you asked already answered, and a live transcription column on the right where Owen, Me and Maya are named on each line. The ask bar along the bottom shows a Gemini model selected." />
+              </picture>
+            </div>
+            <figcaption class="fig-caption"><span class="fig-no">FIG. 4</span><span>A live call with the names on screen. The transcript column, the answered question and the signal cards all reached the browser through the revealing WebSocket; the models that produced them saw tokens.</span></figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <div class="prose" style="margin-top: 44px;">
+        <h3>Exports and the audit trail</h3>
+        <p>
+          Exports carry tokens unless you ask otherwise. The Export menu has a
+          box, Include personal data, which passes <code>?reveal=1</code>;
+          leave it unticked and the transcript, the insights workbook and the
+          summary all leave with tokens in place. Every reveal, on screen or
+          into a file, appends a row to <code>pii_reveal_events</code> with the
+          session, the route and the number of tokens replaced, and the Privacy
+          tab shows the last 24 hours.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt" id="audio">
+    <div class="wrap">
+      <span class="kicker">Audio</span>
+      <h2>Audio is enforced, not advised</h2>
+      <p class="sub">Text can be tokenized before a model reads it. Audio cannot, so the rule for audio is a lock rather than a setting.</p>
+      <div class="feature-row">
+        <div class="feature-copy">
+          <h3>Locked to local models while the shield is on</h3>
+          <p>While the shield is on, <code>transcription_runtime.audio_lock_reason</code> locks audio to local models the way Privacy First does, but for audio alone. A cloud batch transcriber is coerced to a local model; a cloud live-caption gateway is paused, and the live call says &ldquo;Live captions off: PII Shield&rdquo; rather than going quiet. Cloud text models stay available throughout, because text is tokens by the time they see it. Uploaded documents are read on this machine and never sent as files. The Privacy tab reports each row as it stands, including a cloud gateway that is configured but paused.</p>
+        </div>
+        <div class="feature-visual">
+          <figure class="shot">
+            <div class="browser-frame">
+              <div class="bar" aria-hidden="true"></div>
+              <picture>
+                <source srcset="/assets/shots/admin-privacy-dark.webp" media="(prefers-color-scheme: dark)" />
+                <img src="/assets/shots/admin-privacy.webp" width="1185" height="900" loading="lazy"
+                     alt="Admin Privacy tab with the PII Shield on, badged Personal data tokenized. Four coverage rows: transcripts, insights, briefings, chat and documents protected; transcription audio protected, held to a local model; live captions protected; transcript refinement not covered because the refiner is off. Below them: Vault, 9 protected values across all sessions." />
+              </picture>
+            </div>
+            <figcaption class="fig-caption"><span class="fig-no">FIG. 5</span><span>The coverage report with the shield on. Three rows are protected by enforcement; the fourth says &ldquo;not covered&rdquo; because the optional refiner is off, which is the honest answer rather than a fourth green tick.</span></figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <div class="prose" style="margin-top: 44px;">
+        <h3>Closing the quality gap: the Transcript Refiner</h3>
+        <p>
+          Local transcription is rougher than cloud transcription: thin
+          punctuation, flat casing, a product name split in two. The optional
+          Transcript Refiner agent, off by default, sends the tokenized
+          transcript to any text model, local or cloud, to fix punctuation,
+          casing, sentence boundaries and obvious mishearings. It runs every
+          45 seconds during the call, once more at call end, and before
+          post-import analysis. A rewrite is kept only if it carries exactly
+          the original tokens; a model that drops, invents or renumbers one
+          loses that entry, and the transcriber's text stands.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section id="verify">
+    <div class="wrap">
+      <span class="kicker">Verification</span>
+      <h2>Check it, instead of taking our word</h2>
+      <p class="sub">Three checks, in increasing order of effort. None of them needs a network.</p>
+      <div class="prose">
+        <h3>Read the prompts as they left</h3>
+        <p>
+          Turn on Record outbound prompts in the Privacy tab and every prompt is
+          appended to <code>DATA_DIR/prompt-log/outbound.jsonl</code> exactly
+          as it was sent, with the agent, the model and the session. The tab
+          lists the newest entries with a badge, &ldquo;tokens only&rdquo; or
+          &ldquo;blocked&rdquo;. The file is written raw on purpose, bypassing
+          the log scrubber, because a scrubbed record could not show a leak. It
+          never leaves the machine, and one button deletes it.
+        </p>
+        <h3>The tripwire</h3>
+        <p>
+          Independently of the log, while the shield is on every text prompt
+          passes an egress check (<code>services/pii/egress.py</code>, called
+          from <code>generate_text</code> and <code>generate_json</code>). A
+          prompt that still carries a value the vault has seen in plaintext is
+          refused before it is sent, and the refusal is written to the audit
+          trail. A gap upstream costs one model call, not one disclosure.
+        </p>
+        <h3>The grep</h3>
+        <p>
+          The decode path must not be reachable from any prompt builder. From
+          a checkout of the repository:
+        </p>
+      </div>
+      <pre><code><span class="cmt"># Expected output: nothing.</span>
+grep -rl "reveal_" backend/app/services/agents backend/app/services/llm.py
+
+<span class="cmt"># The three places that do decode, all on the way to the screen:</span>
+<span class="cmt">#   backend/app/services/pii/reveal_middleware.py   session-scoped JSON and the session list</span>
+<span class="cmt">#   backend/app/services/pii/ws.py                  every live WebSocket message</span>
+<span class="cmt">#   backend/app/routers/artifacts.py, chat.py       exports and /api/chat</span></code></pre>
+    </div>
+  </section>
+
+  <section class="alt" id="limits">
+    <div class="wrap">
+      <span class="kicker">Limits</span>
+      <h2>What the shield does not do</h2>
+      <p class="sub">A privacy page that only makes promises is not worth sending to a reviewer. These are the edges, in the product's own words.</p>
+      <div class="more-strip">
+        <div>
+          <h3>It is off by default</h3>
+          <p>Turn it on in Admin, Privacy. A fresh install protects nothing until you do.</p>
+        </div>
+        <div>
+          <h3>Detection is very good, not perfect</h3>
+          <p>An unusual name that is never introduced and is on no roster can be missed. That is exactly what the protected-terms list is for: add the names a model would not know.</p>
+        </div>
+        <div>
+          <h3>Places are off by default, on purpose</h3>
+          <p>Place names are usually analysis rather than identity. Turn the category on if a city or a site is sensitive in your work.</p>
+        </div>
+        <div>
+          <h3>Earlier sessions keep what they hold</h3>
+          <p>Sessions recorded before the shield was on stay as they were until you protect them. <code>POST /api/sessions/{id}/pii/protect</code> runs the encode path over a stored session, and the product offers it.</p>
+        </div>
+        <div>
+          <h3>Tokenization is reversible by design</h3>
+          <p>This is not redaction. The vault exists so your own screen can show the real names. Anyone with the data directory and the master key can decode, so protecting the master key still matters.</p>
+        </div>
+        <div>
+          <h3>It governs what models read</h3>
+          <p>It is not a claim about your disk, your backups, or who can log into the machine. Those are yours to secure, as with any software you run.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="two-switches">
+    <div class="wrap">
+      <span class="kicker">Two switches</span>
+      <h2>Privacy First decides where. The shield decides what.</h2>
+      <div class="feature-row reverse">
+        <div class="feature-copy">
+          <h3>Different switches, and the difference matters</h3>
+          <p>Privacy First keeps everything on this machine and turns off anything that needs an outside call. The PII Shield decides what any model, local or cloud, gets to read. They compose. A configuration many teams will land on is shield on with cloud text models: frontier-model analysis quality, and no name ever leaves. A fully local team turns both on and loses nothing the shield offers.</p>
+        </div>
+        <div class="feature-visual">
+          <figure class="shot">
+            <div class="browser-frame">
+              <div class="bar" aria-hidden="true"></div>
+              <picture>
+                <source srcset="/assets/shots/admin-agents-dark.webp" media="(prefers-color-scheme: dark)" />
+                <img src="/assets/shots/admin-agents.webp" width="1185" height="900" loading="lazy"
+                     alt="The Admin Agents tab. At the top, the Privacy First switch, currently off and badged Cloud AI allowed, with its description: keeps every byte of call audio and transcript on this machine. Below it the agent lineup begins with the Audio Bridge and the Consolidated Analyst, each with its own model selector and enable switch." />
+              </picture>
+            </div>
+            <figcaption class="fig-caption"><span class="fig-no">FIG. 6</span><span>Privacy First sits above the agent lineup on the Agents tab. The PII Shield lives on the Privacy tab beside it. One decides where models run; the other decides what they may read.</span></figcaption>
+          </figure>
+        </div>
+      </div>
+      <div class="table-scroll" style="margin-top: 32px;">
+        <table>
+          <thead>
+            <tr><th>Question</th><th>Privacy First</th><th>PII Shield</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>What it decides</td>
+              <td>Where processing happens</td>
+              <td>What any model is allowed to read</td>
+            </tr>
+            <tr>
+              <td>Cloud text models</td>
+              <td>Turned off</td>
+              <td>Allowed; they receive tokens only</td>
+            </tr>
+            <tr>
+              <td>Transcription audio</td>
+              <td>Local models only</td>
+              <td>Local models only, enforced while the shield is on</td>
+            </tr>
+            <tr>
+              <td>Live captions</td>
+              <td>On-device captioner only</td>
+              <td>Cloud gateway paused; on-device captioner allowed</td>
+            </tr>
+            <tr>
+              <td>Uploaded documents</td>
+              <td>Read on this machine</td>
+              <td>Read on this machine, never sent as files</td>
+            </tr>
+            <tr>
+              <td>Default</td>
+              <td>Off</td>
+              <td>Off</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt" id="faq">
+    <div class="wrap">
+      <h2>Questions a reviewer asks</h2>
+      <div class="faq-list">
+        <div class="faq-item">
+          <h3>Can I use cloud models such as Gemini or GPT with the shield on?</h3>
+          <p>Yes, for text. Every agent, the briefing, chat and Ask send tokenized text, so a cloud text model receives [PERSON_1] and never the name. Audio is different: while the shield is on, transcription is held to a local model and a cloud live-caption gateway is paused, because audio cannot be tokenized.</p>
+        </div>
+        <div class="faq-item">
+          <h3>Does any detection step call out to a service?</h3>
+          <p>No. Pattern matching, roster matching, introduction patterns and the optional on-device name model all run on this machine. The model is an ONNX file of about 110 MB downloaded once into DATA_DIR/pii-models/; if it cannot be fetched, the other layers keep working and the Privacy tab says so.</p>
+        </div>
+        <div class="faq-item">
+          <h3>Is this redaction? Can the names be recovered?</h3>
+          <p>It is tokenization, which is reversible by design. The real values sit in a vault encrypted under a key derived from the credentials master key, and they are put back only on the way to your screen, or into an export when you tick Include personal data. Anyone with the data directory and the master key can decode, so protect the master key.</p>
+        </div>
+        <div class="faq-item">
+          <h3>What happens to sessions recorded before I turned it on?</h3>
+          <p>They keep their plain text until you protect them. POST /api/sessions/{id}/pii/protect runs the encode path over a stored session's transcript, insights, directives, document excerpts, session fields and speakers, and reports what changed. The product offers it for those sessions.</p>
+        </div>
+        <div class="faq-item">
+          <h3>How do I verify that a prompt really left with tokens only?</h3>
+          <p>Turn on Record outbound prompts. Every prompt is written to DATA_DIR/prompt-log/outbound.jsonl exactly as it was sent and badged tokens only or blocked in the Privacy tab. Separately, while the shield is on, a prompt still carrying a vault value is refused before it is sent.</p>
+        </div>
+        <div class="faq-item">
+          <h3>What is the difference between Privacy First and the PII Shield?</h3>
+          <p>Privacy First decides where processing happens: it keeps everything on this machine and turns off anything that needs an outside call. The PII Shield decides what any model, local or cloud, gets to read. They compose. Shield on with cloud text models gives frontier-model analysis with no name leaving the machine.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final">
+    <div class="wrap">
+      <h2>Try it on a sentence before you try it on a client</h2>
+      <p class="sub">Install, open Admin, Privacy, and paste the worst sentence you can think of into the try-a-sentence box. Nothing typed there is stored, and the legend tells you which layer caught what.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="/docs/configuration/">Read the configuration docs</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Related reading</h2>
+      <div class="doc-list">
+        <a class="doc" href="/blog/three-degrees-of-local/">
+          <strong>Three degrees of local</strong>
+          <span>Which bytes leave your machine at each stage, cited to file paths</span>
+        </a>
+        <a class="doc" href="/docs/configuration/">
+          <strong>Configuration reference</strong>
+          <span>The PII Shield section, endpoint by endpoint, for the engineer who deploys it</span>
+        </a>
+        <a class="doc" href="/open-source-meeting-assistants/">
+          <strong>Open-source meeting assistants</strong>
+          <span>The self-hosted landscape, compared honestly</span>
+        </a>
+        <a class="doc" href="/blog/self-hosted-ai-notetaker-honest-comparison/">
+          <strong>The free AI notetaker is genuinely free. Here is why I self-host anyway.</strong>
+          <span>Conceding the free tier up front, then arguing from where audio is processed and who trains on it</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site">
+    <div class="wrap footer-compare">
+    <span>Compare:</span>
+    <a href="/open-source-meeting-assistants/">Open-source meeting assistants</a>
+    <a href="/otter-alternative/">Open-source Otter.ai alternative</a>
+    <a href="/fireflies-alternative/">Fireflies.ai alternative without the bot</a>
+    <a href="/granola-alternative/">Open-source Granola alternative</a>
+    <a href="/fathom-alternative/">Fathom alternative</a>
+    <a href="/gong-and-backchannel/">Gong and Backchannel</a>
+    <a href="/teams-premium-alternative/">Teams Premium alternative</a>
+  </div>
+  <div class="wrap footer-compare">
+    <span>Privacy:</span>
+    <a href="/private-meeting-ai/">Private meeting AI</a>
+    <a href="/blog/three-degrees-of-local/">Three degrees of local</a>
+  </div>
+  <div class="wrap">
+    <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
+    <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
+  </div>
+</footer>
+
+<script src="/lightbox.js" defer></script>
+
+</body>
+</html>

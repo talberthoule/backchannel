@@ -92,6 +92,15 @@ action items you would otherwise reconstruct from memory afterwards.
 
 ## What it looks like
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="site/assets/shots/pii-preview-dark.webp" />
+  <img src="site/assets/shots/pii-preview.webp" alt="The PII Shield's try-a-sentence box: a sentence naming a person, a company, an email address and a phone number, the tokenized version a model actually receives, and a legend giving each token's real value and how it was detected." />
+</picture>
+
+**What the model actually reads.** With the PII Shield on, a name never reaches
+a model, local or cloud -- and the shield will show you, sentence by sentence,
+exactly what it hands over.
+
 <table>
 <tr>
 <td width="50%" valign="top">
@@ -133,10 +142,10 @@ speech, with a response you can say out loud.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="site/assets/shots/admin-agents-dark.webp" />
-  <img src="site/assets/shots/admin-agents.webp" alt="The Admin agents tab: the Privacy First switch above the nine-agent lineup with a model picker per agent." />
+  <img src="site/assets/shots/admin-agents.webp" alt="The Admin agents tab: the Privacy First switch above the ten-agent lineup with a model picker per agent." />
 </picture>
 
-**The crew, configurable.** Nine agents, each with its own model, prompt, and
+**The crew, configurable.** Ten agents, each with its own model, prompt, and
 trigger -- and a Privacy First switch that judges the destination.
 
 </td>

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
@@ -12,6 +12,7 @@ const customerFiles = [
   '../AGENTS.md',
   '../CLAUDE.md',
   '../site/index.html',
+  '../site/private-meeting-ai/index.html',
   '../site/blog/index.html',
   '../site/blog/live-meeting-ai-enterprise-gate/index.html',
   '../site/fireflies-alternative/index.html',
@@ -145,6 +146,7 @@ test('customer download entry points use the authenticated Backchannel portal', 
     '../README.md',
     '../docs/quickstart.md',
     '../site/index.html',
+    '../site/private-meeting-ai/index.html',
     '../site/fireflies-alternative/index.html',
     '../site/granola-alternative/index.html',
     '../site/otter-alternative/index.html',
@@ -186,6 +188,43 @@ test('public GitHub source, issue, license, star, and release-note links remain'
   for (const version of ['v0.1.0', 'v0.1.1', 'v0.2.0', 'v0.2.1', 'v0.2.2', 'v0.2.3', 'v0.2.4', 'v0.2.5']) {
     assert.match(content, new RegExp(`https://github\\.com/talberthoule/backchannel/releases/tag/${version}`));
   }
+});
+
+// Adding a page to this site is never one file: it also has to reach the
+// sitewide footer, the sitemap, and llms.txt. Walking the directory rather
+// than listing paths means a page added later is held to the same rule.
+function everySitePage() {
+  const root = new URL('../site/', import.meta.url);
+  const found = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir)) {
+      const child = new URL(`${entry}${statSync(new URL(entry, dir)).isDirectory() ? '/' : ''}`, dir);
+      if (child.href.endsWith('/')) walk(child);
+      else if (entry === 'index.html') found.push(child);
+    }
+  };
+  walk(root);
+  return found;
+}
+
+test('the privacy deep-dive is reachable from every page that carries the footer', () => {
+  const target = '/private-meeting-ai/';
+  const orphans = [];
+  let carriers = 0;
+  for (const page of everySitePage()) {
+    const content = readFileSync(page, 'utf8');
+    if (!content.includes('footer-compare')) continue;
+    carriers += 1;
+    if (!content.includes(`href="${target}"`)) orphans.push(page.pathname);
+  }
+  assert.ok(carriers > 20, `expected the footer on most pages, saw ${carriers}`);
+  assert.deepEqual(orphans, [], 'pages carrying the footer but not linking the privacy page');
+});
+
+test('the privacy deep-dive is indexed for crawlers and for agents', () => {
+  assert.match(read('../site/sitemap.xml'), /<loc>https:\/\/backchannel\.page\/private-meeting-ai\/<\/loc>/);
+  assert.match(read('../site/llms.txt'), /https:\/\/backchannel\.page\/private-meeting-ai\//);
+  assert.match(read('../site/private-meeting-ai/index.html'), /rel="canonical" href="https:\/\/backchannel\.page\/private-meeting-ai\/"/);
 });
 
 test('the sitemap remains a same-host index while public pages link to the portal', () => {

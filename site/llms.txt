@@ -7,7 +7,10 @@
 > fully local ONNX transcription) that surface questions, objections,
 > opportunities, and action items while the meeting is still happening.
 > You can also ask the running call a question and get an answer from the
-> conversation so far, without stopping the recording.
+> conversation so far, without stopping the recording. A PII Shield can
+> replace names, companies and contact details with tokens before anything
+> is stored or shown to a model, local or cloud, so the models read the
+> conversation without reading the people in it.
 
 Backchannel is free to run: there is no hosted service and no pricing
 tiers, and self-hosting with Docker Compose (React frontend, FastAPI
@@ -36,11 +39,40 @@ Key facts:
   run end to end with no cloud key. Privacy First judges the destination,
   so an on-prem endpoint (loopback or LAN) keeps the analysis agents
   running with the switch on while cloud providers stay blocked.
-- Agents: nine seeded agents -- an audio gateway, five live insight agents
+- Agents: ten seeded agents -- an audio gateway, six live agents
   (consolidated analyst every 40s, objection handler every 10s over the last
-  90s, synthesizer, opportunity specialist, strategic signals every 45s), and
-  a three-agent post-call briefing pass (meeting lens, discovery lens,
-  arbiter) -- each with a configurable model, prompt, and trigger
+  90s, synthesizer, opportunity specialist, strategic signals every 45s, and
+  a transcript refiner every 45s that is off by default), and a three-agent
+  post-call briefing pass (meeting lens, discovery lens, arbiter) -- each
+  with a configurable model, prompt, and trigger
+- PII Shield: personal data is replaced with tokens such as [PERSON_1] at
+  the moment a transcript line, directive, document excerpt, session name or
+  speaker name is written, so every agent, briefing, chat and Ask works from
+  tokenized text and the database itself holds only tokens. It covers
+  people's names, company names, email addresses, phone numbers, payment
+  card and national-identifier numbers, IP addresses and street addresses.
+  Real values live in a vault encrypted under the same master key that
+  protects provider keys, and are restored only on the operator's own
+  screen and in exports explicitly asked for. Detection is entirely local:
+  patterns for structured identifiers, the session's speaker roster, a
+  user-maintained protected-terms list, and an on-device name-recognition
+  model (Xenova/bert-base-NER, about 110 MB) that downloads once and then
+  runs offline. No detection ever makes a cloud call. Because audio cannot
+  be tokenized, the shield holds transcription to a local model and turns
+  off cloud live captions; cloud text models stay usable because they
+  receive tokens only. An optional prompt log records every outbound prompt
+  exactly as it left, badged "tokens only" or "blocked", so the claim is
+  checkable rather than trusted; while the shield is on, a prompt still
+  carrying a vault value is refused before it is sent
+- Transcript refiner: an optional agent that sends the tokenized transcript
+  to any text model, local or cloud, to fix punctuation, casing, sentence
+  boundaries and mishearings, closing the quality gap of local-only
+  transcription. A rewrite is kept only if it carries exactly the original
+  tokens, so no name reaches the model
+- Cost transparency: a per-session Tokens tab breaks usage down by source
+  and by model, pricing cached prompt tokens and audio tokens at their own
+  published rates rather than the text rate, and the post-call Overview
+  carries the resulting estimate
 - Ask during the call: the call's command bar answers a typed question from
   the live transcript, the insights raised so far, strategic signals,
   directives, and stored document summaries, without stopping the recording.
@@ -58,6 +90,18 @@ Key facts:
 - Works with any meeting, digital or in person: captures mic plus tab/system
   audio in the browser, so Zoom, Meet, and Teams need no bot or integration,
   and a conference-room conversation needs only the microphone
+
+## Privacy
+
+- [Private meeting AI](https://backchannel.page/private-meeting-ai/): the full account
+  of the PII Shield -- what is tokenized and when, the layered on-device detection,
+  the encrypted vault, the three places a value is decoded, why audio is held to
+  local models while cloud text models stay usable, how to verify the claim with the
+  outbound prompt log, and the limits stated plainly (off by default, detection is
+  not perfect, tokenization is reversible by design, and it governs what models read
+  rather than who can reach the machine)
+- [Three degrees of local](https://backchannel.page/blog/three-degrees-of-local/): where
+  each component can run, from local diarization through fully self-hosted analysis
 
 ## Docs
 
