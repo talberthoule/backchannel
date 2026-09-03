@@ -10,10 +10,46 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.6.1"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.6.1",
+        "date": "2026-09-03",
+        "title": "Updating no longer asks you to sign in for a public download",
+        "body": """Checking for an update worked, but pressing Download update
+opened a window asking you to sign in to an account, for a file the download
+portal hands to anyone who asks. There was no account to sign in with, so the
+update could not be taken from inside the app at all.
+
+- The update download is now anonymous, like every other download this
+  project publishes. Press Download update and it downloads. There is no
+  authorization window, no account, and no sign-in anywhere on the path.
+- Installs already running v0.6.0 are fixed too, without reinstalling. The
+  portal side of the old handshake stopped requiring an account at the same
+  time, so a v0.6.0 install that checks for updates can now fetch v0.6.1 on
+  its own. If you already gave up and downloaded a build by hand, nothing is
+  lost; updates from here are in-app again.
+- If a download is interrupted it still resumes from where it stopped, and
+  the panel now says the download was interrupted rather than blaming an
+  expired authorization it no longer uses.
+
+Two smaller things:
+
+- The meeting picker in post-call Chat searches by date, the way the session
+  sidebar's find box already did. Typing October, oct 8, 8, 10/8 or
+  2026-10-08 finds the meetings from that day, so the two boxes finally
+  behave the same way.
+- Clicking into either of those search boxes now says that searching by date
+  works, which was previously something you had to already know.
+- In dark mode, the Privacy First review panel was unreadable. The panel that
+  lists what stops working and what keeps working kept a light background in
+  both themes while the feature names took the dark theme's light text, so
+  the names disappeared into the panel just as you were deciding whether to
+  turn the switch on. The panel now follows the theme.
+""",
+    },
     {
         "version": "0.6.0",
         "date": "2026-09-02",
