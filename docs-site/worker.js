@@ -1138,6 +1138,12 @@ function validUpdateGrantBody(body) {
     && UPDATE_ASSET_IDS.has(body.asset_id);
 }
 
+// The handshake an install built before v0.6.1 performs before downloading an
+// update. It no longer authorizes anything, because the asset route above is
+// public, so it neither requires a signed-in recipient nor records a row: it
+// answers with a fresh opaque token purely so those installs can complete the
+// exchange they were built to expect and reach v0.6.1. From v0.6.1 the app
+// downloads directly and never opens this window.
 async function handleUpdateGrant(request, env, dependencies) {
   const parsed = await readDownloadBody(request);
   if (parsed.response) return parsed.response;
@@ -1146,13 +1152,11 @@ async function handleUpdateGrant(request, env, dependencies) {
     return downloadJson(400, { ok: false, error: 'Request is invalid.' });
   }
 
-  const session = await releaseSession(request, env, dependencies);
-  if (session.response) return session.response;
   if (!env.RELEASES) return downloadUnavailable();
   let manifest;
   let asset;
   try {
-    const entitled = await entitledCatalog(env, session.authorization);
+    const entitled = await publicReleaseCatalog(env);
     manifest = entitled.manifests.find(({ version }) => version === body.version);
     asset = manifest?.assets.find(({ id }) => id === body.asset_id);
   } catch {
@@ -1167,20 +1171,6 @@ async function handleUpdateGrant(request, env, dependencies) {
     grant = await (dependencies.createSessionToken || createSessionToken)(
       randomBytesFrom(dependencies),
     );
-    const results = await env.INTEREST_DB.batch([
-      statement(
-        env,
-        'DELETE FROM release_update_grants WHERE expires_at <= ?',
-        now.toISOString(),
-      ),
-      statement(env, `
-        INSERT INTO release_update_grants
-          (token_hash, email, version, asset_id, expires_at)
-        VALUES (?, ?, ?, ?, ?)
-      `, grant.tokenHash, session.account.email, manifest.version, asset.id, expiresAt),
-    ]);
-    if (results.length !== 2 || results.some((result) => result?.success !== true)
-      || (results[1]?.meta?.changes ?? 0) !== 1) return downloadUnavailable();
   } catch {
     return downloadUnavailable();
   }
@@ -1204,38 +1194,28 @@ function validStoredUpdateGrant(grant, match, now) {
     && expiresAt > now.getTime();
 }
 
+// The in-app updater's asset download. Anonymous, like every other download
+// this host serves: the exact same file is already public at
+// /api/download/releases/{version}/{assetId}, so requiring an approved
+// recipient account here only asked a user to sign in for a file we hand to
+// anyone who asks. It also stranded installs in the field, because the app
+// sent them to the portal's login panel before it would fetch the update.
+//
+// A Bearer token from an install built before v0.6.1 is accepted and ignored;
+// nothing is authorized by it any more.
 async function handleUpdateDownload(request, env, dependencies) {
   const match = /^\/api\/update\/assets\/(v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))\/(windows-x64|macos-arm64|linux-x64)$/
     .exec(new URL(request.url).pathname);
-  if (!match || !env.INTEREST_DB || !env.RELEASES) return releaseNotFound();
-  const now = downloadNow(dependencies);
-  const tokenHash = await bearerTokenHash(request);
-  if (!tokenHash) return releaseNotFound();
-
-  let grant;
-  try {
-    grant = await env.INTEREST_DB.prepare(`
-      SELECT g.email, g.version, g.asset_id, g.expires_at,
-             a.state, i.release_decision
-      FROM release_update_grants g
-      JOIN release_accounts a ON a.email = g.email
-      JOIN interest_subscribers i ON i.email = g.email
-      WHERE g.token_hash = ? AND g.expires_at > ?
-        AND a.state = 'active' AND i.release_decision = 'approved'
-    `).bind(tokenHash, now.toISOString()).first();
-  } catch {
-    return releaseNotFound();
-  }
-  if (!validStoredUpdateGrant(grant, match, now)) return releaseNotFound();
+  if (!match || !env.RELEASES) return releaseNotFound();
 
   try {
-    const authorization = await findReleaseAuthorization(env, grant.email);
-    if (!authorization) return releaseNotFound();
-    const entitled = await entitledCatalog(env, authorization);
-    const manifest = entitled.manifests.find(({ version }) => version === grant.version);
-    const asset = manifest?.assets.find(({ id }) => id === grant.asset_id);
+    const entitled = await publicReleaseCatalog(env);
+    const manifest = entitled.manifests.find(({ version }) => version === match[1]);
+    const asset = manifest?.assets.find(({ id }) => id === match[2]);
+    // The update flag still gates this route: only an asset published as an
+    // update descriptor is fetchable here, whatever else the catalog holds.
     if (!asset?.update) return releaseNotFound();
-    return streamReleaseAsset(request, env, manifest, asset, grant.email, dependencies);
+    return streamReleaseAsset(request, env, manifest, asset, null, dependencies);
   } catch {
     return releaseNotFound();
   }

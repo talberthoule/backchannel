@@ -2303,8 +2303,12 @@ function updateGrantBindings({ bucket = progressiveReleaseBucket({ signed: true 
   return { ...result, bucket };
 }
 
-test('normal recipient session mints one exact short-lived update grant', async () => {
-  const bindings = updateGrantBindings();
+// The in-app updater downloads the same file the portal already hands to
+// anyone, so none of this path may require an account. It used to: the app
+// sent the user to the portal for a grant, the portal answered with a login
+// panel, and the asset route checked the grant against an approved recipient.
+test('update grants are issued anonymously and record nothing', async () => {
+  const bindings = updateGrantBindings({ session: null });
   const response = await workerModule.route(updateGrantRequest({
     nonce: updateNonce,
     version: 'v2.0.0',
@@ -2320,27 +2324,15 @@ test('normal recipient session mints one exact short-lived update grant', async 
     grant: updateGrantToken.token,
     expires_at: '2026-07-12T12:15:00.000Z',
   });
-  const insert = bindings.calls.find(({ sql }) => /INSERT INTO release_update_grants/i.test(sql));
-  assert.ok(insert);
-  assert.deepEqual(insert.values.slice(0, 5), [
-    updateGrantToken.tokenHash,
-    releaseSession.email,
-    'v2.0.0',
-    'windows-x64',
-    '2026-07-12T12:15:00.000Z',
-  ]);
-  assert.ok(bindings.calls.some(({ sql }) => /DELETE FROM release_update_grants/i.test(sql)));
+  // The token authorizes nothing now, so it is neither stored nor looked up.
+  assert.equal(bindings.calls.some(({ sql }) => /release_update_grants/i.test(sql)), false);
+  assert.equal(bindings.batchCalls.length, 0);
   assert.equal(JSON.stringify(bindings.calls).includes(updateGrantToken.token), false);
-  assert.equal(bindings.batchCalls.length, 1);
 });
 
-test('update grant creation fails closed across request, session, entitlement, and signature gates', async () => {
+test('update grant creation still fails closed on request shape and unknown assets', async () => {
   const valid = { nonce: updateNonce, version: 'v2.0.0', asset_id: 'windows-x64' };
   const cases = [
-    [updateGrantRequest(valid), updateGrantBindings({ session: null }), 404],
-    [updateGrantRequest(valid), updateGrantBindings({
-      session: { ...releaseSession, password_change_only: 1 },
-    }), 404],
     [updateGrantRequest(valid, { headers: { origin: 'https://attacker.example' } }),
       updateGrantBindings(), 403],
     [updateGrantRequest('not-json', {
@@ -2350,12 +2342,11 @@ test('update grant creation fails closed across request, session, entitlement, a
     [updateGrantRequest({ ...valid, version: 'v02.0.0' }), updateGrantBindings(), 400],
     [updateGrantRequest({ ...valid, asset_id: 'unknown' }), updateGrantBindings(), 400],
     [updateGrantRequest({ ...valid, extra: true }), updateGrantBindings(), 400],
+    // Published without an update descriptor: not fetchable through this path.
     [updateGrantRequest(valid), updateGrantBindings({
       bucket: progressiveReleaseBucket(),
     }), 404],
-    [updateGrantRequest(valid), updateGrantBindings({
-      session: { ...releaseSession, include_latest: 0, versions: '[]' },
-    }), 404],
+    [updateGrantRequest({ ...valid, version: 'v9.9.9' }), updateGrantBindings(), 404],
   ];
   for (const [requestValue, bindings, expected] of cases) {
     const response = await workerModule.route(
@@ -2365,19 +2356,20 @@ test('update grant creation fails closed across request, session, entitlement, a
       downloadDependencies({ createSessionToken: async () => updateGrantToken }),
     );
     assert.equal(response.status, expected);
-    assert.equal(bindings.calls.some(({ sql }) => /INSERT INTO release_update_grants/i.test(sql)), false);
+    assert.equal(bindings.calls.some(({ sql }) => /release_update_grants/i.test(sql)), false);
   }
 });
 
-test('bearer update downloads recheck the grant and reuse full, ranged, and conditional streaming', async () => {
+test('update downloads are anonymous and reuse full, ranged, and conditional streaming', async () => {
   for (const [headers, expectedStatus, expectedLength] of [
     [{}, 200, '100'],
     [{ range: 'bytes=10-19' }, 206, '10'],
     [{ 'if-none-match': '"progressive-etag"' }, 304, null],
   ]) {
-    const bindings = updateGrantBindings();
+    const bindings = updateGrantBindings({ session: null, grant: null });
+    // No cookie and no bearer: exactly what an install with no account sends.
     const response = await workerModule.route(
-      updateAssetRequest(undefined, headers),
+      updateAssetRequest(undefined, { authorization: undefined, ...headers }),
       bindings.env,
       undefined,
       downloadDependencies(),
@@ -2387,26 +2379,34 @@ test('bearer update downloads recheck the grant and reuse full, ranged, and cond
     if (expectedStatus === 206) {
       assert.equal(response.headers.get('content-range'), 'bytes 10-19/100');
     }
-    const lookup = bindings.calls.find(({ sql }) => /FROM release_update_grants/i.test(sql));
-    assert.equal(lookup.values[0], updateGrantToken.tokenHash);
+    assert.equal(bindings.calls.some(({ sql }) => /release_update_grants/i.test(sql)), false);
     assert.doesNotMatch(JSON.stringify([...response.headers]), /releases\/v2\.0\.0/);
   }
 });
 
-test('bearer update failures are indistinguishable private 404 responses', async () => {
+test('a bearer from an install built before the fix is accepted and ignored', async () => {
+  for (const authorization of [
+    `Bearer ${updateGrantToken.token}`,
+    'Bearer malformed',
+  ]) {
+    const bindings = updateGrantBindings({ session: null, grant: null });
+    const response = await workerModule.route(
+      updateAssetRequest(undefined, { authorization }),
+      bindings.env,
+      undefined,
+      downloadDependencies(),
+    );
+    assert.equal(response.status, 200);
+    assert.equal(bindings.calls.some(({ sql }) => /release_update_grants/i.test(sql)), false);
+  }
+});
+
+test('unknown update versions and assets stay indistinguishable private 404 responses', async () => {
   const cases = [
-    [updateAssetRequest(), updateGrantBindings({ grant: null })],
-    [updateAssetRequest(), updateGrantBindings({
-      grant: grantRecord({ expires_at: '2026-07-12T11:59:59.000Z' }),
-    })],
-    [updateAssetRequest(), updateGrantBindings({
-      grant: grantRecord({ state: 'revoked' }),
-    })],
+    [updateAssetRequest('/api/update/assets/v9.9.9/windows-x64'), updateGrantBindings()],
     [updateAssetRequest('/api/update/assets/v2.0.0/linux-x64'), updateGrantBindings()],
-    [updateAssetRequest(undefined, { authorization: 'Bearer malformed' }), updateGrantBindings()],
-    [updateAssetRequest(), updateGrantBindings({
-      session: { ...releaseSession, include_latest: 0, versions: '[]' },
-    })],
+    // A release published with no update descriptor.
+    [updateAssetRequest(), updateGrantBindings({ bucket: progressiveReleaseBucket() })],
   ];
   for (const [requestValue, bindings] of cases) {
     const response = await workerModule.route(

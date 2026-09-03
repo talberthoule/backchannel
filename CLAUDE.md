@@ -91,8 +91,14 @@ https://backchannel.page/ and the docs at `/docs/`.
 The same Worker serves the D1 operator console only on
 `https://admin.backchannel.page/` and the public download portal on
 `https://downloads.backchannel.page/`. Release listing and asset downloads
-are anonymous; recipient accounts remain only to authorize the deployed
-desktop updater's grant flow. Cloudflare Access protects the complete
+are anonymous, and so is the in-app updater: `/api/update/latest/*` and
+`/api/update/assets/*` both serve without an account, because the asset is
+the same file the portal already hands to anyone. Requiring a grant there
+put a sign-in in front of a public download and stranded installs in the
+field (fixed in v0.6.1). `/api/download/update-grants` still answers, and
+still records nothing, purely so installs built before v0.6.1 can complete
+the handshake they expect. Recipient accounts now govern nothing on the
+download path. Cloudflare Access protects the complete
 admin hostname, and the Worker independently verifies the Access JWT issuer,
 audience, and exact `ADMIN_EMAIL`; those values are encrypted Worker secrets.
 Early access owns request and consent review plus approve/reject only. Users

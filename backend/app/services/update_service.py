@@ -369,10 +369,18 @@ class UpdateService:
     def staged_root(self) -> Path:
         return self.stage_dir / ROOT_NAMES[self.platform_id]
 
-    def start_download(self, grant: str) -> dict:
+    def start_download(self, grant: str = "") -> dict:
+        """Begin fetching the staged update.
+
+        The grant is optional and no longer authorizes anything: the asset
+        route is public, because the identical file is already downloadable
+        without an account from the release portal. It is still accepted, and
+        still shape-checked when present, so a build that predates this change
+        keeps working unmodified.
+        """
         if not self.enabled:
             return {"enabled": False, "state": "idle"}
-        if not GRANT_RE.fullmatch(grant or ""):
+        if grant and not GRANT_RE.fullmatch(grant):
             raise ValueError("invalid update grant")
         with self._lock:
             if self._download_thread and self._download_thread.is_alive():
@@ -404,9 +412,12 @@ class UpdateService:
     def _asset_request(self, grant: str, start: int | None):
         headers = {
             "Accept": "application/octet-stream",
-            "Authorization": f"Bearer {grant}",
             "User-Agent": f"Backchannel/{self.current_version}",
         }
+        # Sent only when one was handed to us. The route ignores it either way;
+        # omitting it keeps an anonymous download anonymous.
+        if grant:
+            headers["Authorization"] = f"Bearer {grant}"
         if start is not None:
             headers["Range"] = f"bytes={start}-"
         request = urllib.request.Request(

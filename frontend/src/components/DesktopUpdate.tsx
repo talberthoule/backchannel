@@ -39,11 +39,11 @@ function DesktopUpdateTransferBody({
         <div className="space-y-3">
           <div>
             <p className="font-body text-sm font-semibold text-brand-dark-gray">
-              Download authorization expired
+              Download interrupted
             </p>
             <p className="mt-1 font-mono text-xs text-brand-mid-gray">{progressText(status)}</p>
           </div>
-          <button type="button" onClick={() => void update.authorize()} className={primaryButton}>
+          <button type="button" onClick={() => void update.download()} className={primaryButton}>
             Resume download
           </button>
         </div>
@@ -156,16 +156,10 @@ function DesktopUpdateBody({ update }: { update: DesktopUpdateController }) {
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{status.available_notes}</ReactMarkdown>
             </div>
           )}
-          <button type="button" onClick={() => void update.authorize()} className={primaryButton}>
+          <button type="button" onClick={() => void update.download()} className={primaryButton}>
             Download update
           </button>
         </div>
-      );
-    case "authorizing":
-      return (
-        <p className="font-body text-sm text-brand-gray">
-          Complete authorization in the secure downloads window...
-        </p>
       );
     default:
       return <DesktopUpdateTransferBody update={update} version={version} />;

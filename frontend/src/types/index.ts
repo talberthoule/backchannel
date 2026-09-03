@@ -247,7 +247,6 @@ export type DesktopUpdateState =
   | "idle"
   | "checking"
   | "available"
-  | "authorizing"
   | "downloading"
   | "needs_authorization"
   | "ready"
@@ -273,7 +272,7 @@ export interface DesktopUpdateStatus {
 export interface DesktopUpdateController {
   status: DesktopUpdateStatus;
   check: () => Promise<void>;
-  authorize: () => Promise<void>;
+  download: () => Promise<void>;
   cancel: () => Promise<void>;
   apply: () => Promise<void>;
 }

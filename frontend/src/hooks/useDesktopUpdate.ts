@@ -4,25 +4,10 @@ import type {
   DesktopUpdateController,
   DesktopUpdateStatus,
 } from "../types";
-import { requestUpdateGrant } from "./desktopUpdateAuthorization";
-
-export { isUpdateGrantMessage } from "./desktopUpdateAuthorization";
-
 function errorText(error: unknown): string {
   return error instanceof Error
     ? error.message.slice(0, 240)
     : "The update action could not be completed.";
-}
-
-function authorizationTarget(
-  status: DesktopUpdateStatus,
-  instanceToken: string,
-): [string, string, string] | null {
-  const version = status.available_version ?? "";
-  const assetId = status.platform_id ?? "";
-  return instanceToken && version && assetId
-    ? [instanceToken, version, assetId]
-    : null;
 }
 
 function pollingInterval(state: DesktopUpdateStatus["state"], pollMs: number): number {
@@ -37,7 +22,6 @@ export function useDesktopUpdate(pollMs = 5000): DesktopUpdateController {
   const tokenRef = useRef("");
   const actionRef = useRef(false);
   const mountedRef = useRef(true);
-  const authorizationCleanupRef = useRef<(() => void) | null>(null);
 
   const setIfMounted = useCallback((next: DesktopUpdateStatus) => {
     if (mountedRef.current) setStatus(next);
@@ -75,7 +59,6 @@ export function useDesktopUpdate(pollMs = 5000): DesktopUpdateController {
       .catch(() => {});
     return () => {
       mountedRef.current = false;
-      authorizationCleanupRef.current?.();
     };
   }, [refresh]);
 
@@ -100,34 +83,20 @@ export function useDesktopUpdate(pollMs = 5000): DesktopUpdateController {
     }
   }, [fail, setIfMounted, token]);
 
-  const authorize = useCallback(async () => {
+  // Starts the transfer outright. There is no authorization step: the update
+  // asset is served anonymously, the same way the release portal serves it.
+  const download = useCallback(async () => {
     if (actionRef.current) return;
-    const target = authorizationTarget(status, tokenRef.current);
-    if (!target) {
-      fail(new Error("Desktop authorization is not ready. Try again."));
-      return;
-    }
-    const [instanceToken, version, assetId] = target;
     actionRef.current = true;
-    setStatus((current) => ({ ...current, state: "authorizing", error: "" }));
-
-    let grant = "";
+    setStatus((current) => ({ ...current, state: "downloading", error: "" }));
     try {
-      grant = await requestUpdateGrant(
-        version,
-        assetId,
-        (cleanup) => {
-          authorizationCleanupRef.current = cleanup;
-        },
-      );
-      setIfMounted(await api.grantDesktopUpdate(grant, instanceToken));
+      setIfMounted(await api.startDesktopUpdateDownload(await token()));
     } catch (error) {
       fail(error);
     } finally {
-      grant = "";
       actionRef.current = false;
     }
-  }, [fail, setIfMounted, status.available_version, status.platform_id]);
+  }, [fail, setIfMounted, token]);
 
   const cancel = useCallback(async () => {
     if (actionRef.current) return;
@@ -153,5 +122,5 @@ export function useDesktopUpdate(pollMs = 5000): DesktopUpdateController {
     }
   }, [fail, setIfMounted, token]);
 
-  return { status, check, authorize, cancel, apply };
+  return { status, check, download, cancel, apply };
 }

@@ -17,12 +17,11 @@ await build({
       import React from "react";
       import { renderToStaticMarkup } from "react-dom/server";
       import { DesktopUpdateBanner, DesktopUpdateCard } from "./DesktopUpdate.tsx";
-      export { isUpdateGrantMessage } from "../hooks/useDesktopUpdate.ts";
       const noop = async () => {};
       export function renderCard(status) {
         return renderToStaticMarkup(
           React.createElement(DesktopUpdateCard, {
-            update: { status, check: noop, authorize: noop, cancel: noop, apply: noop },
+            update: { status, check: noop, download: noop, cancel: noop, apply: noop },
           }),
         );
       }
@@ -92,7 +91,7 @@ test("available update shows signed notes, size, and download action", () => {
   assert.match(markup, />Download update</);
 });
 
-test("expired authorization preserves progress and offers a fresh resume gesture", () => {
+test("an interrupted download preserves progress and offers a fresh resume gesture", () => {
   const markup = renderCard({
     ...base,
     state: "needs_authorization",
@@ -152,36 +151,22 @@ test("banner appears only for actionable states with a native button", () => {
   }
 });
 
-test("grant messages require exact origin, popup, request, and token", () => {
-  const popup = {};
-  const expected = {
-    source: popup,
-    nonce: "a".repeat(32),
-    version: "v2.0.0",
-    assetId: "windows-x64",
-  };
-  const data = {
-    type: "backchannel-update-grant",
-    nonce: expected.nonce,
-    version: expected.version,
-    asset_id: expected.assetId,
-    grant: "g".repeat(43),
-  };
-  const event = {
-    origin: "https://downloads.backchannel.page",
-    source: popup,
-    data,
-  };
-  assert.equal(isUpdateGrantMessage(event, expected), true);
-  for (const bad of [
-    { ...event, origin: "https://downloads.backchannel.page.attacker.example" },
-    { ...event, source: {} },
-    { ...event, data: { ...data, type: "other" } },
-    { ...event, data: { ...data, nonce: "b".repeat(32) } },
-    { ...event, data: { ...data, version: "v2.0.1" } },
-    { ...event, data: { ...data, asset_id: "linux-x64" } },
-    { ...event, data: { ...data, grant: "short" } },
-  ]) {
-    assert.equal(isUpdateGrantMessage(bad, expected), false);
+// Updating used to hand the user off to the release portal for an
+// authorization grant, and the portal answered with a login panel: a sign-in
+// wall in front of a build the same portal gives to anyone. Nothing in this
+// card may send the reader anywhere to prove who they are.
+test("updating never routes the user through a sign-in", () => {
+  for (const state of ["available", "downloading", "needs_authorization", "ready", "error"]) {
+    const markup = renderCard({
+      ...base,
+      state,
+      available_version: "v2.0.0",
+      size: 1000,
+      downloaded: 400,
+    });
+    assert.doesNotMatch(markup, /downloads\.backchannel\.page/);
+    assert.doesNotMatch(markup, /sign in|sign-in|log in|account/i);
+    assert.doesNotMatch(markup, /authoriz/i, `authorization language survived in "${state}"`);
+    assert.doesNotMatch(markup, /<a/, `the card opened a link in "${state}"`);
   }
 });

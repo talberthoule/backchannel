@@ -304,6 +304,50 @@ class UpdateServiceTests(unittest.TestCase):
             persisted = service.state_path.read_text()
             self.assertNotIn(GRANT, persisted)
 
+    def test_download_needs_no_grant_and_sends_no_authorization(self):
+        """Updating must not require an account.
+
+        The asset route serves the same file the release portal already hands
+        to anyone, so the app downloads it directly. Before this, the button
+        opened the portal, which answered with a login panel and left installs
+        unable to update without signing up for a download that is public.
+        """
+        archive = zip_bundle()
+        with UpdateFixture(descriptor(archive), archive) as fixture:
+            service = self.service(fixture)
+            service.check(force=True)
+            service.start_download()
+            service.wait_for_download()
+
+            self.assertEqual(service.status()["state"], "ready")
+            self.assertNotIn("Authorization", fixture.asset_requests[0])
+            self.assertEqual(
+                fixture.asset_requests[0]["User-Agent"], "Backchannel/v0.3.8"
+            )
+            self.assertTrue((service.staged_root / "Backchannel.exe").is_file())
+
+    def test_a_grant_from_an_older_build_still_starts_a_download(self):
+        """An install predating the fix posts its grant; it must still work."""
+        archive = zip_bundle()
+        with UpdateFixture(descriptor(archive), archive) as fixture:
+            service = self.service(fixture)
+            service.check(force=True)
+            service.start_download(GRANT)
+            service.wait_for_download()
+
+            self.assertEqual(service.status()["state"], "ready")
+            self.assertEqual(
+                fixture.asset_requests[0]["Authorization"], f"Bearer {GRANT}"
+            )
+
+    def test_a_malformed_grant_is_still_refused(self):
+        archive = zip_bundle()
+        with UpdateFixture(descriptor(archive), archive) as fixture:
+            service = self.service(fixture)
+            service.check(force=True)
+            with self.assertRaises(ValueError):
+                service.start_download("nope")
+
     def test_complete_partial_is_verified_without_an_unsatisfiable_range(self):
         archive = zip_bundle()
         with UpdateFixture(descriptor(archive), archive) as fixture:

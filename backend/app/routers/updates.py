@@ -75,6 +75,17 @@ def check_update(service: UpdateService = Depends(get_update_service)):
     return service.check(force=True)
 
 
+@router.post("/download", dependencies=[Depends(require_instance_token)])
+def start_update_download(service: UpdateService = Depends(get_update_service)):
+    """Start the download. No authorization step: the asset route is public."""
+    try:
+        return service.start_download()
+    except (ValueError, RuntimeError) as error:
+        raise HTTPException(409, str(error)) from error
+
+
+# Kept so a browser tab left open on an older build, or anything scripted
+# against it, still starts a download. The grant is ignored.
 @router.post("/grant", dependencies=[Depends(require_instance_token)])
 def accept_update_grant(
     body: GrantIn,

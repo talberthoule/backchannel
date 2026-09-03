@@ -41,8 +41,8 @@ const mutation = (
 export const checkDesktopUpdate = (token: string) =>
   mutation("/updates/check", "POST", token);
 
-export const grantDesktopUpdate = (grant: string, token: string) =>
-  mutation("/updates/grant", "POST", token, { grant });
+export const startDesktopUpdateDownload = (token: string) =>
+  mutation("/updates/download", "POST", token);
 
 export const cancelDesktopUpdate = (token: string) =>
   mutation("/updates/download", "DELETE", token);

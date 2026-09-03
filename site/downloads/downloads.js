@@ -156,12 +156,16 @@ function showReleases() {
   loadReleases();
 }
 
-function showAuthenticated() {
+function showUpdateRequest() {
   if (!updateRequest || !globalThis.opener || !updatePanel) return showReleases();
   updateSummary.textContent = `Allow Backchannel ${updateRequest.version} for ${updatePlatforms.get(updateRequest.assetId)}.`;
   updateStatus.textContent = '';
   setAlert('#update-alert', '');
   show(updatePanel, updateHeading);
+}
+
+function showAuthenticated() {
+  return showUpdateRequest();
 }
 
 async function loadSession() {
@@ -299,5 +303,10 @@ for (const button of document.querySelectorAll('.logout')) {
   });
 }
 
-if (updateRequest && globalThis.opener) loadSession();
+// An update handshake goes straight to the confirm panel. It used to load the
+// session first, which showed the login panel to anyone without an account and
+// so asked people to sign in before the app would fetch a build that this same
+// portal hands to anyone. Downloads are anonymous; the update path now matches.
+// Installs from v0.6.1 on never open this window at all.
+if (updateRequest && globalThis.opener) showUpdateRequest();
 else showReleases();
