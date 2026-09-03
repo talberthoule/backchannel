@@ -117,6 +117,21 @@ def split_layers(template: str) -> tuple[str, str]:
     return "", template
 
 
+def format_layers(template: str, **values) -> tuple[str | None, str]:
+    """Reorder, split, and format both halves from the same values.
+
+    ``system`` is None, not "", when there was nothing to lift: a
+    single-section custom prompt, or a template whose first section already
+    carries volatile data. The caller then sends the user half alone, which is
+    what every agent did before this existed.
+    """
+    system, user = split_layers(template)
+    rendered_user = user.format(**values)
+    if not system.strip():
+        return None, rendered_user
+    return system.format(**values), rendered_user
+
+
 def trailing_static(template: str) -> str:
     """Static text after the LAST placeholder. The regression guard reads this."""
     matches = list(_PLACEHOLDER.finditer(template))

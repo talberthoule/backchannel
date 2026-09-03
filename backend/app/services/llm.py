@@ -367,6 +367,7 @@ async def _google_json(
     key: str,
     session_id,
     source: str,
+    system: str | None = None,
 ):
     client = genai.Client(api_key=key)
 
@@ -381,12 +382,18 @@ async def _google_json(
         )
         return response
 
+    # The instruction half rides in system_instruction so the user turn is the
+    # data payload alone; Gemini counts the system instruction as part of the
+    # prefix a cache can share (ALP-285).
+    instruction = {"system_instruction": system} if system else {}
+
     try:
         response = await call(
             prompt,
             types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=response_schema,
+                **instruction,
                 **_google_generation_limits(),
             ),
         )
@@ -404,11 +411,16 @@ async def _google_json(
             contract,
             types.GenerateContentConfig(
                 response_mime_type="application/json",
+                **instruction,
                 **_google_retry_generation_limits(),
             ),
         )
     except TypeError:
-        response = await call(contract, None)
+        # No config at all is the last resort, and it cannot carry a system
+        # instruction. Fold it back into the prompt rather than losing the
+        # agent's whole instruction set on a retry.
+        fallback = f"{system}\n\n{contract}" if system else contract
+        response = await call(fallback, None)
     return _parse_google_response(response, response_schema)
 
 
@@ -545,8 +557,12 @@ async def _openai_json(
     session_id,
     source: str,
     reasoning_effort: str | None,
+    system: str | None = None,
 ):
     contract = _contract_prompt(prompt, schema_hint)
+    # A leading system message is the OpenAI-shaped equivalent, and it is what
+    # a server doing automatic prefix caching keys on.
+    preface = [{"role": "system", "content": system}] if system else []
 
     async def post(messages: list[dict], mode: str) -> str:
         payload: dict = {"model": endpoint.model, "messages": messages}
@@ -628,7 +644,7 @@ async def _openai_json(
             return text
         raise RuntimeError("unreachable: response_format negotiation exhausted")
 
-    text = await call([{"role": "user", "content": contract}])
+    text = await call(preface + [{"role": "user", "content": contract}])
     try:
         return parse_json_response(text, response_schema)
     except ValueError as exc:
@@ -639,7 +655,7 @@ async def _openai_json(
             response_schema.__name__,
             exc,
         )
-    text = await call([
+    text = await call(preface + [
         {"role": "user", "content": contract},
         {"role": "assistant", "content": text},
         {"role": "user", "content": _STRICT_JSON_REPROMPT},
@@ -656,6 +672,7 @@ async def generate_json(
     session_id: object | None = None,
     source: str = "",
     reasoning_effort: str | None = None,
+    system: str | None = None,
 ):
     """Provider-routed structured generation validated against a Pydantic schema.
 
@@ -666,9 +683,20 @@ async def generate_json(
     re-prompting strictly at most once when the reply fails parsing or schema
     validation. schema_hint overrides the auto-derived contract text. Token
     usage is recorded per provider call so the Tokens tab stays accurate.
+
+    ``system`` carries the caller's static instruction block, which reaches
+    Gemini as ``system_instruction`` and an OpenAI-shaped server as a leading
+    system message. That is the prefix a cache can share, which is the point:
+    a prompt whose instructions are interleaved with per-cycle data has no
+    cacheable prefix at all (ALP-285).
     """
     target = await _prepare_call(model_id, "structured generation", source)
-    await pii_egress.guard(prompt, model_id=model_id, session_id=session_id, source=source)
+    # The shield guards both halves. An instruction block is prompt text that
+    # leaves the machine like any other, so splitting a prompt must not move
+    # anything past the egress boundary.
+    await pii_egress.guard(
+        prompt, system=system, model_id=model_id, session_id=session_id, source=source
+    )
     hint = schema_hint or _default_schema_hint(response_schema)
     if target.endpoint is not None:
         return await _openai_json(
@@ -681,7 +709,8 @@ async def generate_json(
             session_id,
             source,
             reasoning_effort,
+            system,
         )
     return await _google_json(
-        model_id, prompt, response_schema, hint, target.key, session_id, source
+        model_id, prompt, response_schema, hint, target.key, session_id, source, system
     )

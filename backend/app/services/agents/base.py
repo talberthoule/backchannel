@@ -41,12 +41,22 @@ class TranscriptBuffer:
                 "ts": time.time(),
             })
 
-    async def get_window(self, max_age_seconds: float = 300.0) -> str:
+    async def get_window(
+        self,
+        max_age_seconds: float = 300.0,
+        aliases: dict[str, str] | None = None,
+    ) -> str:
         """Return formatted transcript window for the last `max_age_seconds`.
 
         The effective window is the tighter of this age budget and the buffer's
         segment cap; at normal speech rates the cap binds first. See
         _DEFAULT_BUFFER_SIZE.
+
+        `aliases` maps speaker id to a short tag, so a line reads `[S3]: text`
+        instead of repeating a 36-character UUID the Participants legend
+        already binds. A segment whose speaker is not in the map - a stale id
+        after a merge, or a line captured before the roster caught up - falls
+        back to the name form rather than to a tag nothing defines (ALP-282).
         """
         async with self._lock:
             cutoff = time.time() - max_age_seconds
@@ -58,6 +68,7 @@ class TranscriptBuffer:
                         seg["speaker"],
                         speaker_id=seg.get("speaker_id"),
                         speaker_type=seg.get("speaker_type"),
+                        alias=(aliases or {}).get(str(seg.get("speaker_id") or "")),
                     ))
             return "\n".join(lines) if lines else "(No recent transcript)"
 

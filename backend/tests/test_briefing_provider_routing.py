@@ -411,8 +411,12 @@ class BriefingProviderRoutingTests(ProviderRoutingTestCase):
                 agent_configs=_briefing_configs(GOOGLE_MODEL),
             )
 
+        # Both halves of each call: instructions and the per-session context
+        # now go out as the system instruction, and the volatile payload as the
+        # user turn (ALP-285). What matters here is what the lens can see and
+        # what the arbiter must not, which is a property of the whole request.
         prompts = {
-            call.kwargs["source"]: call.args[1]
+            call.kwargs["source"]: (call.kwargs.get("system") or "") + "\n" + call.args[1]
             for call in generate_json.await_args_list
         }
         for slug in (BRIEF_MEETING_LENS_SLUG, BRIEF_DISCOVERY_LENS_SLUG):

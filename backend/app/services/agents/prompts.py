@@ -154,9 +154,6 @@ For each objection provide BOTH:
 ## Participants
 {speakers_text}
 
-## Recently Surfaced Objections (do not repeat these)
-{recent_objections}
-
 ## Output Format
 Return a JSON object with an `items` array. Each item:
 {{"item_type": "objection", "question": "concise statement of the objection", "response_now": "what to say right now", "bigger_picture": "underlying concern and strategic angle", "source_context": "the quote that triggered this", "severity": "high|medium|low", "speaker_id": "matching speaker UUID from the transcript or participants list, or null"}}
@@ -164,13 +161,16 @@ Return a JSON object with an `items` array. Each item:
 Rules:
 - Only flag objections raised in the LAST few exchanges. Old or already-handled objections do not belong here.
 - Return 0-2 items per cycle. An empty `items` array is the most common correct answer.
-- Never re-flag an objection listed above unless it has clearly escalated or changed shape.
+- Never re-flag an objection listed under Recently Surfaced Objections unless it has clearly escalated or changed shape.
 - `high` = deal/relationship-threatening, `medium` = should be handled this call, `low` = note and revisit.
 - Only use speaker_id values shown in Participants or the Recent Transcript; otherwise null.
 - Return ONLY the valid JSON object, no other text.
 
 ## Call Directives
 {directives_text}
+
+## Recently Surfaced Objections (do not repeat these)
+{recent_objections}
 
 ## Recent Transcript (newest last)
 {transcript_window}

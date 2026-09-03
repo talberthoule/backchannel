@@ -21,7 +21,7 @@ from app.models import AgentConfig, Directive, InsightCluster, Question, Session
 from app.services.agents.prompts import BRIEF_ARBITER_PROMPT, BRIEF_DISCOVERY_LENS_PROMPT, BRIEF_MEETING_LENS_PROMPT
 from app.services.agents.speaker_context import format_speakers_list, format_transcript_segment, speaker_display_name
 from app.services.llm import generate_json, provider_for
-from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
+from app.services.meeting_context import build_meeting_context_text, format_prompt_layers
 from app.services.provider_errors import PROVIDER_ERROR_TYPES, provider_error_message
 from app.services.session_manager import get_document_summaries
 
@@ -266,7 +266,7 @@ async def run_session_synthesis(
     async def run_lens(slug: str, cfg: AgentConfig | None, default_prompt: str) -> BriefLensOutput | None:
         if not cfg or not cfg.enabled:
             return None
-        prompt = format_prompt_with_meeting_context(
+        system, prompt = format_prompt_layers(
             cfg.prompt or default_prompt,
             context.meeting_context_text,
             mode=mode,
@@ -284,6 +284,7 @@ async def run_session_synthesis(
                 schema_hint=_response_contract(BriefLensOutput),
                 session_id=session_id,
                 source=slug,
+                system=system,
             )
         except Exception as exc:
             logger.error("[%s] briefing lens failed: %s", slug, exc)
@@ -309,7 +310,7 @@ async def run_session_synthesis(
             },
         )
 
-    arbiter_prompt = format_prompt_with_meeting_context(
+    arbiter_system, arbiter_prompt = format_prompt_layers(
         arbiter_cfg.prompt or BRIEF_ARBITER_PROMPT,
         context.meeting_context_text,
         mode=mode,
@@ -327,6 +328,7 @@ async def run_session_synthesis(
             reasoning_effort=(
                 "high" if arbiter_cfg.model_id == "gpt-5.6-sol" else None
             ),
+            system=arbiter_system,
         )
     except Exception as exc:
         logger.error("[brief_arbiter] failed: %s", exc)

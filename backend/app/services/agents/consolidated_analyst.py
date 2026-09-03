@@ -18,7 +18,7 @@ from app.services.agents.activity import classify_error
 from app.services.agents.prompts import CONSOLIDATED_ANALYST_BASE_PROMPT, DEFAULT_ANALYST_LENSES
 from app.services.llm import generate_json
 from app.services.agents.speaker_context import format_speakers_list
-from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
+from app.services.meeting_context import build_meeting_context_text, format_prompt_layers
 
 logger = logging.getLogger(__name__)
 
@@ -240,7 +240,10 @@ class ConsolidatedAnalystAgent:
                 " new):\n" + notes_text
             )
 
-        prompt = format_prompt_with_meeting_context(
+        # Instructions go out as instructions; the user turn is this cycle's
+        # data. About half of every call is byte-identical to the last one,
+        # and that half is now a prefix a cache can share (ALP-285).
+        system, prompt = format_prompt_layers(
             self._prompt_template,
             self.meeting_context_text,
             transcript_window=transcript_window,
@@ -259,6 +262,7 @@ class ConsolidatedAnalystAgent:
                 ConsolidatedAnalystOutput,
                 session_id=self._session_id,
                 source="consolidated_analyst",
+                system=system,
             )
         except Exception as e:
             logger.error(f"[consolidated_analyst] API call failed: {e}")

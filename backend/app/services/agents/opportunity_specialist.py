@@ -15,9 +15,10 @@ from sqlalchemy import select
 from app.config import settings
 from app.services.llm import generate_text
 from app.database import async_session
-from app.models import KnowledgeSource, Question
+from app.models import KnowledgeSource, Question, Session
 from app.services.agents.prompts import OPPORTUNITY_SPECIALIST_PROMPT
 from app.services.knowledge import get_adapter
+from app.services.meeting_context import build_meeting_context_text, format_prompt_layers
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +117,12 @@ async def run_opportunity_specialist_cycle(
     dicts for WS broadcast.
     """
     async with async_session() as db:
+        # This agent formatted its template directly for as long as it has
+        # existed, so it was the one text agent running with no meeting
+        # context at all -- it read every conversation as a sales call
+        # (ALP-285). It goes through the shared seam now like the rest.
+        session = await db.get(Session, session_id)
+        meeting_context_text = build_meeting_context_text(session)
         # Load unmapped opportunities for this session
         result = await db.execute(
             select(Question).where(
@@ -138,7 +145,9 @@ async def run_opportunity_specialist_cycle(
 
     opportunities_json = _build_opportunities_json(unmapped)
 
-    prompt = OPPORTUNITY_SPECIALIST_PROMPT.format(
+    system, prompt = format_prompt_layers(
+        OPPORTUNITY_SPECIALIST_PROMPT,
+        meeting_context_text,
         knowledge_context=knowledge_context,
         opportunities_json=opportunities_json,
     )
@@ -146,7 +155,13 @@ async def run_opportunity_specialist_cycle(
     model_id = settings.REFINEMENT_MODEL if model_override is None else model_override
 
     try:
-        raw = await generate_text(model_id, prompt, session_id=session_id, source="opportunity_specialist")
+        raw = await generate_text(
+            model_id,
+            prompt,
+            system=system,
+            session_id=session_id,
+            source="opportunity_specialist",
+        )
     except Exception as e:
         logger.error(f"[opportunity_specialist] API call failed: {e}")
         return []

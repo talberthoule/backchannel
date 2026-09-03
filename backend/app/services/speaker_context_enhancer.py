@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.services.llm import generate_text
 from app.database import async_session
 from app.models import Question, Session, Speaker, TranscriptEntry
+from app.services.agents import prompt_layout
 from app.services.agents.speaker_context import (
     format_speaker_context,
     format_transcript_segment,
@@ -104,7 +105,14 @@ def build_enhancement_prompt(
     insights: list[dict],
     transcript_lines: list[dict],
     meeting_context_text: str | None = None,
-) -> str:
+) -> tuple[str | None, str]:
+    """``(system, user)`` for one enhancement batch.
+
+    This template kept its whole Output Format block -- about 1,600 chars of
+    operation contract -- below the insight corpus and the full transcript, so
+    a run of several batches re-sent the contract behind data that changes
+    every batch. Splitting it puts the contract in the prefix (ALP-285).
+    """
     speakers_text = "\n".join(format_speaker_context(speaker) for speaker in speakers) or "(No speaker information)"
     insights_json = json.dumps(insights, indent=2)
     transcript_text = "\n".join(
@@ -117,7 +125,8 @@ def build_enhancement_prompt(
         for line in transcript_lines
     ) or "(No transcript)"
 
-    return ENHANCEMENT_PROMPT_TEMPLATE.format(
+    return prompt_layout.format_layers(
+        ENHANCEMENT_PROMPT_TEMPLATE,
         meeting_context_text=meeting_context_text or build_meeting_context_text(),
         speakers_text=speakers_text,
         insights_json=insights_json,
@@ -170,7 +179,7 @@ async def run_speaker_context_batch(
             .order_by(TranscriptEntry.sequence)
         )
         transcript_entries = list(transcript_result.scalars().all())
-        prompt = build_enhancement_prompt(
+        system, prompt = build_enhancement_prompt(
             speakers,
             [_insight_dict(question) for question in questions],
             [_transcript_dict(entry) for entry in transcript_entries],
@@ -192,6 +201,7 @@ async def run_speaker_context_batch(
     raw = await generate_text(
         model_id,
         prompt,
+        system=system,
         session_id=session_id,
         source="speaker_context_enhancer",
     )

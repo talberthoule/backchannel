@@ -51,7 +51,7 @@ class SpeakerContextEnhancerTests(unittest.TestCase):
         self.assertFalse(speaker_update_changes_enhancement_context(speaker, {"color": "#f59e0b"}))
 
     def test_enhancement_prompt_includes_insights_transcript_and_speaker_context(self):
-        prompt = build_enhancement_prompt(
+        system, user = build_enhancement_prompt(
             speakers=[
                 {
                     "id": "11111111-1111-1111-1111-111111111111",
@@ -92,15 +92,25 @@ class SpeakerContextEnhancerTests(unittest.TestCase):
             ],
         )
 
-        self.assertIn("speaker_type=team", prompt)
-        self.assertIn("speaker_type=external", prompt)
-        self.assertIn("Evaluate managed SIEM fit.", prompt)
-        self.assertIn("The client told us this is why we are here.", prompt)
-        self.assertIn('"enhanced": true', prompt)
-        self.assertIn('"op": "dismiss"', prompt)
-        self.assertIn('"new_source_context"', prompt)
-        self.assertIn("Do not change the item_type/category/tag of an existing insight", prompt)
-        self.assertNotIn('"op": "elevate"', prompt)
+        # Instructions and the corrected roster are the prefix; the corpus and
+        # the transcript are the payload. The Output Format block used to sit
+        # below both of them, so a run of several batches re-sent the whole
+        # operation contract behind data that changes every batch (ALP-285).
+        self.assertIn("speaker_type=team", system)
+        self.assertIn("speaker_type=external", system)
+        self.assertIn('"enhanced": true', system)
+        self.assertIn('"op": "dismiss"', system)
+        self.assertIn('"new_source_context"', system)
+        self.assertIn("Do not change the item_type/category/tag of an existing insight", system)
+        self.assertNotIn('"op": "elevate"', system)
+
+        self.assertIn("Evaluate managed SIEM fit.", user)
+        self.assertIn("The client told us this is why we are here.", user)
+        self.assertNotIn("Output Format", user)
+
+        # Nothing was dropped in the split.
+        both = system + user
+        self.assertIn("speaker_id=22222222-2222-2222-2222-222222222222", both)
 
     def test_speaker_label_replacement_uses_enabled_display_names(self):
         replacements = build_speaker_label_replacements([

@@ -17,7 +17,7 @@ from app.services.agents.activity import classify_error
 from app.services.agents.prompts import OBJECTION_HANDLER_PROMPT
 from app.services.agents.speaker_context import format_speakers_list
 from app.services.llm import generate_json
-from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
+from app.services.meeting_context import build_meeting_context_text, format_prompt_layers
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ class ObjectionHandlerAgent:
         else:
             recent_text = "(No objections surfaced yet)"
 
-        prompt = format_prompt_with_meeting_context(
+        system, prompt = format_prompt_layers(
             self._prompt_template,
             self.meeting_context_text,
             transcript_window=transcript_window,
@@ -136,6 +136,7 @@ class ObjectionHandlerAgent:
                 ObjectionHandlerOutput,
                 session_id=self._session_id,
                 source="objection_handler",
+                system=system,
             )
         except Exception as e:
             logger.error(f"[objection_handler] API call failed: {e}")

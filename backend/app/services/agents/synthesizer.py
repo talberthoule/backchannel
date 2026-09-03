@@ -22,7 +22,7 @@ from app.services.agents.prompts import PRINCIPAL_AGENT_PROMPT
 from app.services.agents.signal_insights import SIGNAL_ITEM_TYPES
 from app.services.agents.speaker_context import format_transcript_segment, normalize_speaker_type
 from app.services.insight_refiner import _apply_operations
-from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
+from app.services.meeting_context import build_meeting_context_text, format_prompt_layers
 
 logger = logging.getLogger(__name__)
 
@@ -248,7 +248,7 @@ async def run_synthesizer_cycle(session_id: uuid.UUID, model_override: str | Non
         return []
 
     prompt_template = prompt_override or PRINCIPAL_AGENT_PROMPT
-    prompt = format_prompt_with_meeting_context(
+    system, prompt = format_prompt_layers(
         prompt_template,
         meeting_context_text,
         insights_json=insights_json,
@@ -264,6 +264,7 @@ async def run_synthesizer_cycle(session_id: uuid.UUID, model_override: str | Non
             SynthesizerOutput,
             session_id=session_id,
             source="synthesizer",
+            system=system,
         )
     except Exception as e:
         logger.error(f"[synthesizer] API call failed: {e}")
