@@ -71,6 +71,23 @@ def stop_process(proc: subprocess.Popen, stop: Path, timeout: float) -> bool:
     return True
 
 
+def check_local_asr(port: int) -> str:
+    """Prove the bundled local ASR runtime can actually run.
+
+    The bundle booting is not the same as the bundle working. Two shipped
+    releases in a row started cleanly and then failed every transcription:
+    v0.6.1 could not read onnx-asr's version metadata, v0.6.2 could not read
+    its data files. Both import fine, so only a real probe catches them.
+    Returns "" when usable, otherwise the reason (ALP-376).
+    """
+    url = f"http://127.0.0.1:{port}/api/diagnostics/local-asr"
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        payload = json.loads(resp.read().decode())
+    if payload.get("usable"):
+        return ""
+    return payload.get("reason") or "unknown reason"
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         env = dict(
@@ -92,6 +109,16 @@ def main() -> int:
                 dump_logs(Path(tmp))
                 return 1
             print(f"OK: healthy on port {port}")
+
+            try:
+                reason = check_local_asr(port)
+            except Exception as exc:  # noqa: BLE001
+                reason = f"probe failed ({type(exc).__name__}: {exc})"
+            if reason:
+                print(f"FAIL: bundled local ASR runtime unusable: {reason}", file=sys.stderr)
+                dump_logs(Path(tmp))
+                return 1
+            print("OK: bundled local ASR runtime usable")
         finally:
             if not stop_process(proc, Path(tmp) / "stop", timeout=90):
                 proc.kill()

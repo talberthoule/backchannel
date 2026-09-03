@@ -609,3 +609,70 @@ class SplitTrackRetranscriptionTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RetranscribeReadinessGuardTests(unittest.IsolatedAsyncioTestCase):
+    """Re-transcribe deletes every transcript entry before it replays audio.
+
+    So a transcriber that cannot run turns the button into "erase". That is
+    what emptied a finished session on v0.6.2, where the bundled local runtime
+    could not read its data files and every job failed (ALP-376).
+    """
+
+    def _db(self):
+        db = SimpleNamespace()
+        db.executed = []
+        db.get = AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4(), state="completed"))
+
+        async def execute(statement):
+            db.executed.append(statement)
+            return FakeScalarResult([])
+
+        db.execute = execute
+        db.commit = AsyncMock()
+        return db
+
+    async def _call(self, db):
+        body = SimpleNamespace(model_id="local-whisper-base")
+        return await retranscribe.retranscribe_session(uuid.uuid4(), body, db)
+
+    async def test_refuses_and_deletes_nothing_when_the_runtime_is_unusable(self):
+        db = self._db()
+        with patch.object(retranscribe, "registry_entry",
+                          return_value={"supports_batch_audio": True}), \
+                patch.object(retranscribe, "is_local_model", return_value=True), \
+                patch.object(retranscribe, "get_local_only", AsyncMock(return_value=False)), \
+                patch.object(retranscribe, "local_asr_status",
+                             return_value=(False, "the onnx-asr runtime is missing its data files (fbanks.npz)")):
+            with self.assertRaises(retranscribe.HTTPException) as caught:
+                await self._call(db)
+
+        self.assertEqual(503, caught.exception.status_code)
+        self.assertIn("fbanks.npz", caught.exception.detail)
+        self.assertIn("Nothing was changed", caught.exception.detail)
+        self.assertEqual([], db.executed, "the guard must run before any delete")
+        db.commit.assert_not_awaited()
+
+    async def test_a_usable_runtime_is_not_blocked(self):
+        db = self._db()
+        with patch.object(retranscribe, "registry_entry",
+                          return_value={"supports_batch_audio": True}), \
+                patch.object(retranscribe, "is_local_model", return_value=True), \
+                patch.object(retranscribe, "get_local_only", AsyncMock(return_value=False)), \
+                patch.object(retranscribe, "local_asr_status", return_value=(True, "")):
+            with self.assertRaises(retranscribe.HTTPException) as caught:
+                await self._call(db)
+        # Falls through the guard to the real "no stored audio" check.
+        self.assertEqual(404, caught.exception.status_code)
+
+    async def test_a_cloud_model_does_not_consult_the_local_probe(self):
+        db = self._db()
+        probe = patch.object(retranscribe, "local_asr_status")
+        with patch.object(retranscribe, "registry_entry",
+                          return_value={"supports_batch_audio": True}), \
+                patch.object(retranscribe, "is_local_model", return_value=False), \
+                patch.object(retranscribe, "get_local_only", AsyncMock(return_value=False)), \
+                probe as probed:
+            with self.assertRaises(retranscribe.HTTPException):
+                await self._call(db)
+        probed.assert_not_called()

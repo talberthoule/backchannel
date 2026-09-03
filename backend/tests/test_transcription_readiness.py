@@ -55,10 +55,13 @@ class TranscriptionReadinessTests(unittest.IsolatedAsyncioTestCase):
             mock.patch.object(
                 transcription_readiness, "get_provider_status", fake_provider_status
             ),
+            # Readiness now asks whether the runtime actually works, not just
+            # whether the module name resolves (ALP-376), so stub the probe.
             mock.patch.object(
                 transcription_readiness,
-                "local_asr_available",
-                lambda: self.local_available,
+                "local_asr_status",
+                lambda: (self.local_available, "" if self.local_available
+                         else "the onnx-asr runtime is not installed"),
             ),
         ]
         for p in self.patches:

@@ -78,6 +78,26 @@ class SpecMetadataTests(unittest.TestCase):
         self.assertIn("copy_metadata", SPEC)
         self.assertIn("onnx-asr", SPEC)
 
+    def test_spec_collects_onnx_asr_data_files(self):
+        """Metadata alone is not enough; the preprocessors read data files.
+
+        Shipping the dist-info without data/fbanks.npz is what still broke
+        every local transcription in v0.6.2 (ALP-376).
+        """
+        self.assertIn("collect_data_files", SPEC)
+        self.assertIn('for _package in ("onnx_asr",)', SPEC)
+
+    def test_spec_fails_the_build_when_no_data_is_collected(self):
+        """A silent empty collection would ship the same broken bundle again."""
+        self.assertIn("no data files collected", SPEC)
+
+    def test_onnx_asr_data_files_exist_to_collect(self):
+        spec = importlib.util.find_spec("onnx_asr.preprocessors")
+        if spec is None or not spec.origin:
+            self.skipTest("onnx-asr is not installed in this environment")
+        data = Path(spec.origin).parent / "data"
+        self.assertTrue((data / "fbanks.npz").is_file(), f"fbanks.npz missing under {data}")
+
     def test_onnx_asr_reads_its_own_version_at_import(self):
         """Guards the reason the metadata has to ship.
 
