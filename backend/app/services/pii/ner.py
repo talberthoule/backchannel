@@ -23,6 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
+from app.services import model_downloads
 from app.services.pii.recognizers import LOCATION, ORG, PERSON, Span
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,18 @@ _NOT_ENTITIES = frozenset({
     "okay", "ok", "yeah", "hello", "hi", "hey", "thanks", "thank you",
 })
 
-_lock = threading.Lock()
+# The registry key the browser watches this download under.
+DOWNLOAD_KEY = "pii-ner"
+DOWNLOAD_LABEL = "Name recognition model"
+DOWNLOAD_PURPOSE = "PII Shield"
+
+# `_state_lock` guards the two globals below and is never held across I/O.
+# `_install_lock` is held across the download and the ONNX session build, and
+# is only ever acquired without blocking: detection degrades to the pattern and
+# roster recognizers rather than waiting on a fetch. Holding one lock across a
+# network download is what wedged the whole app in v0.6.1 (ALP-373).
+_state_lock = threading.Lock()
+_install_lock = threading.Lock()
 _model: "NerModel | None" = None
 _load_error: str | None = None
 
@@ -65,8 +77,32 @@ def load_error() -> str | None:
     return _load_error
 
 
+def _remote_total() -> int:
+    """Combined size of the weights, or 0 when the hub will not say.
+
+    Only used to show a percentage, so a failure here costs the progress bar
+    its denominator and nothing else.
+    """
+    try:
+        from huggingface_hub import get_hf_file_metadata, hf_hub_url
+
+        total = 0
+        for name in _MODEL_FILES:
+            meta = get_hf_file_metadata(hf_hub_url(MODEL_REPO, name))
+            total += int(meta.size or 0)
+        return total
+    except Exception:  # noqa: BLE001 - a missing denominator is not a failure
+        logger.debug("Could not read the NER model size from the hub", exc_info=True)
+        return 0
+
+
 def ensure_downloaded() -> Path:
-    """Fetch the weights once; later calls are a no-op."""
+    """Fetch the weights once; later calls are a no-op.
+
+    Reports byte progress into the model-download registry through
+    `hf_hub_download`'s public `tqdm_class`, so the fetch is visible in the app
+    instead of looking like a stall.
+    """
     root = model_dir()
     if is_installed():
         return root
@@ -74,8 +110,18 @@ def ensure_downloaded() -> Path:
 
     root.mkdir(parents=True, exist_ok=True)
     logger.info("Downloading the on-device NER model %s (first use)", MODEL_REPO)
+    total = _remote_total()
+    model_downloads.begin(DOWNLOAD_KEY, total)
+    done = 0
     for name in _MODEL_FILES:
-        hf_hub_download(MODEL_REPO, name, local_dir=str(root))
+        hf_hub_download(
+            MODEL_REPO,
+            name,
+            local_dir=str(root),
+            tqdm_class=model_downloads.reporter_for(DOWNLOAD_KEY, base=done, total=total),
+        )
+        done += (root / name).stat().st_size if (root / name).is_file() else 0
+        model_downloads.advance(DOWNLOAD_KEY, done, total)
     return root
 
 
@@ -212,34 +258,82 @@ class NerModel:
         return spans
 
 
-def get_model(download: bool = True) -> "NerModel | None":
-    """The loaded model, or None when it is unavailable.
+def _current() -> "NerModel | None":
+    with _state_lock:
+        return _model
 
-    The first call may download the weights, which can take a minute on a
-    slow link; callers run this in a worker thread.
-    """
+
+def _record(model: "NerModel | None", error: str | None) -> None:
     global _model, _load_error
-    with _lock:
-        if _model is not None:
-            return _model
-        if _load_error and not download:
-            return None
+    with _state_lock:
+        _model = model
+        _load_error = error
+
+
+def get_model(download: bool = False) -> "NerModel | None":
+    """The loaded model, or None when it is not ready.
+
+    Never blocks on another thread's fetch and, by default, never starts one.
+    A caller on the ingest path wants an answer now: if the weights are absent,
+    still arriving, or already known to be broken, it gets None and the shield
+    carries on with its pattern and roster recognizers.
+
+    `download=True` is for the explicit install and the background warm-up
+    only, and even then only one fetch runs at a time.
+    """
+    ready = _current()
+    if ready is not None:
+        return ready
+    if _load_error is not None and not download:
+        return None
+    if not download and not is_installed():
+        return None
+    # Whoever holds this is already doing the work; do not queue behind them.
+    if not _install_lock.acquire(blocking=False):
+        return None
+    try:
+        ready = _current()
+        if ready is not None:
+            return ready
         try:
             root = ensure_downloaded() if download else model_dir()
             if not is_installed():
-                _load_error = "The on-device NER model is not installed."
+                _record(None, "The on-device NER model is not installed.")
                 return None
-            _model = NerModel(root)
-            _load_error = None
+            model = NerModel(root)
+            _record(model, None)
             logger.info("On-device NER model loaded from %s", root)
-            return _model
+            return model
         except Exception as exc:  # noqa: BLE001 - detection must degrade, never crash ingest
-            _load_error = f"{type(exc).__name__}: {exc}"
-            logger.warning("On-device NER model unavailable: %s", _load_error)
+            message = f"{type(exc).__name__}: {exc}"
+            _record(None, message)
+            logger.warning("On-device NER model unavailable: %s", message)
             return None
+    finally:
+        _install_lock.release()
 
 
-def find_entities(text: str, categories: set[str], download: bool = True) -> list[Span]:
+def install() -> "NerModel | None":
+    """Fetch and load the weights now, reporting into the download registry.
+
+    Returns the model, or None with `load_error` set. Safe to call from a
+    worker thread; a second concurrent call is a no-op that returns whatever
+    is loaded already.
+    """
+    if not model_downloads.claim(DOWNLOAD_KEY, DOWNLOAD_LABEL, DOWNLOAD_PURPOSE):
+        return _current()
+    _record(None, None)
+    try:
+        with model_downloads.download(DOWNLOAD_KEY, DOWNLOAD_LABEL, DOWNLOAD_PURPOSE):
+            model = get_model(download=True)
+            if model is None:
+                raise RuntimeError(_load_error or "The on-device NER model could not be installed.")
+            return model
+    except Exception:  # noqa: BLE001 - already recorded in the registry and in _load_error
+        return None
+
+
+def find_entities(text: str, categories: set[str], download: bool = False) -> list[Span]:
     model = get_model(download=download)
     if model is None:
         return []
@@ -251,7 +345,5 @@ def find_entities(text: str, categories: set[str], download: bool = True) -> lis
 
 
 def reset_for_tests() -> None:
-    global _model, _load_error
-    with _lock:
-        _model = None
-        _load_error = None
+    _record(None, None)
+    model_downloads.forget(DOWNLOAD_KEY)

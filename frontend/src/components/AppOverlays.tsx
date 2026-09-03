@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 import type { WhatsNew } from "../hooks/useWhatsNew";
 import type { DesktopUpdateController, MeetingType } from "../types";
+import type { ModelDownloadsController } from "../hooks/useModelDownloads";
 import { DesktopUpdateBanner } from "./DesktopUpdate";
+import { ModelDownloadsBanner } from "./ModelDownloads";
 import NewSessionModal from "./NewSessionModal";
 
 interface Props {
@@ -13,6 +15,8 @@ interface Props {
   whatsNew: WhatsNew | null;
   onOpenUpdate: () => void;
   onAcknowledgeUpdate: () => void;
+  downloads: ModelDownloadsController;
+  onOpenPrivacy: () => void;
 }
 
 export default function AppOverlays({
@@ -24,6 +28,8 @@ export default function AppOverlays({
   whatsNew,
   onOpenUpdate,
   onAcknowledgeUpdate,
+  downloads,
+  onOpenPrivacy,
 }: Props) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -41,6 +47,7 @@ export default function AppOverlays({
     ["available", "downloading", "ready"].includes(update.status.state)
     && !suppressDesktopUpdate
   );
+  const showDownloads = downloads.active.length > 0 || downloads.failed.length > 0;
   return (
     <>
       <NewSessionModal
@@ -48,10 +55,19 @@ export default function AppOverlays({
         onClose={onCloseNewSession}
         onCreate={onCreateSession}
       />
-      {(showDesktop || whatsNew) && (
+      {(showDesktop || whatsNew || showDownloads) && (
         <div className="fixed bottom-4 right-4 z-50 w-[min(28rem,calc(100vw-2rem))] space-y-3">
           {showDesktop && (
             <DesktopUpdateBanner status={update.status} onOpen={onOpenUpdate} />
+          )}
+          {showDownloads && (
+            <ModelDownloadsBanner
+              active={downloads.active}
+              failed={downloads.failed}
+              onOpenSettings={onOpenPrivacy}
+              onRetry={(key) => void downloads.retry(key)}
+              onDismiss={(key) => void downloads.dismiss(key)}
+            />
           )}
           {whatsNew && (
             <div className="flex items-center gap-3 rounded-xl bg-surface px-4 py-3 shadow-lg ring-1 ring-brand-light-gray-1">

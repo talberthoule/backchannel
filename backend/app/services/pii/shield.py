@@ -425,7 +425,12 @@ async def record_reveal(session_id: uuid.UUID | None, route: str, count: int) ->
 
 
 async def warm_up_ner(db: AsyncSession) -> None:
-    """Download and load the NER model ahead of the first transcript."""
+    """Download and load the NER model ahead of the first transcript.
+
+    Runs in the background at startup. Nothing waits on it: if the weights are
+    still arriving when the first transcript lands, that text is protected by
+    the pattern and roster recognizers alone.
+    """
     settings = await get_settings(db)
     if settings.enabled and settings.ner:
-        await asyncio.to_thread(ner.get_model, True)
+        await asyncio.to_thread(ner.install)

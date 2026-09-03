@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { PiiCategory, PiiEgressEntry, PiiPreview, PiiShieldSettings, PiiShieldStatus } from "../types";
 import * as api from "../services/api";
+import { ModelDownloadRow } from "./ModelDownloads";
 
 // The PII Shield settings card: the switch, what it covers (honestly), the
 // categories it looks for, the user's own protected terms, the on-device
@@ -112,21 +113,26 @@ function CategoryPicker({ status, saving, onToggle }: { status: PiiShieldStatus;
 }
 
 function NerSection({ status, saving, onApply, onReload }: { status: PiiShieldStatus; saving: boolean; onApply: (u: Update) => void; onReload: () => Promise<void> }) {
-  const [installing, setInstalling] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { ner, settings } = status;
   const label: Record<PiiShieldStatus["ner"]["state"], string> = {
     off: "Off",
     ready: "Ready",
-    not_downloaded: settings.enabled ? "Downloading..." : "Downloads when enabled",
+    not_downloaded: settings.enabled ? "Not downloaded" : "Downloads when enabled",
+    downloading: "Downloading",
     unavailable: "Unavailable",
   };
   const badge = ner.state === "ready"
     ? "bg-brand-teal/10 text-brand-teal"
-    : ner.state === "unavailable" ? "bg-red-50 text-red-700" : "bg-brand-light-gray-2 text-brand-mid-gray";
+    : ner.state === "unavailable" ? "bg-red-50 text-red-700"
+      : ner.state === "downloading" ? "bg-amber-50 text-amber-700"
+        : "bg-brand-light-gray-2 text-brand-mid-gray";
 
+  // Kicks the download off and returns; the progress row below reports it.
+  // Waiting on the transfer here is what made the button look like a hang.
   const install = async () => {
-    setInstalling(true);
+    setStarting(true);
     setError(null);
     try {
       await api.installPiiNer();
@@ -134,9 +140,11 @@ function NerSection({ status, saving, onApply, onReload }: { status: PiiShieldSt
     } catch (err) {
       setError(err instanceof Error ? err.message : "The on-device model could not be installed.");
     } finally {
-      setInstalling(false);
+      setStarting(false);
     }
   };
+
+  const running = ner.state === "downloading";
 
   return (
     <section>
@@ -149,8 +157,11 @@ function NerSection({ status, saving, onApply, onReload }: { status: PiiShieldSt
         text. It downloads once and then runs offline on the CPU. Without it the shield still catches
         speaker names, protected terms, introductions, names it has seen before, and every structured identifier.
       </p>
-      {(error || (ner.state === "unavailable" && ner.error)) && (
+      {(error || (ner.state === "unavailable" && ner.error && !ner.download)) && (
         <p className="mt-1 font-mono text-[11px] text-red-700">{error || ner.error}</p>
+      )}
+      {ner.download && (
+        <ModelDownloadRow download={ner.download} onRetry={() => void install()} />
       )}
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 font-body text-xs text-brand-dark-gray">
@@ -163,9 +174,9 @@ function NerSection({ status, saving, onApply, onReload }: { status: PiiShieldSt
           />
           Use the on-device model
         </label>
-        {settings.ner && ner.state !== "ready" && (
-          <button type="button" onClick={() => void install()} disabled={installing} className={smallButtonClass}>
-            {installing ? "Downloading..." : ner.state === "unavailable" ? "Retry download" : "Download now"}
+        {settings.ner && ner.state !== "ready" && !running && (
+          <button type="button" onClick={() => void install()} disabled={starting} className={smallButtonClass}>
+            {starting ? "Starting..." : ner.state === "unavailable" ? "Retry download" : "Download now"}
           </button>
         )}
       </div>
@@ -406,10 +417,10 @@ export default function PiiShieldCard({ onChanged }: { onChanged?: (status: PiiS
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // While the model downloads, poll until it is ready or fails.
-  const downloading = Boolean(status?.settings.enabled && status.settings.ner && status.ner.state === "not_downloaded");
+  const downloading = Boolean(status?.settings.enabled && status.settings.ner && status.ner.state === "downloading");
   useEffect(() => {
     if (!downloading) return;
-    const id = window.setInterval(() => { void load(); }, 4000);
+    const id = window.setInterval(() => { void load(); }, 2000);
     return () => window.clearInterval(id);
   }, [downloading]); // eslint-disable-line react-hooks/exhaustive-deps
 

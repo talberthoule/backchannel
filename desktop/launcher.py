@@ -16,6 +16,37 @@ import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 
+
+def _guarantee_standard_streams() -> None:
+    """Give the windowed build real stdout/stderr objects.
+
+    A PyInstaller bundle built with console=False has no console, so Python
+    sets sys.stdout and sys.stderr to None. Any library that writes to them
+    then raises AttributeError on None.write, and not every library unwinds
+    cleanly when it does: tqdm's clear() and refresh() take its process-global
+    write lock, touch the stream, and release only on the next line, so the
+    exception escapes with that lock held forever and the next progress bar
+    anywhere in the process deadlocks. That is what froze session creation in
+    v0.6.1 (ALP-373), because a PII Shield model download sat in front of it.
+
+    Discarding the writes is right for a GUI app: real diagnostics go to
+    backchannel.log through logging, which has its own file handler.
+
+    Deliberately a copy of app.services.std_streams.ensure rather than an
+    import of it: this has to run before the first backend import, and a
+    launcher's safety net cannot depend on the thing it is protecting. The
+    backend calls its own copy too, so every entry point is covered.
+    """
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name, None) is None:
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8", errors="replace"))
+        # __stdout__/__stderr__ stay None otherwise, and libraries fall back to them.
+        if getattr(sys, f"__{name}__", None) is None:
+            setattr(sys, f"__{name}__", getattr(sys, name))
+
+
+_guarantee_standard_streams()
+
 # Dev checkout: make `app` (backend) importable. In the PyInstaller bundle
 # the backend package is baked in and this directory does not exist.
 _REPO_BACKEND = Path(__file__).resolve().parent.parent / "backend"

@@ -145,7 +145,9 @@ Diarized segments are transcribed in original audio order through
 - `local-*` model IDs (for example `local-whisper-base`,
   `local-parakeet-tdt-0.6b`) run ONNX Whisper/Parakeet locally via
   `onnx-asr`. Weights download to `DATA_DIR/asr-models/` on first use; no
-  API key required. These models transcribe only; the analysis agents run on
+  API key required. That first fetch is reported through
+  `/api/model-downloads` and shown in the app while it runs, so the first
+  local transcription of a call does not look like a stall. These models transcribe only; the analysis agents run on
   text models instead -- cloud, or self-hosted via an
   `endpoint:<slug>:<model>` registry entry (see
   [Configuration](configuration.md#privacy-first-local-only-mode)).

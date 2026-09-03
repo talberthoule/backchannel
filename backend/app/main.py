@@ -10,7 +10,7 @@ from app.config import settings
 from app.database import engine
 from app.models import Base
 from app.release_notes import APP_VERSION
-from app.routers import agents, analyze, artifacts, ask, chat, credentials, retranscribe, diagnostics, directives, documents, endpoints, groups, imports, knowledge, meta, models, offerings, pii_shield, privacy, questions, sessions, speakers, synthesis, transcripts, updates
+from app.routers import agents, analyze, artifacts, ask, chat, credentials, retranscribe, diagnostics, directives, documents, endpoints, groups, imports, knowledge, meta, model_downloads, models, offerings, pii_shield, privacy, questions, sessions, speakers, synthesis, transcripts, updates
 from app.services.pii.egress import PiiEgressBlocked
 from app.services.pii.reveal_middleware import PiiRevealMiddleware
 from app.services.privacy import LocalOnlyModeError
@@ -442,6 +442,7 @@ app.include_router(diagnostics.router)
 app.include_router(privacy.router)
 app.include_router(pii_shield.router)
 app.include_router(pii_shield.session_router)
+app.include_router(model_downloads.router)
 app.include_router(updates.router)
 app.include_router(audio_handler.router)
 

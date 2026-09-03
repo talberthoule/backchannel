@@ -555,10 +555,37 @@ export interface PiiEgressEntry {
   truncated: boolean;
 }
 
+/** One set of model weights the app is fetching, or has fetched. */
+export interface ModelDownload {
+  key: string;
+  label: string;
+  /** What needs it, e.g. "PII Shield". */
+  purpose: string;
+  state: "queued" | "downloading" | "installed" | "error";
+  downloaded: number;
+  /** 0 when the source will not say how big the download is. */
+  total: number;
+  /** null when there is no total to divide by. */
+  percent: number | null;
+  error: string;
+  updated_at: number;
+}
+
+export interface ModelDownloadsStatus {
+  downloads: ModelDownload[];
+  active: number;
+  failed: number;
+}
+
 export interface PiiShieldStatus {
   settings: PiiShieldSettings;
   categories: { id: PiiCategory; label: string }[];
-  ner: { state: "off" | "ready" | "not_downloaded" | "unavailable"; error: string | null; model: string };
+  ner: {
+    state: "off" | "ready" | "not_downloaded" | "downloading" | "unavailable";
+    error: string | null;
+    model: string;
+    download: ModelDownload | null;
+  };
   coverage: {
     text: boolean;
     // With the shield on, audio is locked to local models by enforcement.

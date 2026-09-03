@@ -16,6 +16,7 @@ from app.services.batch_transcriber import (
     _audio_has_speech_energy,
     filter_transcript_text,
 )
+from app.services import model_downloads
 from app.services.secrets import data_dir
 from app.services.runtime_activity import track
 
@@ -28,6 +29,25 @@ LOCAL_MODEL_MAP = {
 
 _loaded: dict[str, object] = {}
 _load_lock = threading.Lock()  # ponytail: global lock; per-model locks if parallel first-loads matter
+
+
+def _dir_size(path) -> int:
+    try:
+        return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+    except OSError:
+        return 0
+
+
+def _watch_growth(key: str, path, stop: threading.Event) -> None:
+    """Report bytes on disk while onnx-asr fetches.
+
+    onnx-asr does not forward a `tqdm_class` to huggingface_hub, so unlike the
+    NER download this one is measured from outside: the weights land under
+    `path`, and its growth is the progress. There is no total to divide by, so
+    the UI shows bytes fetched rather than a percentage.
+    """
+    while not stop.wait(1.0):
+        model_downloads.advance(key, _dir_size(path))
 
 
 def _load_model(model_id: str):
@@ -44,8 +64,31 @@ def _load_model(model_id: str):
             if path.is_dir() and not any(path.iterdir()):
                 path.rmdir()
             logger.info(f"Loading local ASR model {name} (downloads on first use)")
-            with track("ASR model download"):
-                _loaded[model_id] = onnx_asr.load_model(name, path)
+            # Weights already on disk load in a second; only an actual fetch is
+            # worth telling the user about.
+            fetching = not path.is_dir()
+            key = f"asr:{model_id}"
+            stop = threading.Event()
+            watcher: threading.Thread | None = None
+            if fetching and model_downloads.claim(key, name, "Local transcription"):
+                model_downloads.begin(key)
+                watcher = threading.Thread(
+                    target=_watch_growth, args=(key, path, stop), daemon=True
+                )
+                watcher.start()
+            try:
+                with track("ASR model download"):
+                    _loaded[model_id] = onnx_asr.load_model(name, path)
+            except Exception as exc:  # noqa: BLE001 - recorded for the UI, then re-raised
+                if watcher is not None:
+                    model_downloads.fail(key, f"{type(exc).__name__}: {exc}")
+                raise
+            else:
+                if watcher is not None:
+                    model_downloads.advance(key, _dir_size(path))
+                    model_downloads.finish(key)
+            finally:
+                stop.set()
         return _loaded[model_id]
 
 

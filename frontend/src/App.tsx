@@ -11,6 +11,7 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import { reconcileRefusedSession, useSession } from "./hooks/useSession";
 import { useSpeechRecognition } from "./hooks/useSpeechRecognition";
 import { useAppUpdates } from "./hooks/useAppUpdates";
+import { useModelDownloads } from "./hooks/useModelDownloads";
 import { useConfirm } from "./components/ConfirmProvider";
 import * as api from "./services/api";
 import { parseSavedDrainSummary } from "./lib/postProcessingSummary";
@@ -183,6 +184,7 @@ export default function App() {
   const [liveSessionId, setLiveSessionId] = useState<string | null>(null);
   const [showOfferings, setShowOfferings] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
+  const modelDownloads = useModelDownloads();
   const [showAdmin, setShowAdmin] = useState(false);
   const [adminTab, setAdminTab] = useState<AdminTab>("agents");
   // True only while Admin was opened from the welcome checklist's "Add API
@@ -1162,6 +1164,8 @@ export default function App() {
         whatsNew={bannerOpen ? whatsNew : null}
         onOpenUpdate={() => openAdmin("about")}
         onAcknowledgeUpdate={acknowledgeWhatsNew}
+        downloads={modelDownloads}
+        onOpenPrivacy={() => openAdmin("privacy")}
       />
     </Layout>
   );

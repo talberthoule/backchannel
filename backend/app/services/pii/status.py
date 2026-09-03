@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AgentConfig, PiiRevealEvent, PiiVaultEntry
+from app.services import model_downloads
 from app.services.local_live_captioner import is_local_live_model
 from app.services.pii import ner
 from app.services.pii.recognizers import CATEGORIES, CATEGORY_LABELS
@@ -31,8 +32,10 @@ async def _agent(db: AsyncSession, slug: str) -> AgentConfig | None:
 def _ner_state(settings) -> str:
     if not settings.ner:
         return "off"
-    if ner.is_installed():
+    if ner.is_installed() and not ner.load_error():
         return "ready"
+    if model_downloads.is_running(ner.DOWNLOAD_KEY):
+        return "downloading"
     return "unavailable" if ner.load_error() else "not_downloaded"
 
 
@@ -63,7 +66,12 @@ async def status(db: AsyncSession) -> dict:
     return {
         "settings": asdict(settings),
         "categories": [{"id": c, "label": CATEGORY_LABELS[c]} for c in CATEGORIES],
-        "ner": {"state": _ner_state(settings), "error": ner.load_error(), "model": ner.MODEL_REPO},
+        "ner": {
+            "state": _ner_state(settings),
+            "error": ner.load_error(),
+            "model": ner.MODEL_REPO,
+            "download": model_downloads.get(ner.DOWNLOAD_KEY),
+        },
         "coverage": {
             "text": settings.enabled,
             "enforced": settings.enabled,
