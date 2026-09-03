@@ -76,15 +76,15 @@ export default function PrivacyModeCard({ config, onChanged }: PrivacyModeCardPr
       )}
 
       {confirming && !enabled && config && (
-        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
-          <p className="mb-3 font-body text-xs font-medium text-amber-900">
+        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/40">
+          <p className="mb-3 font-body text-xs font-medium text-amber-900 dark:text-amber-200">
             Review what changes before enabling. These features stop working because they have no
             local alternative:
           </p>
           <ul className="mb-4 space-y-2">
             {config.impact.disabled.map((item) => (
               <li key={item.feature} className="flex gap-2">
-                <span className="mt-0.5 shrink-0 text-red-500" aria-hidden>✕</span>
+                <span className="mt-0.5 shrink-0 text-red-500 dark:text-red-400" aria-hidden>✕</span>
                 <div>
                   <p className="font-body text-xs font-semibold text-brand-dark-gray">{item.feature}</p>
                   <p className="font-body text-[11px] leading-relaxed text-brand-gray">{item.detail}</p>
@@ -92,11 +92,11 @@ export default function PrivacyModeCard({ config, onChanged }: PrivacyModeCardPr
               </li>
             ))}
           </ul>
-          <p className="mb-3 font-body text-xs font-medium text-amber-900">These keep working, fully on-device:</p>
+          <p className="mb-3 font-body text-xs font-medium text-amber-900 dark:text-amber-200">These keep working, fully on-device:</p>
           <ul className="mb-4 space-y-2">
             {config.impact.available.map((item) => (
               <li key={item.feature} className="flex gap-2">
-                <span className="mt-0.5 shrink-0 text-emerald-600" aria-hidden>✓</span>
+                <span className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden>✓</span>
                 <div>
                   <p className="font-body text-xs font-semibold text-brand-dark-gray">{item.feature}</p>
                   <p className="font-body text-[11px] leading-relaxed text-brand-gray">{item.detail}</p>
@@ -124,7 +124,7 @@ export default function PrivacyModeCard({ config, onChanged }: PrivacyModeCardPr
       )}
 
       {error && (
-        <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 font-body text-xs text-red-700">{error}</p>
+        <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 font-body text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">{error}</p>
       )}
     </div>
   );
