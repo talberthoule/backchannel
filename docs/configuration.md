@@ -172,11 +172,14 @@ master key (`secrets.derive_subkey`), with a keyed HMAC of the normalized
 value for lookup, so the table reveals neither values nor whether two
 sessions share one.
 
-Decode only at the edge. `shield.reveal_text` is called from exactly three
-places: `PiiRevealMiddleware` (every session-scoped JSON response and the
-session list), `RevealingWebSocket` (every live message), and the exports
-and `/api/chat`, which are not session-scoped in the path. Nothing under
-`services/agents` or `services/llm.py` imports it. Exports carry tokens
+Decode only at the edge, from exactly three surfaces:
+`PiiRevealMiddleware` (every session-scoped JSON response and the session
+list, through `shield.reveal_payload`), `RevealingWebSocket` (every live
+message, through `vault.reveal_map` and `shield._walk`), and the exports
+and `/api/chat`, which are not session-scoped in the path and so call
+`shield.reveal_text` directly. Nothing under `services/agents` or
+`services/llm.py` decodes at all, which is the invariant worth grepping for
+before a release. Exports carry tokens
 unless `?reveal=1` is passed (the Export menu's "Include personal data"
 box). Every reveal appends a row to `pii_reveal_events` (session, route,
 token count); the Privacy tab shows the last 24 hours.
