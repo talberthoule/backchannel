@@ -166,6 +166,15 @@ Detection is layered and entirely on-device:
   be fetched the shield keeps working with the other layers and the status
   says so.
 
+The download is visible while it happens: the Privacy tab shows its progress
+and `/api/model-downloads` reports it to any client, so a slow first fetch
+reads as a download rather than a stall. Nothing on the ingest path waits for
+it. If the weights are absent, still arriving, or known to have failed, text
+is protected by the pattern and roster layers and detection carries on; the
+model joins in once it has loaded. Before v0.6.2 the loader held one lock
+across the fetch and a wedged download blocked every protected write in the
+app, session creation included (ALP-373).
+
 The vault (`services/pii/vault.py`, table `pii_vault_entries`) stores each
 value Fernet-encrypted under a key derived with HKDF from the credentials
 master key (`secrets.derive_subkey`), with a keyed HMAC of the normalized

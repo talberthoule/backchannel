@@ -10,10 +10,44 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.6.1"
+APP_VERSION = "0.6.2"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.6.2",
+        "date": "2026-09-03",
+        "title": "Starting a session no longer hangs, and downloads say so",
+        "body": """Creating a new session could stick on "Creating..." and never
+finish. Nothing was wrong with the session; the app was quietly downloading a
+model in the background, that download jammed, and everything that stores text
+queued up behind it and never came back. Restarting cleared it until the next
+time.
+
+- Starting a session, and every other thing that saves text, no longer waits
+  on a model download. If the weights are missing, still arriving, or failed,
+  the PII Shield protects text with the layers it already has and the model
+  joins in when it is ready.
+- The download that jammed cannot jam that way again. It was a progress bar
+  writing to a console the app does not have when it runs as a desktop
+  window, which left an internal lock stuck shut forever.
+
+Downloads are visible now. Backchannel fetches model weights the first time
+something needs them, and it used to do that with no sign anywhere.
+
+- A notice shows what is downloading, how far along it is, and what it is
+  for, wherever you are in the app. Nothing large is fetched silently.
+- Failures say what went wrong and offer Retry instead of leaving a feature
+  looking broken for no stated reason.
+- The Privacy tab shows the same progress for the name-recognition model, and
+  its Download now button starts the download and returns instead of sitting
+  there looking stuck.
+
+Also fixed: local transcription did not work at all in the desktop app. A
+packaging mistake left out a file one of the speech libraries reads at
+startup, so every local Whisper and Parakeet transcription failed. Local
+transcription works in this build.""",
+    },
     {
         "version": "0.6.1",
         "date": "2026-09-03",

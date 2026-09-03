@@ -205,10 +205,26 @@ paying for the rows. Signals accumulate in `signal_history` with a per-signal
 | GET | `/api/pii-shield` | PII Shield status: `settings` (enabled, categories, ner, protected_terms), the category list, the on-device NER model state, an honest `coverage` report (text, transcription audio, live gateway, documents), vault size, and reveals in the last 24 hours |
 | PUT | `/api/pii-shield` | Partial update of `enabled`, `categories`, `ner`, `protected_terms` (`[{"value","category"}]`); returns the status payload. Enabling with NER on starts the one-time model download |
 | POST | `/api/pii-shield/preview` | `{"text", "session_id"?}` -> what a model would receive (`protected`) and each finding; numbers tokens from 1 and touches no vault |
-| POST | `/api/pii-shield/ner/install` | Download and load the on-device NER model now; 503 with the reason when it cannot |
+| POST | `/api/pii-shield/ner/install` | Start fetching the on-device NER model now rather than on first use. Returns 202 as soon as the download is queued and does not wait for the transfer; watch `/api/model-downloads` for progress and the outcome |
 | GET | `/api/sessions/{id}/pii/summary` | Protected value counts by category for one session; decrypts nothing |
 | GET | `/api/sessions/{id}/pii` | The session's ledger: `{category, ordinal, value}` per protected value; recorded as one reveal |
 | POST | `/api/sessions/{id}/pii/protect` | Run the encode path over a session's stored transcript, insights, directives, document excerpts, session fields and speakers (for sessions recorded before the shield was on); returns what changed |
+
+### Model downloads (`routers/model_downloads.py`)
+
+Model weights (the PII Shield's NER model, the local ASR models) are fetched
+from the Hugging Face hub the first time something needs them. This is how the
+app says so, rather than leaving a first-use fetch to look like a hang.
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/api/model-downloads` | Every download this process has started: `downloads[]` with `key`, `label`, `purpose`, `state` (`queued`, `downloading`, `installed`, `error`), `downloaded`, `total`, `percent` (null when the source reports no total), and `error`; plus `active` and `failed` counts |
+| POST | `/api/model-downloads/{key}/retry` | Start a failed download again; 202 when queued, 404 for a key the app cannot start on its own (a local ASR model is fetched by the transcription that needs it) |
+| DELETE | `/api/model-downloads/{key}` | Forget a finished or failed entry so it stops being reported; 409 while it is still running |
+
+Progress for hub downloads comes from `hf_hub_download`'s public `tqdm_class`
+hook. The onnx-asr path does not forward that, so its progress is the size of
+the target directory as it grows and it reports no total.
 
 ### Credentials (`routers/credentials.py`)
 

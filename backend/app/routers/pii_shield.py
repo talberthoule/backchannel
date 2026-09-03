@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Directive, Document, Question, Session, Speaker, TranscriptEntry
+from app.services import model_downloads
 from app.services.pii import egress, ner, shield, vault
 from app.services.pii.status import status as shield_status
 from app.services.pii.recognizers import CATEGORIES
@@ -80,8 +81,8 @@ async def update_settings(update: ShieldUpdate, db: AsyncSession = Depends(get_d
     await shield.set_settings(db, current)
     await db.commit()
     if current.enabled and current.ner and not ner.is_installed():
-        # Fetch in the background; the status reports progress on the next read.
-        asyncio.create_task(asyncio.to_thread(ner.get_model, True))
+        # Fetch in the background; /api/model-downloads reports the progress.
+        asyncio.create_task(asyncio.to_thread(ner.install))
     return await shield_status(db)
 
 
@@ -107,14 +108,25 @@ async def clear_outbound_prompts():
     egress.clear()
 
 
-@router.post("/ner/install")
-async def install_ner(db: AsyncSession = Depends(get_db)):
-    """Download and load the on-device model now rather than on first use."""
-    ner.reset_for_tests()
-    model = await asyncio.to_thread(ner.get_model, True)
-    if model is None:
-        raise HTTPException(503, ner.load_error() or "The on-device NER model could not be installed.")
-    return (await shield_status(db))["ner"]
+@router.post("/ner/install", status_code=202)
+async def install_ner():
+    """Start fetching the on-device model rather than waiting for first use.
+
+    Returns as soon as the download is queued. The request does not sit on the
+    transfer, because a caller that waits is a caller that looks hung; watch
+    /api/model-downloads for progress and the outcome.
+    """
+    if model_downloads.is_running(ner.DOWNLOAD_KEY):
+        return model_downloads.get(ner.DOWNLOAD_KEY)
+    # Drop any earlier failure so a retry reports itself from a clean slate.
+    model_downloads.forget(ner.DOWNLOAD_KEY)
+    asyncio.create_task(asyncio.to_thread(ner.install))
+    return {
+        "key": ner.DOWNLOAD_KEY,
+        "label": ner.DOWNLOAD_LABEL,
+        "purpose": ner.DOWNLOAD_PURPOSE,
+        "state": model_downloads.QUEUED,
+    }
 
 
 @session_router.get("/summary")

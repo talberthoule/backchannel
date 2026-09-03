@@ -1,4 +1,4 @@
-import type { AgentConfig, AppMeta, AsrFitReport, CallSegment, CustomEndpoint, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EndpointProbeResult, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, LocalFitReport, LocalFitSummary, MeetingType, ModelInfo, ModelPricingResponse, Offering, PiiEgressEntry, PiiPreview, PiiSessionSummary, PiiShieldSettings, PiiShieldStatus, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptEntry } from "../types";
+import type { AgentConfig, AppMeta, AsrFitReport, CallSegment, CustomEndpoint, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EndpointProbeResult, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, LocalFitReport, LocalFitSummary, MeetingType, ModelDownload, ModelDownloadsStatus, ModelInfo, ModelPricingResponse, Offering, PiiEgressEntry, PiiPreview, PiiSessionSummary, PiiShieldSettings, PiiShieldStatus, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptEntry } from "../types";
 
 const BASE = "/api";
 
@@ -375,7 +375,16 @@ export const getPiiEgress = (limit = 50) =>
 export const clearPiiEgress = () => request<void>("/pii-shield/egress", { method: "DELETE" });
 
 export const installPiiNer = () =>
-  request<PiiShieldStatus["ner"]>("/pii-shield/ner/install", { method: "POST" });
+  request<ModelDownload>("/pii-shield/ner/install", { method: "POST" });
+
+// Model downloads
+export const getModelDownloads = () => request<ModelDownloadsStatus>("/model-downloads");
+
+export const retryModelDownload = (key: string) =>
+  request<ModelDownload>(`/model-downloads/${encodeURIComponent(key)}/retry`, { method: "POST" });
+
+export const dismissModelDownload = (key: string) =>
+  request<void>(`/model-downloads/${encodeURIComponent(key)}`, { method: "DELETE" });
 
 export const getSessionPiiSummary = (sessionId: string) =>
   request<PiiSessionSummary>(`/sessions/${sessionId}/pii/summary`);

@@ -2,7 +2,7 @@
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, copy_metadata
 
 repo = Path(SPECPATH).parent
 
@@ -45,6 +45,16 @@ datas = [
 # releases); macOS bundles stay ffmpeg-free.
 if (repo / "desktop" / "ffmpeg").is_dir():
     datas.append((str(repo / "desktop" / "ffmpeg"), "ffmpeg"))
+
+# Packages that read their own installed version at import time. Without the
+# dist-info, importlib.metadata raises PackageNotFoundError inside the bundle:
+# onnx_asr does this on line 7 of its __init__, which broke every local
+# transcription in shipped desktop builds until v0.6.2 (ALP-373).
+for _distribution in ("onnx-asr", "huggingface-hub", "tqdm"):
+    try:
+        datas += copy_metadata(_distribution)
+    except Exception as exc:  # noqa: BLE001 - a missing optional dep must not break the build
+        print(f"backchannel.spec: no metadata for {_distribution}: {exc}")
 
 a = Analysis(
     [str(repo / "desktop" / "launcher.py")],
