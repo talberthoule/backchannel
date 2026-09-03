@@ -10,10 +10,44 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.6.2"
+APP_VERSION = "0.6.3"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.6.3",
+        "date": "2026-09-03",
+        "title": "Local transcription actually works now",
+        "body": """If you ran a meeting on v0.6.2 with a local transcription
+model, nothing came out of it. The call recorded, speakers were separated, and
+not one line of transcript was saved. v0.6.1 had the same result for a
+different reason. Local transcription has in fact never worked in the desktop
+app until this build.
+
+- Both causes are fixed. The desktop bundle was missing files the speech
+  library reads every time it transcribes. v0.6.2 fixed one missing piece and
+  shipped without the next one.
+- Your recordings are not lost. The audio from those meetings is still on
+  disk. Open the session, choose Re-transcribe, and the transcript will be
+  rebuilt from it.
+- The app was also wrong about itself. It reported transcription as ready
+  when the speech engine could not run at all, which is why it kept trying
+  and failing silently. It now checks that the engine really works, and says
+  what is actually wrong when it does not.
+- Re-transcribe no longer erases a transcript it cannot replace. It used to
+  delete the existing transcript before starting; if transcription could not
+  run, that left the session empty. It now refuses up front and changes
+  nothing.
+
+Being honest about how this happened: the release check only confirmed the app
+started, and a broken build starts perfectly well. It now transcribes inside
+the finished bundle before that bundle can be published, which is the check
+that would have caught both of these.
+
+Known rough edge: re-transcribing a long recording makes the rest of the app
+unresponsive while it runs, and shows no progress. It is working, not stuck.
+That is being fixed separately.""",
+    },
     {
         "version": "0.6.2",
         "date": "2026-09-03",
