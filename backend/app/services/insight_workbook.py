@@ -179,11 +179,20 @@ def build_summary_sheet(
     """
     ws.sheet_view.showGridLines = False
     _widths(ws, [58, 14, 34, 26])
-    lookup = _speaker_lookup(participants)
-    text = lambda value: rename(_clean(value))  # noqa: E731 - one expression, read once
 
+    row = _summary_masthead(ws, session, questions, participants, rename)
+    row = _at_a_glance_block(ws, row, questions)
+    row = _participants_block(ws, row, questions, participants)
+    _needs_attention_block(ws, row, questions, participants, rename)
+
+    # Below the masthead, so the session name stays on screen while scrolling.
+    ws.freeze_panes = "A5"
+
+
+def _summary_masthead(ws, session, questions: list, participants: list, rename: Rename) -> int:
     row = _write(ws, 1, ["BACKCHANNEL BRIEFING"], bold=True, size=9, color=TEAL_DARK)
-    row = _write(ws, row, [text(getattr(session, "name", "")) or "Session"], bold=True, size=20)
+    name = rename(_clean(getattr(session, "name", ""))) or "Session"
+    row = _write(ws, row, [name], bold=True, size=20)
     ws.row_dimensions[row - 1].height = 30
 
     started = getattr(session, "started_at", None)
@@ -193,11 +202,11 @@ def build_summary_sheet(
         meta.append(span)
     meta.append(f"{len(participants)} participant{'s' if len(participants) != 1 else ''}")
     meta.append(f"{len(questions)} insight{'s' if len(questions) != 1 else ''}")
-    row = _write(ws, row, [" | ".join(meta)], size=10, color=INK_FAINT)
-    row += 1
+    return _write(ws, row, [" | ".join(meta)], size=10, color=INK_FAINT) + 1
 
-    row = _section(ws, row, "At a glance", 4)
-    row = _table_header(ws, row, ["Insight type", "Count", "Share", "Starred"])
+
+def _insight_mix(questions: list) -> tuple[list[str], dict[str, int], dict[str, int]]:
+    """Counts and starred counts per type, in the reading order above."""
     counts: dict[str, int] = {}
     starred: dict[str, int] = {}
     for q in questions:
@@ -205,9 +214,25 @@ def build_summary_sheet(
         counts[slug] = counts.get(slug, 0) + 1
         if getattr(q, "starred", False):
             starred[slug] = starred.get(slug, 0) + 1
-    ordered = sorted(counts, key=lambda slug: (_TYPE_ORDER.index(slug) if slug in _TYPE_ORDER else len(_TYPE_ORDER), slug))
-    total = sum(counts.values()) or 1
-    first_count_row = row
+    ordered = sorted(
+        counts,
+        key=lambda slug: (
+            _TYPE_ORDER.index(slug) if slug in _TYPE_ORDER else len(_TYPE_ORDER),
+            slug,
+        ),
+    )
+    return ordered, counts, starred
+
+
+def _at_a_glance_block(ws, row: int, questions: list) -> int:
+    row = _section(ws, row, "At a glance", 4)
+    row = _table_header(ws, row, ["Insight type", "Count", "Share", "Starred"])
+    ordered, counts, starred = _insight_mix(questions)
+    if not ordered:
+        return _write(ws, row, ["No insights captured."], size=10, color=INK_FAINT) + 1
+
+    total = sum(counts.values())
+    first = row
     for slug in ordered:
         row = _write(
             ws,
@@ -215,57 +240,73 @@ def build_summary_sheet(
             [type_label(slug), counts[slug], f"{counts[slug] / total:.0%}", starred.get(slug, 0) or ""],
             border=_BOTTOM_RULE,
         )
-    if ordered:
-        # A native data bar rather than a drawn chart: it survives a re-sort,
-        # prints, and costs the file nothing.
-        ws.conditional_formatting.add(
-            f"B{first_count_row}:B{row - 1}",
-            DataBarRule(start_type="num", start_value=0, end_type="max", color=TEAL, showValue=True),
-        )
-    else:
-        row = _write(ws, row, ["No insights captured."], size=10, color=INK_FAINT)
-    row += 1
+    # A native data bar rather than a drawn chart: it survives a re-sort,
+    # prints, and costs the file nothing.
+    ws.conditional_formatting.add(
+        f"B{first}:B{row - 1}",
+        DataBarRule(start_type="num", start_value=0, end_type="max", color=TEAL, showValue=True),
+    )
+    return row + 1
 
+
+def _attributed_counts(questions: list) -> dict[str, int]:
+    """Insights per speaker id.
+
+    Keyed by id, not by label: display_name is free text and two people can
+    carry the same one, which would silently pool their counts.
+    """
+    counts: dict[str, int] = {}
+    for q in questions:
+        raw = getattr(q, "speaker_id", None)
+        if raw:
+            counts[str(raw)] = counts.get(str(raw), 0) + 1
+    return counts
+
+
+def _participants_block(ws, row: int, questions: list, participants: list) -> int:
     row = _section(ws, row, "Participants", 4)
     row = _table_header(ws, row, ["Participant", "Side", "Role", "Insights attributed"])
-    if participants:
-        # Keyed by speaker id, not by label: display_name is free text and two
-        # people can carry the same one, which would silently pool their counts.
-        attributed: dict[str, int] = {}
-        for q in questions:
-            raw = getattr(q, "speaker_id", None)
-            if raw:
-                key = str(raw)
-                attributed[key] = attributed.get(key, 0) + 1
-        for person in participants:
-            row = _write(
-                ws,
-                row,
-                [person.label, person.side, person.role, attributed.get(person.id, 0)],
-                border=_BOTTOM_RULE,
-            )
-    else:
-        row = _write(ws, row, ["No speakers were enrolled for this session."], size=10, color=INK_FAINT)
-    row += 1
+    if not participants:
+        return _write(
+            ws, row, ["No speakers were enrolled for this session."], size=10, color=INK_FAINT
+        ) + 1
 
+    attributed = _attributed_counts(questions)
+    for person in participants:
+        row = _write(
+            ws,
+            row,
+            [person.label, person.side, person.role, attributed.get(person.id, 0)],
+            border=_BOTTOM_RULE,
+        )
+    return row + 1
+
+
+def _needs_attention_block(ws, row: int, questions: list, participants: list, rename: Rename) -> int:
+    lookup = _speaker_lookup(participants)
     row = _section(ws, row, "Needs attention", 4)
     row = _table_header(ws, row, ["Item", "Type", "Why it is here", "Raised by"])
     flagged = _needs_attention(questions)
-    if flagged:
-        for q, reason in flagged:
-            row = _write(
-                ws,
-                row,
-                [text(q.question), type_label(getattr(q, "item_type", None)), reason, _attributed(q, lookup)],
-                wrap=True,
-                border=_BOTTOM_RULE,
-            )
-            ws.row_dimensions[row - 1].height = 30
-    else:
-        row = _write(ws, row, ["Nothing starred, unanswered, or contested."], size=10, color=INK_FAINT)
+    if not flagged:
+        return _write(
+            ws, row, ["Nothing starred, unanswered, or contested."], size=10, color=INK_FAINT
+        )
 
-    # Below the masthead, so the session name stays on screen while scrolling.
-    ws.freeze_panes = "A5"
+    for q, reason in flagged:
+        row = _write(
+            ws,
+            row,
+            [
+                rename(_clean(q.question)),
+                type_label(getattr(q, "item_type", None)),
+                reason,
+                _attributed(q, lookup),
+            ],
+            wrap=True,
+            border=_BOTTOM_RULE,
+        )
+        ws.row_dimensions[row - 1].height = 30
+    return row
 
 
 def _needs_attention(questions: list) -> list[tuple[object, str]]:
