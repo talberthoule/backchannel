@@ -282,6 +282,43 @@ class NerLoaderTests(unittest.TestCase):
             self.assertTrue(issubclass(cls, model_downloads.ProgressReporter))
         self.assertEqual(1234, model_downloads.get(ner.DOWNLOAD_KEY)["total"])
 
+    def test_the_whole_install_reaches_ready_with_no_stdout_or_stderr(self):
+        """The symptom ALP-368 reported, end to end.
+
+        In the windowed desktop bundle sys.stdout and sys.stderr are None. The
+        Privacy tab showed "Unavailable -- AttributeError: 'NoneType' object
+        has no attribute 'write'" because the progress bar wrote to stderr on
+        the way through. The unit pieces are covered above; this asserts the
+        user-visible outcome of running the real loader under that condition:
+        no load error, and the state machine says ready rather than
+        unavailable.
+
+        Real tqdm is left importable on purpose. If a future change stops
+        passing the reporting tqdm_class, tqdm reaches for the None stream and
+        this fails -- which is the point.
+        """
+        files = {name: b"weights" for name in ner._MODEL_FILES}
+
+        def fake_download(repo, name, local_dir=None, tqdm_class=None):
+            target = Path(local_dir) / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(files[name])
+            # Exercise the bar the way huggingface_hub does, so a real tqdm
+            # here would touch the missing stream.
+            with tqdm_class(total=len(files[name])) as bar:
+                bar.update(len(files[name]))
+            return str(target)
+
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "bert-base-NER"
+            with patch.object(ner, "model_dir", return_value=root),                     patch.object(ner, "_remote_total", return_value=len(files) * 7),                     patch.object(ner, "NerModel", lambda path: object()),                     patch("huggingface_hub.hf_hub_download", fake_download),                     patch.object(sys, "stderr", None), patch.object(sys, "stdout", None):
+                model_downloads.claim(ner.DOWNLOAD_KEY, ner.DOWNLOAD_LABEL)
+                model = ner.get_model(download=True)
+
+        self.assertIsNotNone(model, f"loader failed: {ner.load_error()}")
+        self.assertIsNone(ner.load_error())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,8 +1,18 @@
-"""Session-level meeting context helpers."""
+"""Session-level meeting context helpers, and the prompt formatting seam.
+
+Every text agent formats its template through here, which makes this the one
+place a change reaches every install rather than only a fresh one:
+``agent_configs.prompt`` holds a user-editable copy of each template, that
+copy wins at runtime, and seeding has never rewritten a stored prompt. So the
+stable-first reorder and the system/user split are applied here, at format
+time, rather than by editing the constants in ``prompts.py`` (ALP-285).
+"""
 
 from __future__ import annotations
 
 from typing import Any
+
+from app.services.agents import prompt_layout
 
 DEFAULT_MEETING_TYPE = "general"
 
@@ -95,13 +105,28 @@ def ensure_meeting_context_placeholder(prompt_template: str) -> str:
     )
 
 
-def format_prompt_with_meeting_context(
+def format_prompt_layers(
     prompt_template: str,
     meeting_context_text: str,
     **values: Any,
-) -> str:
-    template = ensure_meeting_context_placeholder(prompt_template)
-    return template.format(meeting_context_text=meeting_context_text, **values)
+) -> tuple[str | None, str]:
+    """``(system, user)`` for a provider call.
+
+    The instruction half - role, meeting context, lenses, participants,
+    directives, pre-call context, the output contract and the rules - becomes
+    the system instruction; the per-cycle data becomes the user turn. Both are
+    formatted from the same values, so a caller passes exactly what the old
+    single-string formatter took.
+
+    That formatter is gone: every text agent wants the split, and leaving a
+    second seam alongside it would let the next agent quietly opt out of the
+    ordering guarantee.
+    """
+    return prompt_layout.format_layers(
+        ensure_meeting_context_placeholder(prompt_template),
+        meeting_context_text=meeting_context_text,
+        **values,
+    )
 
 
 def should_match_offerings(meeting_type: object) -> bool:

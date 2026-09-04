@@ -34,6 +34,7 @@ from app.services.agents.activity import (
     saved_outcome,
 )
 from app.services.agents.base import TranscriptBuffer
+from app.services.agents.speaker_context import build_speaker_aliases, speaker_display_name
 from app.services.agents.consolidated_analyst import ConsolidatedAnalystAgent
 from app.services.agents.event_bus import CooldownSubscriber, EventBus
 from app.services.agents.objection_handler import ObjectionHandlerAgent
@@ -50,6 +51,7 @@ from app.services.briefing_synthesis import (
 )
 from app.services.gemini_live import GeminiLiveSession
 from app.services.llm import provider_for
+from app.services.speaker_name_rewriter import replace_speaker_labels
 from app.services.local_live_captioner import LocalLiveCaptioner, is_local_live_model
 from app.services.openai_realtime import OpenAIRealtimeSession
 from app.services.meeting_context import build_meeting_context_text, normalize_meeting_type, should_match_offerings
@@ -875,7 +877,9 @@ class AgentOrchestrator:
         if "call_briefing" in stages:
             result["synthesis_generated"] = False
 
-        transcript_window = await self.transcript_buffer.get_window()
+        transcript_window = await self.transcript_buffer.get_window(
+            aliases=self.speaker_aliases()
+        )
         transcript_available = transcript_window != "(No recent transcript)"
         result["transcript_available"] = transcript_available
 
@@ -1177,6 +1181,16 @@ class AgentOrchestrator:
         if "question" not in q_json:
             return False
 
+        # Scrub before anything reads the text, so dedup compares what will
+        # actually be stored: a tag in one cycle and the same person's name in
+        # the next would otherwise look like two different insights.
+        scrub = self._alias_prose_scrub()
+        if scrub:
+            for field in ("question", "rationale", "source_context"):
+                value = q_json.get(field)
+                if isinstance(value, str) and value:
+                    q_json[field] = replace_speaker_labels(value, scrub)
+
         text = q_json["question"]
 
         # Dedup check
@@ -1271,8 +1285,23 @@ class AgentOrchestrator:
                     return len(created)
         return len(created)
 
+    def speaker_aliases(self) -> dict[str, str]:
+        """The participant tags for this call, derived fresh from the roster.
+
+        Not cached: the roster is appended to mid-call when a new voice is
+        enrolled, and an append can only add a tag, never move one. Deriving
+        on read is what makes the map identical across a resume without
+        anything being stored (ALP-282).
+        """
+        return build_speaker_aliases(self.speakers)
+
     def _validated_speaker_id(self, raw: object) -> str | None:
-        """Keep insight attribution tied to the session speaker roster."""
+        """Keep insight attribution tied to the session speaker roster.
+
+        Deliberately UUID-only. The agents translate a participant tag back to
+        a UUID before anything reaches here, so the save boundary's contract
+        is unchanged by aliasing.
+        """
         if not isinstance(raw, str) or not raw.strip():
             return None
         try:
@@ -1281,6 +1310,23 @@ class AgentOrchestrator:
             return None
         known_ids = {str(s.get("id")) for s in self.speakers if s.get("id")}
         return speaker_id if speaker_id in known_ids else None
+
+    def _alias_prose_scrub(self) -> dict[str, str]:
+        """Participant tag -> the person's name, for insight text.
+
+        Aliases put "S1"-style vocabulary in the model's context, and the
+        prompts already have to forbid invented labels like "Speaker 1/Mark"
+        from leaking into insight prose. The prompt rule is the first line of
+        defense; this is the deterministic one, so a tag can never reach a
+        card a person reads (ALP-282).
+        """
+        aliases = self.speaker_aliases()
+        by_id = {str(s.get("id")): s for s in self.speakers if s.get("id")}
+        return {
+            alias: speaker_display_name(by_id[speaker_id])
+            for speaker_id, alias in aliases.items()
+            if speaker_id in by_id
+        }
 
     # ── Consolidated Analyst (single batch call) ─────────────────────────
 
@@ -1293,7 +1339,9 @@ class AgentOrchestrator:
         while not self._stopped:
             await self.activity.cycle_started("consolidated_analyst")
             try:
-                transcript_window = await self.transcript_buffer.get_window()
+                transcript_window = await self.transcript_buffer.get_window(
+                    aliases=self.speaker_aliases()
+                )
                 if transcript_window == "(No recent transcript)":
                     logger.debug("[consolidated_analyst] No transcript yet, skipping cycle")
                     await self.activity.cycle_finished(
@@ -1378,7 +1426,8 @@ class AgentOrchestrator:
             await self.activity.cycle_started("objection_handler")
             try:
                 transcript_window = await self.transcript_buffer.get_window(
-                    max_age_seconds=settings.OBJECTION_WINDOW_SECONDS
+                    max_age_seconds=settings.OBJECTION_WINDOW_SECONDS,
+                    aliases=self.speaker_aliases(),
                 )
                 if transcript_window != "(No recent transcript)":
                     insights = await self.objection_agent.run_cycle(
@@ -1514,7 +1563,9 @@ class AgentOrchestrator:
         while not self._stopped:
             await self.activity.cycle_started(STRATEGIC_SIGNALS_SLUG)
             try:
-                transcript_window = await self.transcript_buffer.get_window()
+                transcript_window = await self.transcript_buffer.get_window(
+                    aliases=self.speaker_aliases()
+                )
                 if transcript_window == last_window:
                     logger.debug("[strategic_signals] Window unchanged, skipping cycle")
                 elif transcript_window != "(No recent transcript)":

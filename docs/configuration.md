@@ -218,6 +218,13 @@ never drop, invent or renumber a token. It runs as a live interval agent
 (browser gets `transcript_updated` messages), as the first drain stage at
 call end, and before post-import analysis.
 
+Because it only ever reads tokenized text -- the stored entry text, and
+speaker labels `protect_name` tokenized the same way -- the Privacy tab
+reports refinement as covered whenever the shield is on, on any model, local
+or cloud. Whether the agent is enabled is a detail line under that row, not
+the badge: driving a red "not covered" off an optional quality agent's switch
+reported a privacy gap where there was none (ALP-366).
+
 Two ways to see that it works. The prompt log (`prompt_log` in the shield
 settings, "Record outbound prompts" on the Privacy tab) appends every prompt
 to `DATA_DIR/prompt-log/outbound.jsonl` exactly as it leaves for a model,

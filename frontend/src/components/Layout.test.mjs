@@ -23,11 +23,13 @@ await build({
         DroppableGroup,
         filterSessions,
         orderSessions,
+        pruneCollapsedGroups,
+        readCollapsedGroups,
         scrollClosesMenu,
         sessionStateLabel,
         SEARCH_THRESHOLD,
       } from "./Layout.tsx";
-      export { dateSearchTerms, deleteGroupWithConfirmation, filterSessions, orderSessions, scrollClosesMenu, sessionStateLabel, SEARCH_THRESHOLD };
+      export { dateSearchTerms, deleteGroupWithConfirmation, filterSessions, orderSessions, pruneCollapsedGroups, readCollapsedGroups, scrollClosesMenu, sessionStateLabel, SEARCH_THRESHOLD };
       export function renderGroup(props) {
         return renderToStaticMarkup(
           React.createElement(
@@ -53,6 +55,8 @@ const {
   deleteGroupWithConfirmation,
   filterSessions,
   orderSessions,
+  pruneCollapsedGroups,
+  readCollapsedGroups,
   renderGroup,
   scrollClosesMenu,
   sessionStateLabel,
@@ -162,6 +166,69 @@ test("group toggle points aria-controls at a container that stays in the DOM whe
   const expanded = renderGroup({ ...props, isExpanded: true });
   assert.doesNotMatch(expanded, /hidden=""/);
   assert.match(expanded, />No sessions</);
+});
+
+test("the chevron reads as a control at rest, not only on hover", () => {
+  // A bare glyph carrying no affordance is why the collapse control did not
+  // read as usable (ALP-367). It sits on its own tinted square now, and that
+  // square must not be behind the hover-reveal class.
+  const markup = renderGroup({
+    group,
+    children: null,
+    isExpanded: false,
+    onToggle: () => {},
+    onDelete: () => {},
+    sessionCount: 0,
+  });
+  const chevronChip = markup.match(/<span class="([^"]*rounded bg-brand-light-gray-2[^"]*)"/);
+  assert.ok(chevronChip, "the chevron should sit in a visible chip");
+  assert.doesNotMatch(chevronChip[1], /bc-reveal/);
+  assert.doesNotMatch(chevronChip[1], /opacity-0/);
+});
+
+test("collapsed groups are remembered as the exception, so an unlisted group is open", () => {
+  // The polarity is the fix: at first paint the groups prop is still empty, so
+  // an expanded-id set was empty too and every group came up collapsed.
+  const stored = new Set(["g2"]);
+  assert.equal(stored.has("g1"), false, "g1 was never collapsed, so it is open");
+  assert.equal(stored.has("g2"), true);
+  // A group that arrives later needs no seeding at all.
+  assert.equal(stored.has("g3-created-mid-session"), false);
+});
+
+test("pruneCollapsedGroups forgets deleted groups and keeps the set identity when nothing changed", () => {
+  const collapsed = new Set(["g1", "gone"]);
+  const pruned = pruneCollapsedGroups(collapsed, groups);
+  assert.deepEqual([...pruned], ["g1"]);
+
+  // Same set back when every id is still known: the persisting effect must
+  // not see a new reference and loop.
+  const clean = new Set(["g1"]);
+  assert.equal(pruneCollapsedGroups(clean, groups), clean);
+});
+
+test("pruneCollapsedGroups treats an empty roster as not-yet-loaded, not as no groups", () => {
+  // Groups are fetched asynchronously. Pruning against the empty first render
+  // would wipe the user's choices on every reload.
+  const collapsed = new Set(["g1"]);
+  assert.equal(pruneCollapsedGroups(collapsed, []), collapsed);
+});
+
+test("readCollapsedGroups survives missing, unparsable, and wrong-shaped storage", () => {
+  const original = globalThis.localStorage;
+  const withStorage = (value) => {
+    globalThis.localStorage = { getItem: () => value, setItem: () => {} };
+    try {
+      return readCollapsedGroups();
+    } finally {
+      globalThis.localStorage = original;
+    }
+  };
+
+  assert.deepEqual([...withStorage(null)], []);
+  assert.deepEqual([...withStorage("not json")], []);
+  assert.deepEqual([...withStorage('{"g1":true}')], []);
+  assert.deepEqual([...withStorage('["g1", 7, "g2"]')], ["g1", "g2"]);
 });
 
 const session = (overrides) => ({

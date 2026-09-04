@@ -175,8 +175,8 @@ paying for the rows. Signals accumulate in `signal_history` with a per-signal
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/sessions/{id}/artifacts/transcript-export` | Transcript as TXT |
-| GET | `/api/sessions/{id}/artifacts/questions-export` | Insights as one XLSX, enriched columns folded in |
-| GET | `/api/sessions/{id}/artifacts/summary-export` | Summary as HTML |
+| GET | `/api/sessions/{id}/artifacts/questions-export` | Insights as XLSX: a Summary sheet, Action Items, Opportunities, then the full eighteen-column Insights grid |
+| GET | `/api/sessions/{id}/artifacts/summary-export` | The call briefing as one self-contained HTML file (no external fonts, scripts or images), led by the post-call synthesis when one exists and by the insights themselves when it does not |
 
 ## Global configuration
 

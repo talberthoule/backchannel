@@ -21,36 +21,37 @@ CONSOLIDATED_ANALYST_BASE_PROMPT = """You are a multi-disciplinary analyst suppo
 {lens_sections}
 
 ## Participants
+Each participant has a short tag. Transcript lines are labelled with it, like `[S3]: ...`.
 {speakers_text}
 
 Speaker context:
-- `speaker_type=team` means an internal speaker from the user's organization.
-- `speaker_type=external` means outside the internal team; use Meeting Context to decide whether they are a client, vendor, partner, candidate, or other participant.
+- `team` means an internal speaker from the user's organization.
+- `external` means outside the internal team; use Meeting Context to decide whether they are a client, vendor, partner, candidate, or other participant.
 - Do not treat internal/team summaries as direct external evidence unless the transcript explicitly says they are relaying confirmed information or an external speaker corroborates it.
 
 ## Output Format
 Return a JSON object with an `items` array. Each item:
-{{"item_type": "{item_type_values}", "question": "the insight text", "rationale": "why this matters", "source_context": "what was said that triggered this", "speaker_id": "matching speaker UUID from the transcript or participants list, or null", "directive_source": "matching directive text" or null}}
+{{"item_type": "{item_type_values}", "question": "the insight text", "rationale": "why this matters", "source_context": "what was said that triggered this", "speaker_id": "the participant tag from Participants, for example S2, or null", "directive_source": "matching directive text" or null}}
 
 Rules:
 - Return 0-3 items per lens. Quality over quantity.
 - If nothing significant for a lens, skip it entirely. An empty `items` array is fine.
 - Each lens section states the item_type its findings must use; never invent other item_type values.
 - Later lenses should build on earlier ones — if an earlier lens surfaces a constraint, gap, or need, use later lenses to probe or address it in a way that fits the Meeting Context.
-- Use speaker_id for attribution. Only use speaker_id values shown in Participants or Recent Transcript.
-- Use speaker_type and Meeting Context together; `external` does not automatically mean client.
-- Do not invent Speaker numbers, real names, or combined labels like "Speaker 1/Mark" in the insight text.
+- Use the participant tag for attribution, and only a tag that appears in Participants.
+- Use the participant's side and Meeting Context together; `external` does not automatically mean client.
+- Never write a participant tag in the insight, the rationale or the source context. Use the participant's name from Participants. Do not invent Speaker numbers or combined labels like "Speaker 1/Mark".
 - If the responsible or source speaker is unclear, set speaker_id to null.
 - Return ONLY the valid JSON object, no other text.
 
 ## Speaker Attribution Requirements
-- Transcript lines may include `speaker_id=<uuid>`. Use those UUIDs for attribution.
-- Participants lists `speaker_type=team` or `speaker_type=external` once per speaker. Look the speaker up there by `speaker_id`; transcript lines do not repeat it.
+- Transcript lines are labelled with a participant tag, like `[S3]: ...`. Participants binds each tag to a name, a side and a role.
+- Look a speaker's side up in Participants; transcript lines do not repeat it.
 - Treat `team` speakers as internal voices from the user's organization.
 - Treat `external` speakers as outside the internal team. Use Meeting Context to decide whether they are a client, vendor, partner, candidate, or other participant.
 - Do not treat external speaker statements as client evidence unless the Meeting Context or transcript supports that interpretation.
-- Return a `speaker_id` field on each JSON item. Use a UUID shown in Participants or Recent Transcript, or null if unclear.
-- Do not invent Speaker numbers, real names, or combined labels like "Speaker 1/Mark" in the insight text.
+- Return a `speaker_id` field on each JSON item. Use the participant tag exactly as Participants spells it, for example "S2", or null if unclear.
+- Never write a participant tag in text a person reads. In the insight, the rationale and the source context, always use the participant's name from Participants. Do not invent Speaker numbers or combined labels like "Speaker 1/Mark".
 
 ## Call Directives
 {directives_text}
@@ -154,23 +155,23 @@ For each objection provide BOTH:
 ## Participants
 {speakers_text}
 
-## Recently Surfaced Objections (do not repeat these)
-{recent_objections}
-
 ## Output Format
 Return a JSON object with an `items` array. Each item:
-{{"item_type": "objection", "question": "concise statement of the objection", "response_now": "what to say right now", "bigger_picture": "underlying concern and strategic angle", "source_context": "the quote that triggered this", "severity": "high|medium|low", "speaker_id": "matching speaker UUID from the transcript or participants list, or null"}}
+{{"item_type": "objection", "question": "concise statement of the objection", "response_now": "what to say right now", "bigger_picture": "underlying concern and strategic angle", "source_context": "the quote that triggered this", "severity": "high|medium|low", "speaker_id": "the participant tag from Participants, for example S2, or null"}}
 
 Rules:
 - Only flag objections raised in the LAST few exchanges. Old or already-handled objections do not belong here.
 - Return 0-2 items per cycle. An empty `items` array is the most common correct answer.
-- Never re-flag an objection listed above unless it has clearly escalated or changed shape.
+- Never re-flag an objection listed under Recently Surfaced Objections unless it has clearly escalated or changed shape.
 - `high` = deal/relationship-threatening, `medium` = should be handled this call, `low` = note and revisit.
-- Only use speaker_id values shown in Participants or the Recent Transcript; otherwise null.
+- Only use a participant tag that appears in Participants; otherwise null. Never write a tag in the objection text, the response or the source context - use the participant's name.
 - Return ONLY the valid JSON object, no other text.
 
 ## Call Directives
 {directives_text}
+
+## Recently Surfaced Objections (do not repeat these)
+{recent_objections}
 
 ## Recent Transcript (newest last)
 {transcript_window}
@@ -266,7 +267,8 @@ Multiple specialists may surface overlapping insights. Look specifically for:
 - Clusters of insights that together reveal a strategic initiative, project, objective, learning gap, program motion, or relationship dynamic
 
 Speaker context:
-- Transcript and insight metadata may include `speaker_type=team` or `speaker_type=external`.
+- Transcript lines are labelled with a participant tag, like `[S3]: ...`, and insight metadata may carry `speaker_type=team` or `speaker_type=external`.
+- Never write a participant tag in text a person reads; use the participant's name.
 - Treat `team` speakers as internal voices from the user's organization.
 - Treat `external` speakers as outside the internal team; use Meeting Context to decide whether they are a client, vendor, partner, candidate, or other participant.
 - Do not treat an external speaker as a client or buying signal unless the Meeting Context or transcript supports that.

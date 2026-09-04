@@ -15,9 +15,13 @@ from pydantic import BaseModel, ValidationError
 
 from app.services.agents.activity import classify_error
 from app.services.agents.prompts import OBJECTION_HANDLER_PROMPT
-from app.services.agents.speaker_context import format_speakers_list
+from app.services.agents.speaker_context import (
+    build_speaker_aliases,
+    format_speakers_list,
+    resolve_speaker_reference,
+)
 from app.services.llm import generate_json
-from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
+from app.services.meeting_context import build_meeting_context_text, format_prompt_layers
 
 logger = logging.getLogger(__name__)
 
@@ -46,15 +50,13 @@ class ObjectionHandlerOutput(BaseModel):
     items: list[ObjectionHandlerItem]
 
 
-def _normalize_speaker_id(raw: object, valid_speaker_ids: set[str]) -> str | None:
-    """Return a known speaker UUID string, or None for invalid model output."""
-    if not isinstance(raw, str) or not raw.strip():
-        return None
-    try:
-        normalized = str(uuid.UUID(raw.strip()))
-    except ValueError:
-        return None
-    return normalized if normalized in valid_speaker_ids else None
+def _normalize_speaker_id(
+    raw: object,
+    valid_speaker_ids: set[str],
+    aliases: dict[str, str] | None = None,
+) -> str | None:
+    """A participant tag or a raw UUID, as a known speaker UUID or None."""
+    return resolve_speaker_reference(raw, aliases, valid_speaker_ids)
 
 
 def _compose_rationale(item: dict) -> str:
@@ -113,14 +115,15 @@ class ObjectionHandlerAgent:
         self._last_window = transcript_window
 
         directives_text = "\n".join(f"- {d}" for d in directives) if directives else "(No directives set)"
-        speakers_text = format_speakers_list(speakers)
+        aliases = build_speaker_aliases(speakers)
+        speakers_text = format_speakers_list(speakers, aliases)
         valid_speaker_ids = {str(s["id"]) for s in speakers if s.get("id")}
         if self._recent_objections:
             recent_text = "\n".join(f'- "{o}"' for o in self._recent_objections)
         else:
             recent_text = "(No objections surfaced yet)"
 
-        prompt = format_prompt_with_meeting_context(
+        system, prompt = format_prompt_layers(
             self._prompt_template,
             self.meeting_context_text,
             transcript_window=transcript_window,
@@ -136,6 +139,7 @@ class ObjectionHandlerAgent:
                 ObjectionHandlerOutput,
                 session_id=self._session_id,
                 source="objection_handler",
+                system=system,
             )
         except Exception as e:
             logger.error(f"[objection_handler] API call failed: {e}")

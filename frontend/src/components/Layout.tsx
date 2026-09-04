@@ -14,6 +14,8 @@ import {
   BookOpen,
   Check,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Ellipsis,
   FolderPlus,
   GripVertical,
@@ -79,6 +81,44 @@ function storeCollapsed(collapsed: boolean) {
   } catch {
     /* storage unavailable (private mode); the choice just does not persist */
   }
+}
+
+// Collapse is stored as the exception rather than the state: a group is open
+// unless its id is listed here. That polarity is what makes a group the
+// sidebar has not heard about yet -- fetched after mount, or created during
+// the session -- render open without anyone writing a preference for it. The
+// old expanded-id set could not: at first paint `groups` is still empty, so
+// the set was empty, so every group came up collapsed (ALP-367).
+const COLLAPSED_GROUPS_STORAGE_KEY = "bc-sidebar-collapsed-groups";
+
+export function readCollapsedGroups(): Set<string> {
+  try {
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(COLLAPSED_GROUPS_STORAGE_KEY) : null;
+    const parsed = raw ? JSON.parse(raw) : null;
+    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function storeCollapsedGroups(ids: Set<string>) {
+  try {
+    localStorage.setItem(COLLAPSED_GROUPS_STORAGE_KEY, JSON.stringify([...ids]));
+  } catch {
+    /* see storeCollapsed */
+  }
+}
+
+// Drop ids for groups that no longer exist so a long-lived install does not
+// accumulate them. Returns the SAME set when nothing changed, so the effect
+// that persists this cannot loop. An empty roster means "not loaded yet",
+// never "every group was deleted": pruning against it would throw away the
+// user's choices on the first paint after every reload.
+export function pruneCollapsedGroups(collapsed: Set<string>, groups: { id: string }[]): Set<string> {
+  if (groups.length === 0) return collapsed;
+  const known = new Set(groups.map((g) => g.id));
+  const kept = [...collapsed].filter((id) => known.has(id));
+  return kept.length === collapsed.size ? collapsed : new Set(kept);
 }
 
 const THEME_STORAGE_KEY = "bc-theme";
@@ -555,10 +595,15 @@ export function DroppableGroup({ group, children, isExpanded, onToggle, onDelete
           aria-controls={sessionsId}
           className="bc-row flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md pl-1 pr-1 text-left"
         >
-          <ChevronRight
-            className={`h-3.5 w-3.5 shrink-0 text-brand-mid-gray transition-transform duration-150 motion-reduce:transition-none ${isExpanded ? "rotate-90" : ""}`}
-            aria-hidden="true"
-          />
+          {/* The chevron sits on its own tinted square so it reads as a
+              pressable control without hovering. It was previously a bare
+              glyph the same weight as the group name (ALP-367). */}
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-brand-light-gray-2 text-brand-dark-gray transition-colors group-hover:bg-brand-light-gray-1">
+            <ChevronRight
+              className={`h-3 w-3 transition-transform duration-150 motion-reduce:transition-none ${isExpanded ? "rotate-90" : ""}`}
+              aria-hidden="true"
+            />
+          </span>
           <span className="truncate text-sm font-semibold text-brand-dark-gray" title={group.name}>{group.name}</span>
           <span className="ml-auto shrink-0 pl-2 text-xs tabular-nums text-brand-mid-gray" aria-label={`${sessionCount} sessions`}>
             {sessionCount}
@@ -618,7 +663,7 @@ export default function Layout({
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(readStoredCollapsed);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(true);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set(groups.map((g) => g.id)));
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(readCollapsedGroups);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [query, setQuery] = useState("");
@@ -708,14 +753,15 @@ export default function Layout({
     storeTheme(theme);
   }, [theme]);
 
-  // Keep expanded groups in sync when new groups are created
+  // Nothing has to be seeded when groups arrive -- an unlisted group is open.
+  // The roster is only used to forget ids that no longer exist.
   useEffect(() => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      for (const g of groups) next.add(g.id);
-      return next;
-    });
+    setCollapsedGroups((prev) => pruneCollapsedGroups(prev, groups));
   }, [groups]);
+
+  useEffect(() => {
+    storeCollapsedGroups(collapsedGroups);
+  }, [collapsedGroups]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -745,11 +791,22 @@ export default function Layout({
     // Groups are held open while filtering; flipping the stored state then
     // would only show up as a surprise collapse after the search is cleared.
     if (filtering) return;
-    setExpandedGroups((prev) => {
+    setCollapsedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  };
+
+  // One control for the whole section. It reports the state it will move to,
+  // so a partially collapsed section reads "Collapse all" and one press
+  // settles it rather than inverting each group.
+  const allGroupsCollapsed =
+    grouped.byGroup.length > 0 && grouped.byGroup.every(({ group }) => collapsedGroups.has(group.id));
+
+  const toggleAllGroups = () => {
+    if (filtering) return;
+    setCollapsedGroups(allGroupsCollapsed ? new Set() : new Set(groups.map((g) => g.id)));
   };
 
   const handleCreateGroup = async () => {
@@ -1056,15 +1113,32 @@ export default function Layout({
                         <div className="flex h-8 items-center justify-between pl-2 pr-1">
                           <SectionLabel>Groups</SectionLabel>
                           {!filtering && (
-                            <button
-                              type="button"
-                              onClick={() => setCreatingGroup(true)}
-                              aria-label="New group"
-                              title="New group"
-                              className="bc-action flex h-7 w-7 items-center justify-center rounded text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
-                            >
-                              <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
-                            </button>
+                            <div className="flex items-center">
+                              {grouped.byGroup.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={toggleAllGroups}
+                                  aria-label={allGroupsCollapsed ? "Expand all groups" : "Collapse all groups"}
+                                  title={allGroupsCollapsed ? "Expand all" : "Collapse all"}
+                                  className="bc-action flex h-7 w-7 items-center justify-center rounded text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
+                                >
+                                  {allGroupsCollapsed ? (
+                                    <ChevronsUpDown className="h-3.5 w-3.5" aria-hidden="true" />
+                                  ) : (
+                                    <ChevronsDownUp className="h-3.5 w-3.5" aria-hidden="true" />
+                                  )}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setCreatingGroup(true)}
+                                aria-label="New group"
+                                title="New group"
+                                className="bc-action flex h-7 w-7 items-center justify-center rounded text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
+                              >
+                                <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                              </button>
+                            </div>
                           )}
                         </div>
                       )}
@@ -1073,7 +1147,7 @@ export default function Layout({
                         <DroppableGroup
                           key={group.id}
                           group={group}
-                          isExpanded={filtering || expandedGroups.has(group.id)}
+                          isExpanded={filtering || !collapsedGroups.has(group.id)}
                           onToggle={() => toggleGroup(group.id)}
                           onDelete={() => handleDeleteGroup(group)}
                           sessionCount={groupSessions.length}

@@ -29,6 +29,32 @@ async def _agent(db: AsyncSession, slug: str) -> AgentConfig | None:
     return (await db.execute(select(AgentConfig).where(AgentConfig.slug == slug))).scalar_one_or_none()
 
 
+def refinement_coverage(settings, refiner) -> dict:
+    """The Transcript refinement row of the coverage list.
+
+    ``covered`` answers a privacy question, not a feature question. The
+    refiner is handed the *stored* text of transcript entries, which the
+    shield tokenized at ingress, and the speaker labels beside them, which
+    ``protect_name`` tokenized the same way; a rewrite is accepted only when
+    it carries the identical token multiset, and nothing under
+    ``services/agents`` or the refiner may import ``reveal_text``. So the
+    refiner never sees a name whether its model is local or cloud, and
+    whether the agent is on or off. Coverage therefore follows the shield's
+    own switch.
+
+    ``enabled`` stays in the payload because the row still says whether the
+    stage runs - but as a detail line, not as the badge. Driving a red
+    "not covered" badge off an optional quality agent's toggle reported a
+    privacy gap where there was none (ALP-366).
+    """
+    return {
+        "covered": bool(settings.enabled),
+        "enabled": bool(refiner and refiner.enabled and refiner.model_id),
+        "model_id": refiner.model_id if refiner else "",
+        "interval_seconds": refiner.interval_seconds if refiner else 45,
+    }
+
+
 def _ner_state(settings) -> str:
     if not settings.ner:
         return "off"
@@ -45,7 +71,8 @@ async def status(db: AsyncSession) -> dict:
     Text is covered whenever the shield is on. With the shield on the
     transcription runtime coerces the batch model to a local one and the
     orchestrator skips a cloud gateway, so both audio rows are covered by
-    enforcement; a cloud gateway choice is reported as paused.
+    enforcement; a cloud gateway choice is reported as paused. Refinement
+    follows the shield too, for the reasons in refinement_coverage.
     """
     settings = await get_settings(db)
     runtime = await get_transcription_runtime_config(db)
@@ -82,11 +109,7 @@ async def status(db: AsyncSession) -> dict:
                 "paused": bool(gateway_model) and not gateway_is_local and settings.enabled,
             },
             "documents": settings.enabled,
-            "refinement": {
-                "enabled": bool(refiner and refiner.enabled and refiner.model_id),
-                "model_id": refiner.model_id if refiner else "",
-                "interval_seconds": refiner.interval_seconds if refiner else 45,
-            },
+            "refinement": refinement_coverage(settings, refiner),
         },
         "vault": {"entries": int(vault_total)},
         "reveals_24h": {"requests": int(reveals[0] or 0), "tokens": int(reveals[1] or 0)},

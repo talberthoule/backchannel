@@ -74,12 +74,17 @@ function CoverageList({ status }: { status: PiiShieldStatus }) {
           : `Call audio goes to ${coverage.transcription.model_id} to be transcribed, and spoken names travel with it. Turn the shield on to hold transcription to a local model.`}
       />
       <CoverageRow label="Live captions (audio gateway)" covered={gateway.covered} detail={gatewayDetail} />
+      {/* The badge answers a privacy question; whether the stage runs is a
+          detail below it. Reading the agent's on/off switch as coverage put a
+          red "not covered" on a state that leaks nothing (ALP-366). */}
       <CoverageRow
         label="Transcript refinement"
-        covered={refinement.enabled}
-        detail={refinement.enabled
-          ? `${refinement.model_id} corrects punctuation, casing and mishearings from tokenized text every ${refinement.interval_seconds}s and at call end. A rewrite is kept only if it carries exactly the original tokens.`
-          : "Off. Local transcripts are rougher than cloud ones; enable the Transcript Refiner in Agents and give it any text model, local or cloud, to polish the wording from tokenized text alone."}
+        covered={refinement.covered}
+        detail={refinement.covered
+          ? `The refiner only ever reads tokenized text, so it stays covered on any model, local or cloud, and a rewrite is kept only if it carries exactly the original tokens. ${refinement.enabled
+              ? `Running now on ${refinement.model_id}, every ${refinement.interval_seconds}s and at call end.`
+              : "Currently off; enable the Transcript Refiner in Agents to polish punctuation, casing and mishearings."}`
+          : "Turn the shield on to tokenize new text; until then the refiner reads whatever the transcript holds."}
       />
     </ul>
   );

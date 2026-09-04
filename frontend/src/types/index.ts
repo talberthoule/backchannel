@@ -594,7 +594,7 @@ export interface PiiShieldStatus {
     // paused: a cloud gateway is configured but skipped while the shield is on.
     live_gateway: { covered: boolean; model_id: string; paused: boolean };
     documents: boolean;
-    refinement: { enabled: boolean; model_id: string; interval_seconds: number };
+    refinement: { covered: boolean; enabled: boolean; model_id: string; interval_seconds: number };
   };
   vault: { entries: number };
   reveals_24h: { requests: number; tokens: number };

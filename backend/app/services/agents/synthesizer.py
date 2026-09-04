@@ -17,12 +17,16 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.services.llm import generate_json
 from app.database import async_session
-from app.models import Question, Session, TranscriptEntry
+from app.models import Question, Session, Speaker, TranscriptEntry
 from app.services.agents.prompts import PRINCIPAL_AGENT_PROMPT
 from app.services.agents.signal_insights import SIGNAL_ITEM_TYPES
-from app.services.agents.speaker_context import format_transcript_segment, normalize_speaker_type
+from app.services.agents.speaker_context import (
+    build_speaker_aliases,
+    format_transcript_segment,
+    normalize_speaker_type,
+)
 from app.services.insight_refiner import _apply_operations
-from app.services.meeting_context import build_meeting_context_text, format_prompt_with_meeting_context
+from app.services.meeting_context import build_meeting_context_text, format_prompt_layers
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +186,10 @@ def _speaker_dict(speaker) -> dict:
     }
 
 
-def _format_transcript_entries(entries: list[TranscriptEntry]) -> str:
+def _format_transcript_entries(
+    entries: list[TranscriptEntry],
+    aliases: dict[str, str] | None = None,
+) -> str:
     lines = []
     for entry in entries:
         speaker = _speaker_dict(entry.speaker) if entry.speaker else None
@@ -191,6 +198,7 @@ def _format_transcript_entries(entries: list[TranscriptEntry]) -> str:
             speaker.get("name") if speaker else "Unknown",
             speaker_id=str(entry.speaker_id) if entry.speaker_id else None,
             speaker_type=speaker.get("speaker_type") if speaker else None,
+            alias=(aliases or {}).get(str(entry.speaker_id or "")),
         ))
     return "\n".join(lines) if lines else "(No transcript yet)"
 
@@ -234,7 +242,17 @@ async def run_synthesizer_cycle(session_id: uuid.UUID, model_override: str | Non
         )
         entries = list(reversed(result.scalars().all()))
 
-    transcript_text = _format_transcript_entries(entries)
+        # The roster in its canonical order, which is what the alias map is
+        # derived from. Ordered by created_at like every other loader, so a
+        # rebuilt orchestrator on a resumed call produces the same map.
+        roster = (
+            await db.execute(
+                select(Speaker).where(Speaker.session_id == session_id).order_by(Speaker.created_at)
+            )
+        ).scalars().all()
+        aliases = build_speaker_aliases([_speaker_dict(s) for s in roster])
+
+    transcript_text = _format_transcript_entries(entries, aliases)
     insights_json = _build_insights_json(questions)
 
     # Nothing new to reconcile since the last cycle: skip the call entirely.
@@ -248,7 +266,7 @@ async def run_synthesizer_cycle(session_id: uuid.UUID, model_override: str | Non
         return []
 
     prompt_template = prompt_override or PRINCIPAL_AGENT_PROMPT
-    prompt = format_prompt_with_meeting_context(
+    system, prompt = format_prompt_layers(
         prompt_template,
         meeting_context_text,
         insights_json=insights_json,
@@ -264,6 +282,7 @@ async def run_synthesizer_cycle(session_id: uuid.UUID, model_override: str | Non
             SynthesizerOutput,
             session_id=session_id,
             source="synthesizer",
+            system=system,
         )
     except Exception as e:
         logger.error(f"[synthesizer] API call failed: {e}")

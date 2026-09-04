@@ -16,7 +16,7 @@ from app.services.briefing_synthesis import (
     load_agent_configs,
 )
 from app.services.llm import generate_json, provider_for
-from app.services.meeting_context import format_prompt_with_meeting_context
+from app.services.meeting_context import format_prompt_layers
 from app.services.privacy import LocalOnlyModeError, allows_local_only, is_local_only
 from app.services.provider_errors import PROVIDER_ERROR_TYPES, provider_error_message
 
@@ -62,7 +62,7 @@ async def run_strategic_signals_cycle(
     if not context.transcript_text or context.transcript_text == "(No transcript yet)":
         return None
 
-    prompt = format_prompt_with_meeting_context(
+    system, prompt = format_prompt_layers(
         cfg.prompt or STRATEGIC_SIGNALS_PROMPT,
         context.meeting_context_text,
         mode="live",
@@ -80,6 +80,7 @@ async def run_strategic_signals_cycle(
             schema_hint=_response_contract(BriefArbiterOutput),
             session_id=session_id,
             source=STRATEGIC_SIGNALS_SLUG,
+            system=system,
         )
     except PROVIDER_ERROR_TYPES as exc:
         logger.error(
