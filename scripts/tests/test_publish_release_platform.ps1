@@ -496,6 +496,7 @@ $request = '{{"asset":{{"filename":"{0}","id":"{1}","platform":"{2}","sha256":"{
 if ($options.ContainsKey("signing-request-out")) {
     WriteExactUtf8 $options["signing-request-out"] $request
     if ($env:R2_FAKE_SIGNING_REQUEST_FAILURE) {
+        [Console]::Error.WriteLine("metadata helper could not import cryptography")
         exit 2
     }
     exit 0
@@ -644,6 +645,9 @@ WriteUtf8 $options["platform-out"] ('{{"asset":{{"content_type":"{0}","filename"
         Assert-True (
             $result.Output.Contains("Platform metadata validation failed")
         ) "Exact production signer authority was rejected"
+        Assert-True (
+            $result.Output.Contains("metadata helper could not import cryptography")
+        ) "Metadata helper diagnostic was hidden"
         Assert-True (@(Read-Log).Count -eq 0) "Signer validation reached R2"
 
         $invalidSigningUrls = @(

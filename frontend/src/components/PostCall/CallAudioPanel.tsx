@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import type { CallSegment, ModelInfo, Session } from "../../types";
+import type { CallSegment, ModelInfo, Session, TranscriptionJob } from "../../types";
 import * as api from "../../services/api";
 import { groupModels, optionLabel } from "../../lib/modelOptions";
 import { useConfirm } from "../ConfirmProvider";
+import TranscriptionJobProgress from "../TranscriptionJobProgress";
 
 interface CallAudioPanelProps {
   session: Session;
@@ -13,9 +14,10 @@ interface CallAudioPanelProps {
 export default function CallAudioPanel({ session, segments, onRetranscribed }: CallAudioPanelProps) {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelId, setModelId] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [job, setJob] = useState<TranscriptionJob | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const { confirm } = useConfirm();
+  const busy = job ? api.transcriptionJobActive(job) : false;
 
   const audioSegments = segments.filter((s) => s.audio_path);
 
@@ -33,21 +35,34 @@ export default function CallAudioPanel({ session, segments, onRetranscribed }: C
     if (!modelId) return;
     const ok = await confirm({
       title: "Re-transcribe call audio",
-      message: "Re-transcribing replaces the entire existing transcript for this session.",
+      message: "The existing transcript stays in place until the replacement finishes.",
       confirmLabel: "Re-transcribe",
       tone: "danger",
     });
     if (!ok) return;
-    setBusy(true);
     setMessage(null);
     try {
-      const res = await api.retranscribeSession(session.id, modelId);
-      setMessage(`Re-transcribed: ${res.entries} entries`);
-      await onRetranscribed();
+      const queued = await api.retranscribeSession(session.id, modelId);
+      setJob(queued);
+      const result = await api.waitForTranscriptionJob(session.id, queued, setJob);
+      if (result.status === "completed") {
+        setMessage(`Re-transcribed ${result.entries} entries.`);
+        await onRetranscribed();
+      } else if (result.status === "canceled") {
+        setMessage("Re-transcription canceled. The existing transcript was kept.");
+      } else {
+        setMessage(result.error || "Re-transcription failed.");
+      }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Re-transcription failed");
-    } finally {
-      setBusy(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    try {
+      setJob(await api.cancelTranscriptionJob(session.id, "retranscription"));
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not cancel re-transcription.");
     }
   };
 
@@ -64,6 +79,7 @@ export default function CallAudioPanel({ session, segments, onRetranscribed }: C
         </div>
         <div className="flex items-center gap-2">
           <select
+            aria-label="Transcription model"
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
             disabled={busy}
@@ -78,15 +94,19 @@ export default function CallAudioPanel({ session, segments, onRetranscribed }: C
             ))}
           </select>
           <button
+            type="button"
             onClick={handleRetranscribe}
             disabled={busy || !modelId}
-            className="rounded bg-brand-teal px-3 py-1.5 font-body text-xs font-medium text-white transition-opacity disabled:opacity-40"
+            className="min-h-11 rounded bg-brand-teal px-3 font-body text-xs font-medium text-white transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal focus-visible:ring-offset-2 disabled:opacity-40"
           >
-            {busy ? "Re-transcribing..." : "Re-transcribe"}
+            Re-transcribe
           </button>
         </div>
       </div>
-      {message && <p className="mt-2 font-body text-xs text-brand-mid-gray">{message}</p>}
+      {job && api.transcriptionJobActive(job) && (
+        <TranscriptionJobProgress job={job} onCancel={handleCancel} />
+      )}
+      {message && <p role="status" className="mt-2 font-body text-xs text-brand-mid-gray">{message}</p>}
     </div>
   );
 }

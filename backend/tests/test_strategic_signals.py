@@ -121,8 +121,9 @@ class SignalHistoryMergeTests(unittest.TestCase):
 
 
 class _PersistenceResult:
-    def __init__(self, value):
+    def __init__(self, value=None, values=None):
         self.value = value
+        self.values = values or []
 
     def scalar_one_or_none(self):
         return self.value
@@ -134,20 +135,24 @@ class _PersistenceResult:
         return self
 
     def all(self):
-        return []
+        return self.values
 
 
 class _PersistenceSession:
-    def __init__(self, synthesis):
+    def __init__(self, synthesis, speakers=None):
         self.synthesis = synthesis
+        self.speakers = speakers or []
         self.execute_count = 0
+        self.closed = False
 
     async def execute(self, statement):
         del statement
         self.execute_count += 1
-        return _PersistenceResult(
-            self.synthesis if self.execute_count in {1, 3} else None
-        )
+        if self.execute_count in {1, 3}:
+            return _PersistenceResult(self.synthesis)
+        if self.execute_count == 4:
+            return _PersistenceResult(values=self.speakers)
+        return _PersistenceResult()
 
     def add(self, value):
         del value
@@ -168,6 +173,42 @@ class _PersistenceContext:
 
     async def __aexit__(self, exc_type, exc, traceback):
         del exc_type, exc, traceback
+        self.db.closed = True
+
+
+class _AttachedPersistenceSpeaker:
+    def __init__(self, db, speaker_id):
+        self._db = db
+        self._values = {
+            "id": speaker_id,
+            "name": "Speaker 1",
+            "role": "",
+            "speaker_type": "external",
+            "display_name": "Maya Chen",
+            "display_name_enabled": True,
+        }
+
+    def __getattr__(self, name):
+        if self._db.closed:
+            raise AssertionError("speaker rows were accessed after the session closed")
+        return self._values[name]
+
+
+class _DetachedPersistenceSynthesis(SimpleNamespace):
+    def __init__(self, db, **values):
+        self._db = db
+        self._top_outcomes = values.pop("top_outcomes", [])
+        super().__init__(**values)
+
+    @property
+    def top_outcomes(self):
+        if not self._db.closed:
+            raise AssertionError("synthesis was normalized before the session closed")
+        return self._top_outcomes
+
+    @top_outcomes.setter
+    def top_outcomes(self, value):
+        self._top_outcomes = value
 
 
 class SignalHistoryPersistenceTests(unittest.IsolatedAsyncioTestCase):
@@ -247,6 +288,45 @@ class SignalHistoryPersistenceTests(unittest.IsolatedAsyncioTestCase):
                 )
 
                 self.assertIs(original, synthesis.signal_history)
+
+    async def test_persistence_materializes_speakers_then_normalizes_the_detached_row(self):
+        session_id = uuid4()
+        speaker_id = uuid4()
+        db = _PersistenceSession(None)
+        synthesis = _DetachedPersistenceSynthesis(
+            db,
+            id=uuid4(),
+            session_id=session_id,
+            mode="post_call",
+            top_outcomes=[],
+            signal_history=[],
+        )
+        db.synthesis = synthesis
+        db.speakers = [_AttachedPersistenceSpeaker(db, speaker_id)]
+
+        with (
+            patch(
+                "app.services.briefing_synthesis.async_session",
+                return_value=_PersistenceContext(db),
+            ),
+            patch(
+                "app.services.briefing_synthesis._lock_synthesis_scope",
+                new=AsyncMock(),
+            ),
+        ):
+            result = await _persist_synthesis(
+                session_id=session_id,
+                mode="post_call",
+                status="completed",
+                meeting_output=None,
+                discovery_output=None,
+                arbiter_output=BriefArbiterOutput(
+                    top_outcomes=[BriefItem(title="Decision", owner=str(speaker_id))]
+                ),
+                model_ids={},
+            )
+
+        self.assertEqual("Maya Chen", result.top_outcomes[0]["owner"])
 
 
 class StrategicSignalsTests(unittest.IsolatedAsyncioTestCase):

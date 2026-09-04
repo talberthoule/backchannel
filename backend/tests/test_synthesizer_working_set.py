@@ -151,22 +151,21 @@ class UnchangedCorpusSkipTests(unittest.TestCase):
 # llm.parse_json_response tolerates fences centrally for every caller.
 
 
-class MaxIntervalIdleTests(unittest.IsolatedAsyncioTestCase):
-    async def test_fallback_tick_does_not_fire_with_nothing_pending(self):
+class CooldownIdleTests(unittest.IsolatedAsyncioTestCase):
+    async def test_nothing_fires_without_an_event(self):
         fired = []
 
         async def handler(batch):
             fired.append(batch)
 
-        subscriber = CooldownSubscriber(handler=handler, cooldown_seconds=0.01, max_interval_seconds=0.01)
-        await subscriber.start_max_interval()
+        subscriber = CooldownSubscriber(handler=handler, cooldown_seconds=0.01)
         try:
             import asyncio
 
             await asyncio.sleep(0.05)
         finally:
             subscriber.stop()
-        self.assertEqual([], fired, "idle fallback fired a full handler run")
+        self.assertEqual([], fired, "idle subscriber fired a handler run")
 
 
 if __name__ == "__main__":

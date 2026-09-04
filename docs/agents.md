@@ -29,7 +29,7 @@ provider-specific starting point, not a forced choice.
 | `audio_gateway` | audio | Continuous audio stream | `backend/app/services/gemini_live.py` / `backend/app/services/openai_realtime.py` / `backend/app/services/local_live_captioner.py` | Silent live listener that produces interim transcription: a cloud streaming session (Gemini Live or OpenAI Realtime) or the on-device local captioner (`local-parakeet-live`), chosen by the agent's configured model |
 | `consolidated_analyst` | text | Interval, default 40s, plus a final pass | `backend/app/services/agents/consolidated_analyst.py` | Single LLM call that can produce questions, observations, opportunities, and action items in one pass |
 | `objection_handler` | text | Interval, default 10s, over only the last 90s of transcript | `backend/app/services/agents/objection_handler.py` | Low-latency objection scan; each `objection` insight pairs an immediate suggested response with the underlying concern and strategic angle |
-| `synthesizer` | meta | `new_insight` / `insight_updated` events, 75s cooldown, 120s fallback | `backend/app/services/agents/synthesizer.py` | Reconciles and enriches saved insights, detects answered questions, may elevate an item's type |
+| `synthesizer` | meta | `new_insight` events, 75s cooldown | `backend/app/services/agents/synthesizer.py` | Reconciles and enriches saved insights, detects answered questions, may elevate an item's type |
 | `opportunity_specialist` | db | `new_opportunity` events, 55s cooldown, plus final matching | `backend/app/services/agents/opportunity_specialist.py` | Matches opportunity insights against configured knowledge sources |
 | `strategic_signals` | meta | Interval, default 45s during the call | `backend/app/services/agents/strategic_signals.py` | Produces and ranks the live Signal, Risk, Next Question, Opportunity, and Action Cue cards in one call; the top three take the panel and every signal is also filed as an insight |
 | `transcript_refiner` | text | Interval, default 45s, plus a final pass; off by default | `backend/app/services/transcript_refiner.py` | Sends the tokenized transcript to a text model, local or cloud, to fix punctuation, casing, sentence boundaries and obvious mishearings; a rewrite is kept only if it carries exactly the original tokens. Built for the PII Shield, where only local models may hear audio |
@@ -41,7 +41,6 @@ Default live-analysis intervals come from the seeded `agent_configs` rows,
 with runtime fallbacks in `backend/app/config.py`
 (`TEXT_AGENT_INTERVAL_SECONDS`, `OBJECTION_HANDLER_INTERVAL_SECONDS`,
 `OBJECTION_WINDOW_SECONDS`, `SYNTHESIZER_COOLDOWN_SECONDS`,
-`SYNTHESIZER_MAX_INTERVAL_SECONDS`,
 `OPPORTUNITY_SPECIALIST_COOLDOWN_SECONDS`) but the per-agent values stored in
 the database take precedence.
 

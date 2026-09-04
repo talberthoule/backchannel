@@ -33,7 +33,7 @@ the new one fails to start.
 ## Prerequisites
 
 - Docker with Docker Compose (the primary way to run the stack), or
-  Node 20+ / Python 3.11+ / PostgreSQL 16 for local development
+  Node 24.x / Python 3.11+ / PostgreSQL 16 for local development
 - A Google Gemini API key (transcription and default analysis models).
   An OpenAI key is optional and only needed for OpenAI-routed agents.
   New to either provider? [Getting API Keys](api-keys.md) is a two-minute

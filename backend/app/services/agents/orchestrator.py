@@ -582,11 +582,8 @@ class AgentOrchestrator:
             self._synth_subscriber = CooldownSubscriber(
                 handler=self._run_synthesizer,
                 cooldown_seconds=synth_cooldown,
-                max_interval_seconds=max(settings.SYNTHESIZER_MAX_INTERVAL_SECONDS, synth_cooldown),
             )
             self._event_bus.subscribe("new_insight", self._synth_subscriber)
-            self._event_bus.subscribe("insight_updated", self._synth_subscriber)
-            await self._synth_subscriber.start_max_interval()
 
         # --- Event-driven: Opportunity Specialist ---
         self._wire_opportunity_specialist()
@@ -1538,6 +1535,8 @@ class AgentOrchestrator:
             progress_callback,
             "transcript_refinement",
             "Refining the transcript wording",
+            step,
+            drain_total_steps,
             drain_progress_percent(step, drain_total_steps),
         )
         await self.activity.cycle_started(TRANSCRIPT_REFINER_SLUG)

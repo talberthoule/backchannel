@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -17,6 +18,8 @@ await build({
       import React from "react";
       import { renderToStaticMarkup } from "react-dom/server";
       import { DesktopUpdateBanner, DesktopUpdateCard } from "./DesktopUpdate.tsx";
+      import * as desktopUpdateHook from "../hooks/useDesktopUpdate.ts";
+      export const finishUpdateWindow = desktopUpdateHook.finishUpdateWindow;
       const noop = async () => {};
       export function renderCard(status) {
         return renderToStaticMarkup(
@@ -41,8 +44,13 @@ await build({
   outfile: outputPath,
 });
 
-const { isUpdateGrantMessage, renderBanner, renderCard } =
+const { finishUpdateWindow, isUpdateGrantMessage, renderBanner, renderCard } =
   createRequire(import.meta.url)(outputPath);
+
+const adminSource = readFileSync(new URL("./AdminPanel.tsx", import.meta.url), "utf8");
+const managementSource = readFileSync(new URL("./ManagementView.tsx", import.meta.url), "utf8");
+const appSource = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+const hookSource = readFileSync(new URL("../hooks/useDesktopUpdate.ts", import.meta.url), "utf8");
 
 after(async () => {
   await rm(outputDir, { recursive: true, force: true });
@@ -89,6 +97,57 @@ test("available update shows signed notes, size, and download action", () => {
   assert.match(markup, /10 MB/);
   assert.match(markup, /Safer updates/);
   assert.match(markup, />Download update</);
+});
+
+test("available update keeps the action visible above collapsed release notes", () => {
+  const markup = renderCard({
+    ...base,
+    state: "available",
+    available_version: "v2.0.0",
+    available_notes: "## A long release\n\n" + "Detail. ".repeat(500),
+    size: 10 * 1024 * 1024,
+  });
+  const action = markup.indexOf(">Download update");
+  const notes = markup.indexOf("<details");
+  assert.ok(action >= 0 && notes > action, "download should stay above the notes disclosure");
+  assert.match(markup, /<summary[^>]*>Review what(?:&#x27;|&apos;|')s included<\/summary>/);
+  assert.doesNotMatch(markup, /<details[^>]* open/);
+});
+
+test("the parent owns the active admin tab used to suppress the update banner", () => {
+  assert.doesNotMatch(adminSource, /useState<AdminTab>/);
+  assert.match(adminSource, /activeTab: AdminTab/);
+  assert.match(adminSource, /onTabChange: \(tab: AdminTab\) => void/);
+  assert.match(managementSource, /activeTab=\{adminTab\}/);
+  assert.match(managementSource, /onTabChange=\{onAdminTabChange\}/);
+  assert.match(appSource, /onAdminTabChange=\{setAdminTab\}/);
+});
+
+test("an accepted install closes the old app window before the launcher reopens it", () => {
+  assert.equal(typeof finishUpdateWindow, "function");
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  let closed = 0;
+  let delay = null;
+  globalThis.window = {
+    close: () => { closed += 1; },
+    setTimeout: (callback, timeout) => {
+      delay = timeout;
+      callback();
+      return 1;
+    },
+  };
+  globalThis.document = { title: "Backchannel" };
+  try {
+    finishUpdateWindow();
+    assert.equal(globalThis.document.title, "Backchannel - Installing update");
+    assert.equal(delay, 50);
+    assert.equal(closed, 1);
+    assert.match(hookSource, /state === "applying"[\s\S]*finishUpdateWindow\(\)/);
+  } finally {
+    globalThis.window = previousWindow;
+    globalThis.document = previousDocument;
+  }
 });
 
 test("an interrupted download preserves progress and offers a fresh resume gesture", () => {

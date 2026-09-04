@@ -126,3 +126,10 @@ export function presentTypes(questions: Question[]): string[] {
   }
   return [...BUILTIN_TYPE_ORDER.filter((t) => present.has(t)), ...customs];
 }
+
+export function visibleEnrichmentNotes(notes?: string): string[] {
+  return (notes || "")
+    .split("\n")
+    .map((note) => note.trim())
+    .filter((note) => note && note !== "Merged with another insight" && note !== "Adjusted");
+}

@@ -620,6 +620,19 @@ export interface CallSegment {
   audio_path?: string | null;
 }
 
+export interface TranscriptionJob {
+  job_id: string;
+  kind: "audio_import" | "retranscription";
+  status: "queued" | "running" | "canceling" | "canceled" | "completed" | "failed";
+  model_id: string;
+  segments_done: number;
+  total_segments: number;
+  entries: number;
+  progress: number;
+  filename: string | null;
+  error: string;
+}
+
 export interface Speaker {
   id: string;
   session_id: string;

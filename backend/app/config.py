@@ -95,7 +95,6 @@ class Settings(BaseSettings):
     # target by id. Raising it costs tokens quadratically with call length.
     SYNTHESIZER_WORKING_SET_SECONDS: int = 600
     SYNTHESIZER_COOLDOWN_SECONDS: int = 75       # min time between synthesizer runs
-    SYNTHESIZER_MAX_INTERVAL_SECONDS: int = 120  # fallback max gap for synthesizer
     OPPORTUNITY_SPECIALIST_COOLDOWN_SECONDS: int = 55  # batch window for opp specialist
     KNOWLEDGE_CONTEXT_CHAR_BUDGET: int = 60000  # max chars of knowledge context stuffed into a prompt
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Question } from "../../types";
-import { typeColor, typeLabel } from "../../utils/insightTypes";
+import { typeColor, typeLabel, visibleEnrichmentNotes } from "../../utils/insightTypes";
 
 const AGENT_LABELS: Record<string, string> = {
   question_hunter: "Question Hunter",
@@ -44,7 +44,8 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
     question.agent_source && question.agent_source !== "general"
       ? AGENT_LABELS[question.agent_source] || question.agent_source
       : null;
-  const isRefined = (question.revision_count ?? 0) > 0;
+  const enrichmentNotes = visibleEnrichmentNotes(question.enrichment_notes);
+  const isRefined = (question.revision_count ?? 0) > 0 && enrichmentNotes.length > 0;
   const surfacedAt = formatTimestamp(question.created_at);
   const hasDetails = Boolean(question.rationale || question.source_context);
 
@@ -170,7 +171,7 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
       )}
 
       {/* Enrichment notes (collapsible) */}
-      {isRefined && showEnrichment && question.enrichment_notes && (
+      {isRefined && showEnrichment && (
         <div className="mt-3 rounded-md border border-brand-teal-light/20 bg-brand-teal-light/5 px-3 py-2">
           <div className="flex items-center gap-1.5 mb-1">
             <svg className="h-3.5 w-3.5 text-brand-teal-light" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -178,7 +179,7 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
             </svg>
             <span className="font-display text-xs font-semibold text-brand-teal-light">Refinement Notes</span>
           </div>
-          {question.enrichment_notes.split("\n").map((note, i) => (
+          {enrichmentNotes.map((note, i) => (
             <p key={i} className="font-body text-xs leading-relaxed text-brand-gray">
               {note}
             </p>

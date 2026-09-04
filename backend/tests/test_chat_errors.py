@@ -36,6 +36,21 @@ def _body(model_id: str) -> ChatIn:
     )
 
 
+def _synthesis(owner: str):
+    return SimpleNamespace(
+        status="completed",
+        top_outcomes=[{"title": "Decision", "owner": owner}],
+        client_objectives=[],
+        top_opportunities=[],
+        risks_blockers=[],
+        action_plan=[],
+        unresolved_discovery_questions=[],
+        strategic_signals=[],
+        clusters=[],
+        arbiter_notes="",
+    )
+
+
 def _openai_status_error(status: int, message: str) -> httpx.HTTPStatusError:
     request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
     response = httpx.Response(
@@ -46,7 +61,54 @@ def _openai_status_error(status: int, message: str) -> httpx.HTTPStatusError:
     return httpx.HTTPStatusError(f"HTTP {status}", request=request, response=response)
 
 
+class ChatBriefingOwnerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_chat_uses_the_normalized_synthesis_in_its_prompt(self):
+        raw_owner = str(uuid4())
+        raw_synthesis = _synthesis(raw_owner)
+        normalized_synthesis = _synthesis("Maya Chen")
+        db = _db_mock()
+
+        async def execute(statement):
+            result = MagicMock()
+            result.scalars.return_value.all.return_value = []
+            result.scalar_one_or_none.return_value = (
+                raw_synthesis if "session_syntheses" in str(statement) else None
+            )
+            return result
+
+        db.execute = AsyncMock(side_effect=execute)
+        generate = AsyncMock(return_value="Done")
+        with (
+            patch(
+                "app.services.briefing_synthesis.get_session_synthesis",
+                new=AsyncMock(return_value=normalized_synthesis),
+            ),
+            patch("app.routers.chat.generate_text", new=generate),
+            patch(
+                "app.routers.chat.shield.protect_text",
+                new=AsyncMock(side_effect=lambda _db, _session_id, text: text),
+            ),
+            patch(
+                "app.routers.chat.shield.reveal_text",
+                new=AsyncMock(side_effect=lambda _db, _session_id, text, **_kwargs: text),
+            ),
+        ):
+            await chat(_body(GOOGLE_MODEL), db=db)
+
+        prompt = generate.await_args.args[1]
+        self.assertIn('"owner":"Maya Chen"', prompt)
+        self.assertNotIn(raw_owner, prompt)
+
+
 class ChatProviderErrorTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        patcher = patch(
+            "app.services.briefing_synthesis.get_session_synthesis",
+            new=AsyncMock(return_value=None),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     async def _run_chat(self, model_id: str, exc: Exception):
         with patch("app.routers.chat.generate_text", new=AsyncMock(side_effect=exc)):
             with self.assertRaises(HTTPException) as ctx:

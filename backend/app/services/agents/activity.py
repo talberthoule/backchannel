@@ -251,15 +251,18 @@ class ActivityRegistry:
         failed = self._call["transcription"]["failed"]
         shed = self._call["diarization"]["shed"]
         if failed:
-            suffix = "" if failed == 1 else "s"
-            reasons.append(f"Transcription failed for {failed} segment{suffix}.")
-        if shed:
-            suffix = "" if shed == 1 else "s"
+            part = "part" if failed == 1 else "parts"
             reasons.append(
-                f"Speaker processing skipped {shed} audio frame{suffix} to keep the call alive."
+                f"{failed} {part} of the conversation could not be transcribed. "
+                "The transcript may be incomplete."
+            )
+        if shed:
+            reasons.append(
+                "Live processing is falling behind. Some transcript text or "
+                "speaker labels may be missing."
             )
         if self._call["gateway"]["state"] == "reconnecting":
-            reasons.append("The live transcription gateway is reconnecting.")
+            reasons.append("Live captions are reconnecting and may be delayed.")
         self._call["degraded_reasons"] = reasons
         self._call["degraded"] = bool(reasons)
         await self.emit(force=was_degraded != self._call["degraded"])

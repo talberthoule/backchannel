@@ -63,6 +63,17 @@ class SpeakerDiarizerTests(unittest.TestCase):
         self.assertEqual([], segments)
         self.assertEqual(0, registry.profile_count)
 
+    def test_profile_limit_emits_long_unmatched_segment_as_unknown(self):
+        registry = SpeakerRegistry(threshold=0.95, max_profiles=1)
+        registry.enroll("auto_1", embedding(1.0, 0.0))
+        diarizer = SpeakerDiarizer(registry=registry)
+
+        with patch.object(diarizer, "_coherence_groups", return_value=None):
+            segments, _ = finalize(diarizer, pcm(6.0), [embedding(0.0, 1.0)])
+
+        self.assertEqual(["auto_unknown"], [segment.speaker_id for segment in segments])
+        self.assertEqual(1, registry.profile_count)
+
     def test_matched_fast_path_updates_profile_without_windows(self):
         registry = SpeakerRegistry(threshold=0.68)
         registry.enroll("auto_1", embedding(1.0, 0.0))

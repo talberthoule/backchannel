@@ -109,6 +109,8 @@ async def load_live_context(session_id: uuid.UUID, db: AsyncSession) -> dict:
     )
     insights = insights_result.scalars().all()
 
+    # Deliberately reads only title/summary; owners never enter this prompt, so
+    # this live-signal path does not need the post-call owner normalizer.
     signals_result = await db.execute(
         select(SessionSynthesis).where(
             SessionSynthesis.session_id == session_id,

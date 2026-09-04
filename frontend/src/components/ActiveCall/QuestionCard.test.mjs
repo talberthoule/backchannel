@@ -21,12 +21,29 @@ const bundle = await build({
         vote: 0, starred: true, answered: false, dismissed: false,
         created_at: "2026-08-02T00:00:00Z", agent_source: "live_chat",
       };
+      const bookkeeping = {
+        ...asked, id: "bookkeeping", item_type: "observation", question: "Merged note",
+        revision_count: 1, enrichment_notes: "Merged with another insight",
+      };
+      const useful = {
+        ...asked, id: "useful", item_type: "observation", question: "Useful note",
+        revision_count: 1, enrichment_notes: "Customer confirmed timing",
+      };
       const noop = () => {};
       export const live = renderToStaticMarkup(React.createElement(QuestionCard, {
         question: asked, onStar: noop, onDismiss: noop, onVote: noop,
       }));
       export const postCall = renderToStaticMarkup(React.createElement(QuestionSummary, {
         questions: [asked], speakers: [],
+      }));
+      export const bookkeepingLive = renderToStaticMarkup(React.createElement(QuestionCard, {
+        question: bookkeeping, onStar: noop, onDismiss: noop, onVote: noop,
+      }));
+      export const usefulLive = renderToStaticMarkup(React.createElement(QuestionCard, {
+        question: useful, onStar: noop, onDismiss: noop, onVote: noop,
+      }));
+      export const usefulPostCall = renderToStaticMarkup(React.createElement(QuestionSummary, {
+        questions: [useful], speakers: [],
       }));
     `,
     resolveDir: dirname(fileURLToPath(new URL("./QuestionCard.tsx", import.meta.url))),
@@ -73,4 +90,14 @@ test("asked slugs use the theme foreground at every card and section render poin
   assert.match(count, /class="[^"]*\btext-brand-dark-gray\b[^"]*"/);
   assert.match(count, /style="background-color:#47556915"/);
   assert.doesNotMatch(count, /(?:style="|;)color:/);
+});
+
+test("bookkeeping-only revisions do not claim to be refined", () => {
+  assert.doesNotMatch(rendered.bookkeepingLive, />Refined(?:<|\s)/);
+});
+
+test("meaningful refinement provenance is available live and post-call", () => {
+  assert.match(rendered.usefulLive, />Refined(?:<|\s)/);
+  assert.match(rendered.usefulPostCall, /Refinement notes/);
+  assert.match(rendered.usefulPostCall, /Customer confirmed timing/);
 });

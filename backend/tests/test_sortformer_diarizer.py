@@ -48,6 +48,20 @@ class SortformerDiarizerTests(unittest.TestCase):
         self.assertEqual([], segments)
         self.assertEqual(0, diarizer._registry.profile_count)
 
+    def test_profile_limit_emits_long_unmatched_turn_as_unknown(self):
+        registry = SpeakerRegistry(threshold=0.95, max_profiles=1)
+        registry.enroll("auto_1", np.array([1.0, 0.0], dtype=np.float32))
+        diarizer = StubSortformerDiarizer(
+            [["0.00 4.00 speaker_1"]],
+            registry=registry,
+        )
+        voice = (np.ones(64000, dtype=np.int16) * -1000).tobytes()
+
+        segments = diarizer._process_pcm_window(voice)
+
+        self.assertEqual(["auto_unknown"], [segment.speaker_id for segment in segments])
+        self.assertEqual(1, registry.profile_count)
+
     def test_first_short_turn_is_dropped_when_embedding_fails(self):
         def fail_embedding(pcm_float, sample_rate):
             del pcm_float, sample_rate

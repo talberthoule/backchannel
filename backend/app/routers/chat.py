@@ -7,10 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Question, Session, SessionSynthesis, Speaker, TranscriptEntry
+from app.models import Question, Session, Speaker, TranscriptEntry
+from app.services import briefing_synthesis
 from app.services.pii import shield
 from app.services.custom_endpoints import endpoint_model_entry
 from app.services.llm import generate_text, provider_for, registry_entry
@@ -173,16 +173,7 @@ async def chat(body: ChatIn, db: AsyncSession = Depends(get_db)):
             for e in entries_result.scalars().all()
         ]
 
-        synthesis_result = await db.execute(
-            select(SessionSynthesis)
-            .where(
-                SessionSynthesis.session_id == session_id,
-                SessionSynthesis.mode == "post_call",
-                SessionSynthesis.status.in_(("completed", "partial")),
-            )
-            .options(selectinload(SessionSynthesis.clusters))
-        )
-        synthesis = synthesis_result.scalar_one_or_none()
+        synthesis = await briefing_synthesis.get_session_synthesis(session_id)
 
         insights_result = await db.execute(
             select(Question)

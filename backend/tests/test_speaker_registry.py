@@ -107,14 +107,14 @@ class SpeakerRegistryTests(unittest.TestCase):
         self.assertEqual("auto_2", second_id)
         self.assertEqual(2, registry.profile_count)
 
-    def test_profile_limit_reuses_closest_profile(self):
+    def test_profile_limit_returns_unknown_instead_of_misattributing(self):
         registry = SpeakerRegistry(threshold=0.95, max_profiles=2)
         registry.match_or_create(embedding(1.0, 0.0, 0.0))
         registry.match_or_create(embedding(0.0, 1.0, 0.0))
 
         result = registry.match_or_create(embedding(0.6, 0.0, 0.8))
 
-        self.assertEqual("auto_1", result)
+        self.assertEqual("auto_unknown", result)
         self.assertEqual(2, registry.profile_count)
 
 

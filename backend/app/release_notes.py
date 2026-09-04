@@ -10,10 +10,43 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.6.4"
+APP_VERSION = "0.6.5"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.6.5",
+        "date": "2026-09-04",
+        "title": "Long transcription jobs stay visible and calls finish cleanly",
+        "body": """Long audio work no longer makes Backchannel look frozen, and
+the roughest live-call failure states now say what is actually happening.
+
+- Audio imports and Re-transcribe run in the background, show their model,
+  progress, segment and transcript-entry counts, and can be canceled. A failed
+  or canceled job keeps the transcript it started with instead of leaving a
+  partial replacement.
+- End Call completes when transcript refinement is enabled. A missing progress
+  argument could crash the final pass and leave the session stuck in its live
+  state; the full finish path now reaches the completed review.
+- A safe Ask request that reaches the final privacy check with an untokenized
+  session value gets one local tokenization repair and is checked again before
+  anything can leave the machine. The tripwire still refuses the request if
+  the repair does not remove the value.
+- Connection notices distinguish connecting from disconnected, lead with
+  whether recording continues, and replace internal terms such as audio frames
+  and gateways with the consequence for the transcript.
+- The update panel keeps Download update above the optional release notes and
+  says plainly that installation closes the current window and reopens the app.
+- Speaker assignment no longer forces an unmatched voice onto the closest
+  known speaker when the profile limit is reached. Longer unknown turns are
+  retained as unknown instead of being silently discarded or mislabeled.
+- Insight cards no longer call bookkeeping-only revisions a refinement, and
+  the synthesizer no longer carries trigger paths that never produced useful
+  work.
+
+Nothing to migrate. Existing recordings and sessions remain available, and
+an install on v0.5.3 or later can take this release through the in-app updater.""",
+    },
     {
         "version": "0.6.4",
         "date": "2026-09-04",

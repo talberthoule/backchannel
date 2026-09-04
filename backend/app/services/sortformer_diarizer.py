@@ -110,7 +110,10 @@ class SortformerDiarizer:
             if len(segment_pcm) < self._min_segment_bytes:
                 continue
             speaker_id = self._speaker_id_for_segment(turn.label, segment_pcm)
-            if speaker_id != "auto_unknown":
+            if (
+                speaker_id != "auto_unknown"
+                or len(segment_pcm) >= self._min_new_speaker_bytes
+            ):
                 segments.append(
                     DiarizedSegment(
                         speaker_id,

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Question, Speaker } from "../../types";
-import { presentTypes, typeColor, typeGroupLabel, typeLabel } from "../../utils/insightTypes";
+import { presentTypes, typeColor, typeGroupLabel, typeLabel, visibleEnrichmentNotes } from "../../utils/insightTypes";
 
 // "all", an item_type slug (built-in or custom lens type), or "dismissed".
 // "enhanced" is added only after the session's explicit enhancement pass.
@@ -25,6 +25,7 @@ function SummaryCard({ question, speakers, showEnhanced }: { question: Question;
   const attributedSpeaker = question.speaker_id
     ? speakers.find((speaker) => speaker.id === question.speaker_id)
     : null;
+  const enrichmentNotes = visibleEnrichmentNotes(question.enrichment_notes);
 
   // Subtle bg tint for state emphasis; no colored left border (AI tell).
   const borderStyle = question.needs_followup
@@ -96,6 +97,15 @@ function SummaryCard({ question, speakers, showEnhanced }: { question: Question;
               <p className="text-xs text-brand-mid-gray">
                 <span className="font-medium">Context:</span> {question.source_context}
               </p>
+            </div>
+          )}
+
+          {enrichmentNotes.length > 0 && (
+            <div className="rounded-md border border-brand-teal-light/20 bg-brand-teal-light/5 px-3 py-2">
+              <p className="font-body text-xs font-semibold text-brand-teal-light">Refinement notes</p>
+              {enrichmentNotes.map((note, index) => (
+                <p key={index} className="mt-0.5 font-body text-xs text-brand-gray">{note}</p>
+              ))}
             </div>
           )}
 

@@ -183,7 +183,7 @@ above and provide the Access client ID and secret in the same shell. The
 coordinator clears the four R2 values and both Access values before setup,
 build, and smoke subprocesses; it restores only the R2 values for publication
 preflight and all six values around each explicit platform publisher call.
-Never print their values. It also requires Python 3.12, Node 24 or newer,
+Never print their values. It also requires Python 3.12, Node 24.x,
 authenticated `gh`, a reachable Docker engine reporting `linux/x86_64`, and
 clean `master` synchronized with `origin/master`.
 

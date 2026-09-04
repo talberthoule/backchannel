@@ -76,7 +76,7 @@ function DesktopUpdateTransferBody({
               {version} is ready to install
             </p>
             <p className="mt-1 font-body text-xs text-brand-mid-gray">
-              Backchannel will restart and reopen automatically.
+              Backchannel will close this window, install the update, and reopen automatically.
             </p>
             {blocked && (
               <p className="mt-2 rounded-lg bg-brand-light-gray-2 px-3 py-2 font-body text-xs text-brand-dark-gray">
@@ -98,7 +98,7 @@ function DesktopUpdateTransferBody({
     case "applying":
       return (
         <p className="font-body text-sm text-brand-gray">
-          Restarting to install {version}...
+          Closing this window to install {version}...
         </p>
       );
     case "error": {
@@ -151,14 +151,19 @@ function DesktopUpdateBody({ update }: { update: DesktopUpdateController }) {
             </p>
             <span className="font-mono text-xs text-brand-mid-gray">{bytes(status.size)}</span>
           </div>
-          {status.available_notes && (
-            <div className="chat-markdown rounded-lg bg-brand-light-gray-2/60 px-4 py-3 font-body text-sm text-brand-dark-gray">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{status.available_notes}</ReactMarkdown>
-            </div>
-          )}
           <button type="button" onClick={() => void update.download()} className={primaryButton}>
             Download update
           </button>
+          {status.available_notes && (
+            <details className="rounded-lg bg-brand-light-gray-2/60 px-4 py-3">
+              <summary className="cursor-pointer font-body text-sm font-semibold text-brand-dark-gray">
+                Review what&apos;s included
+              </summary>
+              <div className="chat-markdown mt-3 border-t border-brand-light-gray-1/70 pt-3 font-body text-sm text-brand-dark-gray">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{status.available_notes}</ReactMarkdown>
+              </div>
+            </details>
+          )}
         </div>
       );
     default:

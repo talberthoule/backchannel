@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 # npm ci, not npm install, so the image resolves the committed lockfile
 # exactly - the same tree CI tests and the desktop bundles ship (ALP-246).

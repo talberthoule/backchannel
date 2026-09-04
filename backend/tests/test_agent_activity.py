@@ -32,7 +32,10 @@ async def _wait_for_messages(websocket, count):
 
 
 class ActivityRegistryTests(unittest.IsolatedAsyncioTestCase):
-    async def test_cycle_lifecycle_emits_full_snapshots_and_classifies_health(self):
+    @patch("app.services.agents.activity.monotonic", return_value=100.0)
+    async def test_cycle_lifecycle_emits_full_snapshots_and_classifies_health(
+        self, _monotonic
+    ):
         websocket = _WebSocket()
         registry = ActivityRegistry(
             uuid.uuid4(),
@@ -93,8 +96,33 @@ class ActivityRegistryTests(unittest.IsolatedAsyncioTestCase):
         call = websocket.messages[-1]["data"]["call"]
         self.assertTrue(call["degraded"])
         self.assertEqual(1, call["transcription"]["failed"])
-        self.assertIn("Transcription failed", call["degraded_reasons"][0])
+        self.assertIn("part of the conversation", call["degraded_reasons"][0])
         self.assertEqual(4, len(websocket.messages))
+
+    async def test_degraded_reasons_explain_user_impact_without_internal_units(self):
+        registry = ActivityRegistry(uuid.uuid4(), _WebSocket(), [])
+
+        await registry.update_call(
+            transcription={"failed": 2},
+            diarization={"shed": 7170},
+            gateway={"state": "reconnecting"},
+        )
+
+        reasons = registry.snapshot()["call"]["degraded_reasons"]
+        self.assertEqual(
+            [
+                "2 parts of the conversation could not be transcribed. "
+                "The transcript may be incomplete.",
+                "Live processing is falling behind. Some transcript text or "
+                "speaker labels may be missing.",
+                "Live captions are reconnecting and may be delayed.",
+            ],
+            reasons,
+        )
+        copy = " ".join(reasons).lower()
+        self.assertNotIn("frame", copy)
+        self.assertNotIn("gateway", copy)
+        self.assertNotIn("segment", copy)
 
     def test_orchestrator_roster_explains_privacy_override_and_meeting_blocks(self):
         def config(slug, model_id, enabled=True, session_override=None):
@@ -260,7 +288,10 @@ class ActivityRegistryTests(unittest.IsolatedAsyncioTestCase):
             )["kind"],
         )
 
-    async def test_regular_changes_coalesce_but_blocked_transitions_emit_immediately(self):
+    @patch("app.services.agents.activity.monotonic", return_value=100.0)
+    async def test_regular_changes_coalesce_but_blocked_transitions_emit_immediately(
+        self, _monotonic
+    ):
         websocket = _WebSocket()
         registry = ActivityRegistry(
             uuid.uuid4(),

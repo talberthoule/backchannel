@@ -62,6 +62,45 @@ function Write-Utf8 {
     [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
 }
 
+function Invoke-MetadataHelper {
+    param(
+        [Parameter(Mandatory = $true)][string]$Helper,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+
+    $savedErrorActionPreference = $ErrorActionPreference
+    $hasNativePreference = Test-Path Variable:PSNativeCommandUseErrorActionPreference
+    if ($hasNativePreference) {
+        $savedNativePreference = $PSNativeCommandUseErrorActionPreference
+    }
+    try {
+        $ErrorActionPreference = "Continue"
+        if ($hasNativePreference) {
+            $PSNativeCommandUseErrorActionPreference = $false
+        }
+        $records = @(& python $Helper @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedErrorActionPreference
+        if ($hasNativePreference) {
+            $PSNativeCommandUseErrorActionPreference = $savedNativePreference
+        }
+    }
+    if ($exitCode -eq 0) {
+        return
+    }
+    $details = @(
+        $records |
+            ForEach-Object { $_.ToString().Trim() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -Last 8
+    ) -join [Environment]::NewLine
+    if ($details) {
+        throw "Platform metadata validation failed$([Environment]::NewLine)$details"
+    }
+    throw "Platform metadata validation failed"
+}
+
 function Get-VersionParts {
     param([string]$Value)
     if ($Value -notmatch '^v(?<major>0|[1-9][0-9]*)\.(?<minor>0|[1-9][0-9]*)\.(?<patch>0|[1-9][0-9]*)$') {
@@ -233,10 +272,12 @@ try {
         $oldSigningPrivateKey = $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY
         try {
             $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $signingPrivateKey
-            & python $metadataHelper @metadataArguments `
-                --release-out $releasePath `
-                --platform-out $platformPath
-            $metadataExitCode = $LASTEXITCODE
+            Invoke-MetadataHelper -Helper $metadataHelper -Arguments (
+                $metadataArguments + @(
+                    "--release-out", $releasePath,
+                    "--platform-out", $platformPath
+                )
+            )
         } finally {
             $env:BACKCHANNEL_RELEASE_SIGNING_PRIVATE_KEY = $oldSigningPrivateKey
         }
@@ -274,12 +315,11 @@ try {
             throw "Remote release signing configuration is invalid"
         }
 
-        & python $metadataHelper @metadataArguments `
-            --signing-request-out $signingRequestPath 2>$null | Out-Null
-        $metadataExitCode = $LASTEXITCODE
-        if ($metadataExitCode -ne 0) {
-            throw "Platform metadata validation failed"
-        }
+        Invoke-MetadataHelper -Helper $metadataHelper -Arguments (
+            $metadataArguments + @(
+                "--signing-request-out", $signingRequestPath
+            )
+        )
 
         $handler = $null
         $client = $null
@@ -344,15 +384,14 @@ try {
             if ($handler) { $handler.Dispose() }
         }
 
-        & python $metadataHelper @metadataArguments `
-            --detached-key-id $detachedKeyId `
-            --detached-signature $detachedSignature `
-            --release-out $releasePath `
-            --platform-out $platformPath 2>$null | Out-Null
-        $metadataExitCode = $LASTEXITCODE
-    }
-    if ($metadataExitCode -ne 0) {
-        throw "Platform metadata validation failed"
+        Invoke-MetadataHelper -Helper $metadataHelper -Arguments (
+            $metadataArguments + @(
+                "--detached-key-id", $detachedKeyId,
+                "--detached-signature", $detachedSignature,
+                "--release-out", $releasePath,
+                "--platform-out", $platformPath
+            )
+        )
     }
     Write-Utf8 $latestPath (@{ version = $Version } | ConvertTo-Json -Compress)
     $platform = Get-Content -Raw -LiteralPath $platformPath | ConvertFrom-Json

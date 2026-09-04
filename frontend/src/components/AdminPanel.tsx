@@ -74,7 +74,8 @@ const TABS: { id: AdminTab; label: string; hint: string }[] = [
 interface AdminPanelProps {
   onBack: () => void;
   desktopUpdate: DesktopUpdateController;
-  initialTab?: AdminTab;
+  activeTab: AdminTab;
+  onTabChange: (tab: AdminTab) => void;
   // Version this browser last ran before an upgrade; forwarded to the About
   // tab so releases since then are badged, with an unread dot on the tab.
   highlightSince?: string | null;
@@ -619,7 +620,7 @@ function AgentCard({
   );
 }
 
-export default function AdminPanel({ onBack, desktopUpdate, initialTab, highlightSince, onboarding, onOnboardingContinue }: AdminPanelProps) {
+export default function AdminPanel({ onBack, desktopUpdate, activeTab, onTabChange, highlightSince, onboarding, onOnboardingContinue }: AdminPanelProps) {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>([]);
@@ -630,7 +631,6 @@ export default function AdminPanel({ onBack, desktopUpdate, initialTab, highligh
   const [version, setVersion] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab ?? "agents");
   // Bumped on credential changes so the onboarding card re-checks readiness.
   const [keysRefresh, setKeysRefresh] = useState(0);
 
@@ -757,7 +757,7 @@ export default function AdminPanel({ onBack, desktopUpdate, initialTab, highligh
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => onTabChange(tab.id)}
                 aria-current={active ? "page" : undefined}
                 className={`-mb-px shrink-0 border-b-2 px-2 py-2 font-body text-sm font-medium transition-colors sm:px-4 ${
                   active

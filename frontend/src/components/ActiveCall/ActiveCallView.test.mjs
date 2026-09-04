@@ -51,8 +51,8 @@ after(async () => {
   await rm(outputDir, { recursive: true, force: true });
 });
 
-const LOST_BANNER = "Connection to the backend was lost";
-const RESUME = "Resume Audio";
+const PAUSED_BANNER = "Recording paused";
+const RESUME = "Resume recording";
 
 const noop = () => {};
 
@@ -108,28 +108,66 @@ test("ending the call never shows the lost-connection banner or Resume", () => {
   // capture stopped, and the post-call refreshes still in flight.
   const html = render(props({ ending: true }));
 
-  assert.doesNotMatch(html, new RegExp(LOST_BANNER));
+  assert.doesNotMatch(html, new RegExp(PAUSED_BANNER));
   assert.doesNotMatch(html, new RegExp(RESUME));
   assert.doesNotMatch(html, /not recording/);
   // It says what is actually happening instead.
   assert.match(html, /Wrapping up this call/);
 });
 
-test("a genuine mid-call socket loss still shows both, untouched", () => {
+test("a genuine mid-call socket loss explains the recording risk and recovery", () => {
   // ALP-165 depends on this banner; the fix must not weaken it.
   const html = render(props({ ending: false }));
 
-  assert.match(html, new RegExp(LOST_BANNER));
+  assert.match(html, new RegExp(PAUSED_BANNER));
   assert.match(html, new RegExp(RESUME));
   assert.match(html, /not recording/);
+  assert.match(html, /role="alert"/);
+  assert.doesNotMatch(html, /backend/i);
   assert.doesNotMatch(html, /Wrapping up this call/);
 });
 
 test("a connected call in progress shows neither the banner nor wrapping-up", () => {
   const html = render(props({ status: "connected", isCapturing: true }));
 
-  assert.doesNotMatch(html, new RegExp(LOST_BANNER));
+  assert.doesNotMatch(html, new RegExp(PAUSED_BANNER));
   assert.doesNotMatch(html, /Wrapping up this call/);
+});
+
+test("a connecting call does not claim that a connection was lost", () => {
+  const html = render(props({ status: "connecting", isStarting: true }));
+
+  assert.match(html, /Connecting/);
+  assert.doesNotMatch(html, new RegExp(PAUSED_BANNER));
+  assert.doesNotMatch(html, /role="alert"/);
+});
+
+test("a degraded call says recording continues before describing the impact", () => {
+  const html = render(
+    props({
+      status: "connected",
+      isCapturing: true,
+      activity: {
+        session_id: "s1",
+        at: new Date(0).toISOString(),
+        agents: [],
+        call: {
+          privacy_first: false,
+          degraded: true,
+          degraded_reasons: [
+            "Live processing is falling behind. Some transcript text or speaker labels may be missing.",
+          ],
+          gateway: { state: "ok", detail: "" },
+          transcription: { jobs: 0, failed: 0, last_error: "" },
+          diarization: { queued: 1, shed: 12 },
+        },
+      },
+    }),
+  );
+
+  assert.match(html, /role="status"/);
+  assert.match(html, /Recording continues/);
+  assert.doesNotMatch(html, /audio frames|diarizer|backend/i);
 });
 
 test("the pending ask renders above the insight list", () => {
@@ -183,7 +221,7 @@ test("a healthy call says it is listening exactly once", () => {
 
 test("a call that is not simply listening still says what it is doing", () => {
   assert.match(render(props({ isStarting: true })), /Starting audio\.\.\./);
-  assert.match(render(props({ status: "connecting" })), /connecting/);
+  assert.match(render(props({ status: "connecting" })), /Connecting/);
 });
 
 test("diagnostics are an unlabeled icon whose readout stays closed", () => {

@@ -127,17 +127,26 @@ export default function ActiveCallView({
   // only means "connection lost" while the call is genuinely in progress
   // (ALP-171: End Call showed a lost-connection banner and a Resume prompt for
   // sixteen seconds while the post-call refreshes were still running).
-  const backendDisconnected = !ending && status !== "connected";
+  const backendDisconnected =
+    !ending && (status === "disconnected" || status === "error");
   const audioSeconds = Math.round(audioStats.bytesSent / 32000);
   const lastAudioAge =
     audioStats.lastSentAt
       ? Math.max(0, Math.round((Date.now() - new Date(audioStats.lastSentAt).getTime()) / 1000))
       : null;
-  const captureStatus = isStarting
-    ? "Starting audio..."
-    : isCapturing && status === "connected"
-      ? "Listening"
-      : status;
+  const captureStatus = ending
+    ? null
+    : isStarting
+      ? "Starting audio..."
+      : isCapturing && status === "connected"
+        ? "Listening"
+        : status === "connecting"
+          ? "Connecting..."
+          : status === "error"
+            ? "Connection failed"
+            : status === "disconnected"
+              ? "Recording paused"
+              : status;
 
   // Normalize questions: WS-sourced questions may lack starred/dismissed/created_at
   const normalizedQuestions = useMemo(
@@ -249,7 +258,7 @@ export default function ActiveCallView({
               disabled={postProcessingActive || isStarting}
               className="rounded-lg border border-brand-teal px-3 py-2 font-body text-sm font-semibold text-brand-teal transition-colors hover:bg-brand-teal/10 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isStarting ? "Starting..." : "Resume Audio"}
+              {isStarting ? "Starting..." : "Resume recording"}
             </button>
           )}
           {/* Session timer */}
@@ -337,11 +346,17 @@ export default function ActiveCallView({
           Wrapping up this call. Finishing post-processing and loading the review...
         </div>
       ) : backendDisconnected ? (
-        <div className="border-b border-red-200 bg-red-50 px-4 py-3 font-body text-sm font-medium text-red-700 md:px-6">
-          Connection to the backend was lost. Audio is not being recorded. Use Resume Audio to reconnect.
+        <div role="alert" className="border-b border-red-200 bg-red-50 px-4 py-3 font-body text-sm font-medium text-red-700 md:px-6">
+          <span className="font-semibold">Recording paused.</span>{" "}
+          {status === "error"
+            ? "Backchannel could not connect. Select Resume recording to try again."
+            : "Backchannel lost its connection. Select Resume recording to reconnect."}
         </div>
       ) : activity?.call.degraded ? (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 font-body text-sm font-medium text-amber-900 md:px-6">
+        <div role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-3 font-body text-sm font-medium text-amber-900 md:px-6">
+          <span className="font-semibold">
+            {isCapturing ? "Recording continues." : "Recording is paused."}
+          </span>{" "}
           {activity.call.degraded_reasons.join(" ")}
         </div>
       ) : null}

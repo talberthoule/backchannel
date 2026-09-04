@@ -205,3 +205,49 @@ async def guard(
             sid = None
         await record_reveal(sid, f"egress-blocked:{source or 'text'}", len(leaks))
         raise PiiEgressBlocked(source, model_id, categories)
+
+
+async def protect_and_guard(
+    prompt: str,
+    *,
+    system: str | None = None,
+    model_id: str = "",
+    session_id: object | None = None,
+    source: str = "",
+) -> tuple[str, str | None]:
+    """Repair one missed session token, then run the tripwire again."""
+    try:
+        await guard(
+            prompt,
+            system=system,
+            model_id=model_id,
+            session_id=session_id,
+            source=source,
+        )
+        return prompt, system
+    except PiiEgressBlocked as blocked:
+        try:
+            sid = uuid.UUID(str(session_id))
+        except (TypeError, ValueError):
+            raise blocked
+
+    from app.database import async_session
+    from app.services.pii import shield
+
+    async with async_session() as db:
+        prompt = await shield.protect_text(db, sid, prompt)
+        if system:
+            system = await shield.protect_text(db, sid, system)
+        await db.commit()
+
+    # The tripwire remains authoritative. If tokenization missed the value a
+    # second time, this raises before any provider sees the prompt.
+    await guard(
+        prompt,
+        system=system,
+        model_id=model_id,
+        session_id=sid,
+        source=source,
+    )
+    logger.info("PII egress prompt re-tokenized for %s", source or "text generation")
+    return prompt, system

@@ -237,9 +237,15 @@ async def generate_text(
     source: str = "",
 ) -> str:
     target = await _prepare_call(model_id, "text generation", source)
-    # The PII Shield's model-call boundary: logs the prompt when asked and
-    # refuses one that still carries a vault value (services/pii/egress.py).
-    await pii_egress.guard(prompt, system=system, model_id=model_id, session_id=session_id, source=source)
+    # The PII Shield's model-call boundary repairs one missed session token,
+    # then refuses anything that is still unsafe (services/pii/egress.py).
+    prompt, system = await pii_egress.protect_and_guard(
+        prompt,
+        system=system,
+        model_id=model_id,
+        session_id=session_id,
+        source=source,
+    )
     if target.endpoint is not None:
         text, usage = await _call_openai(
             model_id, target.endpoint, prompt, system, temperature, target.key
@@ -694,7 +700,7 @@ async def generate_json(
     # The shield guards both halves. An instruction block is prompt text that
     # leaves the machine like any other, so splitting a prompt must not move
     # anything past the egress boundary.
-    await pii_egress.guard(
+    prompt, system = await pii_egress.protect_and_guard(
         prompt, system=system, model_id=model_id, session_id=session_id, source=source
     )
     hint = schema_hint or _default_schema_hint(response_schema)

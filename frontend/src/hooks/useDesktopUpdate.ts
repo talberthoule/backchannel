@@ -14,6 +14,11 @@ function pollingInterval(state: DesktopUpdateStatus["state"], pollMs: number): n
   return state === "downloading" || state === "applying" ? 1000 : pollMs;
 }
 
+export function finishUpdateWindow(): void {
+  document.title = "Backchannel - Installing update";
+  window.setTimeout(() => window.close(), 50);
+}
+
 export function useDesktopUpdate(pollMs = 5000): DesktopUpdateController {
   const [status, setStatus] = useState<DesktopUpdateStatus>({
     enabled: false,
@@ -114,7 +119,9 @@ export function useDesktopUpdate(pollMs = 5000): DesktopUpdateController {
     if (actionRef.current) return;
     actionRef.current = true;
     try {
-      setIfMounted(await api.applyDesktopUpdate(await token()));
+      const next = await api.applyDesktopUpdate(await token());
+      setIfMounted(next);
+      if (next.state === "applying") finishUpdateWindow();
     } catch (error) {
       fail(error);
     } finally {

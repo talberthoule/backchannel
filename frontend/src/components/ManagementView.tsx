@@ -17,6 +17,7 @@ interface Props {
   onCloseKnowledge: () => void;
   onCloseOfferings: () => void;
   onAdminOnboardingContinue: () => void;
+  onAdminTabChange: (tab: AdminTab) => void;
 }
 
 export default function ManagementView({
@@ -31,13 +32,15 @@ export default function ManagementView({
   onCloseKnowledge,
   onCloseOfferings,
   onAdminOnboardingContinue,
+  onAdminTabChange,
 }: Props) {
   if (showAdmin) {
     return (
       <AdminPanel
         onBack={onCloseAdmin}
         desktopUpdate={desktopUpdate}
-        initialTab={adminTab}
+        activeTab={adminTab}
+        onTabChange={onAdminTabChange}
         highlightSince={highlightSince}
         onboarding={adminOnboarding}
         onOnboardingContinue={onAdminOnboardingContinue}

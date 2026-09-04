@@ -23,7 +23,19 @@ def _fake_db():
     db.execute = AsyncMock(return_value=result)
     db.add = MagicMock()
     db.flush = AsyncMock()
+    db.commit = AsyncMock()
     return db
+
+
+class _DbContext:
+    def __init__(self, db):
+        self.db = db
+
+    async def __aenter__(self):
+        return self.db
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
 
 
 def _settings(**kw):
@@ -129,6 +141,30 @@ class GuardTests(unittest.IsolatedAsyncioTestCase):
                 await llm.generate_text("gemini-x", "Sarah Connor", source="s")
         guard.assert_awaited_once()
         google.assert_not_awaited()
+
+    async def test_llm_retokenizes_a_blocked_session_prompt_before_sending(self):
+        from app.services import llm
+
+        sid = uuid.uuid4()
+        db = _fake_db()
+        await vault.token_for(db, sid, ORG, "AI Studio")
+        enabled = shield.ShieldSettings(enabled=True, ner=False)
+        target = MagicMock(endpoint=None, key="k")
+
+        with patch.object(shield, "get_settings_standalone", AsyncMock(return_value=enabled)), \
+             patch.object(shield, "get_settings", AsyncMock(return_value=enabled)), \
+             patch("app.database.async_session", return_value=_DbContext(db)), \
+             patch.object(llm, "_prepare_call", AsyncMock(return_value=target)), \
+             patch.object(llm, "_call_google", AsyncMock(return_value=("answer", None))) as google:
+            answer = await llm.generate_text(
+                "gemini-x",
+                "Compare AI Studio personas.",
+                session_id=sid,
+                source="live_chat",
+            )
+
+        self.assertEqual("answer", answer)
+        self.assertEqual("Compare [ORG_1] personas.", google.await_args.args[1])
 
     def test_settings_round_trip_the_prompt_log_flag(self):
         parsed = shield.ShieldSettings.from_json(json.dumps({"enabled": True, "prompt_log": True}))

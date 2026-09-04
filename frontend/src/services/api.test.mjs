@@ -19,7 +19,11 @@ await build({
   outfile: outputPath,
 });
 
-const { getSynthesis } = createRequire(import.meta.url)(outputPath);
+const {
+  cancelTranscriptionJob,
+  getSynthesis,
+  waitForTranscriptionJob,
+} = createRequire(import.meta.url)(outputPath);
 
 after(async () => {
   await rm(outputDir, { recursive: true, force: true });
@@ -47,4 +51,77 @@ test("the synthesis request carries the history opt-in it was given", async () =
     "/api/sessions/session-1/synthesis?mode=live&include_history=false",
     "/api/sessions/session-1/synthesis?mode=live&include_history=true",
   ]);
+});
+
+test("transcription jobs poll by kind until the terminal result", async () => {
+  const urls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    urls.push(url);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        job_id: "job-1",
+        kind: "retranscription",
+        status: urls.length === 1 ? "running" : "completed",
+        model_id: "model-1",
+        segments_done: urls.length,
+        total_segments: 2,
+        entries: 12,
+        progress: urls.length * 50,
+        filename: null,
+        error: "",
+      }),
+    };
+  };
+
+  try {
+    const result = await waitForTranscriptionJob(
+      "session-1",
+      {
+        job_id: "job-1",
+        kind: "retranscription",
+        status: "queued",
+        model_id: "model-1",
+        segments_done: 0,
+        total_segments: 2,
+        entries: 0,
+        progress: 0,
+        filename: null,
+        error: "",
+      },
+      () => {},
+      0,
+    );
+    assert.equal(result.status, "completed");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(urls, [
+    "/api/sessions/session-1/retranscribe",
+    "/api/sessions/session-1/retranscribe",
+  ]);
+});
+
+test("audio import cancellation uses the import job endpoint", async () => {
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    calls.push([url, options?.method]);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "canceling" }),
+    };
+  };
+
+  try {
+    await cancelTranscriptionJob("session-1", "audio_import");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(calls, [["/api/sessions/session-1/import/audio", "DELETE"]]);
 });

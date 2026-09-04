@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import time
 from collections import defaultdict
 from typing import Any, Awaitable, Callable
 
@@ -40,23 +39,18 @@ class CooldownSubscriber:
 
     Trailing-edge pattern: first event starts a timer. Events during the timer
     window are batched. When the timer fires, the handler runs with all
-    accumulated events. An optional max_interval forces a run even if no
-    events arrive (useful for the synthesizer catching implicit answers).
+    accumulated events.
     """
 
     def __init__(
         self,
         handler: Callable[[list[dict]], Awaitable[None]],
         cooldown_seconds: float,
-        max_interval_seconds: float | None = None,
     ):
         self._handler = handler
         self._cooldown = cooldown_seconds
-        self._max_interval = max_interval_seconds
         self._pending: list[dict] = []
         self._timer_task: asyncio.Task | None = None
-        self._max_interval_task: asyncio.Task | None = None
-        self._last_run: float = 0.0
         self._stopped = False
 
     async def __call__(self, data: dict):
@@ -70,28 +64,10 @@ class CooldownSubscriber:
         if self._timer_task is None or self._timer_task.done():
             self._timer_task = asyncio.create_task(self._cooldown_then_fire())
 
-    async def start_max_interval(self):
-        """Start the max-interval fallback timer. Call once during orchestrator start."""
-        if self._max_interval and not self._stopped:
-            self._max_interval_task = asyncio.create_task(self._max_interval_loop())
-
     async def _cooldown_then_fire(self):
         """Wait for cooldown, then fire handler with accumulated events."""
         await asyncio.sleep(self._cooldown)
         await self._fire()
-
-    async def _max_interval_loop(self):
-        """Fallback: ensure handler runs at least every max_interval seconds."""
-        while not self._stopped:
-            await asyncio.sleep(self._max_interval)
-            # Nothing accumulated means nothing to reconcile. Firing anyway made
-            # a silent stretch of a meeting pay for a full handler run on every
-            # fallback tick (ALP-283).
-            if not self._pending:
-                continue
-            elapsed = time.time() - self._last_run
-            if elapsed >= self._max_interval - 1:  # small tolerance
-                await self._fire()
 
     async def _fire(self):
         """Execute the handler with all pending events, then clear."""
@@ -99,7 +75,6 @@ class CooldownSubscriber:
             return
         batch = self._pending[:]
         self._pending.clear()
-        self._last_run = time.time()
         try:
             await self._handler(batch)
         except Exception as e:
@@ -108,6 +83,5 @@ class CooldownSubscriber:
     def stop(self):
         """Cancel pending timers."""
         self._stopped = True
-        for task in [self._timer_task, self._max_interval_task]:
-            if task and not task.done():
-                task.cancel()
+        if self._timer_task and not self._timer_task.done():
+            self._timer_task.cancel()

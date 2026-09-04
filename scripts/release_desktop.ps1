@@ -521,8 +521,8 @@ try {
         throw "GitHub repository identity is invalid"
     }
     $nodeVersion = (Invoke-Checked "Reading Node.js version" { & $script:Node --version })[-1].Trim()
-    if ($nodeVersion -notmatch '^v(?<major>[0-9]+)\.' -or [int]$Matches.major -lt 24) {
-        throw "Node.js 24 or newer is required"
+    if ($nodeVersion -notmatch '^v(?<major>[0-9]+)\.' -or [int]$Matches.major -ne 24) {
+        throw "Node.js 24.x is required"
     }
     $dockerPlatform = (Invoke-Checked "Checking Docker engine" {
         & $script:Docker info --format '{{.OSType}}/{{.Architecture}}'

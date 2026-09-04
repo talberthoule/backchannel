@@ -256,8 +256,8 @@ async def run_synthesizer_cycle(session_id: uuid.UUID, model_override: str | Non
     insights_json = _build_insights_json(questions)
 
     # Nothing new to reconcile since the last cycle: skip the call entirely.
-    # The max-interval fallback would otherwise pay for a full corpus every
-    # two minutes through a silent stretch of a meeting.
+    # The transcript is deliberately part of this fingerprint because the
+    # synthesizer detects answers spoken after an insight was created.
     fingerprint = hashlib.sha256(
         f"{insights_json}\x00{transcript_text}".encode("utf-8")
     ).hexdigest()

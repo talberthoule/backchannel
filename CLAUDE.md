@@ -201,19 +201,11 @@ Interval defaults above are the seeded values in `backend/app/services/seed_agen
 
 Important: there is no standalone `question_hunter.py` in the current tree. Question generation is one enabled lens of `ConsolidatedAnalystAgent`; `question_hunter` only appears as a backward-compatible `agent_source` label for exported/saved question items.
 
-Three synthesizer trigger paths read as live but are not (ALP-298). The
-orchestrator subscribes to an `insight_updated` event that nothing ever
-publishes - only `new_insight` and `new_opportunity` are published anywhere -
-so `new_insight` is the agent's sole trigger. The `insight_updated` that does
-exist is a WebSocket message type sent to the browser, which is a different
-thing from the internal event bus. The 120s max-interval fallback requires a
-non-empty pending list at its tick, but the 75s cooldown has already drained
-it, so on a talking call it never fires. And the unchanged-corpus skip
-fingerprints the insight corpus together with the last 30 transcript entries,
-so on a call where anyone is speaking the fingerprint always differs and the
-skip only engages during silence. Treat all three as documented-but-dead until
-someone decides whether to wire them up or delete them; making the fallback
-live in particular would increase cost.
+The synthesizer runs only after `new_insight` events and batches them behind
+its 75-second cooldown. Its unchanged-input check includes the last 30
+transcript entries because spoken answers are one of the changes it detects;
+the skip therefore applies only when both insights and recent transcript are
+unchanged (ALP-298).
 
 Deduplication is in `orchestrator.py` and uses simple word-overlap similarity within a 300-second sliding window (`_DEDUP_WINDOW_SECONDS`). The analyst's opportunity lens is dropped from the prompt entirely on meeting types where offering matching is off, so an internal check-in no longer runs sales scouting whose enrichment stage is disabled (ALP-286).
 

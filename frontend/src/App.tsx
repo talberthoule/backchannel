@@ -1025,6 +1025,7 @@ export default function App() {
           onCloseOfferings={() => setShowOfferings(false)}
           onCloseKnowledge={() => setShowKnowledge(false)}
           onAdminOnboardingContinue={handleOnboardingContinue}
+          onAdminTabChange={setAdminTab}
         />
       );
     }

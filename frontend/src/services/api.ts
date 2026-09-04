@@ -1,4 +1,4 @@
-import type { AgentConfig, AppMeta, AsrFitReport, CallSegment, CustomEndpoint, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EndpointProbeResult, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, LocalFitReport, LocalFitSummary, MeetingType, ModelDownload, ModelDownloadsStatus, ModelInfo, ModelPricingResponse, Offering, PiiEgressEntry, PiiPreview, PiiSessionSummary, PiiShieldSettings, PiiShieldStatus, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptEntry } from "../types";
+import type { AgentConfig, AppMeta, AsrFitReport, CallSegment, CustomEndpoint, DiarizationBenchmarkResult, DiarizationDiagnostics, Directive, Document, EndpointProbeResult, EnhanceInsightsResult, KnowledgeRecord, KnowledgeSource, LocalFitReport, LocalFitSummary, MeetingType, ModelDownload, ModelDownloadsStatus, ModelInfo, ModelPricingResponse, Offering, PiiEgressEntry, PiiPreview, PiiSessionSummary, PiiShieldSettings, PiiShieldStatus, PrivacyConfig, Question, ReleaseNote, Session, SessionAgent, SessionGroup, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptionConfig, TranscriptionJob, TranscriptEntry } from "../types";
 
 const BASE = "/api";
 
@@ -172,7 +172,7 @@ export const importTranscript = async (sessionId: string, file: File): Promise<{
   return res.json();
 };
 
-export const importAudio = async (sessionId: string, file: File): Promise<{ imported: number; filename: string }> => {
+export const importAudio = async (sessionId: string, file: File): Promise<TranscriptionJob> => {
   const form = new FormData();
   form.append("file", file);
   const res = await fetch(`${BASE}/sessions/${sessionId}/import/audio`, {
@@ -197,10 +197,42 @@ export const segmentAudioUrl = (sessionId: string, segmentNumber: number) =>
   `${BASE}/sessions/${sessionId}/segments/${segmentNumber}/audio`;
 
 export const retranscribeSession = (sessionId: string, modelId: string) =>
-  request<{ entries: number }>(`/sessions/${sessionId}/retranscribe`, {
+  request<TranscriptionJob>(`/sessions/${sessionId}/retranscribe`, {
     method: "POST",
     body: JSON.stringify({ model_id: modelId }),
   });
+
+const transcriptionJobPath = (sessionId: string, kind: TranscriptionJob["kind"]) =>
+  kind === "audio_import"
+    ? `/sessions/${sessionId}/import/audio`
+    : `/sessions/${sessionId}/retranscribe`;
+
+export const transcriptionJobActive = (job: TranscriptionJob) =>
+  job.status === "queued" || job.status === "running" || job.status === "canceling";
+
+export const getTranscriptionJob = (sessionId: string, kind: TranscriptionJob["kind"]) =>
+  request<TranscriptionJob>(
+    `${transcriptionJobPath(sessionId, kind)}${kind === "audio_import" ? "/status" : ""}`,
+  );
+
+export const cancelTranscriptionJob = (sessionId: string, kind: TranscriptionJob["kind"]) =>
+  request<TranscriptionJob>(transcriptionJobPath(sessionId, kind), { method: "DELETE" });
+
+export async function waitForTranscriptionJob(
+  sessionId: string,
+  initial: TranscriptionJob,
+  onProgress: (job: TranscriptionJob) => void,
+  pollMs = 1000,
+): Promise<TranscriptionJob> {
+  let job = initial;
+  while (transcriptionJobActive(job)) {
+    onProgress(job);
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+    job = await getTranscriptionJob(sessionId, job.kind);
+  }
+  onProgress(job);
+  return job;
+}
 
 export const chat = (modelId: string, sessionIds: string[], messages: { role: string; content: string }[]) =>
   request<{ reply: string }>("/chat", {

@@ -3,13 +3,14 @@ import logging
 import re
 import uuid
 import os
+from collections.abc import Callable
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.database import async_session, get_db
 from app.models import CallSegment, Speaker, TranscriptEntry
 from app.services.pii import shield
 from app.services.audio_store import SegmentAudioWriter
@@ -30,6 +31,7 @@ from app.services.speaker_assignment import (
 from app.services.speaker_ghost_filter import should_defer_new_speaker_segment
 from app.services.speaker_diarizer import DiarizedSegment, SpeakerRegistry
 from app.services.transcription_runtime import get_transcription_runtime_config
+from app.services import runtime_activity, transcription_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -84,12 +86,28 @@ async def _persist_import_audio(pcm_data: bytes, session_id: uuid.UUID, db: Asyn
     await db.flush()
 
 
-def _diarize_pcm(pcm_data: bytes, diarizer) -> list[DiarizedSegment]:
+async def _diarize_pcm(
+    pcm_data: bytes,
+    diarizer,
+    cancel_check: Callable[[], None] | None = None,
+) -> list[DiarizedSegment]:
     chunk_size = 16000 * 2 // 10
     segments = []
     for offset in range(0, len(pcm_data), chunk_size):
-        segments.extend(diarizer.feed_audio(pcm_data[offset:offset + chunk_size]))
-    segments.extend(flush_diarizer_segments(diarizer))
+        if cancel_check:
+            cancel_check()
+        chunk = pcm_data[offset:offset + chunk_size]
+        emitted = await asyncio.to_thread(diarizer.feed_audio, chunk)
+        for segment in emitted:
+            if segment.start_sample is None:
+                segment.start_sample = max(0, offset + len(chunk) - len(segment.pcm_bytes)) // 2
+            segments.append(segment)
+    if cancel_check:
+        cancel_check()
+    for segment in await asyncio.to_thread(flush_diarizer_segments, diarizer):
+        if segment.start_sample is None:
+            segment.start_sample = max(0, len(pcm_data) - len(segment.pcm_bytes)) // 2
+        segments.append(segment)
     return segments
 
 
@@ -99,9 +117,13 @@ async def _persist_diarized_segments(
     db: AsyncSession,
     transcriber,
     speakers: list[Speaker],
+    cancel_check: Callable[[], None] | None = None,
+    entry_callback: Callable[[int], None] | None = None,
 ) -> int:
     count = 0
     for seg, local_track, auto_speaker_map in segments:
+        if cancel_check:
+            cancel_check()
         try:
             text = await transcriber.transcribe_segment(seg.pcm_bytes)
         except TranscriptionError as exc:
@@ -110,6 +132,8 @@ async def _persist_diarized_segments(
             continue
         if not text:
             continue
+        if cancel_check:
+            cancel_check()
         text = await shield.protect_text(db, session_id, text)
 
         local_speaker = resolve_live_mic_speaker(seg.speaker_id, speakers, local_track)
@@ -155,6 +179,8 @@ async def _persist_diarized_segments(
             )
         )
         count += 1
+        if entry_callback:
+            entry_callback(count)
     return count
 
 
@@ -170,6 +196,9 @@ async def _transcribe_audio_diarized(
     auto_speaker_map: dict[str, str] | None = None,
     runtime_config: DiarizerRuntimeConfig | None = None,
     local_track: bool = False,
+    cancel_check: Callable[[], None] | None = None,
+    entry_callback: Callable[[int], None] | None = None,
+    commit: bool = True,
 ) -> int:
     """Transcribe audio using diarization pipeline. Returns count of entries created."""
     # Convert to PCM16 16kHz mono
@@ -196,16 +225,19 @@ async def _transcribe_audio_diarized(
 
     if auto_speaker_map is None:
         auto_speaker_map = {}
-    segments = await asyncio.to_thread(_diarize_pcm, pcm_data, diarizer)
+    segments = await _diarize_pcm(pcm_data, diarizer, cancel_check)
     count = await _persist_diarized_segments(
         [(segment, local_track, auto_speaker_map) for segment in segments],
         session_id,
         db,
         transcriber,
         speakers,
+        cancel_check,
+        entry_callback,
     )
 
-    await db.commit()
+    if commit:
+        await db.commit()
     return count
 
 
@@ -220,9 +252,12 @@ async def _transcribe_split_audio_diarized(
     mic_auto_speaker_map: dict[str, str],
     remote_auto_speaker_map: dict[str, str],
     runtime_config: DiarizerRuntimeConfig,
+    cancel_check: Callable[[], None] | None = None,
+    entry_callback: Callable[[int], None] | None = None,
+    commit: bool = True,
 ) -> int:
-    mic_pcm = convert_to_pcm16(mic_file_bytes, "wav")
-    system_pcm = convert_to_pcm16(system_file_bytes, "wav")
+    mic_pcm = await asyncio.to_thread(convert_to_pcm16, mic_file_bytes, "wav")
+    system_pcm = await asyncio.to_thread(convert_to_pcm16, system_file_bytes, "wav")
     mic_diarizer = create_diarizer(runtime_config.effective_live_diarizer, registry=mic_registry)
     system_diarizer = create_diarizer(runtime_config.effective_live_diarizer, registry=remote_registry)
     transcription_config = await get_transcription_runtime_config(db)
@@ -235,34 +270,16 @@ async def _transcribe_split_audio_diarized(
     )
     speakers = list(result.scalars().all())
 
-    chunk_size = 16000 * 2 // 10
     ordered_segments = []
     emitted_order = 0
     tracks = (
         (mic_pcm, mic_diarizer, True, mic_auto_speaker_map),
         (system_pcm, system_diarizer, False, remote_auto_speaker_map),
     )
-    for offset in range(0, max(len(mic_pcm), len(system_pcm)), chunk_size):
-        for pcm, diarizer, local_track, speaker_map in tracks:
-            chunk = pcm[offset:offset + chunk_size]
-            if chunk:
-                for segment in diarizer.feed_audio(chunk):
-                    consumed_bytes = offset + len(chunk)
-                    start_sample = segment.start_sample
-                    if start_sample is None:
-                        start_sample = max(0, consumed_bytes - len(segment.pcm_bytes)) // 2
-                    ordered_segments.append(
-                        (start_sample, emitted_order, segment, local_track, speaker_map)
-                    )
-                    emitted_order += 1
-
     for pcm, diarizer, local_track, speaker_map in tracks:
-        for segment in flush_diarizer_segments(diarizer):
-            start_sample = segment.start_sample
-            if start_sample is None:
-                start_sample = max(0, len(pcm) - len(segment.pcm_bytes)) // 2
+        for segment in await _diarize_pcm(pcm, diarizer, cancel_check):
             ordered_segments.append(
-                (start_sample, emitted_order, segment, local_track, speaker_map)
+                (segment.start_sample or 0, emitted_order, segment, local_track, speaker_map)
             )
             emitted_order += 1
 
@@ -273,9 +290,52 @@ async def _transcribe_split_audio_diarized(
         db,
         transcriber,
         speakers,
+        cancel_check,
+        entry_callback,
     )
-    await db.commit()
+    if commit:
+        await db.commit()
     return count
+
+
+async def _run_audio_import_job(
+    session_id: uuid.UUID,
+    job_id: uuid.UUID,
+    content: bytes,
+    source_format: str,
+) -> None:
+    job = transcription_jobs.get_job(session_id, kind="audio_import", job_id=job_id)
+    if not job:
+        return
+    try:
+        with runtime_activity.track("audio import"):
+            job.start()
+            async with async_session() as db:
+                count = await _transcribe_audio_diarized(
+                    content,
+                    source_format,
+                    session_id,
+                    db,
+                    model_id=job.model_id,
+                    persist_audio=True,
+                    probe_sortformer=False,
+                    cancel_check=job.check_canceled,
+                    entry_callback=job.update_entries,
+                    commit=False,
+                )
+                if count == 0:
+                    raise ValueError("No speech detected in audio file")
+                job.check_canceled()
+                await db.commit()
+            job.finish_segment(count)
+            job.complete()
+    except transcription_jobs.JobCanceled:
+        job.mark_canceled()
+    except ValueError as exc:
+        job.fail(str(exc))
+    except Exception:
+        logger.exception("Audio import job %s failed", job.id)
+        job.fail("Audio import failed. Check the application logs for details.")
 
 
 @router.post("/transcript")
@@ -314,10 +374,11 @@ async def import_transcript(
     return {"imported": count, "filename": filename}
 
 
-@router.post("/audio")
+@router.post("/audio", status_code=202)
 async def import_audio(
     session_id: uuid.UUID,
     file: UploadFile,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """Import an audio file — diarizes and transcribes via acoustic fingerprinting."""
@@ -329,16 +390,39 @@ async def import_audio(
 
     content = await file.read()
     source_format = ext.lstrip(".")
-
-    count = await _transcribe_audio_diarized(
+    config = await get_transcription_runtime_config(db)
+    try:
+        job = transcription_jobs.create_job(
+            session_id,
+            "audio_import",
+            config.batch_model_id,
+            1,
+            filename=filename,
+        )
+    except transcription_jobs.JobAlreadyRunning as exc:
+        raise HTTPException(409, str(exc)) from exc
+    background_tasks.add_task(
+        _run_audio_import_job,
+        session_id,
+        job.id,
         content,
         source_format,
-        session_id,
-        db,
-        persist_audio=True,
-        probe_sortformer=False,
     )
-    if count == 0:
-        raise HTTPException(400, "No speech detected in audio file")
+    return job.snapshot()
 
-    return {"imported": count, "filename": filename}
+
+@router.get("/audio/status")
+async def get_audio_import_status(session_id: uuid.UUID):
+    job = transcription_jobs.get_job(session_id, kind="audio_import")
+    if not job:
+        raise HTTPException(404, "Audio import job not found")
+    return job.snapshot()
+
+
+@router.delete("/audio")
+async def cancel_audio_import(session_id: uuid.UUID):
+    job = transcription_jobs.get_job(session_id, kind="audio_import")
+    if not job:
+        raise HTTPException(404, "Audio import job not found")
+    job.cancel()
+    return job.snapshot()

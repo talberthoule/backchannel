@@ -91,3 +91,17 @@ test("lens-produced groups still take their heading from the producing lens", as
   assert.equal(typeGroupLabel("observation", [row("o-4", "observation", "")]), "Observations");
   assert.equal(typeGroupLabel("custom_lens", []), "Custom Lens");
 });
+
+test("visible refinement notes omit bookkeeping-only revisions", async () => {
+  const { visibleEnrichmentNotes } = await load();
+
+  assert.deepEqual(
+    visibleEnrichmentNotes("Merged with another insight\nAdjusted\nCustomer confirmed timing"),
+    ["Customer confirmed timing"],
+  );
+  assert.deepEqual(
+    visibleEnrichmentNotes("Adjusted: clarified the owner"),
+    ["Adjusted: clarified the owner"],
+  );
+  assert.deepEqual(visibleEnrichmentNotes(undefined), []);
+});

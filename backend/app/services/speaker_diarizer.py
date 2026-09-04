@@ -319,12 +319,14 @@ class SpeakerRegistry:
 
         if best_fallback and self.fallback_profile_count >= self._max_profiles:
             logger.info(
-                "Reusing closest speaker %s for %s (similarity %.3f)",
+                "Speaker profile limit reached; leaving unmatched segment unknown "
+                "(closest %s, similarity %.3f)",
                 best_fallback.speaker_id,
-                "profile limit",
                 fallback_sim,
             )
-            return best_fallback.speaker_id
+            # ponytail: the hard cap prevents noise-driven enrollment; raise the
+            # configured limit if measured meetings need more known speakers.
+            return "auto_unknown"
 
         # New speaker
         while any(profile.speaker_id == f"auto_{self._next_id}" for profile in self._profiles):
@@ -545,7 +547,7 @@ class SpeakerDiarizer:
                 full_embedding,
                 allow_create=allow_create,
             )
-            if speaker_id == "auto_unknown":
+            if speaker_id == "auto_unknown" and not allow_create:
                 return []
             return [DiarizedSegment(speaker_id, pcm_bytes, start_sample)]
 

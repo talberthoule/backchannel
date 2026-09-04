@@ -6,6 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, patch
 
+from fastapi import BackgroundTasks
+
 from app.models import CallSegment, Speaker, TranscriptEntry
 from app.routers import imports as import_router
 from app.routers import retranscribe
@@ -634,7 +636,9 @@ class RetranscribeReadinessGuardTests(unittest.IsolatedAsyncioTestCase):
 
     async def _call(self, db):
         body = SimpleNamespace(model_id="local-whisper-base")
-        return await retranscribe.retranscribe_session(uuid.uuid4(), body, db)
+        return await retranscribe.retranscribe_session(
+            uuid.uuid4(), body, BackgroundTasks(), db
+        )
 
     async def test_refuses_and_deletes_nothing_when_the_runtime_is_unusable(self):
         db = self._db()
@@ -676,3 +680,146 @@ class RetranscribeReadinessGuardTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(retranscribe.HTTPException):
                 await self._call(db)
         probed.assert_not_called()
+
+
+class RetranscribeJobBoundaryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_request_returns_a_queued_job_before_destructive_work_starts(self):
+        session_id = uuid.uuid4()
+        background_tasks = BackgroundTasks()
+        db = SimpleNamespace(
+            get=AsyncMock(return_value=SimpleNamespace(id=session_id, state="completed")),
+            execute=AsyncMock(),
+            commit=AsyncMock(),
+        )
+        segment = CallSegment(
+            session_id=session_id,
+            segment_number=1,
+            audio_path="audio/segment_1.wav",
+        )
+        db.execute.return_value = FakeScalarResult([segment])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stored = root / "audio" / "segment_1.wav"
+            stored.parent.mkdir()
+            stored.write_bytes(b"audio")
+            transcribe = AsyncMock(return_value=1)
+            with (
+                patch.object(retranscribe, "data_dir", return_value=root),
+                patch.object(
+                    retranscribe,
+                    "registry_entry",
+                    return_value={"supports_batch_audio": True},
+                ),
+                patch.object(retranscribe, "is_local_model", return_value=False),
+                patch.object(
+                    retranscribe,
+                    "get_local_only",
+                    new=AsyncMock(return_value=False),
+                ),
+                patch.object(
+                    retranscribe,
+                    "_transcribe_stored_segments",
+                    new=transcribe,
+                ),
+            ):
+                result = await retranscribe.retranscribe_session(
+                    session_id,
+                    SimpleNamespace(model_id="cloud-model"),
+                    background_tasks,
+                    db,
+                )
+
+        self.assertEqual("queued", result["status"])
+        self.assertEqual("cloud-model", result["model_id"])
+        self.assertEqual(1, result["total_segments"])
+        self.assertEqual(1, len(background_tasks.tasks))
+        transcribe.assert_not_awaited()
+        db.commit.assert_not_awaited()
+
+    async def test_canceling_background_work_does_not_commit_a_partial_transcript(self):
+        session_id = uuid.uuid4()
+        segment = CallSegment(
+            session_id=session_id,
+            segment_number=1,
+            audio_path="audio/segment_1.wav",
+        )
+        job = retranscribe.transcription_jobs.create_job(
+            session_id,
+            "retranscription",
+            "model",
+            1,
+        )
+        db = SimpleNamespace(execute=AsyncMock(), commit=AsyncMock())
+
+        class SessionContext:
+            async def __aenter__(self):
+                return db
+
+            async def __aexit__(self, *_args):
+                return False
+
+        async def cancel_during_work(*_args):
+            job.cancel()
+            job.check_canceled()
+
+        with (
+            patch.object(retranscribe, "async_session", return_value=SessionContext()),
+            patch.object(
+                retranscribe,
+                "_stored_segments",
+                new=AsyncMock(return_value=[segment]),
+            ),
+            patch.object(retranscribe, "_available_segments", return_value=[segment]),
+            patch.object(
+                retranscribe,
+                "_transcribe_stored_segments",
+                new=AsyncMock(side_effect=cancel_during_work),
+            ),
+        ):
+            await retranscribe._run_retranscription_job(session_id, job.id)
+
+        self.assertEqual("canceled", job.snapshot()["status"])
+        db.commit.assert_not_awaited()
+
+    async def test_an_empty_replacement_does_not_erase_the_existing_transcript(self):
+        session_id = uuid.uuid4()
+        segment = CallSegment(
+            session_id=session_id,
+            segment_number=1,
+            audio_path="audio/segment_1.wav",
+        )
+        job = retranscribe.transcription_jobs.create_job(
+            session_id,
+            "retranscription",
+            "model",
+            1,
+        )
+        db = SimpleNamespace(execute=AsyncMock(), commit=AsyncMock())
+
+        class SessionContext:
+            async def __aenter__(self):
+                return db
+
+            async def __aexit__(self, *_args):
+                return False
+
+        with (
+            patch.object(retranscribe, "async_session", return_value=SessionContext()),
+            patch.object(
+                retranscribe,
+                "_stored_segments",
+                new=AsyncMock(return_value=[segment]),
+            ),
+            patch.object(retranscribe, "_available_segments", return_value=[segment]),
+            patch.object(
+                retranscribe,
+                "_transcribe_stored_segments",
+                new=AsyncMock(return_value=0),
+            ),
+        ):
+            await retranscribe._run_retranscription_job(session_id, job.id)
+
+        self.assertEqual("failed", job.snapshot()["status"])
+        self.assertIn("existing transcript was kept", job.snapshot()["error"])
+        db.commit.assert_not_awaited()

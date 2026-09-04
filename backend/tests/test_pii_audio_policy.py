@@ -134,5 +134,38 @@ class OrchestratorAudioPolicyTests(unittest.TestCase):
         self.assertFalse(orchestrator._is_enabled("audio_gateway"))
 
 
+class TranscriptRefinementDrainTests(unittest.IsolatedAsyncioTestCase):
+    async def test_refinement_reports_a_complete_progress_event(self):
+        orchestrator = _build(
+            {"transcript_refiner": _config(CLOUD_TEXT)},
+            audio_local_only=True,
+        )
+        orchestrator._refine_recent_transcript = AsyncMock(return_value=0)
+        stages = orchestrator.drain_stages()
+        events = []
+
+        async def record_progress(event):
+            events.append(event)
+
+        result = {"stage_errors": []}
+        await orchestrator._run_transcript_refinement_stage(
+            stages,
+            record_progress,
+            2 + len(stages),
+            result,
+        )
+
+        self.assertEqual(
+            {
+                "stage": "transcript_refinement",
+                "message": "Refining the transcript wording",
+                "current_step": 1,
+                "total_steps": 6,
+                "progress": 15,
+            },
+            events[0],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
