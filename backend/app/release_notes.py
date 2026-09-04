@@ -10,10 +10,45 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.6.3"
+APP_VERSION = "0.6.4"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.6.4",
+        "date": "2026-09-04",
+        "title": "Exports worth sending, and groups that stay where you put them",
+        "body": """Both exports were rebuilt around the reader rather than the
+data.
+
+- The briefing export is a different document. It opens with what came out of
+  the call and the headline finding, before anything needs scrolling. Each
+  insight keeps the line from the transcript that produced it, one click away,
+  and the full transcript is at the end. Still one file that needs nothing
+  from the internet to open.
+- The insights workbook opens on a summary instead of an eighteen-column
+  grid: what was captured and in what proportion, who was in the room, and
+  what still needs attention. Then Action Items and Opportunities as lists you
+  can work down. The full Insights sheet is untouched.
+- Sidebar groups remember how you left them. Collapsing a group used to come
+  undone by itself, because the sidebar re-opened every group whenever the
+  group list refreshed. Your choices now survive that and a reload, and the
+  Groups header has a collapse-all.
+- The Privacy tab was wrong about transcript refinement. Switching the
+  Transcript Refiner off turned the row red, which read as a hole in the
+  shield. It was never one: the refiner only ever sees tokenized text, on any
+  model, local or cloud. The row now answers that question, and says
+  separately whether the stage is running.
+- Meetings cost fewer tokens to analyse, with no change in what you see. The
+  transcript handed to the agents carried a long identifier on every line and
+  now carries a short tag with one legend per prompt, which is around 40
+  percent off text the agents re-read many times per meeting.
+
+One fix worth naming: the agent that matches opportunities to your offerings
+was running without any knowledge of the meeting type, so it read every
+conversation as a sales call. It now gets the same context every other agent
+does.""",
+    },
     {
         "version": "0.6.3",
         "date": "2026-09-03",

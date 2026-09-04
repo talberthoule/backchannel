@@ -2,7 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://backchannel.page/</loc>
-    <lastmod>2026-09-03</lastmod>
+    <lastmod>2026-09-04</lastmod>
+  </url>
+  <url>
+    <loc>https://backchannel.page/releases/v0.6.4/</loc>
+    <lastmod>2026-09-04</lastmod>
   </url>
   <url>
     <loc>https://backchannel.page/releases/v0.6.3/</loc>
@@ -86,7 +90,7 @@
   </url>
   <url>
     <loc>https://backchannel.page/releases/</loc>
-    <lastmod>2026-09-03</lastmod>
+    <lastmod>2026-09-04</lastmod>
   </url>
   <url>
     <loc>https://backchannel.page/releases/v0.6.0/</loc>
