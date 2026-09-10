@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { Question } from "../../types";
 import QuestionCard from "./QuestionCard";
 import { sortQuestionsForLiveDisplay } from "./questionOrdering";
@@ -8,6 +8,7 @@ import { BUILTIN_TYPE_META, BUILTIN_TYPE_ORDER, presentTypes, recentSignalHistor
 type Filter = string;
 
 const STATUS_KEYS = new Set(["starred", "answered", "prioritized", "enhanced"]);
+export const INSIGHT_PAGE_SIZE = 40;
 
 interface QuestionListProps {
   questions: Question[];
@@ -19,8 +20,23 @@ interface QuestionListProps {
   onMakeDirective?: (question: Question) => void;
 }
 
-export default function QuestionList({ questions, showEnhanced = false, emptyMessage, onStar, onDismiss, onVote, onMakeDirective }: QuestionListProps) {
+const InsightRow = memo(function InsightRow({ question, showEnhanced, onStar, onDismiss, onVote, onMakeDirective }: Omit<QuestionListProps, "questions"> & { question: Question }) {
+  return (
+    <QuestionCard
+      question={question}
+      showEnhanced={showEnhanced}
+      onStar={(starred) => onStar(question.id, starred)}
+      onDismiss={() => onDismiss(question.id)}
+      onVote={(vote) => onVote(question.id, vote)}
+      onMakeDirective={onMakeDirective ? () => onMakeDirective(question) : undefined}
+    />
+  );
+});
+
+export default memo(function QuestionList({ questions, showEnhanced = false, emptyMessage, onStar, onDismiss, onVote, onMakeDirective }: QuestionListProps) {
   const [activeFilters, setActiveFilters] = useState<Set<Filter>>(new Set(["all"]));
+  const [requestedPage, setRequestedPage] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // The Strategic chip is the whole strategic picture: every current signal -
   // the panel's top three included, so a panel card and its own insight row
@@ -30,6 +46,7 @@ export default function QuestionList({ questions, showEnhanced = false, emptyMes
   const strategicExtras = useMemo(() => recentSignalHistoryIds(questions), [questions]);
 
   const toggleFilter = (key: Filter) => {
+    setRequestedPage(0);
     setActiveFilters((prev) => {
       if (key === "all") {
         return new Set(["all"]);
@@ -99,6 +116,23 @@ export default function QuestionList({ questions, showEnhanced = false, emptyMes
     });
   }, [questions, strategicExtras, activeFilters, showEnhanced]);
 
+  // Bound mounted cards, not stored insights. Counts and filtering still use
+  // the complete collection; paging never drops meeting data.
+  const pageCount = Math.max(1, Math.ceil(filtered.length / INSIGHT_PAGE_SIZE));
+  const page = Math.min(requestedPage, pageCount - 1);
+  const pageStart = page * INSIGHT_PAGE_SIZE;
+  const pageItems = filtered.slice(pageStart, pageStart + INSIGHT_PAGE_SIZE);
+
+  useEffect(() => {
+    // Dismissing the last item on the last page must not leave an empty page
+    // or jump back there if new insights subsequently arrive.
+    setRequestedPage(page);
+  }, [page]);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [page, activeFilters]);
+
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: "All" },
     ...typeFilterDefs,
@@ -136,10 +170,10 @@ export default function QuestionList({ questions, showEnhanced = false, emptyMes
   );
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Filter controls: one consistent chip design for every tab; the
           selected tabs fill teal while the rest stay quiet outlines. */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-brand-light-gray-1 px-4 pb-3">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-brand-light-gray-1 px-4 pb-3">
         {visibleFilters.map(({ key, label }) => {
           const active = activeFilters.has(key);
           const count = filterCounts.get(key) || 0;
@@ -170,7 +204,7 @@ export default function QuestionList({ questions, showEnhanced = false, emptyMes
       </div>
 
       {/* Scrollable list */}
-      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <p className="font-body text-sm text-brand-mid-gray">
@@ -180,19 +214,45 @@ export default function QuestionList({ questions, showEnhanced = false, emptyMes
             </p>
           </div>
         ) : (
-          filtered.map((q) => (
-            <QuestionCard
+          pageItems.map((q) => (
+            <InsightRow
               key={q.id}
               question={q}
               showEnhanced={showEnhanced}
-              onStar={(starred) => onStar(q.id, starred)}
-              onDismiss={() => onDismiss(q.id)}
-              onVote={(vote) => onVote(q.id, vote)}
-              onMakeDirective={onMakeDirective ? () => onMakeDirective(q) : undefined}
+              onStar={onStar}
+              onDismiss={onDismiss}
+              onVote={onVote}
+              onMakeDirective={onMakeDirective}
             />
           ))
         )}
       </div>
+      {pageCount > 1 && (
+        <nav aria-label="Insight pages" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-brand-light-gray-1 px-4 py-2">
+          <span role="status" className="font-body text-sm tabular-nums text-brand-gray">
+            {pageStart + 1}-{Math.min(pageStart + INSIGHT_PAGE_SIZE, filtered.length)} of {filtered.length} insights
+          </span>
+          <div className="flex items-center gap-1">
+            {[
+              { label: "First", target: 0, disabled: page === 0 },
+              { label: "Previous", target: page - 1, disabled: page === 0 },
+              { label: "Next", target: page + 1, disabled: page === pageCount - 1 },
+              { label: "Last", target: pageCount - 1, disabled: page === pageCount - 1 },
+            ].map(({ label, target, disabled }) => (
+              <button
+                key={label}
+                type="button"
+                aria-label={`${label} insight page`}
+                disabled={disabled}
+                onClick={() => setRequestedPage(target)}
+                className="min-h-11 rounded-md px-2 font-body text-sm text-brand-dark-gray hover:bg-brand-light-gray-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-teal disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </nav>
+      )}
     </div>
   );
-}
+});

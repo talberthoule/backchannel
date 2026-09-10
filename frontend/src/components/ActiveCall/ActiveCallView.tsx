@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SILENT_AUDIO_LEVEL, type AudioLevelSource } from "../../hooks/useAudioCapture";
 import type { AgentActivitySnapshot, AudioSendStats, ModelInfo, PostProcessingProgress as PostProcessingProgressState, Question, Session, SessionSynthesis, Speaker, StopDrainMode, TranscriptEntry } from "../../types";
 import AgentActivityPanel, { activityEmptyMessage } from "./AgentActivityPanel";
@@ -117,6 +117,7 @@ export default function ActiveCallView({
 }: ActiveCallViewProps) {
   const [debugOpen, setDebugOpen] = useState(false);
   const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
+  const toggleTranscript = useCallback(() => setTranscriptCollapsed((open) => !open), []);
   const [endMenuOpen, setEndMenuOpen] = useState(false);
   const endMenuRef = useRef<HTMLDivElement | null>(null);
   const debugRef = useRef<HTMLDivElement | null>(null);
@@ -151,12 +152,15 @@ export default function ActiveCallView({
   // Normalize questions: WS-sourced questions may lack starred/dismissed/created_at
   const normalizedQuestions = useMemo(
     () =>
-      questions.map((q) => ({
-        ...q,
-        starred: q.starred ?? false,
-        dismissed: q.dismissed ?? false,
-        created_at: q.created_at ?? new Date().toISOString(),
-      })),
+      questions.map((q) =>
+        q.starred != null && q.dismissed != null && q.created_at != null
+          ? q
+          : {
+            ...q,
+            starred: q.starred ?? false,
+            dismissed: q.dismissed ?? false,
+            created_at: q.created_at ?? new Date().toISOString(),
+          }),
     [questions]
   );
 
@@ -413,7 +417,7 @@ export default function ActiveCallView({
             transcripts={transcripts}
             speakers={speakers}
             collapsed={transcriptCollapsed}
-            onToggleCollapse={() => setTranscriptCollapsed((open) => !open)}
+            onToggleCollapse={toggleTranscript}
           />
         </div>
       </div>

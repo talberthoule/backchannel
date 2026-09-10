@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { Speaker, TranscriptEntry } from "../../types";
-import { findTranscriptMatches, highlightParts } from "./transcriptSearch";
+import { findTranscriptMatches } from "./transcriptSearch";
+import TranscriptRow from "./TranscriptRow";
 
 interface TranscriptPanelProps {
   transcripts: TranscriptEntry[];
@@ -10,14 +11,15 @@ interface TranscriptPanelProps {
 }
 
 const PANEL_ID = "live-transcription-panel";
+export const TRANSCRIPT_PAGE_SIZE = 40;
 
 const GHOST_BUTTON =
   "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal focus:ring-2 focus:ring-brand-teal-light disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-brand-mid-gray";
 
-export default function TranscriptPanel({ transcripts, speakers, collapsed = false, onToggleCollapse }: TranscriptPanelProps) {
+export default memo(function TranscriptPanel({ transcripts, speakers, collapsed = false, onToggleCollapse }: TranscriptPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
+  const resetScrollRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Search over the transcript. Hidden behind a quiet magnifier (or Ctrl+F
@@ -27,25 +29,46 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [current, setCurrent] = useState(0);
+  // null follows the most recent 40 entries; a number holds a history window.
+  const [historyStart, setHistoryStart] = useState<number | null>(null);
+  const speakerById = useMemo(() => new Map(speakers.map(s => [s.id, s])), [speakers]);
 
   const searchActive = searchOpen && query.trim().length > 0;
   const matches = useMemo(
     () => (searchActive ? findTranscriptMatches(transcripts, query) : []),
     [searchActive, transcripts, query],
   );
-  const matchSet = useMemo(() => new Set(matches), [matches]);
   const matchesRef = useRef(matches);
   matchesRef.current = matches;
   const currentClamped = Math.min(current, Math.max(0, matches.length - 1));
+  const activeMatch = searchActive ? matches[currentClamped] : undefined;
+  const latestStart = Math.max(0, transcripts.length - TRANSCRIPT_PAGE_SIZE);
+  const visibleStart = activeMatch !== undefined
+    ? Math.min(Math.floor(activeMatch / TRANSCRIPT_PAGE_SIZE) * TRANSCRIPT_PAGE_SIZE, latestStart)
+    : Math.min(historyStart ?? latestStart, latestStart);
+  const visibleEntries = transcripts.slice(visibleStart, visibleStart + TRANSCRIPT_PAGE_SIZE);
+
+  useEffect(() => {
+    if (historyStart !== null && historyStart > latestStart) setHistoryStart(latestStart);
+  }, [historyStart, latestStart]);
 
   useEffect(() => {
     // While a search is underway the view holds its place instead of
     // following new speech; closing the search resumes the live tail.
-    if (searchActive) return;
-    if (shouldAutoScrollRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    if (searchActive || collapsed) return;
+    const container = scrollContainerRef.current;
+    if (container && historyStart === null && shouldAutoScrollRef.current) {
+      // Interim messages arrive frequently: no repeated smooth-scroll animation.
+      container.scrollTop = container.scrollHeight;
     }
-  }, [transcripts, searchActive]);
+  }, [transcripts, searchActive, historyStart, collapsed]);
+
+  useEffect(() => {
+    if (resetScrollRef.current && !searchActive && historyStart !== null && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+    resetScrollRef.current = false;
+  }, [historyStart, searchActive]);
 
   // Keep the pointer valid as matches appear and disappear live.
   useEffect(() => {
@@ -55,14 +78,12 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
   // Bring the active match into view on navigation or a new query - but not
   // on every arriving transcript entry, which would yank the view around.
   useEffect(() => {
-    if (!searchActive) return;
-    const m = matchesRef.current;
-    if (!m.length) return;
+    if (activeMatch === undefined || collapsed) return;
     const el = scrollContainerRef.current?.querySelector(
-      `[data-entry-index="${m[Math.min(current, m.length - 1)]}"]`,
+      `[data-entry-index="${activeMatch}"]`,
     );
     el?.scrollIntoView({ block: "center" });
-  }, [searchActive, query, current]);
+  }, [activeMatch, visibleStart, query, collapsed]);
 
   function openSearch() {
     setSearchOpen(true);
@@ -75,7 +96,7 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
     setQuery("");
     setCurrent(0);
     shouldAutoScrollRef.current = true;
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    setHistoryStart(null);
   }
 
   function gotoMatch(delta: number) {
@@ -104,44 +125,13 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
   // Follow the tail only while the user is already near it.
   function handleScroll() {
     const container = scrollContainerRef.current;
-    if (!container) return;
+    if (!container || searchActive) return;
     const distanceFromBottom =
       container.scrollHeight - container.scrollTop - container.clientHeight;
     shouldAutoScrollRef.current = distanceFromBottom < 64;
+    if (!shouldAutoScrollRef.current && historyStart === null) setHistoryStart(visibleStart);
+    if (shouldAutoScrollRef.current && visibleStart === latestStart) setHistoryStart(null);
   }
-
-  function formatTimestamp(ts: string): string {
-    try {
-      const date = new Date(ts);
-      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    } catch {
-      return ts;
-    }
-  }
-
-  function speakerLabel(entry: TranscriptEntry, speaker: Speaker | null): string {
-    if (speaker) {
-      return speaker.display_name && speaker.display_name_enabled
-        ? speaker.display_name
-        : speaker.name;
-    }
-    return entry.id ? "Unknown" : "Live";
-  }
-
-  function speakerColor(entry: TranscriptEntry, speaker: Speaker | null): string {
-    if (speaker) return speaker.color;
-    return entry.id ? "#64748b" : "#2dd4bf";
-  }
-
-  // The last entry may be interim (in-progress speech) — detect by checking
-  // if it's very recent (within 2s) and there's more than one entry
-  const isLastInterim = (i: number) => {
-    if (i !== transcripts.length - 1) return false;
-    if (transcripts.length < 2) return false;
-    const now = Date.now();
-    const ts = new Date(transcripts[i].timestamp).getTime();
-    return now - ts < 2000;
-  };
 
   // Collapsed: a rail on desktop, a single bar on mobile. The transcript keeps
   // arriving; it just stops taking a column of the call screen.
@@ -173,8 +163,8 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
   }
 
   return (
-    <div className="flex h-full flex-col" id={PANEL_ID} onKeyDown={handlePanelKeyDown}>
-      <div className="flex items-start justify-between gap-2 border-b border-brand-light-gray-1 px-4 pb-3">
+    <div className="flex h-full min-h-0 flex-col" id={PANEL_ID} onKeyDown={handlePanelKeyDown}>
+      <div className="flex shrink-0 items-start justify-between gap-2 border-b border-brand-light-gray-1 px-4 pb-3">
         {searchOpen ? (
           <div className="-mt-1 flex min-w-0 flex-1 items-center gap-1.5">
             <input
@@ -280,66 +270,53 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
           </p>
         ) : (
           <div className="space-y-3">
-            {transcripts.map((entry, i) => {
-              const isMarker = entry.text.startsWith("---");
-              const interim = isLastInterim(i);
-              const isCurrentMatch = searchActive && matches.length > 0 && matches[currentClamped] === i;
-
-              if (isMarker) {
-                return (
-                  <div key={i} data-entry-index={i} className="text-center py-2">
-                    <span className="text-xs font-medium text-brand-amber bg-orange-50 px-3 py-1 rounded-full">
-                      {entry.text}
-                    </span>
-                  </div>
-                );
-              }
-
-              const speaker = entry.speaker_id ? speakers.find((s) => s.id === entry.speaker_id) : null;
-              const label = speakerLabel(entry, speaker ?? null);
-              const color = speakerColor(entry, speaker ?? null);
-
+            {visibleEntries.map((entry, offset) => {
+              const index = visibleStart + offset;
               return (
-                <div
-                  key={i}
-                  data-entry-index={i}
-                  className={`${interim ? "opacity-50" : ""} ${
-                    isCurrentMatch ? "-mx-2 rounded-md bg-brand-teal/5 px-2 py-1 ring-1 ring-brand-teal/20" : ""
-                  }`}
-                >
-                  <span className="mr-2 font-mono text-xs text-brand-mid-gray">
-                    {formatTimestamp(entry.timestamp)}
-                  </span>
-                  <span
-                    className="mr-1.5 inline-block max-w-24 truncate rounded px-1.5 py-0.5 align-middle text-[10px] font-semibold text-white"
-                    style={{ backgroundColor: color }}
-                    title={label}
-                  >
-                    {label}
-                  </span>
-                  <span className={`font-body text-sm leading-relaxed ${
-                    interim ? "text-brand-mid-gray italic" : "text-brand-dark-gray"
-                  }`}>
-                    {searchActive && matchSet.has(i)
-                      ? highlightParts(entry.text, query).map((part, k) =>
-                          part.hit ? (
-                            <mark key={k} className="rounded-sm bg-amber-200 text-brand-dark-gray">
-                              {part.text}
-                            </mark>
-                          ) : (
-                            <span key={k}>{part.text}</span>
-                          ),
-                        )
-                      : entry.text}
-                    {interim && <span className="animate-pulse ml-1">|</span>}
-                  </span>
-                </div>
+                <TranscriptRow
+                  key={entry.interim ? "interim" : entry.id ?? `entry-${entry.sequence ?? index}`}
+                  entry={entry}
+                  index={index}
+                  speaker={entry.speaker_id ? speakerById.get(entry.speaker_id) : undefined}
+                  query={searchActive ? query : ""}
+                  currentMatch={activeMatch === index}
+                />
               );
             })}
-            <div ref={bottomRef} />
           </div>
         )}
       </div>
+      {transcripts.length > TRANSCRIPT_PAGE_SIZE && !searchActive && (
+        <nav aria-label="Transcript pages" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-brand-light-gray-1 px-4 py-2">
+          <span role="status" className="font-body text-sm tabular-nums text-brand-gray">
+            {visibleStart + 1}-{Math.min(visibleStart + TRANSCRIPT_PAGE_SIZE, transcripts.length)} of {transcripts.length} entries
+          </span>
+          <div className="flex items-center gap-1">
+            {[
+              { label: "First", target: 0, disabled: visibleStart === 0 },
+              { label: "Older", target: Math.max(0, visibleStart - TRANSCRIPT_PAGE_SIZE), disabled: visibleStart === 0 },
+              { label: "Newer", target: Math.min(latestStart, visibleStart + TRANSCRIPT_PAGE_SIZE), disabled: visibleStart === latestStart },
+              { label: "Live", target: latestStart, disabled: historyStart === null },
+            ].map(({ label, target, disabled }) => (
+              <button
+                key={label}
+                type="button"
+                aria-label={`${label} transcript entries`}
+                disabled={disabled}
+                onClick={() => {
+                  const follow = target === latestStart;
+                  resetScrollRef.current = !follow;
+                  shouldAutoScrollRef.current = follow;
+                  setHistoryStart(follow ? null : target);
+                }}
+                className="min-h-11 rounded-md px-2 font-body text-sm text-brand-dark-gray hover:bg-brand-light-gray-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-teal disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </nav>
+      )}
     </div>
   );
-}
+});

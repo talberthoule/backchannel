@@ -96,3 +96,40 @@ test("highlighting round-trips the text and marks every occurrence", () => {
     ["Ceiling", "ceiling"],
   );
 });
+
+for (const count of [0, 18, 40, 41, 1036, 10000]) {
+  test(`${count} transcript entries mount only the newest 40 rows`, () => {
+    const items = Array.from({ length: count }, (_, i) => entry(`Speech number ${i}`, i));
+    const html = render({ transcripts: items, speakers: [] });
+    assert.equal((html.match(/data-entry-index=/g) || []).length, Math.min(count, 40));
+    assert.equal(html.includes('aria-label="Transcript pages"'), count > 40);
+    if (count > 0) assert.ok(html.includes(`Speech number ${count - 1}<`));
+    if (count > 40) assert.ok(!html.includes(`Speech number ${count - 41}<`));
+  });
+}
+
+test("a single explicit interim row is styled live, but a newly saved row is not", () => {
+  const recent = { ...entry("Final speech", 0), timestamp: new Date().toISOString() };
+  const html = render({ transcripts: [recent, { text: "Live speech", timestamp: recent.timestamp, interim: true }], speakers: [] });
+  assert.equal((html.match(/animate-pulse/g) || []).length, 1);
+  const single = render({ transcripts: [{ ...recent, interim: true }], speakers: [] });
+  assert.ok(single.includes("animate-pulse"));
+  const saved = render({ transcripts: [recent, recent], speakers: [] });
+  assert.ok(!saved.includes("animate-pulse"));
+});
+
+test("memoized transcript rows preserve speaker display names and invalid timestamps", () => {
+  const html = render({
+    transcripts: [{ ...entry("Attributed speech", 0), speaker_id: "speaker-1", timestamp: "unknown-time" }],
+    speakers: [{ id: "speaker-1", name: "Speaker 1", display_name: "Test speaker", display_name_enabled: true, color: "#123456" }],
+  });
+  assert.ok(html.includes("Test speaker"));
+  assert.ok(html.includes("unknown-time"));
+  assert.ok(html.includes("background-color:#123456"));
+});
+
+test("segment markers remain visible within the bounded tail", () => {
+  const html = render({ transcripts: [entry("--- resumed ---", 0)], speakers: [] });
+  assert.ok(html.includes("--- resumed ---"));
+  assert.equal((html.match(/data-entry-index=/g) || []).length, 1);
+});

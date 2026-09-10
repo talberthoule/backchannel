@@ -51,7 +51,7 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
 
   return (
     <div
-      className={`animate-slide-in-right rounded-lg border border-brand-light-gray-1 bg-surface p-4 shadow-sm transition duration-300 ${
+      className={`rounded-lg border border-brand-light-gray-1 bg-surface p-4 shadow-sm transition-[transform,opacity] duration-300 motion-reduce:transition-none ${
         dismissing ? "translate-x-4 opacity-0" : ""
       } ${question.dismissed ? "opacity-40" : ""} ${
         isRefined ? "ring-1 ring-inset ring-brand-teal-light/20" : ""
@@ -294,26 +294,25 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
   );
 }
 
+// Reuse formatters across cards and updates instead of constructing two
+// locale formatters for every insight on every render.
+const timeFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit", minute: "2-digit", second: "2-digit",
+});
+const fullTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit",
+});
+
 function formatTimestamp(ts: string): string {
   const date = new Date(ts);
   if (Number.isNaN(date.getTime())) return "--:--";
 
-  return date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  return timeFormatter.format(date);
 }
 
 function formatFullTimestamp(ts: string): string {
   const date = new Date(ts);
   if (Number.isNaN(date.getTime())) return ts;
 
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  return fullTimeFormatter.format(date);
 }

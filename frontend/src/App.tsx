@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Layout from "./components/Layout";
 import AppOverlays from "./components/AppOverlays";
 import ManagementView, { type AdminTab } from "./components/ManagementView";
@@ -466,28 +466,33 @@ export default function App() {
   }, []);
 
   const runtimeMatchesView = Boolean(activeSessionId && activeSessionId === runtimeSessionId);
-  const viewLiveQuestions = runtimeMatchesView ? liveQuestions : [];
-  const viewLiveTranscripts = runtimeMatchesView ? liveTranscripts : [];
   const viewRuntimeSynthesis = runtimeMatchesView ? runtimeSynthesis : null;
   const viewRuntimeActivity = runtimeMatchesView ? runtimeActivity : null;
 
-  const allQuestions = runtimeMatchesView
-    ? session?.state === "completed"
-      ? mergeQuestions(savedQuestions, viewLiveQuestions)
-      : mergeQuestions(viewLiveQuestions, savedQuestions)
-    : savedQuestions;
+  // Transcript/interim/activity messages must not invalidate the insight list.
+  const allQuestions = useMemo(
+    () => runtimeMatchesView
+      ? session?.state === "completed"
+        ? mergeQuestions(savedQuestions, liveQuestions)
+        : mergeQuestions(liveQuestions, savedQuestions)
+      : savedQuestions,
+    [runtimeMatchesView, session?.state, savedQuestions, liveQuestions],
+  );
 
-  const persistedAndLiveTranscripts = mergeTranscripts(savedTranscripts, viewLiveTranscripts).map((entry) =>
-    entry.id && refinedEntries[entry.id] ? { ...entry, ...refinedEntries[entry.id] } : entry,
+  const persistedAndLiveTranscripts = useMemo(
+    () => mergeTranscripts(savedTranscripts, runtimeMatchesView ? liveTranscripts : []).map((entry) =>
+      entry.id && refinedEntries[entry.id] ? { ...entry, ...refinedEntries[entry.id] } : entry,
+    ),
+    [savedTranscripts, runtimeMatchesView, liveTranscripts, refinedEntries],
   );
 
   // Combine final transcripts + current interim for display
-  const displayTranscripts: TranscriptEntry[] = [
-    ...persistedAndLiveTranscripts,
-    ...(runtimeMatchesView && interimText
-      ? [{ text: interimText, timestamp: new Date().toISOString() }]
-      : []),
-  ];
+  const displayTranscripts = useMemo<TranscriptEntry[]>(
+    () => runtimeMatchesView && interimText
+      ? [...persistedAndLiveTranscripts, { text: interimText, timestamp: new Date().toISOString(), interim: true }]
+      : persistedAndLiveTranscripts,
+    [persistedAndLiveTranscripts, runtimeMatchesView, interimText],
+  );
   const reviewTranscripts = persistedAndLiveTranscripts;
   const liveSynthesis = newestSynthesis("live", savedLiveSynthesis, viewRuntimeSynthesis);
   const postCallSynthesis = newestSynthesis("post_call", savedSynthesis, viewRuntimeSynthesis);

@@ -647,6 +647,8 @@ export interface Speaker {
 }
 
 export interface TranscriptEntry {
+  // Client-only in-progress speech; never infer this from a saved row's age.
+  interim?: boolean;
   id?: string;
   session_id?: string;
   text: string;
