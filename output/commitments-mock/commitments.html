@@ -1,0 +1,279 @@
+<!--
+THESIS: Turn meeting promises into a shared, editable list that survives the next call.
+OWN-WORLD: Backchannel's Inter/system type, slate surfaces, teal selection, and divided worksheet rows.
+STORY: Find what needs attention, set ownership and timing, close the loop, bring remaining work to the next meeting.
+FIRST VIEWPORT: Compact group navigation; open commitments on a single sheet; editable owner, date, and status in each row.
+FORM: Local extension of the existing meeting/group experience, interactive concept with fictional data. No identity redesign or production integration.
+FINISH: Inspect desktop and mobile, exercise the local interactions, review the mock. Existing product design documents remain authoritative.
+-->
+<style>
+  #bc-commitments {
+    --bc-paper: light-dark(#fff, #1e293b);
+    --bc-canvas: light-dark(#f1f5f9, #0f172a);
+    --bc-soft: light-dark(#f8fafc, #172235);
+    --bc-ink: light-dark(#0f172a, #f1f5f9);
+    --bc-secondary: light-dark(#475569, #cbd5e1);
+    --bc-muted: light-dark(#64748b, #94a3b8);
+    --bc-line: light-dark(#cbd5e1, #475569);
+    --bc-rule: light-dark(#e2e8f0, #334155);
+    --bc-teal: light-dark(#0f766e, #2dd4bf);
+    --bc-selected: light-dark(#e6f3f2, #173d40);
+    --bc-danger: light-dark(#b91c1c, #fca5a5);
+    --bc-warning: light-dark(#92400e, #fcd34d);
+    --bc-fill: light-dark(#0f766e, #0f766e);
+    --bc-on-fill: #fff;
+    font-family: "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px; line-height: 1.5; color: var(--bc-ink);
+    background: var(--bc-canvas); border: 1px solid var(--bc-line); border-radius: 12px;
+    overflow: clip; text-align: left; container-type: inline-size;
+  }
+  #bc-commitments * { box-sizing: border-box; }
+  #bc-commitments [hidden] { display: none !important; }
+  #bc-commitments h2, #bc-commitments h3, #bc-commitments p { margin: 0; }
+  #bc-commitments button, #bc-commitments input, #bc-commitments select { font: inherit; color: inherit; }
+  #bc-commitments button { cursor: pointer; }
+  #bc-commitments button:focus-visible, #bc-commitments input:focus-visible, #bc-commitments select:focus-visible, #bc-commitments summary:focus-visible { outline: 2px solid var(--bc-teal); outline-offset: 3px; }
+  #bc-commitments ::selection { background: var(--bc-selected); color: var(--bc-ink); }
+  #bc-commitments input { caret-color: var(--bc-teal); }
+  #bc-commitments .bc-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 22px; background: var(--bc-paper); border-bottom: 1px solid var(--bc-rule); }
+  #bc-commitments .bc-brand { display: flex; align-items: center; gap: 9px; font-size: 18px; font-weight: 650; letter-spacing: -.025em; }
+  #bc-commitments .bc-brand i, #bc-commitments .bc-brand svg { color: var(--bc-teal); width: 22px; height: 22px; }
+  #bc-commitments .bc-caption { color: var(--bc-muted); font-size: 12px; }
+  #bc-commitments .bc-shell { display: grid; grid-template-columns: 178px minmax(0, 1fr); }
+  #bc-commitments .bc-nav { padding: 22px 12px; background: var(--bc-paper); border-right: 1px solid var(--bc-rule); }
+  #bc-commitments .bc-group { padding: 0 10px 14px; font-size: 13px; font-weight: 600; }
+  #bc-commitments .bc-nav button { display: block; text-align: left; width: 100%; min-height: 44px; padding: 9px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--bc-secondary); font-size: 13px; }
+  #bc-commitments .bc-nav button[aria-pressed="true"] { background: var(--bc-selected); color: var(--bc-teal); font-weight: 600; }
+  #bc-commitments .bc-nav button:hover { background: var(--bc-soft); }
+  #bc-commitments .bc-nav button[aria-pressed="true"]:hover { background: var(--bc-selected); }
+  #bc-commitments .bc-nav-label { font-size: 12px; color: var(--bc-muted); padding: 24px 10px 4px; }
+  #bc-commitments .bc-main { padding: 28px 24px 20px; min-width: 0; }
+  #bc-commitments .bc-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 14px; margin-bottom: 22px; }
+  #bc-commitments h2 { font-size: 26px; line-height: 1.2; letter-spacing: -.025em; font-weight: 650; text-wrap: balance; }
+  #bc-commitments .bc-subtitle { color: var(--bc-secondary); margin-top: 8px; font-size: 13px; }
+  #bc-commitments .bc-button { display: inline-flex; gap: 6px; align-items: center; justify-content: center; border: 1px solid var(--bc-line); background: var(--bc-paper); border-radius: 6px; padding: 8px 12px; min-height: 40px; font-weight: 500; }
+  #bc-commitments .bc-button:hover { background: var(--bc-soft); }
+  #bc-commitments .bc-primary { background: var(--bc-fill); color: var(--bc-on-fill); border-color: var(--bc-fill); }
+  #bc-commitments .bc-primary:hover { background: var(--bc-fill); opacity: .9; }
+  #bc-commitments .bc-sheet { background: var(--bc-paper); border-radius: 12px; padding: 0 20px; }
+  #bc-commitments .bc-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--bc-rule); }
+  #bc-commitments .bc-filters { display: flex; gap: 18px; }
+  #bc-commitments .bc-filter { background: transparent; border: 0; border-bottom: 2px solid transparent; min-height: 44px; padding: 8px 0; color: var(--bc-muted); }
+  #bc-commitments .bc-filter[aria-pressed="true"] { border-bottom-color: var(--bc-teal); color: var(--bc-teal); font-weight: 600; }
+  #bc-commitments .bc-cols, #bc-commitments .bc-row { display: grid; grid-template-columns: minmax(180px, 1fr) 108px 124px 108px; gap: 12px; }
+  #bc-commitments .bc-cols { padding: 14px 0 8px; color: var(--bc-muted); font-size: 12px; }
+  #bc-commitments .bc-list { padding: 0; margin: 0; list-style: none; }
+  #bc-commitments .bc-item { border-bottom: 1px solid var(--bc-rule); }
+  #bc-commitments .bc-item:last-child { border-bottom: 0; }
+  #bc-commitments .bc-row { padding: 17px 0; align-items: start; }
+  #bc-commitments .bc-title { color: var(--bc-ink); font-weight: 550; line-height: 1.4; }
+  #bc-commitments .bc-source { margin-top: 6px; padding: 0; min-height: 24px; border: 0; text-align: left; background: transparent; font-size: 12px; color: var(--bc-secondary); text-decoration: underline; text-decoration-color: var(--bc-line); text-underline-offset: 3px; }
+  #bc-commitments .bc-source:hover { color: var(--bc-teal); }
+  #bc-commitments .bc-field { display: flex; flex-direction: column; min-width: 0; gap: 4px; }
+  #bc-commitments .bc-field > span { display: none; font-size: 12px; color: var(--bc-muted); }
+  #bc-commitments .bc-field input, #bc-commitments .bc-field select { width: 100%; min-width: 0; min-height: 36px; padding: 6px; border: 1px solid var(--bc-rule); border-radius: 6px; background: var(--bc-paper); font-size: 12px; font-variant-numeric: tabular-nums; }
+  #bc-commitments .bc-field input:hover, #bc-commitments .bc-field select:hover { border-color: var(--bc-line); }
+  #bc-commitments .bc-issue { font-size: 11px; color: var(--bc-warning); }
+  #bc-commitments .bc-overdue { color: var(--bc-danger); }
+  #bc-commitments .bc-detail { padding: 0 0 18px; }
+  #bc-commitments .bc-detail-inner { padding: 14px 16px; background: var(--bc-soft); border-radius: 6px; }
+  #bc-commitments .bc-detail blockquote { margin: 8px 0; font-size: 13px; color: var(--bc-secondary); max-width: 70ch; }
+  #bc-commitments .bc-detail-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--bc-muted); }
+  #bc-commitments .bc-edit { border: 0; padding: 0; background: transparent; min-height: 24px; font-size: 12px; color: var(--bc-teal); text-decoration: underline; text-underline-offset: 3px; }
+  #bc-commitments .bc-edit-input { margin-top: 10px; width: 100%; padding: 10px; border: 1px solid var(--bc-line); border-radius: 6px; background: var(--bc-paper); }
+  #bc-commitments .bc-next { padding: 22px 0 0; }
+  #bc-commitments .bc-next summary { cursor: pointer; font-weight: 550; min-height: 32px; }
+  #bc-commitments .bc-next p { margin-top: 5px; color: var(--bc-secondary); font-size: 12px; }
+  #bc-commitments .bc-agenda { padding: 12px 0 0 20px; margin: 0; color: var(--bc-secondary); font-size: 13px; }
+  #bc-commitments .bc-agenda li { margin-bottom: 10px; }
+  #bc-commitments .bc-status { min-height: 22px; margin-top: 18px; color: var(--bc-teal); font-size: 12px; }
+  #bc-commitments .bc-add { padding: 18px 0; border-bottom: 1px solid var(--bc-rule); }
+  #bc-commitments .bc-add label { display: block; font-size: 13px; font-weight: 500; }
+  #bc-commitments .bc-add input { margin: 6px 0 10px; width: 100%; padding: 10px; border: 1px solid var(--bc-line); border-radius: 6px; background: var(--bc-paper); }
+  #bc-commitments .bc-add-actions { display: flex; gap: 8px; }
+  #bc-commitments .bc-empty { padding: 28px 0; color: var(--bc-secondary); }
+  #bc-commitments .bc-footer { padding: 12px 22px; font-size: 11px; color: var(--bc-muted); background: var(--bc-paper); border-top: 1px solid var(--bc-rule); }
+  #bc-commitments[data-density="compact"] .bc-row { padding-block: 10px; }
+  @container (max-width: 910px) {
+    #bc-commitments .bc-shell { grid-template-columns: 148px minmax(0, 1fr); }
+    #bc-commitments .bc-main { padding: 22px 16px 16px; }
+    #bc-commitments .bc-cols { display: none; }
+    #bc-commitments .bc-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    #bc-commitments .bc-content { grid-column: 1 / -1; }
+    #bc-commitments .bc-field > span { display: block; }
+  }
+  @container (max-width: 600px) {
+    #bc-commitments .bc-shell { display: block; }
+    #bc-commitments .bc-nav { border-right: 0; border-bottom: 1px solid var(--bc-rule); padding: 12px; }
+    #bc-commitments .bc-group { padding: 0 0 8px; }
+    #bc-commitments .bc-nav-options { display: flex; flex-wrap: wrap; gap: 6px; }
+    #bc-commitments .bc-nav button { width: auto; flex: 1 1 120px; }
+    #bc-commitments .bc-nav-label { display: none; }
+    #bc-commitments .bc-main { padding: 20px 12px 16px; }
+    #bc-commitments .bc-sheet { padding-inline: 14px; }
+    #bc-commitments .bc-top { padding: 14px; }
+    #bc-commitments h2 { font-size: 23px; }
+    #bc-commitments .bc-row { gap: 12px 8px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+    #bc-commitments .bc-field:last-child { grid-column: 1 / -1; }
+    #bc-commitments .bc-field input, #bc-commitments .bc-field select, #bc-commitments .bc-add input, #bc-commitments .bc-edit-input { font-size: 16px; min-height: 44px; }
+    #bc-commitments .bc-button, #bc-commitments .bc-source, #bc-commitments .bc-edit { min-height: 44px; }
+    #bc-commitments .bc-caption { font-size: 11px; }
+  }
+  @media (pointer: coarse) {
+    #bc-commitments button, #bc-commitments input, #bc-commitments select { min-height: 44px !important; }
+  }
+</style>
+<div id="bc-commitments" aria-label="Backchannel commitments concept">
+  <header class="bc-top">
+    <div class="bc-brand"><i data-lucide="audio-lines" aria-hidden="true"></i>backchannel</div>
+    <span class="bc-caption">Interactive concept · Fictional data</span>
+  </header>
+  <div class="bc-shell">
+    <nav class="bc-nav" aria-label="Commitment scope">
+      <p class="bc-group">Alderwake Health Network</p>
+      <div class="bc-nav-options">
+        <button type="button" data-scope="group" aria-pressed="true">Open commitments</button>
+        <p class="bc-nav-label">Meeting</p>
+        <button type="button" data-scope="meeting" aria-pressed="false">Recovery readiness review</button>
+      </div>
+    </nav>
+    <main class="bc-main">
+      <div class="bc-heading">
+        <div><h2 id="bc-title">Open commitments</h2><p class="bc-subtitle" id="bc-summary"></p></div>
+        <button type="button" class="bc-button bc-primary" id="bc-add-open">Add commitment</button>
+      </div>
+      <section class="bc-sheet" aria-label="Commitment worksheet">
+        <div class="bc-toolbar">
+          <div class="bc-filters" aria-label="Commitment status">
+            <button type="button" class="bc-filter" data-filter="open" aria-pressed="true">Open <span id="bc-open-count"></span></button>
+            <button type="button" class="bc-filter" data-filter="completed" aria-pressed="false">Completed <span id="bc-done-count"></span></button>
+          </div>
+          <span class="bc-caption">As of Sep 8, 2026</span>
+        </div>
+        <form id="bc-add-form" class="bc-add" hidden>
+          <label for="bc-new-title">What needs to happen?</label>
+          <input id="bc-new-title" name="commitment" required maxlength="180" autocomplete="off" placeholder="e.g. Send the revised pilot scope">
+          <div class="bc-add-actions"><button class="bc-button bc-primary" type="submit">Add to list</button><button class="bc-button" id="bc-add-cancel" type="button">Cancel</button></div>
+        </form>
+        <div class="bc-cols" aria-hidden="true"><span>Commitment / source meeting</span><span>Owner</span><span>Due date</span><span>Status</span></div>
+        <ul class="bc-list" id="bc-list" aria-label="Commitments"></ul>
+        <p class="bc-empty" id="bc-empty" hidden></p>
+      </section>
+      <details class="bc-next" id="bc-next">
+        <summary>Bring forward to the next meeting <span id="bc-next-count"></span></summary>
+        <p>Open commitments from this group, ready to review in meeting setup.</p>
+        <ol class="bc-agenda" id="bc-agenda"></ol>
+      </details>
+      <p class="bc-status" id="bc-status" role="status" aria-live="polite">Changes stay in this preview.</p>
+    </main>
+  </div>
+  <footer class="bc-footer">Mockup only. Ownership, dates, and progress reset when this preview reloads.</footer>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('bc-commitments');
+  const find = (selector) => root.querySelector(selector);
+  const today = '2026-09-08';
+  const currentMeeting = 'Recovery readiness review';
+  const owners = ['', 'Maya Chen', 'Owen Delacroix', 'Leah Foster'];
+  const states = ['Open', 'In progress', 'Blocked', 'Completed'];
+  const tasks = [
+    { id: 1, title: 'Send the pilot scope and operating boundary', owner: 'Maya Chen', due: '2026-09-07', status: 'In progress', meeting: currentMeeting, when: 'Sep 4', quote: 'I will send the revised scope and the operating boundary by Monday, so we can take it into the working session.', speaker: 'Maya Chen', stamp: '28:14' },
+    { id: 2, title: 'Confirm the clinical validation owner', owner: '', due: '2026-09-09', status: 'Open', meeting: currentMeeting, when: 'Sep 4', quote: 'We still need one person who can sign off on clinical validation. Let us confirm that before the technical session.', speaker: 'Owen Delacroix', stamp: '31:06' },
+    { id: 3, title: 'Share the recovery dependency map', owner: 'Owen Delacroix', due: '2026-09-10', status: 'Blocked', meeting: 'Recovery architecture workshop', when: 'Sep 1', quote: 'I can share the dependency map once the infrastructure team signs off on the application inventory.', speaker: 'Owen Delacroix', stamp: '19:42' },
+    { id: 4, title: 'Schedule the technical working session', owner: 'Leah Foster', due: '2026-09-11', status: 'Open', meeting: currentMeeting, when: 'Sep 4', quote: 'I will get the technical working session on the calendar for next week and include the recovery team.', speaker: 'Leah Foster', stamp: '35:18' },
+    { id: 5, title: 'Draft the board-ready evidence outline', owner: 'Maya Chen', due: '2026-09-14', status: 'Open', meeting: 'Pilot scope review', when: 'Aug 28', quote: 'I will put together the evidence outline so the sponsor can see what we will prove during the pilot.', speaker: 'Maya Chen', stamp: '22:09' },
+    { id: 6, title: 'Share the current recovery runbook', owner: 'Owen Delacroix', due: '2026-09-03', status: 'Completed', meeting: currentMeeting, when: 'Sep 4', quote: 'The current runbook is in the shared folder now, including the escalation contacts.', speaker: 'Owen Delacroix', stamp: '04:32' },
+  ];
+  const design = { density: 'comfortable', sourceContext: false };
+  let scope = 'group';
+  let filter = 'open';
+  const expanded = new Set();
+  const editing = new Set();
+  const escape = (text) => String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const isOpen = (task) => task.status !== 'Completed';
+  const scoped = () => tasks.filter((task) => scope === 'group' || task.meeting === currentMeeting);
+  const options = (values, selected, emptyLabel = '') => values.map((value) => `<option value="${escape(value)}"${value === selected ? ' selected' : ''}>${escape(value || emptyLabel)}</option>`).join('');
+  const announce = (message) => { find('#bc-status').textContent = message; };
+
+  function render() {
+    root.dataset.density = design.density;
+    const items = scoped();
+    const open = items.filter(isOpen);
+    const overdue = open.filter((task) => task.due && task.due < today).length;
+    const unassigned = open.filter((task) => !task.owner).length;
+    find('#bc-title').textContent = scope === 'group' ? 'Open commitments' : 'Meeting commitments';
+    find('#bc-summary').textContent = `${scope === 'group' ? 'Across 3 meetings' : 'Recovery readiness review · Sep 4'} · ${open.length} open${overdue ? ` · ${overdue} overdue` : ''}${unassigned ? ` · ${unassigned} needs an owner` : ''}`;
+    find('#bc-open-count').textContent = `(${open.length})`;
+    find('#bc-done-count').textContent = `(${items.length - open.length})`;
+    const shown = items.filter((task) => isOpen(task) === (filter === 'open'));
+    find('#bc-empty').hidden = shown.length > 0;
+    find('#bc-empty').textContent = filter === 'completed' ? 'No completed commitments yet.' : 'All commitments in this view are complete.';
+    find('#bc-list').innerHTML = shown.map((task) => {
+      const late = isOpen(task) && task.due && task.due < today;
+      const detailsOpen = expanded.has(task.id) || design.sourceContext;
+      return `<li class="bc-item" data-item="${task.id}">
+        <div class="bc-row">
+          <div class="bc-content"><p class="bc-title">${escape(task.title)}</p><button type="button" class="bc-source" data-source="${task.id}" aria-expanded="${detailsOpen}" aria-controls="bc-detail-${task.id}">${escape(task.meeting)} · ${escape(task.when)}</button></div>
+          <label class="bc-field"><span>Owner</span><select data-field="owner" data-id="${task.id}" aria-label="Owner: ${escape(task.title)}">${options(owners, task.owner, 'Unassigned')}</select>${!task.owner ? '<small class="bc-issue">Needs an owner</small>' : ''}</label>
+          <label class="bc-field"><span>Due date</span><input type="date" data-field="due" data-id="${task.id}" aria-label="Due date: ${escape(task.title)}" value="${task.due}">${late ? '<small class="bc-issue bc-overdue">Overdue</small>' : ''}</label>
+          <label class="bc-field"><span>Status</span><select data-field="status" data-id="${task.id}" aria-label="Status: ${escape(task.title)}">${options(states, task.status)}</select></label>
+        </div>
+        <div class="bc-detail" id="bc-detail-${task.id}"${detailsOpen ? '' : ' hidden'}><div class="bc-detail-inner">
+          <div class="bc-detail-title"><span>${escape(task.speaker)} · ${escape(task.stamp)}</span><button type="button" class="bc-edit" data-edit="${task.id}">Edit commitment</button></div>
+          <blockquote>${escape(task.quote)}</blockquote>
+          ${editing.has(task.id) ? `<label class="bc-caption">Commitment text<input class="bc-edit-input" data-field="title" data-id="${task.id}" aria-label="Commitment text" maxlength="180" value="${escape(task.title)}"></label>` : ''}
+        </div></div>
+      </li>`;
+    }).join('');
+    const next = tasks.filter(isOpen);
+    find('#bc-next-count').textContent = `(${next.length})`;
+    find('#bc-agenda').innerHTML = next.length ? next.map((task) => `<li><strong>${escape(task.title)}</strong><br>${escape(task.owner || 'Owner to confirm')} · ${escape(task.status)}${task.due ? ` · Due ${task.due}` : ' · Date to confirm'}</li>`).join('') : '<li>No open commitments to bring forward.</li>';
+    root.querySelectorAll('[data-scope]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.scope === scope)));
+    root.querySelectorAll('[data-filter]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.filter === filter)));
+  }
+  root.addEventListener('click', (event) => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    if (button.dataset.scope) { scope = button.dataset.scope; render(); announce(scope === 'group' ? 'Showing commitments across the group.' : 'Showing commitments from this meeting.'); }
+    if (button.dataset.filter) { filter = button.dataset.filter; render(); announce(filter === 'open' ? 'Showing open commitments.' : 'Showing completed commitments.'); }
+    if (button.dataset.source) {
+      const id = Number(button.dataset.source);
+      expanded.has(id) ? expanded.delete(id) : expanded.add(id);
+      if (design.sourceContext) design.sourceContext = false;
+      render(); find(`[data-source="${id}"]`)?.focus();
+    }
+    if (button.dataset.edit) { const id = Number(button.dataset.edit); editing.add(id); render(); find(`[data-id="${id}"][data-field="title"]`).focus(); }
+  });
+  root.addEventListener('change', (event) => {
+    const field = event.target.dataset.field;
+    if (!field) return;
+    const id = Number(event.target.dataset.id);
+    const task = tasks.find((item) => item.id === id);
+    const value = event.target.value.trim();
+    if (field === 'title' && !value) { event.target.value = task.title; announce('A commitment needs a description. The previous text was kept.'); return; }
+    task[field] = value;
+    render();
+    const control = find(`[data-id="${id}"][data-field="${field}"]`);
+    (control || find('[data-filter="completed"]')).focus();
+    announce(field === 'status' && value === 'Completed' ? 'Marked complete. Removed from the next-meeting list.' : 'Updated in this preview.');
+  });
+  find('#bc-add-open').addEventListener('click', () => { find('#bc-add-form').hidden = false; find('#bc-new-title').focus(); });
+  find('#bc-add-cancel').addEventListener('click', () => { find('#bc-add-form').hidden = true; find('#bc-add-form').reset(); find('#bc-add-open').focus(); });
+  find('#bc-add-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const input = find('#bc-new-title');
+    const title = input.value.trim();
+    if (!title) { input.setCustomValidity('Describe what needs to happen.'); input.reportValidity(); return; }
+    tasks.unshift({ id: Math.max(...tasks.map((task) => task.id)) + 1, title, owner: '', due: '', status: 'Open', meeting: currentMeeting, when: 'Sep 4', quote: 'Added manually during review.', speaker: 'You', stamp: 'Meeting review' });
+    filter = 'open'; render(); find('#bc-add-form').hidden = true; find('#bc-add-form').reset(); find('#bc-add-open').focus(); announce('Commitment added. Set its owner and due date in the list.');
+  });
+  find('#bc-new-title').addEventListener('input', (event) => event.target.setCustomValidity(''));
+  render();
+  if (globalThis.Tweak) {
+    const tweak = new Tweak({ container: root, onChange: render });
+    tweak.addSelect(design, 'density', { label: 'List spacing', options: ['comfortable', 'compact'] });
+    tweak.addToggle(design, 'sourceContext', { label: 'Show source excerpts inline' });
+  }
+})();
+</script>
