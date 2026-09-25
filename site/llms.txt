@@ -103,6 +103,15 @@ Key facts:
 - [Three degrees of local](https://backchannel.page/blog/three-degrees-of-local/): where
   each component can run, from local diarization through fully self-hosted analysis
 
+## How it works
+
+- [Analyst lenses](https://backchannel.page/analyst-lenses/): how the Consolidated
+  Analyst reads the call. Every 40 seconds one request carries the latest 30
+  transcript lines and one prompt section per enabled lens; the reply uses one
+  fixed shape, each finding tagged with its type and lens. Covers custom lens types,
+  the Opportunity lens being left out of meeting types without offering matching,
+  and the trade-off that all lenses share one model, cycle, and window
+
 ## Docs
 
 - [Download portal](https://downloads.backchannel.page/): public Windows, macOS, and Linux executable downloads; no account required

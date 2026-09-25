@@ -13,6 +13,7 @@ const customerFiles = [
   '../CLAUDE.md',
   '../site/index.html',
   '../site/private-meeting-ai/index.html',
+  '../site/analyst-lenses/index.html',
   '../site/blog/index.html',
   '../site/blog/live-meeting-ai-enterprise-gate/index.html',
   '../site/fireflies-alternative/index.html',
@@ -147,6 +148,7 @@ test('customer download entry points use the authenticated Backchannel portal', 
     '../docs/quickstart.md',
     '../site/index.html',
     '../site/private-meeting-ai/index.html',
+    '../site/analyst-lenses/index.html',
     '../site/fireflies-alternative/index.html',
     '../site/granola-alternative/index.html',
     '../site/otter-alternative/index.html',
@@ -225,6 +227,36 @@ test('the privacy deep-dive is indexed for crawlers and for agents', () => {
   assert.match(read('../site/sitemap.xml'), /<loc>https:\/\/backchannel\.page\/private-meeting-ai\/<\/loc>/);
   assert.match(read('../site/llms.txt'), /https:\/\/backchannel\.page\/private-meeting-ai\//);
   assert.match(read('../site/private-meeting-ai/index.html'), /rel="canonical" href="https:\/\/backchannel\.page\/private-meeting-ai\/"/);
+});
+
+test('the analyst lenses walkthrough is linked, indexed, and ships both themes of every shot', () => {
+  const page = read('../site/analyst-lenses/index.html');
+  assert.match(read('../site/sitemap.xml'), /<loc>https:\/\/backchannel\.page\/analyst-lenses\/<\/loc>/);
+  assert.match(read('../site/llms.txt'), /https:\/\/backchannel\.page\/analyst-lenses\//);
+  assert.match(page, /rel="canonical" href="https:\/\/backchannel\.page\/analyst-lenses\/"/);
+  const agents = html.split('<section id="agents"')[1].split('</section>')[0];
+  assert.match(agents, /href="\/analyst-lenses\/"/);
+  assert.match(page, /<script src="\/analyst-lenses\/walkthrough\.js" defer><\/script>/);
+  statSync(new URL('../site/analyst-lenses/walkthrough.js', import.meta.url));
+  // The walkthrough styles live beside the page, not in style.css, which sits
+  // at the structural gate's 3000-line limit (sentrux max_file_lines).
+  assert.match(page, /<link rel="stylesheet" href="\/analyst-lenses\/walkthrough\.css" \/>/);
+  statSync(new URL('../site/analyst-lenses/walkthrough.css', import.meta.url));
+  assert.doesNotMatch(read('../site/style.css'), /\.lw-/);
+
+  // Every screenshot the page references exists, and each has its other-theme twin.
+  const shots = new Set([...page.matchAll(/\/assets\/lenses\/([a-z-]+?)(?:-dark)?\.webp/g)].map((m) => m[1]));
+  assert.ok(shots.size >= 4, `expected the page to show its captures, saw ${shots.size}`);
+  for (const stem of shots) {
+    for (const file of [`${stem}.webp`, `${stem}-dark.webp`]) {
+      statSync(new URL(`../site/assets/lenses/${file}`, import.meta.url));
+    }
+  }
+
+  // The lenses are prompt sections of one call with a fixed reply shape; the
+  // page must not describe them otherwise.
+  assert.doesNotMatch(page, /dynamic schema|agent-like/i);
+  assert.match(page, /Step 1 sketches the design Backchannel avoids, so its three findings are examples/);
 });
 
 test('the sitemap remains a same-host index while public pages link to the portal', () => {

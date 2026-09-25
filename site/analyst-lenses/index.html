@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Analyst Lenses: One Request Reads the Call Through Every Lens | Backchannel</title>
+  <meta name="description" content="How Backchannel's Consolidated Analyst works: every 40 seconds one request reads the latest 30 transcript lines through every lens you configure, and each finding comes back tagged with the lens that found it. A five-step walkthrough built from a real run." />
+  <link rel="canonical" href="https://backchannel.page/analyst-lenses/" />
+  <meta property="og:title" content="Analyst Lenses: One Request Reads the Call Through Every Lens | Backchannel" />
+  <meta property="og:description" content="How Backchannel's Consolidated Analyst works: every 40 seconds one request reads the latest 30 transcript lines through every lens you configure, and each finding comes back tagged with the lens that found it. A five-step walkthrough built from a real run." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Backchannel" />
+  <meta property="og:url" content="https://backchannel.page/analyst-lenses/" />
+  <meta property="og:image" content="https://backchannel.page/assets/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Backchannel: live meeting transcription and real-time insight agents, self-hosted." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://backchannel.page/assets/og-image.png" />
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <link rel="stylesheet" href="../style.css" />
+  <link rel="stylesheet" href="/analyst-lenses/walkthrough.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebPage",
+        "url": "https://backchannel.page/analyst-lenses/",
+        "name": "Analyst Lenses: One Request Reads the Call Through Every Lens | Backchannel",
+        "description": "How Backchannel's Consolidated Analyst works: every 40 seconds one request reads the latest 30 transcript lines through every lens you configure, and each finding comes back tagged with the lens that found it. A five-step walkthrough built from a real run.",
+        "dateModified": "2026-09-25",
+        "isPartOf": {
+          "@id": "https://backchannel.page/#website"
+        },
+        "about": {
+          "@id": "https://backchannel.page/#software"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Backchannel",
+            "item": "https://backchannel.page/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Analyst lenses"
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+<a class="skip-link" href="#top">Skip to content</a>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <img src="/assets/favicon.svg" alt="" />
+      backchannel
+    </a>
+    <nav class="site-nav">
+      <a href="/#features">Features</a>
+      <a href="/blog/">Writing</a>
+      <a href="/docs/">Docs</a>
+      <a class="btn primary nav-cta" href="https://github.com/talberthoule/backchannel">Star on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top" class="lenses-page">
+
+  <section class="hero">
+    <div class="wrap">
+      <h1>One request reads the call through <span class="accent">every lens</span></h1>
+      <p class="lede">
+        Backchannel's analyst reads the latest stretch of a live call once,
+        through every lens you configure, and tags each finding with the lens
+        that found it. This page shows why it works that way and what happens
+        on each cycle, using a real run on a fictional account.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="#walkthrough">Watch the walkthrough</a>
+        <a class="btn ghost" href="https://downloads.backchannel.page/">Download for desktop</a>
+        <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View on GitHub</a>
+      </div>
+      <p class="quickstart-note">One request every 40 s &middot; latest 30 transcript lines &middot; lenses editable in Admin &rarr; Agents &middot; MIT licensed</p>
+    </div>
+  </section>
+
+  <section id="walkthrough">
+    <div class="wrap">
+      <span class="kicker">The walkthrough</span>
+      <h2>Five steps, about a minute</h2>
+      <p class="sub">It plays on its own. Pause it, step with the arrows, or jump to a step. With reduced motion turned on, each step shows fully built.</p>
+
+      <div class="lw-player" id="lw-player" role="region" aria-label="Animated walkthrough of the analyst lenses">
+        <div class="lw-stage">
+
+          <!-- 1. The problem -->
+          <article class="lw-scene is-active" data-beats="0 1200 2000 2800 4600 6800" data-dur="12500" aria-label="Step 1 of 5">
+            <div class="lw-kicker"><span class="lw-n">01 / 05</span><h3>The straightforward design</h3></div>
+            <div class="lw-s1">
+              <div class="lw-card lw-tx" data-b="0">
+                <span class="lw-label">Transcript window &middot; last 30 lines</span>
+                <p><b>[S4] Maya</b>Our change advisory board needs ten working days even for isolated tests because identity is involved.</p>
+                <p><b>[S3] Owen</b>That split works, but the clinical application owners must sign the validation result.</p>
+                <p><b>[S1] Me</b>I will send the fixed pilot scope, separate managed-operations option, and operating boundary by Thursday noon.</p>
+                <p><b>[S4] Maya</b>Add the board-ready evidence outline. If I can see the final shape now, I can clear it with the insurer before the test.</p>
+                <span class="lw-more">+ 26 earlier lines</span>
+              </div>
+              <div class="lw-lanes" aria-hidden="true">
+                <div class="lw-lane" data-b="1"><div class="lw-lane-cap">30 lines + context</div><div class="lw-wire"></div></div>
+                <div class="lw-lane" data-b="2"><div class="lw-lane-cap">30 lines + context</div><div class="lw-wire"></div></div>
+                <div class="lw-lane" data-b="3"><div class="lw-lane-cap">30 lines + context</div><div class="lw-wire"></div></div>
+              </div>
+              <div class="lw-agents">
+                <div class="lw-card lw-agent" data-b="0">
+                  <div class="lw-agent-top"><span class="lw-agent-name">Observer</span><span class="lw-pill" data-b="1">1 call</span></div>
+                  <div class="lw-find" data-b="4" data-at="5 dup">Pilot scope and operating boundary due Thursday noon</div>
+                </div>
+                <div class="lw-card lw-agent" data-b="0">
+                  <div class="lw-agent-top"><span class="lw-agent-name">Opportunity Scout</span><span class="lw-pill" data-b="2">1 call</span></div>
+                  <div class="lw-find" data-b="4">Managed recovery operations after the pilot</div>
+                </div>
+                <div class="lw-card lw-agent" data-b="0">
+                  <div class="lw-agent-top"><span class="lw-agent-name">Action Tracker</span><span class="lw-pill" data-b="3">1 call</span></div>
+                  <div class="lw-find" data-b="4" data-at="5 dup">Send the pilot scope by Thursday noon</div>
+                </div>
+              </div>
+              <div class="lw-tally" data-b="5">
+                <span><b>3 calls</b> every cycle</span>
+                <span><b>3 copies</b> of the same transcript</span>
+                <span><b>0</b> findings shared between agents</span>
+              </div>
+            </div>
+            <p class="lw-scene-cap" hidden>Give each kind of finding its own agent and every agent re-reads the same transcript on every cycle. You pay for that transcript once per agent. The agents never see each other's findings, so two of them can report the same commitment.</p>
+          </article>
+
+          <!-- 2. A lens is a prompt section -->
+          <article class="lw-scene" data-beats="0 900 2300 3700 5100 6500 8300" data-dur="13000" aria-label="Step 2 of 5">
+            <div class="lw-kicker"><span class="lw-n">02 / 05</span><h3>A lens is a section of one prompt</h3></div>
+            <div class="lw-s2">
+              <div class="lw-card lw-editor" data-b="0">
+                <div class="lw-editor-head"><span class="lw-label">Analysis lenses</span><span class="lw-sp">Admin &rarr; Agents</span></div>
+                <div class="lw-lrow lw-q" data-hl="1"><span class="lw-tog"></span><span class="lw-nm">Strategic Follow-Up Questions</span><span class="lw-pill lw-q">question</span></div>
+                <div class="lw-lrow lw-obs" data-hl="2"><span class="lw-tog"></span><span class="lw-nm">Strategic Observations</span><span class="lw-pill lw-obs">observation</span></div>
+                <div class="lw-lrow lw-opp" data-hl="3"><span class="lw-tog"></span><span class="lw-nm">Product &amp; Service Opportunities</span><span class="lw-pill lw-opp">opportunity</span></div>
+                <div class="lw-lrow lw-act" data-hl="4"><span class="lw-tog"></span><span class="lw-nm">Action Items &amp; Commitments</span><span class="lw-pill lw-act">action_item</span></div>
+                <div class="lw-lrow lw-risk" data-hl="5"><span class="lw-tog"></span><span class="lw-nm">Delivery Risks</span><span class="lw-pill lw-risk">risk &middot; custom</span></div>
+              </div>
+              <div class="lw-card lw-doc" aria-label="The analyst prompt, built from the enabled lenses">
+                <div class="lw-doc-h" data-b="0">## Meeting Context</div>
+                <div class="lw-sec lw-q" data-b="1"><span class="lw-doc-h">## Lens 1: Strategic Follow-Up Questions</span><span>Think like a seasoned investigative journalist and strategic sales advisor&hellip;</span><span class="lw-tag">Tag every finding from this lens with "item_type": <i>"question"</i> and "lens": <i>"question"</i>.</span></div>
+                <div class="lw-sec lw-obs" data-b="2"><span class="lw-doc-h">## Lens 2: Strategic Observations</span><span>Think like a strategic intelligence analyst&hellip;</span><span class="lw-tag">Tag every finding from this lens with "item_type": <i>"observation"</i> &hellip;</span></div>
+                <div class="lw-sec lw-opp" data-b="3"><span class="lw-doc-h">## Lens 3: Product &amp; Service Opportunities</span><span>Think like a senior solutions consultant&hellip;</span><span class="lw-tag">Tag every finding from this lens with "item_type": <i>"opportunity"</i> &hellip;</span></div>
+                <div class="lw-sec lw-act" data-b="4"><span class="lw-doc-h">## Lens 4: Action Items &amp; Commitments</span><span>Think like an executive assistant&hellip;</span><span class="lw-tag">Tag every finding from this lens with "item_type": <i>"action_item"</i> &hellip;</span></div>
+                <div class="lw-sec lw-risk" data-b="5"><span class="lw-doc-h">## Lens 5: Delivery Risks</span><span>Think like a delivery lead who has watched good plans slip&hellip;</span><span class="lw-tag">Tag every finding from this lens with "item_type": <i>"risk"</i> and "lens": <i>"risk"</i>.</span></div>
+                <div class="lw-fmt" data-b="6"><span class="lw-doc-h">## Output Format</span><br />{"item_type": "<mark>question|observation|opportunity|action_item|risk</mark>", "question": &hellip;}</div>
+              </div>
+            </div>
+            <p class="lw-scene-cap" hidden>Backchannel runs one analyst instead. Each enabled lens adds a numbered section to its prompt: a name, instructions, and the type its findings must carry. The output format lists only the types of the enabled lenses.</p>
+          </article>
+
+          <!-- 3. One request -->
+          <article class="lw-scene" data-beats="0 1400 3000 6400 8200 10200" data-dur="14000" aria-label="Step 3 of 5">
+            <div class="lw-kicker"><span class="lw-n">03 / 05</span><h3>One request per cycle</h3></div>
+            <div class="lw-s3">
+              <div class="lw-card lw-req" data-b="0">
+                <span class="lw-label">Request</span>
+                <div class="lw-blk">
+                  <span class="lw-blk-ttl">Instructions</span>
+                  <ul><li>Meeting context</li><li>5 lens sections</li><li>Output format</li><li>Participants S1&ndash;S4</li></ul>
+                  <span class="lw-sz">8,487 chars &middot; same every cycle</span>
+                </div>
+                <div class="lw-blk">
+                  <span class="lw-blk-ttl">This cycle</span>
+                  <ul><li>Already on the board</li><li>Recent transcript, 30 lines</li></ul>
+                  <span class="lw-sz">5,129 chars</span>
+                </div>
+              </div>
+              <div class="lw-mid">
+                <div class="lw-clock" data-b="0" aria-label="every 40 seconds">40 s</div>
+                <div class="lw-arrow" data-b="1"></div>
+                <div class="lw-card lw-model" data-b="1"><div class="lw-m">gemini-3.8-flash</div><div class="lw-s">1 call &middot; 4.8 s</div></div>
+                <div class="lw-arrow" data-b="2"></div>
+              </div>
+              <div class="lw-card lw-reply">
+                <div class="lw-reply-head" data-b="2"><span class="lw-label">Reply &middot; 6 findings</span><span class="lw-fields">every item: item_type, question, rationale, source_context, speaker_id, directive_source, lens</span></div>
+                <div class="lw-item lw-d0" data-b="2" data-at="3 chk"><span class="lw-pill lw-q">question</span><span class="lw-txt">What specific criteria does the insurer require in the evidence outline to grant pre-clearance before the validation test?</span><span class="lw-st"><span class="lw-ok">enabled</span><span class="lw-dupl">repeat</span></span></div>
+                <div class="lw-item lw-d1" data-b="2" data-at="3 chk"><span class="lw-pill lw-obs">observation</span><span class="lw-txt">The proposed pilot budget avoids procurement friction by falling directly within pre-allocated resilience funds.</span><span class="lw-st"><span class="lw-ok">enabled</span><span class="lw-dupl">repeat</span></span></div>
+                <div class="lw-item lw-d2" data-b="2" data-at="3 chk,4 x"><span class="lw-pill lw-opp">opportunity</span><span class="lw-txt">Offer a post-pilot Managed Recovery Operations contract governed by a strict tenant-boundary operating model.</span><span class="lw-st"><span class="lw-ok">enabled</span><span class="lw-dupl">already on board</span></span></div>
+                <div class="lw-item lw-d3" data-b="2" data-at="3 chk"><span class="lw-pill lw-act">action_item</span><span class="lw-txt">Send the clinical and infrastructure owner list and confirm the clinical owner for Tuesday's session by tomorrow.</span><span class="lw-st"><span class="lw-ok">enabled</span><span class="lw-dupl">repeat</span></span></div>
+                <div class="lw-item lw-d4" data-b="2" data-at="3 chk,4 x"><span class="lw-pill lw-act">action_item</span><span class="lw-txt">Deliver the fixed pilot scope, managed operations option, one-page operating boundary, and board-ready evidence outline by Thursday noon.</span><span class="lw-st"><span class="lw-ok">enabled</span><span class="lw-dupl">already on board</span></span></div>
+                <div class="lw-item lw-d5" data-b="2" data-at="3 chk"><span class="lw-pill lw-risk">risk</span><span class="lw-txt">A 10-day Change Advisory Board review for identity leaves zero margin if CAB submission slips on day one.</span><span class="lw-st"><span class="lw-ok">enabled</span><span class="lw-dupl">repeat</span></span></div>
+                <div class="lw-saved" data-b="5"><span><b>4 saved</b> and streamed to the live feed</span><span><b>2 dropped</b> as repeats of insights already saved</span></div>
+              </div>
+            </div>
+            <p class="lw-scene-cap" hidden>Every 40 seconds the analyst sends one request with the latest 30 transcript lines. The model returns every lens's findings in one fixed shape, each tagged with its type and lens. Backchannel drops disabled types and repeats of insights already on the board, then streams the rest to the live feed. These six are from a real run.</p>
+          </article>
+
+          <!-- 4. Change a lens -->
+          <article class="lw-scene" data-beats="0 1500 2600 5600 6600 8400" data-dur="13000" aria-label="Step 4 of 5">
+            <div class="lw-kicker"><span class="lw-n">04 / 05</span><h3>Change a lens, change the next request</h3></div>
+            <div class="lw-s4">
+              <div class="lw-card lw-pane" data-b="0">
+                <span class="lw-pane-ttl">Meeting type</span>
+                <div class="lw-seg" data-at="1 flip"><span class="lw-seg-a">Client conversation</span><span class="lw-seg-b">Internal check-in</span></div>
+                <div class="lw-heads">
+                  <div class="lw-q">## Lens 1: Strategic Follow-Up Questions</div>
+                  <div class="lw-obs">## Lens 2: Strategic Observations</div>
+                  <div class="lw-opp" data-at="2 gone">## Lens 3: Product &amp; Service Opportunities</div>
+                  <div class="lw-act">## Lens <span class="lw-swap lw-swap-inline" data-at="2 done"><span class="lw-before">4</span><span class="lw-after">3</span></span>: Action Items &amp; Commitments</div>
+                  <div class="lw-risk">## Lens <span class="lw-swap lw-swap-inline" data-at="2 done"><span class="lw-before">5</span><span class="lw-after">4</span></span>: Delivery Risks</div>
+                </div>
+                <div class="lw-swap" data-at="2 done"><span class="lw-before">item_type: question|observation|opportunity|action_item|risk</span><span class="lw-after">item_type: question|observation|action_item|risk</span></div>
+                <p class="lw-note" data-b="2">Offering matching is off for internal meetings, so the Opportunity lens is never sent.</p>
+              </div>
+              <div class="lw-card lw-pane" data-b="0">
+                <span class="lw-pane-ttl">Add a lens</span>
+                <span class="lw-add" data-at="3 press">+ Add Lens</span>
+                <div class="lw-newlens" data-b="4">
+                  <div class="lw-row"><span class="lw-k">Lens name</span><span>Delivery Risks</span></div>
+                  <div class="lw-row"><span class="lw-k">Findings surface as</span><span class="lw-pill lw-risk">Custom type: risk</span></div>
+                  <div class="lw-row"><span class="lw-k">Prompt section</span><span class="lw-dim">Think like a delivery lead who has watched good plans slip&hellip;</span></div>
+                </div>
+                <div class="lw-chips" data-b="0">
+                  <span class="lw-chip">Action Items<span class="lw-c">27</span></span>
+                  <span class="lw-chip">Observations<span class="lw-c">35</span></span>
+                  <span class="lw-chip">Questions<span class="lw-c">36</span></span>
+                  <span class="lw-chip lw-new" data-b="5">Delivery Risks<span class="lw-c">3</span></span>
+                </div>
+              </div>
+            </div>
+            <p class="lw-scene-cap" hidden>Switch a lens off, or pick a meeting type where it does not apply, and its section is gone from the next request. An internal check-in never sends the Opportunity lens. Add a lens with a new type and the app gives that type a badge, a filter chip, a post-call section and an export label.</p>
+          </article>
+
+          <!-- 5. In the app -->
+          <article class="lw-scene" data-beats="0 1400 4600 7800 10800" data-dur="14500" aria-label="Step 5 of 5">
+            <div class="lw-kicker"><span class="lw-n">05 / 05</span><h3>Tagged findings, in the app</h3></div>
+            <div class="lw-s5">
+              <div class="lw-frame" data-b="0">
+                <div class="lw-frame-bar" aria-hidden="true"><i></i><i></i><i></i></div>
+                <div class="lw-shots">
+                  <div class="lw-layer">
+                    <img src="/assets/lenses/live-dark.webp" width="1600" height="753" alt="Live Insights feed filtered to four lens types. Each card carries a lens badge such as Delivery Risks or Strategic Observations." />
+                    <span class="lw-ring lw-ring-a" data-b="1" data-at="2 off"></span>
+                    <span class="lw-ring lw-ring-b" data-b="1" data-at="2 off"></span>
+                  </div>
+                  <div class="lw-layer" data-b="2">
+                    <img src="/assets/lenses/live-risks-dark.webp" width="1600" height="753" alt="The same feed filtered to the custom Delivery Risks chip." />
+                    <span class="lw-ring lw-ring-c" data-b="2" data-at="3 off"></span>
+                  </div>
+                  <div class="lw-layer" data-b="3">
+                    <img class="lw-crop" src="/assets/lenses/postcall-dark.webp" width="1600" height="895" alt="Post-call Insights tab with a Delivery Risks section." />
+                  </div>
+                  <div class="lw-xl" data-b="4">
+                    <div class="lw-xl-head">insights.xlsx &middot; Insights sheet</div>
+                    <table>
+                      <tr><th>Type</th><th>Lens</th><th>Insight</th></tr>
+                      <tr><td>Risk</td><td>Delivery Risks</td><td class="lw-ins">A 10-day Change Advisory Board review for identity leaves zero margin&hellip;</td></tr>
+                      <tr><td>Question</td><td>Strategic Follow-Up Questions</td><td class="lw-ins">What specific criteria does the insurer require&hellip;</td></tr>
+                      <tr><td>Observation</td><td>Strategic Observations</td><td class="lw-ins">The proposed pilot budget avoids procurement friction&hellip;</td></tr>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              <ul class="lw-callouts" data-b="0">
+                <li data-hl="1"><b>Badge</b>Each card names the lens that produced it.</li>
+                <li data-hl="2"><b>Filter chip</b>Every type gets a chip, custom types included.</li>
+                <li data-hl="3"><b>Post-call section</b>After the call, each type gets its own section.</li>
+                <li data-hl="4"><b>Export</b>The workbook's Lens column keeps the same tags.</li>
+              </ul>
+            </div>
+            <p class="lw-scene-cap" hidden>Each card shows the lens that produced it. The filter row has a chip for every type, including custom ones, and the export's Lens column carries the same tags. These screens show the findings from the run in step 3.</p>
+          </article>
+        </div>
+
+        <div class="lw-transport">
+          <div class="lw-ctrl">
+            <button class="lw-btn" id="lw-prev" type="button" aria-label="Previous step">&larr;</button>
+            <button class="lw-btn" id="lw-play" type="button" aria-label="Pause">Pause</button>
+            <button class="lw-btn" id="lw-next" type="button" aria-label="Next step">&rarr;</button>
+          </div>
+          <div class="lw-chapters">
+            <button class="lw-chap cur" type="button" data-i="0"><span><span class="lw-num">1</span><span class="lw-lbl">The problem</span></span><span class="lw-track"><span class="lw-fill"></span></span></button>
+            <button class="lw-chap" type="button" data-i="1"><span><span class="lw-num">2</span><span class="lw-lbl">Lenses</span></span><span class="lw-track"><span class="lw-fill"></span></span></button>
+            <button class="lw-chap" type="button" data-i="2"><span><span class="lw-num">3</span><span class="lw-lbl">One request</span></span><span class="lw-track"><span class="lw-fill"></span></span></button>
+            <button class="lw-chap" type="button" data-i="3"><span><span class="lw-num">4</span><span class="lw-lbl">Change a lens</span></span><span class="lw-track"><span class="lw-fill"></span></span></button>
+            <button class="lw-chap" type="button" data-i="4"><span><span class="lw-num">5</span><span class="lw-lbl">In the app</span></span><span class="lw-track"><span class="lw-fill"></span></span></button>
+          </div>
+          <p class="lw-caption" id="lw-caption" aria-live="polite">Give each kind of finding its own agent and every agent re-reads the same transcript on every cycle. You pay for that transcript once per agent. The agents never see each other's findings, so two of them can report the same commitment.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt" id="in-the-app">
+    <div class="wrap">
+      <span class="kicker">In the app</span>
+      <h2>What it looks like in Backchannel</h2>
+      <p class="sub">The same run, on the same fictional account. The Delivery Risks lens was added through Admin, and its findings came back from the model tagged <code>risk</code>.</p>
+
+      <div class="feature-row">
+        <div class="feature-copy">
+          <h3>Configure a lens</h3>
+          <p>Admin &rarr; Agents &rarr; Consolidated Analyst. A lens is a name, an insight type, and a prompt section. Pick one of the four built-in types, or type a new one and the app treats it as its own kind of finding. Switching a lens off removes its section from the next request.</p>
+        </div>
+        <div class="feature-visual">
+          <figure class="shot">
+            <div class="browser-frame">
+              <div class="bar" aria-hidden="true"></div>
+              <picture>
+                <source srcset="/assets/lenses/editor-dark.webp" media="(prefers-color-scheme: dark)" />
+                <img src="/assets/lenses/editor.webp" width="1600" height="1223" loading="lazy"
+                     alt="The Analysis Lenses editor with five lenses switched on. Delivery Risks is expanded: Findings Surface As is set to Custom type with the slug risk, and its prompt section begins Think like a delivery lead who has watched good plans slip." />
+              </picture>
+            </div>
+            <figcaption class="fig-caption"><span class="fig-no">FIG. 1</span><span>Five lenses, one of them custom. The help text under the type names what a custom type gets: its own filter chip, summary section, and export label.</span></figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <div class="feature-row reverse">
+        <div class="feature-copy">
+          <h3>During the call</h3>
+          <p>Every card carries the lens that found it, so a renamed or custom lens shows up under its own name. The filter row gains a chip for each type present in the feed, custom types included.</p>
+        </div>
+        <div class="feature-visual">
+          <figure class="shot">
+            <div class="browser-frame">
+              <div class="bar" aria-hidden="true"></div>
+              <picture>
+                <source srcset="/assets/lenses/live-dark.webp" media="(prefers-color-scheme: dark)" />
+                <img src="/assets/lenses/live.webp" width="1600" height="753" loading="lazy"
+                     alt="Live Insights with the Action Items, Observations, Questions and Delivery Risks chips selected. The top card, badged Delivery Risks, reads: A 10-day Change Advisory Board review for identity leaves zero margin if CAB submission slips on day one. The next, badged Strategic Observations, reads: The proposed pilot budget avoids procurement friction by falling directly within pre-allocated resilience funds." />
+              </picture>
+            </div>
+            <figcaption class="fig-caption"><span class="fig-no">FIG. 2</span><span>Lens badges on live cards, and a Delivery Risks chip beside the built-in types.</span></figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <div class="feature-row">
+        <div class="feature-copy">
+          <h3>After the call</h3>
+          <p>The Insights tab gives each type its own section, headed by the lens name. Each card keeps its speaker, the rationale, and the line that triggered it.</p>
+        </div>
+        <div class="feature-visual">
+          <figure class="shot">
+            <div class="browser-frame">
+              <div class="bar" aria-hidden="true"></div>
+              <picture>
+                <source srcset="/assets/lenses/postcall-dark.webp" media="(prefers-color-scheme: dark)" />
+                <img src="/assets/lenses/postcall.webp" width="1600" height="895" loading="lazy"
+                     alt="The post-call Insights tab, Delivery Risks section. Three cards: the ten-day Change Advisory Board review attributed to Maya; clinical application owner availability attributed to Owen; and infrastructure team bandwidth attributed to Owen, each with a rationale and the transcript line that triggered it." />
+              </picture>
+            </div>
+            <figcaption class="fig-caption"><span class="fig-no">FIG. 3</span><span>Three Delivery Risks from the run, in their own post-call section. The first card's context reads &ldquo;S1 responds&rdquo;: the model wrote a speaker tag the prompt tells it not to write, and the page shows the output as it came back.</span></figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <figure class="shot">
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Rows from the insights export, scrollable">
+          <table>
+            <thead>
+              <tr><th scope="col">Type</th><th scope="col">Lens</th><th scope="col">Insight</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Risk</td><td>Delivery Risks</td><td>A 10-day Change Advisory Board review for identity leaves zero margin if CAB submission slips on day one.</td></tr>
+              <tr><td>Question</td><td>Strategic Follow-Up Questions</td><td>What specific criteria does the insurer require in the evidence outline to grant pre-clearance before the validation test?</td></tr>
+              <tr><td>Observation</td><td>Strategic Observations</td><td>The proposed pilot budget avoids procurement friction by falling directly within pre-allocated resilience funds.</td></tr>
+              <tr><td>Action Item</td><td>Action Items &amp; Commitments</td><td>Send the clinical and infrastructure owner list and confirm the clinical owner for Tuesday's session by tomorrow.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <figcaption class="fig-caption"><span class="fig-no">FIG. 4</span><span>Rows from the session's insights workbook, Insights sheet. The Lens column is filled in from the same tag.</span></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="precisely">
+    <div class="wrap">
+      <span class="kicker">Reference</span>
+      <h2>How it works, precisely</h2>
+      <p class="sub">Defaults as shipped in v0.6.5. File paths point into the open-source repository, relative to <code>backend/app/</code> unless noted.</p>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="How the analyst lenses work, scrollable">
+        <table>
+          <thead>
+            <tr><th scope="col">Part</th><th scope="col">Behavior</th><th scope="col">Source</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Cycle</td><td>Every 40 seconds by default, plus one final pass at End Call. A cycle is skipped when the transcript has not changed.</td><td><code>services/agents/orchestrator.py</code></td></tr>
+            <tr><td>Window</td><td>The latest 30 transcript lines from the last five minutes, with speakers tagged S1, S2 and so on.</td><td><code>services/agents/base.py</code></td></tr>
+            <tr><td>Lens</td><td>A name, an insight type and a prompt section, stored with the analyst's settings. The prompt asks for at most 3 findings per lens.</td><td><code>services/agents/prompts.py</code></td></tr>
+            <tr><td>Reply</td><td>Every finding has the same seven fields whatever lenses are on. The lens decides the <code>item_type</code> and <code>lens</code> values.</td><td><code>services/agents/consolidated_analyst.py</code></td></tr>
+            <tr><td>Checks</td><td>Findings of a type with no enabled lens are dropped. So are near-repeats of insights saved in the last five minutes.</td><td><code>services/agents/orchestrator.py</code></td></tr>
+            <tr><td>Meeting type</td><td>The Opportunity lens is only sent for client and customer delivery conversations, where offering matching runs.</td><td><code>services/meeting_context.py</code></td></tr>
+            <tr><td>Custom types</td><td>Get a badge, a filter chip, a post-call section and an export label. Answer tracking stays with questions, and offering matching with opportunities.</td><td><code>frontend/src/utils/insightTypes.ts</code></td></tr>
+            <tr><td>Trade-off</td><td>All lenses share one model, one cycle and one transcript window. If that request fails, the cycle produces nothing for any lens.</td><td><code>services/agents/consolidated_analyst.py</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="sub lw-provenance">Alderwake Health Network and everyone in it are fictional. The call comes from the showcase seed in <code>showcase/seed_demo.py</code>. Step 1 sketches the design Backchannel avoids, so its three findings are examples. Everything from step 3 on is real output: three analyst cycles run with gemini-3.8-flash on 25 September 2026 against an isolated demo stack, then rendered by the app. Before saving, each finding went through the orchestrator's word-overlap test against every insight already in the session, which dropped two in the cycle shown. That cycle returned six findings in 4.8 seconds.</p>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Related reading</h2>
+      <div class="doc-list">
+        <a class="doc" href="/docs/agents/">
+          <strong>Agent system</strong>
+          <span>Every agent's trigger and purpose, and how to configure models, prompts and lenses</span>
+        </a>
+        <a class="doc" href="/#agents">
+          <strong>The agent roster</strong>
+          <span>The analyst alongside the objection handler, synthesizer, opportunity specialist and briefing lenses</span>
+        </a>
+        <a class="doc" href="/private-meeting-ai/">
+          <strong>Private meeting AI</strong>
+          <span>With the PII Shield on, every lens reads tokens such as [PERSON_1] instead of names</span>
+        </a>
+        <a class="doc" href="/blog/live-meeting-ai-enterprise-gate/">
+          <strong>Live meeting AI arrived in one week, and all of it is Enterprise-gated</strong>
+          <span>Pre-authored guidance compared with guidance generated from the trailing transcript window</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site">
+    <div class="wrap footer-compare">
+    <span>Compare:</span>
+    <a href="/open-source-meeting-assistants/">Open-source meeting assistants</a>
+    <a href="/otter-alternative/">Open-source Otter.ai alternative</a>
+    <a href="/fireflies-alternative/">Fireflies.ai alternative without the bot</a>
+    <a href="/granola-alternative/">Open-source Granola alternative</a>
+    <a href="/fathom-alternative/">Fathom alternative</a>
+    <a href="/gong-and-backchannel/">Gong and Backchannel</a>
+    <a href="/teams-premium-alternative/">Teams Premium alternative</a>
+  </div>
+  <div class="wrap footer-compare">
+    <span>Privacy:</span>
+    <a href="/private-meeting-ai/">Private meeting AI</a>
+    <a href="/blog/three-degrees-of-local/">Three degrees of local</a>
+  </div>
+  <div class="wrap">
+    <span>Backchannel -- an open-source, self-hosted AI meeting assistant.</span>
+    <span>Released under the <a href="https://github.com/talberthoule/backchannel/blob/master/LICENSE">MIT License</a>.</span>
+    <span><a href="/releases/">All releases</a></span>
+  </div>
+</footer>
+
+<script src="/lightbox.js" defer></script>
+<script src="/analyst-lenses/walkthrough.js" defer></script>
+
+</body>
+</html>
