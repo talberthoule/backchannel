@@ -26,6 +26,13 @@ logger = logging.getLogger(__name__)
 LOCAL_MODEL_MAP = {
     "local-whisper-base": "whisper-base",
     "local-parakeet-tdt-0.6b": "nemo-parakeet-tdt-0.6b-v2",
+    "local-parakeet-tdt-0.6b-v3": "nemo-parakeet-tdt-0.6b-v3",
+}
+
+# onnx-asr quantization per model; unlisted models load full precision. v3's
+# int8 encoder is about 0.65 GB against 2.4 GB for fp32 (ALP-405).
+LOCAL_MODEL_QUANTIZATION = {
+    "local-parakeet-tdt-0.6b-v3": "int8",
 }
 
 _loaded: dict[str, object] = {}
@@ -79,7 +86,9 @@ def _load_model(model_id: str):
                 watcher.start()
             try:
                 with track("ASR model download"):
-                    _loaded[model_id] = onnx_asr.load_model(name, path)
+                    _loaded[model_id] = onnx_asr.load_model(
+                        name, path, quantization=LOCAL_MODEL_QUANTIZATION.get(model_id)
+                    )
             except Exception as exc:  # noqa: BLE001 - recorded for the UI, then re-raised
                 if watcher is not None:
                     model_downloads.fail(key, f"{type(exc).__name__}: {exc}")

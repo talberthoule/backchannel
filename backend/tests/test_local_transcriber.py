@@ -13,12 +13,14 @@ class LocalModelCacheTests(unittest.TestCase):
         local_transcriber._loaded.clear()
 
     def test_prepares_cache_path_without_touching_populated_caches(self):
+        # v3 loads int8 (about 0.65 GB) rather than fp32 (2.4 GB); ALP-405.
         models = (
-            ("local-whisper-base", "whisper-base"),
-            ("local-parakeet-tdt-0.6b", "nemo-parakeet-tdt-0.6b-v2"),
+            ("local-whisper-base", "whisper-base", None),
+            ("local-parakeet-tdt-0.6b", "nemo-parakeet-tdt-0.6b-v2", None),
+            ("local-parakeet-tdt-0.6b-v3", "nemo-parakeet-tdt-0.6b-v3", "int8"),
         )
 
-        for model_id, name in models:
+        for model_id, name, quantization in models:
             for state in ("absent", "empty", "populated"):
                 with self.subTest(model_id=model_id, state=state), tempfile.TemporaryDirectory() as tmp:
                     local_transcriber._loaded.clear()
@@ -33,7 +35,7 @@ class LocalModelCacheTests(unittest.TestCase):
 
                     sentinel = object()
 
-                    def fake_load_model(actual_name, actual_path):
+                    def fake_load_model(actual_name, actual_path, **_kwargs):
                         self.assertEqual(name, actual_name)
                         self.assertEqual(path, actual_path)
                         self.assertTrue(path.parent.is_dir())
@@ -51,7 +53,7 @@ class LocalModelCacheTests(unittest.TestCase):
                     ):
                         self.assertIs(sentinel, local_transcriber._load_model(model_id))
 
-                    fake_onnx_asr.load_model.assert_called_once_with(name, path)
+                    fake_onnx_asr.load_model.assert_called_once_with(name, path, quantization=quantization)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,9 @@ leaves every provider on its own language detection.
 The list is limited to codes every path accepts. Whisper selects its decoder
 with a `<|xx|>` token and raises on a code it does not know, so each entry is
 one of Whisper's languages, and each is also a valid BCP-47 tag (Gemini) and
-ISO 639-1 code (OpenAI). English-only models (Parakeet v2) ignore it.
+ISO 639-1 code (OpenAI). Parakeet has no language option: v2 is English-only
+and v3 detects which of its 25 languages is spoken. A registry entry's
+"languages" list says what a model covers; recommendations use it.
 The setting is stored under SETTING_TRANSCRIPTION_LANGUAGE and read into
 TranscriptionRuntimeConfig.language (transcription_runtime).
 """
@@ -91,6 +93,34 @@ def prompt_language_hint(value: object) -> str:
         f" The speech is mostly in {name}. Write it in the language actually "
         "spoken; do not translate."
     )
+
+
+def model_languages(model_id: str) -> tuple[str, ...] | None:
+    """The languages a registry model can transcribe, or None when it is
+    multilingual or the provider decides (no "languages" entry)."""
+    from app.config import MODEL_REGISTRY
+
+    entry = next((m for m in MODEL_REGISTRY if m["id"] == model_id), None)
+    languages = entry.get("languages") if entry else None
+    return tuple(languages) if languages else None
+
+
+def is_english_only(model_id: str) -> bool:
+    return model_languages(model_id) == ("en",)
+
+
+def recommendable_for_language(model_id: str, language: object) -> bool:
+    """Whether a model may be recommended for the workspace language (ALP-405).
+
+    A set language must be one the model covers. Under "auto" the language is
+    unknown, so English-only models are passed over in favour of multilingual
+    ones; choosing English explicitly brings them back.
+    """
+    code = language_code_or_none(language)
+    covered = model_languages(model_id)
+    if code is None:
+        return not is_english_only(model_id)
+    return covered is None or code in covered
 
 
 def language_options() -> list[dict[str, str]]:

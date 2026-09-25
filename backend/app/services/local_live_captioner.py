@@ -16,6 +16,7 @@ machine can sustain it before you turn it on.
 import asyncio
 import logging
 
+from app.services.audio_utils import synthetic_speech_clip
 from app.services.local_transcriber import LocalTranscriber
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,8 @@ _PCM_BYTES_PER_SECOND = 16000 * 2
 # Whisper's 30s-window design, so it is the only live option offered.
 LOCAL_LIVE_MODEL_MAP = {
     "local-parakeet-live": "local-parakeet-tdt-0.6b",
+    # Multilingual captions under Privacy First and the PII Shield (ALP-405).
+    "local-parakeet-v3-live": "local-parakeet-tdt-0.6b-v3",
 }
 DEFAULT_LOCAL_LIVE_ASR = "local-parakeet-tdt-0.6b"
 
@@ -75,8 +78,6 @@ class LocalLiveCaptioner:
         self.session = True
         # Best-effort warmup so the first caption is not slowed by model load.
         try:
-            from app.services.local_fit import synthetic_speech_clip
-
             await asyncio.wait_for(
                 self._transcriber.transcribe_segment(synthetic_speech_clip(2)),
                 timeout=_WARMUP_TIMEOUT_SECONDS,

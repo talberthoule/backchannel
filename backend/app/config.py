@@ -196,6 +196,14 @@ DEFAULT_MODEL_RECOMMENDATION_ROLES: dict[str, tuple[str, ...]] = {
     "gpt-4o-mini-transcribe": ("batch_transcription",),
 }
 
+# The languages NVIDIA lists for Parakeet TDT 0.6B v3 (model card). A registry
+# entry's "languages" names what a model can transcribe; an entry without one
+# is multilingual or the provider decides (ALP-405).
+PARAKEET_V3_LANGUAGES: tuple[str, ...] = (
+    "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it",
+    "lv", "lt", "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk",
+)
+
 MODEL_REGISTRY: list[dict] = [
     {
         "id": "gemini-3.5-flash-lite",
@@ -430,6 +438,22 @@ MODEL_REGISTRY: list[dict] = [
         "supports_text": False,
         "supports_batch_audio": True,
         "supports_live_audio": False,
+        "languages": ["en"],
+    },
+    {
+        # Same NemoConformerTdt runtime as v2, trained on 25 European languages
+        # and detecting which one is spoken (ALP-405). Loaded int8: about 0.7 GB
+        # on first use instead of v2's 2.4 GB fp32.
+        "id": "local-parakeet-tdt-0.6b-v3",
+        "name": "Parakeet TDT 0.6B v3 (Local, multilingual)",
+        "provider": "Local",
+        "description": "Local NVIDIA Parakeet v3 transcription via ONNX in 25 European languages; detects the language, no API key, about 0.7 GB on first use",
+        "tier": "stable",
+        "requires_key": None,
+        "supports_text": False,
+        "supports_batch_audio": True,
+        "supports_live_audio": False,
+        "languages": list(PARAKEET_V3_LANGUAGES),
     },
     {
         # On-device interim captions (ALP-147): a rolling-commit local captioner,
@@ -444,6 +468,19 @@ MODEL_REGISTRY: list[dict] = [
         "supports_text": False,
         "supports_batch_audio": False,
         "supports_live_audio": True,
+        "languages": ["en"],
+    },
+    {
+        "id": "local-parakeet-v3-live",
+        "name": "Parakeet v3 Live (Local, multilingual, experimental)",
+        "provider": "Local",
+        "description": "Experimental on-device live captions in 25 European languages with local Parakeet v3 ONNX. No cloud; works under Privacy First and the PII Shield. CPU-heavy - check the fit test's live-caption feasibility first.",
+        "tier": "experimental",
+        "requires_key": None,
+        "supports_text": False,
+        "supports_batch_audio": False,
+        "supports_live_audio": True,
+        "languages": list(PARAKEET_V3_LANGUAGES),
     },
     # Any OpenAI-compatible chat server (Ollama, LM Studio, vLLM, LiteLLM).
     # One stable registry id stands in for whatever model the server exposes:

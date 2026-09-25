@@ -93,7 +93,8 @@ Each transcriber that can use the language receives it:
 | Path | How the language is sent |
 | --- | --- |
 | Local Whisper (`local-whisper-base`) | onnx-asr `recognize(..., language=code)` |
-| Local Parakeet (`local-parakeet-*`) | Not sent: these models are English-only |
+| Local Parakeet v2 (`local-parakeet-tdt-0.6b`, `local-parakeet-live`) | Not sent: English-only |
+| Local Parakeet v3 (`local-parakeet-tdt-0.6b-v3`, `local-parakeet-v3-live`) | Not sent: detects which of its 25 European languages is spoken |
 | Gemini batch, OpenAI chat audio | A sentence in the transcription prompt naming the language |
 | OpenAI `/v1/audio/transcriptions` | The `language` form field |
 | Gemini Live captions | `AudioTranscriptionConfig(language_codes=[code])` |
@@ -119,9 +120,10 @@ audio or transcript text leaves the machine:
 - Batch transcription is coerced to a local ONNX model
   (`local-whisper-base` by default) for live segments, audio imports, and
   re-transcription; selecting a cloud transcriber is rejected.
-- The audio gateway (interim captions) is skipped unless it is set to the
-  on-device captioner (`local-parakeet-live`), which transcribes short chunks
-  with local Parakeet ONNX and needs no cloud call. The cloud gateways
+- The audio gateway (interim captions) is skipped unless it is set to an
+  on-device captioner (`local-parakeet-live` for English,
+  `local-parakeet-v3-live` for 25 European languages), which transcribes
+  short chunks with local Parakeet ONNX and needs no cloud call. The cloud gateways
   (Gemini Live, OpenAI Realtime) are always skipped.
 - Analysis agents are skipped **unless** they are pointed at a model served by
   a self-hosted endpoint on your own machine or network (see below). The gate
@@ -433,9 +435,14 @@ transcription models; `gpt-audio-1.5` and `gpt-audio-mini` as batch-only
 audio chat models), the `openai-compatible` placeholder for the legacy
 single self-hosted endpoint (text-capable, keyless, listed only while that
 legacy configuration is active), and key-free local models
-(`local-whisper-base` and `local-parakeet-tdt-0.6b`,
-`supports_batch_audio` only; `local-parakeet-live`, the experimental
-on-device live captioner, `supports_live_audio` only). No `Local` entry sets
+(`local-whisper-base`, `local-parakeet-tdt-0.6b` and
+`local-parakeet-tdt-0.6b-v3`, `supports_batch_audio` only;
+`local-parakeet-live` and `local-parakeet-v3-live`, the experimental
+on-device live captioners, `supports_live_audio` only). A local ASR entry's
+`languages` list names the ISO 639-1 codes it can transcribe; entries without
+one are multilingual or leave it to the provider. `GET /api/models` returns
+the list, and the fit test only recommends a model that suits the meeting
+language. No `Local` entry sets
 `supports_text`, so text agents need a provider key, the legacy
 placeholder, or a self-hosted endpoint model. Add new models by appending to
 the registry.
