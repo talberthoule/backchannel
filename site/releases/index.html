@@ -41,7 +41,8 @@
       "itemListOrder": "https://schema.org/ItemListOrderDescending",
       "numberOfItems": 28,
       "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "Backchannel v0.6.5", "url": "https://backchannel.page/releases/v0.6.5/" },
+        { "@type": "ListItem", "position": 1, "name": "Backchannel v0.6.6", "url": "https://backchannel.page/releases/v0.6.6/" },
+        { "@type": "ListItem", "position": 2, "name": "Backchannel v0.6.5", "url": "https://backchannel.page/releases/v0.6.5/" },
         { "@type": "ListItem", "position": 2, "name": "Backchannel v0.6.4", "url": "https://backchannel.page/releases/v0.6.4/" },
         { "@type": "ListItem", "position": 3, "name": "Backchannel v0.6.3", "url": "https://backchannel.page/releases/v0.6.3/" },
         { "@type": "ListItem", "position": 4, "name": "Backchannel v0.6.2", "url": "https://backchannel.page/releases/v0.6.2/" },
@@ -110,7 +111,7 @@
           each release, newest first.
         </p>
         <div class="cta-row">
-          <a class="btn primary" href="v0.6.5/">Latest: v0.6.5</a>
+          <a class="btn primary" href="v0.6.6/">Latest: v0.6.6</a>
           <a class="btn ghost" href="../docs/quickstart/">Read quickstart</a>
         </div>
       </div>
@@ -119,7 +120,7 @@
         <h2>At a glance</h2>
         <p>Twenty-eight releases since July 2026, spanning Windows x64, macOS Apple Silicon, and Linux x64 desktop bundles.</p>
         <ul class="release-facts">
-          <li><span>Latest</span><strong>v0.6.5</strong></li>
+          <li><span>Latest</span><strong>v0.6.6</strong></li>
           <li><span>Published</span><strong>September 4, 2026</strong></li>
           <li><span>Platforms</span><strong>Windows x64, macOS arm64, Linux x64</strong></li>
           <li><span>License</span><strong>MIT</strong></li>
@@ -138,6 +139,7 @@
             <tr><th scope="col">Version</th><th scope="col">Published</th><th scope="col">Highlights</th></tr>
           </thead>
           <tbody>
+            <tr><td><a href="v0.6.6/">v0.6.6</a></td><td>September 25, 2026</td><td>A Meeting language setting that every transcriber accepting a language uses, on-device and cloud. Parakeet v3 transcribes 25 European languages on your machine and adds an experimental multilingual live-caption option; Whisper Large v3 Turbo covers Japanese, Chinese, Korean and the rest. The fit test only recommends models that cover the meeting language, and languages written without spaces are no longer discarded as noise.</td></tr>
             <tr><td><a href="v0.6.5/">v0.6.5</a></td><td>September 4, 2026</td><td>Long audio imports and Re-transcribe jobs now show progress and can be canceled without replacing an existing transcript with a partial result. End Call completes with transcript refinement enabled, safe Ask requests get one local PII-token repair before the tripwire checks again, connection and update states use plain language, and unmatched voices stay unknown instead of being mislabeled.</td></tr>
             <tr><td><a href="v0.6.4/">v0.6.4</a></td><td>September 4, 2026</td><td>Both exports rebuilt around the reader: the insights workbook opens on a summary sheet instead of an eighteen-column grid, and the call briefing became a document that leads with what came out of the meeting and keeps the transcript line behind every claim. Sidebar groups stay collapsed, the Privacy tab stopped reporting transcript refinement as a gap it never was, and a meeting costs noticeably fewer tokens to analyse.</td></tr>
             <tr><td><a href="v0.6.3/">v0.6.3</a></td><td>September 3, 2026</td><td>Local transcription produced no transcript at all in v0.6.1 and v0.6.2: the bundle was missing files the speech engine reads on every job, and the app reported itself ready anyway. Recordings from those meetings are recoverable by re-transcribing, which no longer erases a transcript it cannot replace.</td></tr>
@@ -177,7 +179,7 @@
       <h2>Run the latest release on your own hardware</h2>
       <p class="sub">Desktop bundles for the fastest start, or check out the matching source tag and rebuild Docker Compose for maximum control.</p>
       <div class="cta-row">
-        <a class="btn primary" href="v0.6.5/">Get v0.6.5</a>
+        <a class="btn primary" href="v0.6.6/">Get v0.6.6</a>
         <a class="btn ghost" href="../#quickstart">Compare setup paths</a>
         <a class="btn ghost" href="https://github.com/talberthoule/backchannel">View source</a>
       </div>
