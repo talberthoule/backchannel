@@ -8,6 +8,13 @@ from app.models import AgentConfig
 from app.services.app_settings import get_app_setting, set_app_setting
 from app.services.pii.state import shield_enabled
 from app.services.privacy import DEFAULT_LOCAL_BATCH_MODEL, get_local_only, is_local_model
+from app.services.transcription_language import (
+    AUTO_LANGUAGE,
+    SETTING_TRANSCRIPTION_LANGUAGE,
+    is_supported_language,
+    language_options,
+    normalize_language,
+)
 
 SETTING_BATCH_TRANSCRIBER_MODEL = "transcription.batch.model_id"
 AUDIO_GATEWAY_SLUG = "audio_gateway"
@@ -16,12 +23,15 @@ class TranscriptionRuntimeConfig:
     batch_model_id: str
     live_preview_model_id: str
     description: str
+    language: str = AUTO_LANGUAGE
 
     def to_dict(self) -> dict:
         return {
             "batch_model_id": self.batch_model_id,
             "live_preview_model_id": self.live_preview_model_id,
             "description": self.description,
+            "language": self.language,
+            "language_options": language_options(),
         }
 
 
@@ -82,7 +92,19 @@ async def get_transcription_runtime_config(db: AsyncSession) -> TranscriptionRun
             "and diarized live segments. Live preview transcription is the separate "
             "audio gateway agent used only for interim captions while a call is active."
         ),
+        language=normalize_language(
+            await get_app_setting(db, SETTING_TRANSCRIPTION_LANGUAGE, AUTO_LANGUAGE)
+        ),
     )
+
+
+async def set_transcription_language(db: AsyncSession, language: str) -> TranscriptionRuntimeConfig:
+    code = (language or "").strip().lower() or AUTO_LANGUAGE
+    if not is_supported_language(code):
+        raise ValueError(f"Unsupported transcription language: {language!r}.")
+    await set_app_setting(db, SETTING_TRANSCRIPTION_LANGUAGE, code)
+    await db.commit()
+    return await get_transcription_runtime_config(db)
 
 
 async def set_batch_transcriber_model(db: AsyncSession, model_id: str) -> TranscriptionRuntimeConfig:

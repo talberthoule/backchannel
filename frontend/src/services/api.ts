@@ -439,7 +439,11 @@ export interface TranscriptionReadiness {
 export const getTranscriptionReadiness = () =>
   request<TranscriptionReadiness>("/diagnostics/transcription/readiness");
 
-export const updateTranscriptionConfig = (data: { batch_model_id?: string; live_preview_model_id?: string }) =>
+export const updateTranscriptionConfig = (data: {
+  batch_model_id?: string;
+  live_preview_model_id?: string;
+  language?: string;
+}) =>
   request<TranscriptionConfig>("/diagnostics/transcription/config", {
     method: "PATCH",
     body: JSON.stringify(data),

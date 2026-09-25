@@ -216,6 +216,7 @@ async def _transcribe_audio_diarized(
     transcriber = create_transcriber(
         model_id or transcription_config.batch_model_id,
         session_id=session_id,
+        language=transcription_config.language,
     )
 
     result = await db.execute(
@@ -264,6 +265,7 @@ async def _transcribe_split_audio_diarized(
     transcriber = create_transcriber(
         model_id or transcription_config.batch_model_id,
         session_id=session_id,
+        language=transcription_config.language,
     )
     result = await db.execute(
         select(Speaker).where(Speaker.session_id == session_id).order_by(Speaker.created_at)

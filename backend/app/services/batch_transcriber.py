@@ -14,8 +14,19 @@ from app.config import settings
 from app.services.audio_utils import make_wav_header
 from app.services.secrets import resolve_provider_key
 from app.services.token_usage import record_token_usage
+from app.services.transcription_language import prompt_language_hint
 
 logger = logging.getLogger(__name__)
+
+# Shared by every prompt-driven transcriber (Gemini here, OpenAI chat audio),
+# so both keep the same verbatim-output convention that
+# filter_transcript_text expects. prompt_language_hint appends the
+# workspace language when one is set.
+TRANSCRIBE_PROMPT = (
+    "Transcribe this audio exactly as spoken. "
+    "Output ONLY the transcribed text, nothing else. "
+    "If no speech is detected, output an empty string."
+)
 
 
 class TranscriptionError(RuntimeError):
@@ -47,6 +58,17 @@ _HALLUCINATION_PATTERNS: list[re.Pattern] = [
         r"^\[?(music|applause|laughter|silence|blank|inaudible)\]?$",
         r"^www\.",
         r"^http",
+        # Whisper's non-English silence hallucinations are subtitle credits
+        # and sign-offs from the video it was trained on (ALP-399).
+        r"amara\.org",
+        r"^untertitel(ung)?\s+(im\s+auftrag|der|von|durch)",
+        r"^subt[i\u00ed]tulos?\s+(realizados|por|hechos|de)",
+        r"^sous-titr(es|age)\s+(r\u00e9alis\u00e9s|par|fait)",
+        r"^legendas?\s+(pela|por|de)",
+        r"^sottotitoli\s+(creati|a\s+cura|di)",
+        r"^\u3054\u8996\u8074\u3042\u308a\u304c\u3068\u3046\u3054\u3056\u3044\u307e\u3057\u305f",
+        r"^\uc2dc\uccad\ud574\s*\uc8fc\uc154\uc11c\s*\uac10\uc0ac\ud569\ub2c8\ub2e4",
+        r"^(\u8c22\u8c22\u89c2\u770b|\u8b1d\u8b1d\u89c0\u770b|\u8bf7\u4e0d\u541d\u70b9\u8d5e)",
     ]
 ]
 
@@ -67,6 +89,24 @@ _HALLUCINATION_EXACT: set[str] = {
 
 # Minimum word count — single-word "transcriptions" from noise are almost always junk
 _MIN_WORD_COUNT = 2
+
+# Chinese, Japanese, Thai, Lao, Khmer and Burmese are written without spaces
+# between words, so a whole sentence splits into one "word". Text in those
+# scripts is measured in characters instead; three is about two English
+# words (Chinese "wo tong yi", "I agree", is three characters).
+_UNSPACED_SCRIPT = re.compile(
+    "[\u3040-\u30ff"  # Hiragana, Katakana
+    "\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"  # CJK ideographs
+    "\u0e00-\u0e7f\u0e80-\u0eff"  # Thai, Lao
+    "\u1000-\u109f\u1780-\u17ff]"  # Burmese, Khmer
+)
+_MIN_UNSPACED_CHARS = 3
+
+
+def _too_short(text: str) -> bool:
+    if len(text.split()) >= _MIN_WORD_COUNT:
+        return False
+    return len(_UNSPACED_SCRIPT.findall(text)) < _MIN_UNSPACED_CHARS
 
 # Audio energy threshold — reject segments that are mostly silence
 _ENERGY_FLOOR = 0.005  # RMS energy below this is likely not real speech
@@ -119,7 +159,7 @@ def filter_transcript_text(text: str) -> str | None:
         # has not seen it yet at this point.
         logger.info(f"Filtered hallucinated transcript ({len(text)} chars)")
         return None
-    if len(text.split()) < _MIN_WORD_COUNT:
+    if _too_short(text):
         logger.info(f"Filtered short transcript ({len(text)} chars)")
         return None
     return text
@@ -128,11 +168,19 @@ def filter_transcript_text(text: str) -> str | None:
 class BatchTranscriber:
     """Transcribes PCM16 audio segments into plain text via Gemini."""
 
-    def __init__(self, sample_rate: int = 16000, model_id: str | None = None, client=None, session_id=None):
+    def __init__(
+        self,
+        sample_rate: int = 16000,
+        model_id: str | None = None,
+        client=None,
+        session_id=None,
+        language: str | None = None,
+    ):
         self._sample_rate = sample_rate
         self._model_id = settings.BATCH_TRANSCRIBER_MODEL if model_id is None else model_id
         self._client = client
         self._session_id = session_id
+        self._prompt = TRANSCRIBE_PROMPT + prompt_language_hint(language)
 
     async def _get_client(self):
         # Lazy so the workspace-stored key (Admin -> Connections) is picked up.
@@ -167,11 +215,7 @@ class BatchTranscriber:
                                 data=wav_data,
                                 mime_type="audio/wav",
                             )),
-                            types.Part(text=(
-                                "Transcribe this audio exactly as spoken. "
-                                "Output ONLY the transcribed text, nothing else. "
-                                "If no speech is detected, output an empty string."
-                            )),
+                            types.Part(text=self._prompt),
                         ]
                     )
                 ],

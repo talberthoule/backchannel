@@ -65,6 +65,7 @@ def _create_audio_processors(
     transcriber = create_transcriber(
         transcription_config.batch_model_id,
         session_id=session_id,
+        language=transcription_config.language,
     )
 
     def create_system_diarizer():

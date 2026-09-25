@@ -248,6 +248,7 @@ class AgentOrchestrator:
         admitted_models: set[str] | None = None,
         board_stubs: list[dict] | None = None,
         audio_local_only: bool = False,
+        transcription_language: str = "auto",
     ):
         self.session_id = session_id
         self.websocket = websocket
@@ -459,14 +460,24 @@ class AgentOrchestrator:
 
         # Audio Gateway: a cloud streaming session (Gemini Live / OpenAI Realtime)
         # or the on-device local captioner, chosen by the gateway agent's model.
+        # The cloud gateways take the workspace transcription language (ALP-399);
+        # the local captioner's Parakeet v2 is English-only and has no option.
         gw_model = _get_model("audio_gateway")
         self.audio_gateway = None
         if is_local_live_model(gw_model):
             self.audio_gateway = LocalLiveCaptioner(model_override=gw_model, session_id=session_id)
         elif provider_for(gw_model) == "openai":
-            self.audio_gateway = OpenAIRealtimeSession(model_override=gw_model, session_id=session_id)
+            self.audio_gateway = OpenAIRealtimeSession(
+                model_override=gw_model,
+                session_id=session_id,
+                language=transcription_language,
+            )
         elif gw_model:
-            self.audio_gateway = GeminiLiveSession(model_override=gw_model, session_id=session_id)
+            self.audio_gateway = GeminiLiveSession(
+                model_override=gw_model,
+                session_id=session_id,
+                language=transcription_language,
+            )
 
         # Objection handler (fast scan loop over the freshest transcript)
         self.objection_agent = ObjectionHandlerAgent(

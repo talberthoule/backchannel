@@ -23,6 +23,7 @@ import websockets
 from app.services.batch_transcriber import _is_hallucination
 from app.services.secrets import resolve_provider_key
 from app.services.token_usage import record_token_usage
+from app.services.transcription_language import language_code_or_none
 
 logger = logging.getLogger(__name__)
 
@@ -70,10 +71,14 @@ def _resample_16k_to_24k(pcm_bytes: bytes) -> bytes:
     return resampled.astype(np.int16).tobytes()
 
 
-def _session_update_payload(model: str) -> dict:
+def _session_update_payload(model: str, language: str | None = None) -> dict:
     """GA transcription session config. turn_detection is omitted on purpose:
     the buffer is committed manually on a fixed cadence, which every supported
-    transcription model accepts."""
+    transcription model accepts. `language` is an ISO 639-1 code, sent only
+    when the workspace sets one; without it the model detects the language."""
+    transcription = {"model": model}
+    if language:
+        transcription["language"] = language
     return {
         "type": "session.update",
         "session": {
@@ -81,7 +86,7 @@ def _session_update_payload(model: str) -> dict:
             "audio": {
                 "input": {
                     "format": {"type": "audio/pcm", "rate": 24000},
-                    "transcription": {"model": model},
+                    "transcription": transcription,
                 },
             },
         },
@@ -102,10 +107,17 @@ def _parse_event(event: dict) -> str | None:
 
 
 class OpenAIRealtimeSession:
-    def __init__(self, api_key: str | None = None, model_override: str | None = None, session_id=None):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model_override: str | None = None,
+        session_id=None,
+        language: str | None = None,
+    ):
         self._api_key = api_key
         self._ws = None
         self._transcribe_model = resolve_transcribe_model(model_override)
+        self._language = language_code_or_none(language)
         self._bytes_since_commit = 0
         self.session = None  # parity with GeminiLiveSession's "connected" marker
         self._session_id = session_id
@@ -119,7 +131,9 @@ class OpenAIRealtimeSession:
             additional_headers={"Authorization": f"Bearer {key}"},
             max_size=16 * 1024 * 1024,
         )
-        await self._ws.send(json.dumps(_session_update_payload(self._transcribe_model)))
+        await self._ws.send(json.dumps(
+            _session_update_payload(self._transcribe_model, self._language)
+        ))
         self._bytes_since_commit = 0
         self.session = self._ws
         logger.info(
