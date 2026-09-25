@@ -427,6 +427,26 @@ MODEL_REGISTRY: list[dict] = [
         "supports_text": False,
         "supports_batch_audio": True,
         "supports_live_audio": False,
+        # Among local models with no "languages" list, a higher rank is the
+        # more accurate one; recommendations use it when no model lists the
+        # meeting language (ALP-406).
+        "multilingual_rank": 1,
+    },
+    {
+        # For the languages Parakeet v3 does not cover (Chinese, Japanese,
+        # Korean, Arabic, Hindi...). onnx-community export loaded uint8: about
+        # 1.1 GB on first use. Several times slower than Parakeet, so batch
+        # only (ALP-406).
+        "id": "local-whisper-large-v3-turbo",
+        "name": "Whisper Large v3 Turbo (Local)",
+        "provider": "Local",
+        "description": "Local multilingual Whisper large-v3-turbo via ONNX; about 99 languages and takes the meeting language, no API key, about 1.1 GB on first use. Slower than Parakeet, so batch transcription only",
+        "tier": "stable",
+        "requires_key": None,
+        "supports_text": False,
+        "supports_batch_audio": True,
+        "supports_live_audio": False,
+        "multilingual_rank": 2,
     },
     {
         "id": "local-parakeet-tdt-0.6b",

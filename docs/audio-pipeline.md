@@ -142,8 +142,9 @@ Diarized segments are transcribed in original audio order through
 `OrderedTranscriptionQueue`. The transcriber is picked by model ID in
 `create_transcriber` (`backend/app/services/local_transcriber.py`):
 
-- `local-*` model IDs (`local-whisper-base`, `local-parakeet-tdt-0.6b`,
-  `local-parakeet-tdt-0.6b-v3`) run ONNX Whisper/Parakeet locally via
+- `local-*` model IDs (`local-whisper-base`, `local-whisper-large-v3-turbo`,
+  `local-parakeet-tdt-0.6b`, `local-parakeet-tdt-0.6b-v3`) run ONNX
+  Whisper/Parakeet locally via
   `onnx-asr`. Weights download to `DATA_DIR/asr-models/` on first use; no
   API key required. That first fetch is reported through
   `/api/model-downloads` and shown in the app while it runs, so the first
@@ -165,13 +166,16 @@ The local models differ in the languages they cover:
 | Model | Languages | First download |
 | --- | --- | --- |
 | `local-whisper-base` | About 99; takes the meeting language, otherwise detects it per segment | About 0.4 GB |
+| `local-whisper-large-v3-turbo` | About 99; takes the meeting language, otherwise detects it. Much better than Whisper Base on Japanese and Chinese, but several times slower on CPU, so batch only | About 1.1 GB (uint8) |
 | `local-parakeet-tdt-0.6b` (v2) | English only | About 2.4 GB (fp32) |
 | `local-parakeet-tdt-0.6b-v3` | 25 European languages: bg, hr, cs, da, nl, en, et, fi, fr, de, el, hu, it, lv, lt, mt, pl, pt, ro, sk, sl, es, sv, ru, uk. Detects the language itself | About 0.7 GB (int8) |
 
 Parakeet has no language option. The fit test recommends a local model only
 when it suits the meeting language: with a language set, the model must
-cover it; with `auto`, English-only models are passed over for multilingual
-ones.
+cover it, and a model that lists the language beats a general one; with
+`auto`, English-only models are passed over for multilingual ones. For a
+language no Parakeet covers, turbo is recommended over Whisper Base when it
+keeps up on this machine.
 
 The active model comes from the persisted `transcription.batch.model_id`
 app setting (Admin panel), falling back to `BATCH_TRANSCRIBER_MODEL`. The
