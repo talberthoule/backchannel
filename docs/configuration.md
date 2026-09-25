@@ -92,7 +92,7 @@ Each transcriber that can use the language receives it:
 
 | Path | How the language is sent |
 | --- | --- |
-| Local Whisper (`local-whisper-base`) | onnx-asr `recognize(..., language=code)` |
+| Local Whisper (`local-whisper-base`, `local-whisper-large-v3-turbo`) | onnx-asr `recognize(..., language=code)` |
 | Local Parakeet v2 (`local-parakeet-tdt-0.6b`, `local-parakeet-live`) | Not sent: English-only |
 | Local Parakeet v3 (`local-parakeet-tdt-0.6b-v3`, `local-parakeet-v3-live`) | Not sent: detects which of its 25 European languages is spoken |
 | Gemini batch, OpenAI chat audio | A sentence in the transcription prompt naming the language |
@@ -435,14 +435,17 @@ transcription models; `gpt-audio-1.5` and `gpt-audio-mini` as batch-only
 audio chat models), the `openai-compatible` placeholder for the legacy
 single self-hosted endpoint (text-capable, keyless, listed only while that
 legacy configuration is active), and key-free local models
-(`local-whisper-base`, `local-parakeet-tdt-0.6b` and
-`local-parakeet-tdt-0.6b-v3`, `supports_batch_audio` only;
+(`local-whisper-base`, `local-whisper-large-v3-turbo`,
+`local-parakeet-tdt-0.6b` and `local-parakeet-tdt-0.6b-v3`,
+`supports_batch_audio` only;
 `local-parakeet-live` and `local-parakeet-v3-live`, the experimental
 on-device live captioners, `supports_live_audio` only). A local ASR entry's
 `languages` list names the ISO 639-1 codes it can transcribe; entries without
 one are multilingual or leave it to the provider. `GET /api/models` returns
 the list, and the fit test only recommends a model that suits the meeting
-language. No `Local` entry sets
+language. With a language set, a model that lists it wins; when none does,
+the multilingual model with the higher `multilingual_rank` (turbo over
+Whisper Base) wins as long as it keeps up. No `Local` entry sets
 `supports_text`, so text agents need a provider key, the legacy
 placeholder, or a self-hosted endpoint model. Add new models by appending to
 the registry.

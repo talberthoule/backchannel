@@ -105,6 +105,15 @@ def model_languages(model_id: str) -> tuple[str, ...] | None:
     return tuple(languages) if languages else None
 
 
+def multilingual_rank(model_id: str) -> int:
+    """Accuracy order among local models with no "languages" list (Whisper
+    Base 1, large-v3-turbo 2); 0 for anything else (ALP-406)."""
+    from app.config import MODEL_REGISTRY
+
+    entry = next((m for m in MODEL_REGISTRY if m["id"] == model_id), None)
+    return int(entry.get("multilingual_rank") or 0) if entry else 0
+
+
 def is_english_only(model_id: str) -> bool:
     return model_languages(model_id) == ("en",)
 

@@ -44,6 +44,9 @@ from app.services.local_transcriber import LOCAL_MODEL_MAP, LocalTranscriber
 from app.services.transcription_language import (
     AUTO_LANGUAGE,
     SETTING_TRANSCRIPTION_LANGUAGE,
+    language_code_or_none,
+    model_languages,
+    multilingual_rank,
     normalize_language,
     recommendable_for_language,
 )
@@ -882,6 +885,17 @@ def local_recommendations_from_fit(
         return language is None or recommendable_for_language(model_id, language)
 
     batch_candidates = [c for c in asr_candidates if suits_language(c[1])]
+    # With a set language, a model that lists it (Parakeet for German) beats
+    # a general one; with none listing it, the more accurate general Whisper
+    # wins if it keeps up, because Base is always the faster (ALP-406).
+    code = language_code_or_none(language)
+    if code is not None:
+        specialists = [c for c in batch_candidates if code in (model_languages(c[1]) or ())]
+        if specialists:
+            batch_candidates = specialists
+        elif batch_candidates:
+            best_rank = max(multilingual_rank(c[1]) for c in batch_candidates)
+            batch_candidates = [c for c in batch_candidates if multilingual_rank(c[1]) == best_rank]
     if batch_candidates:
         _, model_id, _ = min(batch_candidates, key=lambda choice: (choice[0], choice[1]))
         recommendations.setdefault(model_id, []).append(

@@ -27,12 +27,18 @@ LOCAL_MODEL_MAP = {
     "local-whisper-base": "whisper-base",
     "local-parakeet-tdt-0.6b": "nemo-parakeet-tdt-0.6b-v2",
     "local-parakeet-tdt-0.6b-v3": "nemo-parakeet-tdt-0.6b-v3",
+    "local-whisper-large-v3-turbo": "onnx-community/whisper-large-v3-turbo",
 }
 
 # onnx-asr quantization per model; unlisted models load full precision. v3's
-# int8 encoder is about 0.65 GB against 2.4 GB for fp32 (ALP-405).
+# int8 encoder is about 0.65 GB against 2.4 GB for fp32 (ALP-405). Turbo is
+# uint8 (encoder and merged decoder about 1.1 GB against 3.2 GB): its int8
+# export uses ConvInteger with int8 weights, which CPU onnxruntime 1.21 has
+# no kernel for, so it fails to load; uint8 is the same size and runs
+# (ALP-406).
 LOCAL_MODEL_QUANTIZATION = {
     "local-parakeet-tdt-0.6b-v3": "int8",
+    "local-whisper-large-v3-turbo": "uint8",
 }
 
 _loaded: dict[str, object] = {}
@@ -143,7 +149,7 @@ class LocalTranscriber:
         # and has no such option.
         code = language_code_or_none(language)
         self._recognize_kwargs = (
-            {"language": code} if code and LOCAL_MODEL_MAP[model_id].startswith("whisper") else {}
+            {"language": code} if code and "whisper" in LOCAL_MODEL_MAP[model_id] else {}
         )
 
     async def transcribe_segment(self, pcm_bytes: bytes) -> str | None:
