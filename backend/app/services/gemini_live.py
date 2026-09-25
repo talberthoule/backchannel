@@ -6,6 +6,7 @@ from google.genai import types
 from app.config import settings
 from app.services.secrets import resolve_provider_key
 from app.services.token_usage import record_token_usage
+from app.services.transcription_language import language_code_or_none
 
 logger = logging.getLogger(__name__)
 
@@ -53,31 +54,47 @@ def _ends_turn(server_content) -> bool:
 
 
 class GeminiLiveSession:
-    def __init__(self, model_override: str | None = None, api_key: str | None = None, session_id=None):
+    def __init__(
+        self,
+        model_override: str | None = None,
+        api_key: str | None = None,
+        session_id=None,
+        language: str | None = None,
+    ):
         self._api_key = api_key
         self.client = None
         self.session = None
         self._context_manager = None
         self._model = settings.GEMINI_MODEL if model_override is None else model_override
         self._session_id = session_id
+        self._language = language_code_or_none(language)
         # The most recent usage_metadata of the turn in progress; see the
         # module comment for the flush rule.
         self._pending_usage = None
+
+    def _live_config(self) -> types.LiveConnectConfig:
+        # language_codes takes BCP-47 tags; an ISO 639-1 code is one. Leaving
+        # it unset keeps Gemini's automatic language detection (ALP-399).
+        transcription = (
+            types.AudioTranscriptionConfig(language_codes=[self._language])
+            if self._language
+            else types.AudioTranscriptionConfig()
+        )
+        return types.LiveConnectConfig(
+            response_modalities=["AUDIO"],
+            system_instruction=types.Content(
+                parts=[types.Part(text=GATEWAY_SYSTEM_PROMPT)]
+            ),
+            input_audio_transcription=transcription,
+        )
 
     async def connect(self):
         if self.client is None:
             key = self._api_key or await resolve_provider_key("google")
             self.client = genai.Client(api_key=key)
-        config = types.LiveConnectConfig(
-            response_modalities=["AUDIO"],
-            system_instruction=types.Content(
-                parts=[types.Part(text=GATEWAY_SYSTEM_PROMPT)]
-            ),
-            input_audio_transcription=types.AudioTranscriptionConfig(),
-        )
         self._context_manager = self.client.aio.live.connect(
             model=self._model,
-            config=config,
+            config=self._live_config(),
         )
         self.session = await self._context_manager.__aenter__()
         self._pending_usage = None

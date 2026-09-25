@@ -18,6 +18,7 @@ from app.services.batch_transcriber import (
 )
 from app.services import model_downloads
 from app.services.secrets import data_dir
+from app.services.transcription_language import language_code_or_none
 from app.services.runtime_activity import track
 
 logger = logging.getLogger(__name__)
@@ -92,17 +93,20 @@ def _load_model(model_id: str):
         return _loaded[model_id]
 
 
-def create_transcriber(model_id: str, session_id=None):
+def create_transcriber(model_id: str, session_id=None, language: str | None = None):
     """LocalTranscriber for local-* ids, then the cloud transcriber for the
     model's registry provider: specialized OpenAI transcribe ids go to
     OpenAITranscriber (/v1/audio/transcriptions), other OpenAI ids to
     OpenAIChatTranscriber (chat completions with input_audio), and everything
-    else (including ids no longer in the registry) to the Gemini BatchTranscriber."""
+    else (including ids no longer in the registry) to the Gemini BatchTranscriber.
+
+    `language` is the workspace transcription language ("auto" or an ISO 639-1
+    code, ALP-399); every transcriber that can use it gets it."""
     from app.config import MODEL_REGISTRY
     from app.services.batch_transcriber import BatchTranscriber
 
     if model_id in LOCAL_MODEL_MAP:
-        return LocalTranscriber(model_id)
+        return LocalTranscriber(model_id, language=language)
     entry = next((m for m in MODEL_REGISTRY if m["id"] == model_id), None)
     if entry and entry["provider"].lower() == "openai":
         from app.services.openai_transcriber import (
@@ -112,19 +116,26 @@ def create_transcriber(model_id: str, session_id=None):
         )
 
         if model_id in OPENAI_TRANSCRIBE_MODEL_IDS:
-            return OpenAITranscriber(model_id=model_id, session_id=session_id)
-        return OpenAIChatTranscriber(model_id=model_id, session_id=session_id)
-    return BatchTranscriber(model_id=model_id, session_id=session_id)
+            return OpenAITranscriber(model_id=model_id, session_id=session_id, language=language)
+        return OpenAIChatTranscriber(model_id=model_id, session_id=session_id, language=language)
+    return BatchTranscriber(model_id=model_id, session_id=session_id, language=language)
 
 
 class LocalTranscriber:
     """Transcribes PCM16 16kHz mono segments with a local ONNX model."""
 
-    def __init__(self, model_id: str, sample_rate: int = 16000):
+    def __init__(self, model_id: str, sample_rate: int = 16000, language: str | None = None):
         if model_id not in LOCAL_MODEL_MAP:
             raise ValueError(f"Unknown local ASR model: {model_id}")
         self._model_id = model_id
         self._sample_rate = sample_rate
+        # Only Whisper takes a language: it picks the decoder's <|xx|> token,
+        # and without one it detects per segment. Parakeet v2 is English-only
+        # and has no such option.
+        code = language_code_or_none(language)
+        self._recognize_kwargs = (
+            {"language": code} if code and LOCAL_MODEL_MAP[model_id].startswith("whisper") else {}
+        )
 
     async def transcribe_segment(self, pcm_bytes: bytes) -> str | None:
         if len(pcm_bytes) < self._sample_rate:  # less than 0.5s of audio
@@ -136,7 +147,7 @@ class LocalTranscriber:
         try:
             model = await asyncio.to_thread(_load_model, self._model_id)
             waveform = pcm16_to_float32(pcm_bytes)
-            raw = await asyncio.to_thread(model.recognize, waveform)
+            raw = await asyncio.to_thread(model.recognize, waveform, **self._recognize_kwargs)
         except Exception as e:
             logger.error(f"Local transcription failed ({self._model_id}): {e}")
             raise TranscriptionError(

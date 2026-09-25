@@ -161,10 +161,19 @@ Diarized segments are transcribed in original audio order through
   with a transcription prompt (`backend/app/services/batch_transcriber.py`).
 
 The active model comes from the persisted `transcription.batch.model_id`
-app setting (Admin panel), falling back to `BATCH_TRANSCRIBER_MODEL`.
+app setting (Admin panel), falling back to `BATCH_TRANSCRIBER_MODEL`. The
+workspace's meeting language (`transcription.language`, `auto` by default)
+is passed to every transcriber that accepts one; see
+[Configuration](configuration.md#meeting-language).
+
 Filters drop low-energy segments, known phantom phrases (common
 hallucinations on near-silence), and single-word outputs before anything is
-saved.
+saved. The phantom phrases include Whisper's usual non-English ones, such as
+subtitle credits and "thanks for watching" in German, Spanish, French,
+Portuguese, Italian, Japanese, Korean and Chinese. Chinese, Japanese, Thai
+and other languages written without spaces are measured in characters
+instead of words, with a minimum of three, so a whole sentence is not
+mistaken for a single word and dropped.
 
 ## Interim transcription
 

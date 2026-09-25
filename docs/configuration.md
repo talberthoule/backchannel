@@ -79,6 +79,32 @@ with `live_preview_model_id` writes the same `audio_gateway` `AgentConfig`
 row that Admin -> Agents edits
 (`backend/app/services/transcription_runtime.py`).
 
+### Meeting language
+
+The **Meeting language** picker on the same tab sets one workspace-wide
+language for transcription, stored as the `transcription.language` app
+setting (`PATCH /api/diagnostics/transcription/config` with `language`).
+It is either `auto` (the default) or an ISO 639-1 code from the list in
+`backend/app/services/transcription_language.py`. An unknown code is
+rejected with HTTP 400.
+
+Each transcriber that can use the language receives it:
+
+| Path | How the language is sent |
+| --- | --- |
+| Local Whisper (`local-whisper-base`) | onnx-asr `recognize(..., language=code)` |
+| Local Parakeet (`local-parakeet-*`) | Not sent: these models are English-only |
+| Gemini batch, OpenAI chat audio | A sentence in the transcription prompt naming the language |
+| OpenAI `/v1/audio/transcriptions` | The `language` form field |
+| Gemini Live captions | `AudioTranscriptionConfig(language_codes=[code])` |
+| OpenAI Realtime captions | `language` in the session's `audio.input.transcription` |
+
+With `auto`, nothing is sent and each provider detects the language itself.
+Models transcribe in the language spoken and never translate, so a speaker
+who switches languages mid-call keeps their own words. The setting applies
+when a call starts or resumes and to every audio import or re-transcription
+after the change.
+
 <picture>
   <source srcset="/assets/shots/admin-transcription-dark.webp" media="(prefers-color-scheme: dark)" />
   <img src="/assets/shots/admin-transcription.webp" width="1185" height="900" alt="Admin Transcription and Audio tab: batch transcription model selection and audio handling settings." />

@@ -27,12 +27,14 @@ import httpx
 
 from app.services.audio_utils import make_wav_header
 from app.services.batch_transcriber import (
+    TRANSCRIBE_PROMPT,
     TranscriptionError,
     _audio_has_speech_energy,
     filter_transcript_text,
 )
 from app.services.secrets import resolve_provider_key
 from app.services.token_usage import record_token_usage
+from app.services.transcription_language import language_code_or_none, prompt_language_hint
 
 logger = logging.getLogger(__name__)
 
@@ -46,28 +48,31 @@ OPENAI_TRANSCRIBE_MODEL_IDS = frozenset({
     "gpt-4o-mini-transcribe",
 })
 
-# Mirrors the Gemini BatchTranscriber prompt so both providers share the
-# same verbatim-output convention feeding filter_transcript_text.
-_TRANSCRIBE_PROMPT = (
-    "Transcribe this audio exactly as spoken. "
-    "Output ONLY the transcribed text, nothing else. "
-    "If no speech is detected, output an empty string."
-)
-
-
 class OpenAITranscriber:
     """Transcribes PCM16 16kHz mono segments via OpenAI speech-to-text."""
 
-    def __init__(self, model_id: str, sample_rate: int = 16000, session_id=None, client=None):
+    def __init__(
+        self,
+        model_id: str,
+        sample_rate: int = 16000,
+        session_id=None,
+        client=None,
+        language: str | None = None,
+    ):
         self._model_id = model_id
         self._sample_rate = sample_rate
         self._session_id = session_id
         self._client = client  # injectable for tests, like BatchTranscriber
+        self._language = language_code_or_none(language)
 
     async def _post(self, key: str, wav_data: bytes):
+        data = {"model": self._model_id, "response_format": "json"}
+        if self._language:
+            # ISO 639-1; omitted for auto so the endpoint detects the language.
+            data["language"] = self._language
         kwargs = {
             "headers": {"Authorization": f"Bearer {key}"},
-            "data": {"model": self._model_id, "response_format": "json"},
+            "data": data,
             "files": {"file": ("segment.wav", wav_data, "audio/wav")},
         }
         if self._client is not None:
@@ -135,11 +140,21 @@ def _chat_completion_text(payload) -> str:
 class OpenAIChatTranscriber:
     """Transcribes PCM16 16kHz mono segments via an audio-capable OpenAI chat model."""
 
-    def __init__(self, model_id: str, sample_rate: int = 16000, session_id=None, client=None):
+    def __init__(
+        self,
+        model_id: str,
+        sample_rate: int = 16000,
+        session_id=None,
+        client=None,
+        language: str | None = None,
+    ):
         self._model_id = model_id
         self._sample_rate = sample_rate
         self._session_id = session_id
         self._client = client  # injectable for tests, like BatchTranscriber
+        # Same prompt as the Gemini BatchTranscriber, so both providers share
+        # the verbatim-output convention feeding filter_transcript_text.
+        self._prompt = TRANSCRIBE_PROMPT + prompt_language_hint(language)
 
     async def _post(self, key: str, wav_data: bytes):
         body = {
@@ -155,7 +170,7 @@ class OpenAIChatTranscriber:
                                 "format": "wav",
                             },
                         },
-                        {"type": "text", "text": _TRANSCRIBE_PROMPT},
+                        {"type": "text", "text": self._prompt},
                     ],
                 }
             ],

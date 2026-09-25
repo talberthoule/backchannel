@@ -394,10 +394,18 @@ export interface DiarizationBenchmarkResult {
   reason: string;
 }
 
+export interface TranscriptionLanguageOption {
+  code: string;
+  name: string;
+}
+
 export interface TranscriptionConfig {
   batch_model_id: string;
   live_preview_model_id: string;
   description: string;
+  /** "auto" or an ISO 639-1 code; reaches every transcriber that accepts one. */
+  language: string;
+  language_options: TranscriptionLanguageOption[];
 }
 
 // Local Model Fit Test: keep-up speed of self-hosted text models per agent role.

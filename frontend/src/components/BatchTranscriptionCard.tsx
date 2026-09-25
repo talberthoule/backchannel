@@ -56,7 +56,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
   const livePreviewOff = Boolean(config?.live_preview_model_id && localOnly && !liveIsLocal);
   const hasLocalLiveModel = liveModels.some((model) => runsLocally(model));
 
-  const update = async (data: { batch_model_id?: string; live_preview_model_id?: string }) => {
+  const update = async (data: { batch_model_id?: string; live_preview_model_id?: string; language?: string }) => {
     setSaving(true);
     try {
       setConfig(await api.updateTranscriptionConfig(data));
@@ -155,6 +155,32 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
             {renderOptions(liveModels, config?.live_preview_model_id, "audio_gateway")}
           </select>
         </div>
+      </div>
+
+      <div className="mb-4 grid gap-x-4 gap-y-1 md:grid-cols-2">
+        <div>
+          <label htmlFor="transcription-language" className="mb-1 block font-body text-xs font-medium text-brand-gray">
+            Meeting language
+          </label>
+          <select
+            id="transcription-language"
+            value={config?.language ?? "auto"}
+            disabled={!config || saving}
+            onChange={(event) => void update({ language: event.target.value })}
+            className="w-full rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 text-sm text-brand-dark-gray transition-colors focus:border-brand-teal disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
+          >
+            {(config?.language_options ?? [{ code: "auto", name: "Detect automatically" }]).map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="font-body text-[11px] leading-relaxed text-brand-mid-gray md:col-span-2">
+          Tells Whisper, Gemini and OpenAI which language to expect, for both the saved transcript and live
+          captions. They transcribe what is said without translating it. Parakeet models are English-only and
+          ignore this setting.
+        </p>
       </div>
 
       {localOnly && (

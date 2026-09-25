@@ -119,7 +119,7 @@ class SplitTrackRetranscriptionTests(unittest.IsolatedAsyncioTestCase):
             patch("app.routers.imports.flush_diarizer_segments", return_value=[]),
             patch(
                 "app.routers.imports.get_transcription_runtime_config",
-                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model")),
+                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model", language="auto")),
             ),
             patch(
                 "app.routers.imports.create_transcriber",
@@ -159,7 +159,7 @@ class SplitTrackRetranscriptionTests(unittest.IsolatedAsyncioTestCase):
             patch("app.routers.imports.flush_diarizer_segments", return_value=[]),
             patch(
                 "app.routers.imports.get_transcription_runtime_config",
-                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model")),
+                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model", language="auto")),
             ),
             patch(
                 "app.routers.imports.create_transcriber",
@@ -218,7 +218,7 @@ class SplitTrackRetranscriptionTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch(
                 "app.routers.imports.get_transcription_runtime_config",
-                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model")),
+                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model", language="auto")),
             ),
             patch(
                 "app.routers.imports.create_transcriber",
@@ -285,7 +285,7 @@ class SplitTrackRetranscriptionTests(unittest.IsolatedAsyncioTestCase):
             patch("app.routers.imports.flush_diarizer_segments", return_value=[]),
             patch(
                 "app.routers.imports.get_transcription_runtime_config",
-                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model")),
+                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model", language="auto")),
             ),
             patch(
                 "app.routers.imports.create_transcriber",
@@ -353,7 +353,7 @@ class SplitTrackRetranscriptionTests(unittest.IsolatedAsyncioTestCase):
             patch("app.routers.imports.flush_diarizer_segments", return_value=[]),
             patch(
                 "app.routers.imports.get_transcription_runtime_config",
-                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model")),
+                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model", language="auto")),
             ),
             patch(
                 "app.routers.imports.create_transcriber",
@@ -419,7 +419,7 @@ class SplitTrackRetranscriptionTests(unittest.IsolatedAsyncioTestCase):
             patch("app.routers.imports.flush_diarizer_segments", return_value=[]),
             patch(
                 "app.routers.imports.get_transcription_runtime_config",
-                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model")),
+                new=AsyncMock(return_value=SimpleNamespace(batch_model_id="model", language="auto")),
             ),
             patch(
                 "app.routers.imports.create_transcriber",

@@ -34,6 +34,7 @@ from app.services.transcription_runtime import (
     get_transcription_runtime_config,
     set_batch_transcriber_model,
     set_live_preview_model,
+    set_transcription_language,
 )
 from app.services.voice_enrollment import (
     MAX_ENROLLMENT_SECONDS,
@@ -72,6 +73,7 @@ class DiarizerSelectionUpdate(BaseModel):
 class BatchTranscriberUpdate(BaseModel):
     batch_model_id: str | None = None
     live_preview_model_id: str | None = None
+    language: str | None = None  # "auto" or an ISO 639-1 code (ALP-399)
 
 
 class LocalFitIntervalUpdate(BaseModel):
@@ -217,6 +219,8 @@ async def update_transcription_config(
             runtime = await set_batch_transcriber_model(db, update.batch_model_id)
         if update.live_preview_model_id is not None:
             runtime = await set_live_preview_model(db, update.live_preview_model_id)
+        if update.language is not None:
+            runtime = await set_transcription_language(db, update.language)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return runtime.to_dict()

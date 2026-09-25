@@ -707,6 +707,7 @@ async def _audio_websocket(websocket: WebSocket, session_id: uuid.UUID):
         admitted_models=admitted_models,
         board_stubs=board_stubs,
         audio_local_only=audio_local_only,
+        transcription_language=transcription_config.language,
     )
 
     # --- Speaker diarization ---
