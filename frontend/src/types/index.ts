@@ -292,6 +292,8 @@ export interface ModelInfo {
   runs_locally?: boolean;
   /** Set when the model is served by a saved self-hosted endpoint. */
   endpoint_id?: string | null;
+  /** ISO 639-1 codes the model can transcribe; absent when multilingual or provider-decided. */
+  languages?: string[] | null;
   recommendations?: ModelRecommendation[];
 }
 

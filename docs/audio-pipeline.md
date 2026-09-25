@@ -142,8 +142,8 @@ Diarized segments are transcribed in original audio order through
 `OrderedTranscriptionQueue`. The transcriber is picked by model ID in
 `create_transcriber` (`backend/app/services/local_transcriber.py`):
 
-- `local-*` model IDs (for example `local-whisper-base`,
-  `local-parakeet-tdt-0.6b`) run ONNX Whisper/Parakeet locally via
+- `local-*` model IDs (`local-whisper-base`, `local-parakeet-tdt-0.6b`,
+  `local-parakeet-tdt-0.6b-v3`) run ONNX Whisper/Parakeet locally via
   `onnx-asr`. Weights download to `DATA_DIR/asr-models/` on first use; no
   API key required. That first fetch is reported through
   `/api/model-downloads` and shown in the app while it runs, so the first
@@ -159,6 +159,19 @@ Diarized segments are transcribed in original audio order through
   with an `input_audio` content part (`OpenAIChatTranscriber`).
 - Everything else goes to Gemini: the segment is wrapped as WAV and sent
   with a transcription prompt (`backend/app/services/batch_transcriber.py`).
+
+The local models differ in the languages they cover:
+
+| Model | Languages | First download |
+| --- | --- | --- |
+| `local-whisper-base` | About 99; takes the meeting language, otherwise detects it per segment | About 0.4 GB |
+| `local-parakeet-tdt-0.6b` (v2) | English only | About 2.4 GB (fp32) |
+| `local-parakeet-tdt-0.6b-v3` | 25 European languages: bg, hr, cs, da, nl, en, et, fi, fr, de, el, hu, it, lv, lt, mt, pl, pt, ro, sk, sl, es, sv, ru, uk. Detects the language itself | About 0.7 GB (int8) |
+
+Parakeet has no language option. The fit test recommends a local model only
+when it suits the meeting language: with a language set, the model must
+cover it; with `auto`, English-only models are passed over for multilingual
+ones.
 
 The active model comes from the persisted `transcription.batch.model_id`
 app setting (Admin panel), falling back to `BATCH_TRANSCRIBER_MODEL`. The
@@ -180,7 +193,8 @@ mistaken for a single word and dropped.
 Independently of the batch path, the mixed stream is forwarded to the audio
 gateway, which sends back interim text. The gateway is a cloud streaming
 session (Gemini Live or OpenAI Realtime, sub-second partials) or, when the
-`audio_gateway` agent is set to `local-parakeet-live`, the on-device local
+`audio_gateway` agent is set to `local-parakeet-live` (English) or
+`local-parakeet-v3-live` (25 European languages), the on-device local
 captioner (`backend/app/services/local_live_captioner.py`): it batches the
 incoming audio into short, non-overlapping chunks committed roughly every 3
 seconds (chunks under 1 second are held for more context) and transcribes

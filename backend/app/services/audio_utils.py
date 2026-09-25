@@ -151,3 +151,23 @@ def convert_to_pcm16(
             f"FFmpeg produced no audio while decoding this {source_format} file."
         )
     return pcm_data
+
+
+def synthetic_speech_clip(seconds: int = 8) -> bytes:
+    """A deterministic speech-band test tone with enough energy to pass the ASR
+    speech gate. It only exercises the model for a SPEED measurement - the audio
+    is not real speech, so its transcript is meaningless and unused.
+
+    Lives here, below both local_fit (the ASR benchmark) and the on-device
+    captioner (its warm-up), so neither imports the other.
+    """
+    sr = 16000
+    t = np.arange(int(seconds * sr), dtype=np.float32) / sr
+    tone = (
+        0.6 * np.sin(2 * np.pi * 180 * t)
+        + 0.4 * np.sin(2 * np.pi * 650 * t)
+        + 0.3 * np.sin(2 * np.pi * 1400 * t)
+    )
+    envelope = 0.55 + 0.45 * np.sin(2 * np.pi * 3.0 * t)  # syllable-rate modulation
+    signal = np.clip(tone * envelope * 0.4, -1.0, 1.0)
+    return (signal * 32767).astype("<i2").tobytes()

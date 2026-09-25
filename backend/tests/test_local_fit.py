@@ -418,8 +418,12 @@ class RunAsrFitTests(unittest.IsolatedAsyncioTestCase):
 
         report = await run_asr_fit(b"\x00" * 320000, make_transcriber=FakeTranscriber)
 
-        # Both bundled local ASR models are measured.
-        self.assertEqual(len(report["asr_models"]), 2)
+        # Every bundled local ASR model is measured.
+        from app.services.local_transcriber import LOCAL_MODEL_MAP
+
+        self.assertEqual(
+            [m["model_id"] for m in report["asr_models"]], list(LOCAL_MODEL_MAP)
+        )
         self.assertTrue(all(m["status"] == "ok" for m in report["asr_models"]))
         self.assertGreater(report["audio_seconds"], 0)
 

@@ -119,7 +119,9 @@ MODEL_PRICING: dict[str, dict | None] = {
     # --- Local ONNX models: no API cost ---
     "local-whisper-base": _price(0.0, 0.0),
     "local-parakeet-tdt-0.6b": _price(0.0, 0.0),
+    "local-parakeet-tdt-0.6b-v3": _price(0.0, 0.0),
     "local-parakeet-live": _price(0.0, 0.0),
+    "local-parakeet-v3-live": _price(0.0, 0.0),
 }
 
 

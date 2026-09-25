@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ModelInfo, TranscriptionConfig } from "../types";
 import * as api from "../services/api";
 import { groupModels, optionLabel, optionState, runsLocally } from "../lib/modelOptions";
+import { languageMismatch } from "../lib/transcriptionLanguage";
 
 interface BatchTranscriptionCardProps {
   models: ModelInfo[];
@@ -55,6 +56,13 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
   const liveIsLocal = liveModel ? runsLocally(liveModel) : false;
   const livePreviewOff = Boolean(config?.live_preview_model_id && localOnly && !liveIsLocal);
   const hasLocalLiveModel = liveModels.some((model) => runsLocally(model));
+  const language = config?.language ?? "auto";
+  const languageName = (code: string) =>
+    config?.language_options.find((option) => option.code === code)?.name ?? code;
+  const languageWarnings = [
+    languageMismatch(selectedModel, language, languageName),
+    livePreviewOff ? null : languageMismatch(liveModel, language, languageName),
+  ].filter((warning): warning is string => Boolean(warning));
 
   const update = async (data: { batch_model_id?: string; live_preview_model_id?: string; language?: string }) => {
     setSaving(true);
@@ -178,16 +186,26 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
         </div>
         <p className="font-body text-[11px] leading-relaxed text-brand-mid-gray md:col-span-2">
           Tells Whisper, Gemini and OpenAI which language to expect, for both the saved transcript and live
-          captions. They transcribe what is said without translating it. Parakeet models are English-only and
-          ignore this setting.
+          captions. They transcribe what is said without translating it. Parakeet takes no language setting:
+          v2 is English-only, and v3 detects which of its 25 European languages is spoken.
         </p>
+        {languageWarnings.map((warning) => (
+          <p
+            key={warning}
+            role="status"
+            className="rounded border border-amber-200 bg-amber-50 px-3 py-2 font-body text-xs text-amber-900 md:col-span-2"
+          >
+            {warning}
+          </p>
+        ))}
       </div>
 
       {localOnly && (
         <p className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 font-body text-xs text-amber-900">
           {lockLabel === "Privacy First" ? "Privacy First mode" : "The PII Shield"} is on: only local ONNX models can transcribe. Cloud live-caption gateways are
           off, but the experimental on-device captioner ({hasLocalLiveModel ? "Parakeet Live" : "when available"})
-          can be selected here - it is CPU-heavy, so check the fit test&apos;s live-caption feasibility first.
+          can be selected here, English-only or multilingual (Parakeet v3 Live) - it is CPU-heavy, so check
+          the fit test&apos;s live-caption feasibility first.
           Your previous cloud choices are restored when the switch is turned off.
         </p>
       )}
@@ -199,8 +217,8 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
           depending on the model) only shows interim captions while a call is active. Changing the live
           preview model here updates that agent&apos;s model, the same setting shown on the Agents tab.
           Self-hosted (OpenAI-compatible chat) models are text-only and are not listed here; for fully
-          offline transcription choose a local ONNX model (local-whisper-base or local-parakeet), and use
-          a self-hosted chat model for the analysis agents.
+          offline transcription choose a local ONNX model (Whisper Base, or Parakeet v2 for English and
+          Parakeet v3 for 25 European languages), and use a self-hosted chat model for the analysis agents.
         </p>
       </div>
 

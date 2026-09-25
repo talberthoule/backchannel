@@ -126,7 +126,7 @@ class RuntimeActivityTests(unittest.TestCase):
 
         model_id = "local-whisper-base"
         local_transcriber._loaded.pop(model_id, None)
-        fake_onnx = SimpleNamespace(load_model=lambda *_: object())
+        fake_onnx = SimpleNamespace(load_model=lambda *_, **__: object())
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
             sys.modules, {"onnx_asr": fake_onnx}
         ), patch.object(local_transcriber, "data_dir", return_value=Path(temp_dir)):

@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AgentConfig
 from app.services.app_settings import get_app_setting, set_app_setting
+from app.services.audio_utils import synthetic_speech_clip
 from app.services.batch_transcriber import _audio_has_speech_energy
 from app.services.custom_endpoints import endpoint_models
 from app.services.diarization_diagnostics import probe_sortformer_environment
@@ -38,7 +39,14 @@ from app.services.fit_staleness import (
     stamp_fit_record,
 )
 from app.services.llm import generate_text
+from app.services.local_live_captioner import LOCAL_LIVE_MODEL_MAP
 from app.services.local_transcriber import LOCAL_MODEL_MAP, LocalTranscriber
+from app.services.transcription_language import (
+    AUTO_LANGUAGE,
+    SETTING_TRANSCRIPTION_LANGUAGE,
+    normalize_language,
+    recommendable_for_language,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -783,11 +791,22 @@ async def load_local_fit_result(db: AsyncSession) -> dict | None:
 
 
 async def local_model_recommendations(db: AsyncSession) -> dict[str, list[dict]]:
-    return local_recommendations_from_fit(await load_local_fit_result(db))
+    language = normalize_language(
+        await get_app_setting(db, SETTING_TRANSCRIPTION_LANGUAGE, AUTO_LANGUAGE)
+    )
+    return local_recommendations_from_fit(await load_local_fit_result(db), language=language)
 
 
-def local_recommendations_from_fit(result: dict | None) -> dict[str, list[dict]]:
-    """Recommend only current green winners from the latest Local Fit run."""
+def local_recommendations_from_fit(
+    result: dict | None,
+    language: str | None = None,
+) -> dict[str, list[dict]]:
+    """Recommend only current green winners from the latest Local Fit run.
+
+    With a workspace `language`, local ASR models are recommended only when
+    they suit it (transcription_language.recommendable_for_language); None
+    skips that filter.
+    """
     if not result or (result.get("validity") or {}).get("status") != "current":
         return {}
 
@@ -859,8 +878,12 @@ def local_recommendations_from_fit(result: dict | None) -> dict[str, list[dict]]
                 (effective_rtf, measurement["model_id"], measurement)
             )
 
-    if asr_candidates:
-        _, model_id, _ = min(asr_candidates, key=lambda choice: (choice[0], choice[1]))
+    def suits_language(model_id: str) -> bool:
+        return language is None or recommendable_for_language(model_id, language)
+
+    batch_candidates = [c for c in asr_candidates if suits_language(c[1])]
+    if batch_candidates:
+        _, model_id, _ = min(batch_candidates, key=lambda choice: (choice[0], choice[1]))
         recommendations.setdefault(model_id, []).append(
             {
                 "role": "batch_transcription",
@@ -870,31 +893,34 @@ def local_recommendations_from_fit(result: dict | None) -> dict[str, list[dict]]
             }
         )
 
-    live_measurement = next(
-        (
-            measurement
-            for _, model_id, measurement in asr_candidates
-            if model_id == "local-parakeet-tdt-0.6b"
-        ),
-        None,
-    )
-    if live_measurement is not None:
+    # Each on-device captioner runs one batch model on short windows, so its
+    # feasibility is that model's short-window speed. The fastest feasible
+    # captioner that suits the language gets the badge.
+    measured = {model_id: measurement for _, model_id, measurement in asr_candidates}
+    live_choices: list[tuple[float, str]] = []
+    for live_model_id, asr_model_id in LOCAL_LIVE_MODEL_MAP.items():
+        measurement = measured.get(asr_model_id)
+        if measurement is None or not suits_language(live_model_id):
+            continue
         try:
             live_rtf = effective_latency(
-                float(live_measurement["short_real_time_factor"]),
+                float(measurement["short_real_time_factor"]),
                 contention,
             )
         except (KeyError, TypeError, ValueError):
-            live_rtf = float("inf")
+            continue
         if classify_live_feasibility(live_rtf) == FEASIBLE:
-            recommendations["local-parakeet-live"] = [
-                {
-                    "role": "audio_gateway",
-                    "provider": "local",
-                    "recommended": True,
-                    "source": "local_fit",
-                }
-            ]
+            live_choices.append((live_rtf, live_model_id))
+    if live_choices:
+        _, live_model_id = min(live_choices)
+        recommendations[live_model_id] = [
+            {
+                "role": "audio_gateway",
+                "provider": "local",
+                "recommended": True,
+                "source": "local_fit",
+            }
+        ]
 
     return recommendations
 
@@ -1028,24 +1054,6 @@ def classify_live_feasibility(short_rtf: float) -> str:
     if short_rtf <= ASR_LIVE_MARGINAL_RTF:
         return MARGINAL
     return NOT_FEASIBLE
-
-
-def synthetic_speech_clip(seconds: int = 8) -> bytes:
-    """A deterministic speech-band test tone with enough energy to pass the ASR
-    speech gate. It only exercises the model for a SPEED measurement - the audio
-    is not real speech, so its transcript is meaningless and unused."""
-    import numpy as np
-
-    sr = 16000
-    t = np.arange(int(seconds * sr), dtype=np.float32) / sr
-    tone = (
-        0.6 * np.sin(2 * np.pi * 180 * t)
-        + 0.4 * np.sin(2 * np.pi * 650 * t)
-        + 0.3 * np.sin(2 * np.pi * 1400 * t)
-    )
-    envelope = 0.55 + 0.45 * np.sin(2 * np.pi * 3.0 * t)  # syllable-rate modulation
-    signal = np.clip(tone * envelope * 0.4, -1.0, 1.0)
-    return (signal * 32767).astype("<i2").tobytes()
 
 
 def asr_clip_seconds(pcm_bytes: bytes) -> float:

@@ -55,6 +55,9 @@ class ModelOut(BaseModel):
     runs_locally: bool = False
     # Set for models served by a saved custom endpoint.
     endpoint_id: str | None = None
+    # ISO 639-1 codes the model can transcribe; None when it is multilingual
+    # or the provider decides (ALP-405).
+    languages: list[str] | None = None
     recommendations: list[ModelRecommendation] = Field(default_factory=list)
 
 
