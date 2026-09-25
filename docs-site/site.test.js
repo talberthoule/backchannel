@@ -238,6 +238,11 @@ test('the analyst lenses walkthrough is linked, indexed, and ships both themes o
   assert.match(agents, /href="\/analyst-lenses\/"/);
   assert.match(page, /<script src="\/analyst-lenses\/walkthrough\.js" defer><\/script>/);
   statSync(new URL('../site/analyst-lenses/walkthrough.js', import.meta.url));
+  // The walkthrough styles live beside the page, not in style.css, which sits
+  // at the structural gate's 3000-line limit (sentrux max_file_lines).
+  assert.match(page, /<link rel="stylesheet" href="\/analyst-lenses\/walkthrough\.css" \/>/);
+  statSync(new URL('../site/analyst-lenses/walkthrough.css', import.meta.url));
+  assert.doesNotMatch(read('../site/style.css'), /\.lw-/);
 
   // Every screenshot the page references exists, and each has its other-theme twin.
   const shots = new Set([...page.matchAll(/\/assets\/lenses\/([a-z-]+?)(?:-dark)?\.webp/g)].map((m) => m[1]));
