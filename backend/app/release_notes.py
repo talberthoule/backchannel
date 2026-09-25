@@ -10,10 +10,40 @@ Bodies are GitHub-flavored markdown rendered in the Admin -> About tab. Keep
 them user-facing summaries (no download links or repo internals) and ASCII.
 """
 
-APP_VERSION = "0.6.5"
+APP_VERSION = "0.6.6"
 
 # Newest first; the first entry's version must equal APP_VERSION.
 RELEASE_NOTES: list[dict] = [
+    {
+        "version": "0.6.6",
+        "date": "2026-09-25",
+        "title": "Meetings in more languages, transcribed on your machine",
+        "body": """Backchannel no longer assumes your meetings are in English.
+
+- Admin -> Transcription & Audio has a Meeting language setting. It starts on
+  Detect automatically; pick a language and on-device Whisper, Gemini and
+  OpenAI all use it, for the saved transcript and live captions. Models
+  transcribe what is said and never translate it.
+- Parakeet v3 is a new on-device model for 25 European languages, including
+  German, French, Spanish, Italian, Polish and Russian. It detects which one
+  is spoken, and it also powers a new experimental live-caption option,
+  Parakeet v3 Live, so non-English calls can get private captions with the
+  PII Shield or Privacy First on. First download about 0.7 GB.
+- Whisper Large v3 Turbo covers the languages Parakeet does not, such as
+  Japanese, Chinese, Korean, Arabic and Hindi, and is far more accurate there
+  than Whisper Base. It is slower, so it handles the saved transcript only.
+  First download about 1.1 GB.
+- The Local Model Fit Test only recommends models that cover your meeting
+  language, and Transcription & Audio warns when the model you selected can't
+  transcribe it.
+- Chinese, Japanese and Thai transcripts are no longer discarded as one-word
+  noise, and Whisper's non-English silence phrases are filtered like the
+  English ones.
+
+Nothing to migrate. The meeting language starts on Detect automatically, so
+transcription behaves as before until you change it, and new models download
+only when you select one or run the fit test.""",
+    },
     {
         "version": "0.6.5",
         "date": "2026-09-04",
