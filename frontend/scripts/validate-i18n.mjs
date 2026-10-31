@@ -22,7 +22,13 @@ const SUPPORTED_LOCALES = [
 const TARGET_LOCALES = SUPPORTED_LOCALES.filter((locale) => locale !== "en");
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const localeRoot = path.resolve(scriptDir, "../src/locales");
-const strict = process.argv.includes("--complete");
+const complete = process.argv.includes("--complete");
+const staging = process.argv.includes("--staging");
+
+if (complete && staging) {
+  console.error("i18n check failed: --complete and --staging cannot be used together");
+  process.exit(1);
+}
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -41,6 +47,13 @@ function placeholders(value) {
   if (typeof value !== "string") return [];
   return [...value.matchAll(/{{\s*([^},\s]+)[^}]*}}/g)]
     .map((match) => match[1])
+    .sort();
+}
+
+function structuredTokens(value) {
+  if (typeof value !== "string") return [];
+  return [...value.matchAll(/\[PERSON_\d+\]/g)]
+    .map((match) => match[0])
     .sort();
 }
 
@@ -90,15 +103,22 @@ for (const locale of TARGET_LOCALES) {
     }
     const sourceTokens = placeholders(source.get(key));
     const targetTokens = placeholders(value);
-    if (strict && sourceTokens.join("|") !== targetTokens.join("|")) {
+    if (value !== "" && sourceTokens.join("|") !== targetTokens.join("|")) {
       errors.push(
         `${locale}.${key}: placeholder mismatch (expected ${sourceTokens.join(", ") || "none"}; got ${targetTokens.join(", ") || "none"})`,
       );
     }
-    if (strict && value.trim() === "") {
+    const sourceStructuredTokens = structuredTokens(source.get(key));
+    const targetStructuredTokens = structuredTokens(value);
+    if (value !== "" && sourceStructuredTokens.join("|") !== targetStructuredTokens.join("|")) {
+      errors.push(
+        `${locale}.${key}: structured token mismatch (expected ${sourceStructuredTokens.join(", ") || "none"}; got ${targetStructuredTokens.join(", ") || "none"})`,
+      );
+    }
+    if (complete && value.trim() === "") {
       errors.push(`${locale}.${key}: translation is still empty`);
     }
-    if (!strict && value !== "") {
+    if (staging && value !== "") {
       errors.push(`${locale}.${key}: staging catalog must contain an empty string`);
     }
   }
@@ -116,7 +136,9 @@ if (errors.length > 0) {
 }
 
 console.log(
-  strict
+  complete
     ? `i18n complete: ${source.size} keys across ${SUPPORTED_LOCALES.length} locales`
-    : `i18n staging catalogs valid: ${source.size} keys, ${TARGET_LOCALES.length} empty target locales`,
+    : staging
+      ? `i18n staging catalogs valid: ${source.size} keys, ${TARGET_LOCALES.length} empty target locales`
+      : `i18n catalogs structurally valid: ${source.size} keys across ${SUPPORTED_LOCALES.length} locales`,
 );

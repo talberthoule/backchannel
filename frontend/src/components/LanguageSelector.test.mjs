@@ -38,13 +38,30 @@ after(async () => {
   await rm(outputDir, { recursive: true, force: true });
 });
 
-test("the Stage 1 selector advertises only completed English", () => {
+test("the selector advertises every completed locale with its native name", () => {
   const markup = render();
   assert.match(markup, /aria-label="Language"/);
-  assert.match(markup, /English/);
-  assert.doesNotMatch(markup, /Deutsch|Français|Español|Português|简体中文|日本語|한국어|Русский|Polski|Türkçe|Català/);
+  for (const label of [
+    "English",
+    "Deutsch",
+    "Français",
+    "Español",
+    "Italiano",
+    "Português (Brasil)",
+    "简体中文",
+    "日本語",
+    "한국어",
+    "Nederlands",
+    "Русский",
+    "Polski",
+    "Türkçe",
+    "Català",
+  ]) {
+    assert.ok(markup.includes(label), `${label} option is missing`);
+  }
   assert.match(markup, /<select/);
-  assert.equal((markup.match(/<option/g) || []).length, 1);
+  assert.equal((markup.match(/<option/g) || []).length, 14);
+  assert.doesNotMatch(markup, /<option[^>]*disabled/);
 });
 
 test("language switching does not reload or remount application state", () => {

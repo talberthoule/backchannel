@@ -13,6 +13,7 @@
     "test:pwa": "node scripts/verify-pwa-assets.mjs",
     "i18n:check": "node scripts/validate-i18n.mjs",
     "i18n:check:complete": "node scripts/validate-i18n.mjs --complete",
+    "i18n:check:staging": "node scripts/validate-i18n.mjs --staging",
     "preview": "vite preview"
   },
   "dependencies": {

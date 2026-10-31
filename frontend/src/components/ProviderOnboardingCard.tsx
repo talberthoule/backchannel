@@ -7,7 +7,7 @@ import {
   setupReadiness,
   toReadinessAgentModels,
   type ReadinessTranscription,
-  type SetupReadiness,
+  type SetupReadinessInput,
 } from "../lib/providerOnboarding";
 
 interface ProviderOnboardingCardProps {
@@ -29,7 +29,7 @@ export default function ProviderOnboardingCard({
 }: ProviderOnboardingCardProps) {
   const { t } = useTranslation();
   const [anyKeySaved, setAnyKeySaved] = useState(false);
-  const [readiness, setReadiness] = useState<SetupReadiness | null>(null);
+  const [readinessInput, setReadinessInput] = useState<SetupReadinessInput | null>(null);
   const [privacyBusy, setPrivacyBusy] = useState(false);
 
   const localOnly = privacy?.local_only === true;
@@ -43,13 +43,11 @@ export default function ProviderOnboardingCard({
         api.listModels(),
       ]);
       setAnyKeySaved(credentials.some((c) => c.configured || c.env_fallback));
-      setReadiness(
-        setupReadiness({
-          localOnly,
-          transcription: transcription as ReadinessTranscription | null,
-          agentModels: toReadinessAgentModels(agents, models),
-        })
-      );
+      setReadinessInput({
+        localOnly,
+        transcription: transcription as ReadinessTranscription | null,
+        agentModels: toReadinessAgentModels(agents, models),
+      });
     } catch (err) {
       console.error("Failed to check setup readiness", err);
     }
@@ -70,6 +68,7 @@ export default function ProviderOnboardingCard({
     }
   };
 
+  const readiness = readinessInput ? setupReadiness(readinessInput) : null;
   const stage = readiness ? onboardingStage({ anyKeySaved, readiness }) : "choose";
   const disabledImpact = privacy?.impact.disabled ?? [];
 

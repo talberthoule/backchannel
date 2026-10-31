@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import * as api from "../services/api";
-import { setupReadiness, toReadinessAgentModels, type SetupReadiness } from "../lib/providerOnboarding";
+import {
+  setupReadiness,
+  toReadinessAgentModels,
+  type SetupReadinessInput,
+} from "../lib/providerOnboarding";
 
 interface WelcomeViewProps {
   hasSessions: boolean;
@@ -36,7 +40,7 @@ function StepCard({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex items-start gap-4 rounded-xl bg-surface p-5 text-left shadow-sm ring-1 ring-brand-light-gray-1/60">
+    <div className="flex flex-wrap items-start gap-4 rounded-xl bg-surface p-5 text-left shadow-sm ring-1 ring-brand-light-gray-1/60">
       <span
         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-display text-sm font-bold ${
           done ? "bg-brand-teal text-white" : "bg-brand-light-gray-2 text-brand-gray"
@@ -58,7 +62,7 @@ function StepCard({
         <button
           type="button"
           onClick={action.onClick}
-          className="shrink-0 self-center rounded-lg bg-brand-teal px-3.5 py-2 font-body text-xs font-semibold text-white transition-colors hover:bg-brand-teal/90"
+          className="w-full shrink-0 rounded-lg bg-brand-teal px-3.5 py-2 font-body text-xs font-semibold text-white transition-colors hover:bg-brand-teal/90 sm:w-auto sm:self-center"
         >
           {action.label}
         </button>
@@ -73,7 +77,7 @@ function StepCard({
 // empty state.
 export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }: WelcomeViewProps) {
   const { t } = useTranslation();
-  const [readiness, setReadiness] = useState<SetupReadiness | null>(null);
+  const [readinessInput, setReadinessInput] = useState<SetupReadinessInput | null>(null);
   const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
@@ -86,13 +90,11 @@ export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }
         api.listAgents().catch(() => []),
         api.listModels().catch(() => []),
       ]).then(([p, transcription, agents, models]) => {
-        setReadiness(
-          setupReadiness({
-            localOnly: p?.local_only === true,
-            transcription,
-            agentModels: toReadinessAgentModels(agents, models),
-          })
-        );
+        setReadinessInput({
+          localOnly: p?.local_only === true,
+          transcription,
+          agentModels: toReadinessAgentModels(agents, models),
+        });
       });
     }
     api.getAppMeta().then((m) => setVersion(m.version)).catch(() => null);
@@ -114,6 +116,7 @@ export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }
     );
   }
 
+  const readiness = readinessInput ? setupReadiness(readinessInput) : null;
   const setupReady = readiness?.ready === true;
   const checklistLoaded = readiness !== null;
   const setupNotice =

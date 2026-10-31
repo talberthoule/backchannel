@@ -45,7 +45,7 @@ Comments and developer-only diagnostics are not part of the catalog.
 
 ## Validation and delivery
 
-Stage 1 catalogs intentionally contain empty strings. Replace the values in the target locale files; do not copy English text as a placeholder.
+All 13 externally supplied catalogs are now integrated. Keep the completed JSON files as the translation source of truth; do not copy English text into a target field as a placeholder.
 
 From `frontend/`, run:
 
@@ -54,6 +54,8 @@ npm run i18n:check
 npm run i18n:check:complete
 ```
 
-The first command must keep the empty staging catalogs structurally aligned with English. The complete command must pass only when all 13 target catalogs contain non-empty values and preserve every key, placeholder, and plural form.
+The first command verifies key and placeholder structure across all catalogs. The complete command additionally requires all 13 target catalogs to contain non-empty values.
+
+For a future empty translation template, run `npm run i18n:check:staging`; that mode requires every target value to remain an empty string until translation is supplied.
 
 Return the 13 completed JSON files, or place them at the paths above, for integration and final UI validation. Translations are integrated only when all 13 catalogs pass the strict check together.

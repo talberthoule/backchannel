@@ -62,14 +62,16 @@ export interface SetupReadiness {
   reason: string;
 }
 
-// A workspace is ready only when the currently selected transcription and
-// agent configuration can actually run -- not merely when some provider key
-// exists.
-export function setupReadiness(input: {
+export interface SetupReadinessInput {
   localOnly: boolean;
   transcription: ReadinessTranscription | null;
   agentModels: ReadinessAgentModel[];
-}): SetupReadiness {
+}
+
+// A workspace is ready only when the currently selected transcription and
+// agent configuration can actually run -- not merely when some provider key
+// exists.
+export function setupReadiness(input: SetupReadinessInput): SetupReadiness {
   const t = input.transcription;
   if (!t) return { ready: false, reason: i18n.t("onboarding.checking") };
   if (!t.ready) {

@@ -930,7 +930,7 @@ export default function Layout({
             <rect x="43" y="20" width="7" height="30" rx="3.5" fill="#0d9488" />
             <rect x="52" y="28" width="7" height="14" rx="3.5" fill="#2dd4bf" />
           </svg>
-          <span className="font-display text-[19px] font-bold tracking-tight text-brand-dark-gray">backchannel</span>
+          <span className="hidden font-display text-[19px] font-bold tracking-tight text-brand-dark-gray min-[420px]:inline">backchannel</span>
         </div>
         <div className="flex items-center gap-1">
           <LanguageSelector />

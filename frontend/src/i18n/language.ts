@@ -36,8 +36,8 @@ export const LOCALE_LABELS: Record<SupportedLocale, string> = {
   ca: "Català",
 };
 
-// A locale is advertised only after its catalog has been supplied and validated.
-export const ENABLED_LOCALES: readonly SupportedLocale[] = ["en"];
+// Every catalog is enabled only after external translation and strict validation.
+export const ENABLED_LOCALES: readonly SupportedLocale[] = SUPPORTED_LOCALES;
 
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
 
