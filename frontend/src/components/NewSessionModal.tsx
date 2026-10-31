@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { MeetingType } from "../types";
-import { MEETING_TYPES } from "./PreCall/MeetingContextSetup";
+import { MEETING_TYPE_VALUES, meetingTypeCopy } from "./PreCall/MeetingContextSetup";
 
 interface Props {
   open: boolean;
@@ -8,20 +9,21 @@ interface Props {
   onCreate: (name: string, meetingType: MeetingType) => Promise<void>;
 }
 
-function suggestedName(): string {
+function suggestedName(prefix: string): string {
   const now = new Date();
   const date = now.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const time = now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return `Meeting ${date}, ${time}`;
+  return `${prefix} ${date}, ${time}`;
 }
 
 export default function NewSessionModal({ open, onClose, onCreate }: Props) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [meetingType, setMeetingType] = useState<MeetingType>("general");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const placeholder = useRef(suggestedName());
+  const placeholder = useRef(suggestedName(t("newSession.suggestedPrefix")));
 
   // Reset state each time the modal opens, then focus the name field
   useEffect(() => {
@@ -30,7 +32,7 @@ export default function NewSessionModal({ open, onClose, onCreate }: Props) {
     setMeetingType("general");
     setCreating(false);
     setError(null);
-    placeholder.current = suggestedName();
+    placeholder.current = suggestedName(t("newSession.suggestedPrefix"));
     const id = window.setTimeout(() => inputRef.current?.focus(), 50);
     return () => window.clearTimeout(id);
   }, [open]);
@@ -48,7 +50,7 @@ export default function NewSessionModal({ open, onClose, onCreate }: Props) {
 
   const trimmed = name.trim();
   const finalName = trimmed || placeholder.current;
-  const selected = MEETING_TYPES.find((t) => t.value === meetingType) || MEETING_TYPES[0];
+  const selected = meetingTypeCopy(meetingType, t);
 
   const handleCreate = async () => {
     if (creating) return;
@@ -57,7 +59,7 @@ export default function NewSessionModal({ open, onClose, onCreate }: Props) {
     try {
       await onCreate(finalName, meetingType);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create session.");
+      setError(err instanceof Error ? err.message : t("newSession.createFailed"));
       setCreating(false);
     }
   };
@@ -78,11 +80,10 @@ export default function NewSessionModal({ open, onClose, onCreate }: Props) {
         <div className="flex items-start justify-between border-b border-brand-light-gray-1 px-6 py-4">
           <div>
             <h2 id="new-session-title" className="font-display text-lg font-semibold text-brand-dark-gray">
-              New Session
+              {t("newSession.title")}
             </h2>
             <p className="mt-0.5 font-body text-xs text-brand-mid-gray">
-              A name and a conversation type is all it takes. Documents, directives and participants
-              can wait for the setup screen.
+              {t("newSession.intro")}
             </p>
           </div>
           <button
@@ -90,7 +91,7 @@ export default function NewSessionModal({ open, onClose, onCreate }: Props) {
             onClick={onClose}
             disabled={creating}
             className="rounded-lg p-1.5 text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray disabled:opacity-50"
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -100,7 +101,7 @@ export default function NewSessionModal({ open, onClose, onCreate }: Props) {
 
         <div className="px-6 py-5">
           <label htmlFor="new-session-name" className="mb-1.5 block font-body text-xs font-semibold uppercase tracking-wide text-brand-mid-gray">
-            Session Name
+            {t("newSession.name")}
           </label>
           <input
             id="new-session-name"
@@ -116,20 +117,21 @@ export default function NewSessionModal({ open, onClose, onCreate }: Props) {
             className="w-full rounded-lg border border-brand-light-gray-1 bg-surface px-3 py-2.5 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray/70 transition-colors focus:border-brand-teal focus:ring-2 focus:ring-brand-teal-light/40 disabled:bg-brand-light-gray-2"
           />
           <p className="mt-1.5 font-body text-[11px] text-brand-mid-gray">
-            Leave blank to use the suggested name. You can rename it anytime.
+            {t("newSession.nameHint")}
           </p>
 
           <label className="mb-1.5 mt-5 block font-body text-xs font-semibold uppercase tracking-wide text-brand-mid-gray">
-            Conversation Type
+            {t("meetingTypes.conversationType")}
           </label>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {MEETING_TYPES.map((type) => {
-              const active = type.value === meetingType;
+            {MEETING_TYPE_VALUES.map((value) => {
+              const copy = meetingTypeCopy(value, t);
+              const active = value === meetingType;
               return (
                 <button
-                  key={type.value}
+                  key={value}
                   type="button"
-                  onClick={() => setMeetingType(type.value)}
+                  onClick={() => setMeetingType(value)}
                   disabled={creating}
                   aria-pressed={active}
                   className={`rounded-lg border px-2.5 py-2 text-left font-body text-xs font-medium transition-colors ${
@@ -138,7 +140,7 @@ export default function NewSessionModal({ open, onClose, onCreate }: Props) {
                       : "border-brand-light-gray-1 text-brand-gray hover:border-brand-teal-light/60 hover:bg-brand-light-gray-2"
                   }`}
                 >
-                  {type.label}
+                  {copy.label}
                 </button>
               );
             })}
@@ -159,7 +161,7 @@ export default function NewSessionModal({ open, onClose, onCreate }: Props) {
             disabled={creating}
             className="rounded-lg px-4 py-2 font-body text-sm font-medium text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray disabled:opacity-50"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -173,7 +175,7 @@ export default function NewSessionModal({ open, onClose, onCreate }: Props) {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z" />
               </svg>
             )}
-            {creating ? "Creating..." : "Create"}
+            {creating ? t("common.creating") : t("common.create")}
           </button>
         </div>
       </div>

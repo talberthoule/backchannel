@@ -20,6 +20,7 @@ import type {
   SynthesisSectionItem,
   TranscriptEntry,
 } from "../../types";
+import i18n from "../../i18n/index.ts";
 
 export interface OverviewItem {
   key: string;
@@ -109,7 +110,7 @@ export function commitments(questions: Question[], synthesis: SessionSynthesis |
   const insights = { matching: live.length, shown: live.length, filter: "action_item" };
   const plan = briefingRows("action_plan", synthesis?.action_plan);
   if (plan.length > 0) return section("briefing", plan, cap, insights);
-  return section("insights", live.map((q) => fromInsight(q, q.starred ? "Starred" : undefined)), cap, insights);
+  return section("insights", live.map((q) => fromInsight(q, q.starred ? i18n.t("overview.status.starred") : undefined)), cap, insights);
 }
 
 // Questions still waiting on an answer. The Insights "question" filter shows
@@ -125,7 +126,7 @@ export function openLoops(questions: Question[], synthesis: SessionSynthesis | n
   if (unresolved.length > 0) return section("briefing", unresolved, cap, insights);
   return section(
     "insights",
-    open.map((q) => fromInsight(q, q.needs_followup ? "Needs follow-up" : undefined)),
+    open.map((q) => fromInsight(q, q.needs_followup ? i18n.t("overview.status.needsFollowUp") : undefined)),
     cap,
     insights,
   );
@@ -138,7 +139,9 @@ export function opportunities(questions: Question[], synthesis: SessionSynthesis
   if (top.length > 0) return section("briefing", top, cap, insights);
   return section(
     "insights",
-    live.map((q) => fromInsight(q, q.offering_match ? "Matched to an offering" : q.starred ? "Starred" : undefined)),
+    live.map((q) => fromInsight(q, q.offering_match
+      ? i18n.t("overview.status.matchedOffering")
+      : q.starred ? i18n.t("overview.status.starred") : undefined)),
     cap,
     insights,
   );
@@ -222,7 +225,7 @@ export function participation(transcripts: TranscriptEntry[], speakers: Speaker[
     const speaker = id === null ? undefined : byId.get(id);
     rows.push({
       speakerId: id,
-      name: speaker ? speakerDisplayName(speaker) : "Unattributed",
+      name: speaker ? speakerDisplayName(speaker) : i18n.t("overview.unattributed"),
       color: speaker ? speaker.color : UNATTRIBUTED_COLOR,
       words: row.words,
       turns: row.turns,
@@ -387,15 +390,17 @@ export interface Headline {
 
 export function formatMinutes(ms: number): string {
   const minutes = Math.round(ms / 60000);
-  if (minutes < 1) return "under a minute";
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 1) return i18n.t("overview.underMinute");
+  if (minutes < 60) return i18n.t("overview.minutes", { value: minutes });
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  return rest ? `${hours}h ${rest}m` : `${hours}h`;
+  return rest
+    ? i18n.t("overview.hoursMinutes", { hours, minutes: rest })
+    : i18n.t("overview.hours", { hours });
 }
 
-function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
-  return `${count} ${count === 1 ? singular : pluralForm}`;
+function plural(count: number, key: string): string {
+  return i18n.t(key, { count });
 }
 
 function trimmed(value: string | null | undefined): string {
@@ -415,19 +420,20 @@ function briefingHeadline(synthesis: SessionSynthesis | null): Headline | null {
 
 // "34 min on the call with 5 speakers." plus the insight counts.
 function derivedLead(ms: number, speakerCount: number): string {
-  const parts: string[] = [];
-  if (ms > 0) parts.push(`${formatMinutes(ms)} on the call`);
-  if (speakerCount) parts.push(plural(speakerCount, "speaker"));
-  return `${parts.length ? parts.join(" with ") : "No call audio was recorded"}.`;
+  if (ms <= 0) return `${i18n.t("overview.noCallAudio")}.`;
+  if (speakerCount) {
+    return `${i18n.t("overview.withSpeakers", { duration: formatMinutes(ms), count: speakerCount })}.`;
+  }
+  return `${i18n.t("overview.onCall", { duration: formatMinutes(ms) })}.`;
 }
 
 function derivedCounts(live: Question[]): string {
-  if (live.length === 0) return "No insights have been captured for this session yet.";
+  if (live.length === 0) return i18n.t("overview.noInsights");
   const actions = live.filter((q) => itemType(q) === "action_item").length;
   const open = live.filter((q) => itemType(q) === "question" && !q.answered).length;
-  const counts = [plural(live.length, "insight")];
-  if (actions) counts.push(plural(actions, "action item"));
-  if (open) counts.push(`${open} open ${open === 1 ? "question" : "questions"}`);
+  const counts = [plural(live.length, "overview.insightCount")];
+  if (actions) counts.push(plural(actions, "overview.actionItemCount"));
+  if (open) counts.push(plural(open, "overview.openQuestionCount"));
   return `${counts.join(", ")}.`;
 }
 

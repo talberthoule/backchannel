@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronDown, RefreshCw } from "lucide-react";
 import type { InsightCluster, Session, SessionSynthesis, SynthesisSectionItem } from "../../types";
 import SignalHistory from "../SignalHistory";
 import { buildBriefingLayout } from "./briefingSections";
+import i18n from "../../i18n";
 
 // The briefing is set like a one-page brief: one sheet, a reading measure,
 // small-caps section headings on hairline rules, and whitespace instead of
@@ -21,18 +23,20 @@ interface BriefingViewProps {
   error?: string | null;
 }
 
-const MEETING_TYPE_LABELS: Record<string, string> = {
-  general: "General meeting",
-  client_sales: "Client sales",
-  customer_delivery: "Customer delivery",
-  internal_enablement: "Internal enablement",
-  internal_checkin: "Internal check-in",
-  vendor_partner: "Vendor and partner",
+const MEETING_TYPE_KEYS: Record<string, string> = {
+  general: "briefing.meetingTypes.general",
+  client_sales: "briefing.meetingTypes.clientSales",
+  customer_delivery: "briefing.meetingTypes.customerDelivery",
+  internal_enablement: "briefing.meetingTypes.internalEnablement",
+  internal_checkin: "briefing.meetingTypes.internalCheckin",
+  vendor_partner: "briefing.meetingTypes.vendorPartner",
 };
 
 export function meetingTypeLabel(meetingType: string | undefined): string {
   if (!meetingType) return "";
-  return MEETING_TYPE_LABELS[meetingType] || meetingType.replace(/_/g, " ");
+  return MEETING_TYPE_KEYS[meetingType]
+    ? i18n.t(MEETING_TYPE_KEYS[meetingType])
+    : meetingType.replace(/_/g, " ");
 }
 
 // A status is quiet text unless it asks for something of the reader: blocked
@@ -51,7 +55,7 @@ export function formatUpdated(value: string | null | undefined): string | null {
   if (!value) return null;
   const time = new Date(value);
   if (!Number.isFinite(time.getTime())) return null;
-  return time.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  return time.toLocaleString(i18n.language, { dateStyle: "medium", timeStyle: "short" });
 }
 
 // Middle dot, built from its code point so the source stays ASCII.
@@ -96,6 +100,7 @@ function ItemMeta({ status, owner }: { status?: string; owner?: string }) {
 // One affordance for the reasoning behind an item, closed by default so the
 // page reads as findings first and argument on request.
 function Disclosure({ text }: { text?: string }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   if (!text) return null;
   return (
@@ -113,7 +118,7 @@ function Disclosure({ text }: { text?: string }) {
           aria-hidden="true"
           className={`h-3.5 w-3.5 transition-transform motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
         />
-        Why this matters
+        {t("briefing.whyMatters")}
       </button>
       {open && (
         <p className="mt-1.5 max-w-prose font-body text-sm leading-relaxed text-brand-gray">{text}</p>
@@ -196,10 +201,11 @@ function ItemSection({ label, items, lead = false }: { label: string; items: Syn
 }
 
 function ClustersSection({ clusters }: { clusters: InsightCluster[] }) {
+  const { t } = useTranslation();
   if (clusters.length === 0) return null;
   return (
     <section>
-      <SectionHeading label="Insight clusters" count={clusters.length} />
+      <SectionHeading label={t("briefing.clusters")} count={clusters.length} />
       <ul className={`mt-4 ${DIVIDED_LIST_CLASS}`}>
         {clusters.map((cluster) => (
           <li key={cluster.id} className="py-3 first:pt-0 last:pb-0">
@@ -208,7 +214,7 @@ function ClustersSection({ clusters }: { clusters: InsightCluster[] }) {
                 {cluster.title}
               </p>
               {cluster.confidence && (
-                <span className="shrink-0 font-body text-xs text-brand-mid-gray">Confidence: {cluster.confidence}</span>
+                <span className="shrink-0 font-body text-xs text-brand-mid-gray">{t("briefing.confidence", { value: cluster.confidence })}</span>
               )}
             </div>
             {cluster.summary && (
@@ -239,29 +245,30 @@ function contextParts(session: Pick<Session, "meeting_type">, synthesis: Session
   const typeLabel = meetingTypeLabel(session.meeting_type);
   if (typeLabel) parts.push(<span key="type">{typeLabel}</span>);
   if (!synthesis) {
-    parts.push(<span key="none">No briefing generated yet</span>);
+    parts.push(<span key="none">{i18n.t("briefing.noBriefing")}</span>);
     return parts;
   }
   const updated = formatUpdated(synthesis.updated_at || synthesis.created_at);
-  if (updated) parts.push(<span key="updated">Updated {updated}</span>);
+  if (updated) parts.push(<span key="updated">{i18n.t("briefing.updated", { date: updated })}</span>);
   if (synthesis.status === "partial") {
-    parts.push(<span key="status" className="font-medium text-amber-700 dark:text-amber-400">Partial briefing</span>);
+    parts.push(<span key="status" className="font-medium text-amber-700 dark:text-amber-400">{i18n.t("briefing.partial")}</span>);
   } else if (synthesis.status === "error") {
-    parts.push(<span key="status" className="font-medium text-red-700 dark:text-red-400">Briefing failed</span>);
+    parts.push(<span key="status" className="font-medium text-red-700 dark:text-red-400">{i18n.t("briefing.failed")}</span>);
   } else if (synthesis.status === "pending") {
-    parts.push(<span key="status">Briefing in progress</span>);
+    parts.push(<span key="status">{i18n.t("briefing.inProgress")}</span>);
   }
   return parts;
 }
 
 export default function BriefingView({ session, synthesis, signalHistoryCount, onRefresh, refreshing, error }: BriefingViewProps) {
+  const { t } = useTranslation();
   const actionLabel = refreshing
     ? synthesis
-      ? "Refreshing..."
-      : "Generating..."
+      ? t("briefing.refreshing")
+      : t("briefing.generating")
     : synthesis
-      ? "Refresh Briefing"
-      : "Generate Briefing";
+      ? t("briefing.refresh")
+      : t("briefing.generate");
   // Generating a missing briefing is the page's one action, so it is the
   // filled button; refreshing an existing one is secondary and stays quiet.
   const buttonClass = synthesis
@@ -279,7 +286,7 @@ export default function BriefingView({ session, synthesis, signalHistoryCount, o
         <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
           <div className="min-w-0">
             <h2 className="font-display text-xl font-semibold tracking-tight text-brand-dark-gray">
-              Conversation briefing
+              {t("briefing.title")}
             </h2>
             {context.length > 0 && (
               <p className="mt-1 flex flex-wrap items-center font-body text-sm text-brand-gray">
@@ -311,9 +318,7 @@ export default function BriefingView({ session, synthesis, signalHistoryCount, o
 
         {!synthesis && (
           <p className="max-w-prose font-body text-sm leading-relaxed text-brand-gray">
-            No briefing was generated for this call, for example after "End without briefing" or a
-            dropped connection. Generate Briefing runs the synthesis over the saved transcript and
-            insights now.
+            {t("briefing.empty")}
           </p>
         )}
 
@@ -342,9 +347,9 @@ export default function BriefingView({ session, synthesis, signalHistoryCount, o
 
         {signalHistoryCount > 0 && (
           <section>
-            <SectionHeading label="Strategic signal history" count={signalHistoryCount} />
+            <SectionHeading label={t("briefing.signalHistory")} count={signalHistoryCount} />
             <p className="mt-2 max-w-prose font-body text-xs text-brand-mid-gray">
-              Durable signals observed across the conversation. They survive a briefing refresh.
+              {t("briefing.signalHistoryBody")}
             </p>
             <SignalHistory sessionId={session.id} count={signalHistoryCount} />
           </section>
@@ -354,7 +359,7 @@ export default function BriefingView({ session, synthesis, signalHistoryCount, o
           <footer className="space-y-3 border-t border-brand-light-gray-1 pt-6">
             {arbiterNotes && (
               <p className="max-w-prose font-body text-sm italic leading-relaxed text-brand-mid-gray">
-                <span className="font-semibold not-italic text-brand-gray">Arbiter notes. </span>
+                <span className="font-semibold not-italic text-brand-gray">{t("briefing.arbiterNotes")} </span>
                 {arbiterNotes}
               </p>
             )}

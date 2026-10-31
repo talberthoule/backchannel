@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { PrivacyConfig } from "../types";
 import * as api from "../services/api";
 import {
@@ -26,6 +27,7 @@ export default function ProviderOnboardingCard({
   refreshToken,
   onContinue,
 }: ProviderOnboardingCardProps) {
+  const { t } = useTranslation();
   const [anyKeySaved, setAnyKeySaved] = useState(false);
   const [readiness, setReadiness] = useState<SetupReadiness | null>(null);
   const [privacyBusy, setPrivacyBusy] = useState(false);
@@ -74,47 +76,40 @@ export default function ProviderOnboardingCard({
   return (
     <div className="rounded-xl border border-brand-teal/30 bg-surface p-5 shadow-sm">
       <p className="font-body text-[10px] font-semibold uppercase tracking-wider text-brand-teal">
-        First-time setup
+        {t("onboarding.firstTime")}
       </p>
       <h3 className="mt-0.5 font-display text-base font-bold text-brand-dark-gray">
-        Connect services, then choose models
+        {t("onboarding.title")}
       </h3>
       <p className="mt-1 font-body text-xs leading-relaxed text-brand-gray">
-        Built-in local transcription is available without a key. Add only the
-        services you want, then choose models under Agents and Transcription
-        &amp; Audio. Recommended marks a good starting point.
+        {t("onboarding.intro")}
       </p>
 
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <div className="rounded-lg border border-brand-teal/40 bg-brand-teal/5 p-3.5">
           <h4 className="font-display text-sm font-bold text-brand-dark-gray">
-            Cloud AI
+            {t("onboarding.cloud")}
           </h4>
           <p className="mt-1.5 font-body text-xs leading-relaxed text-brand-gray">
-            Add a Google or OpenAI key to make that provider's models
-            available for transcription, live captions, and agents. Saving
-            tests the connection; it does not change your model selections.
+            {t("onboarding.cloudBody")}
           </p>
         </div>
 
         <div className="rounded-lg border border-brand-light-gray-1 p-3.5">
           <h4 className="font-display text-sm font-bold text-brand-dark-gray">
-            Local AI and Privacy First
+            {t("onboarding.local")}
           </h4>
           <p className="mt-1.5 font-body text-xs leading-relaxed text-brand-gray">
-            Local transcription needs no key. For local analysis, connect a
-            self-hosted service below, run Local Fit, and select a passing
-            recommendation under Agents. Privacy First blocks cloud routes.
+            {t("onboarding.localBody")}
             {disabledImpact.length > 0 && (
               <>
-                {" "}Trade-off: {disabledImpact.map((i) => i.feature).join(", ")}{" "}
-                stay off until a cloud key is added.
+                {" "}{t("onboarding.tradeoff", { features: disabledImpact.map((i) => i.feature).join(", ") })}
               </>
             )}
           </p>
           {localOnly ? (
             <p className="mt-2 font-body text-xs font-medium text-brand-teal">
-              Privacy First is on.
+              {t("onboarding.privacyOn")}
             </p>
           ) : (
             <button
@@ -123,7 +118,7 @@ export default function ProviderOnboardingCard({
               disabled={privacyBusy}
               className="mt-2 rounded border border-brand-light-gray-1 px-3 py-1.5 font-body text-xs font-medium text-brand-dark-gray transition-colors hover:border-brand-teal hover:text-brand-teal disabled:opacity-40"
             >
-              Turn on Privacy First
+              {t("onboarding.enablePrivacy")}
             </button>
           )}
         </div>
@@ -132,7 +127,7 @@ export default function ProviderOnboardingCard({
       {stage === "partial" && readiness && (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5">
           <p className="font-body text-xs font-semibold text-amber-900">
-            Almost there -- your key is saved, but the current setup cannot run yet.
+            {t("onboarding.partial")}
           </p>
           <p className="mt-1 font-body text-xs leading-relaxed text-amber-900">
             {readiness.reason}
@@ -144,15 +139,15 @@ export default function ProviderOnboardingCard({
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-teal/40 bg-brand-teal/5 px-3.5 py-2.5">
           <p className="font-body text-xs font-medium text-brand-dark-gray">
             {localOnly
-              ? "Setup complete -- your selected local transcription and agent models are ready."
-              : "Setup complete -- the selected transcription and agent models are ready."}
+              ? t("onboarding.localReady")
+              : t("onboarding.ready")}
           </p>
           <button
             type="button"
             onClick={onContinue}
             className="rounded-lg bg-brand-teal px-3.5 py-2 font-body text-xs font-semibold text-white transition-colors hover:bg-brand-teal/90"
           >
-            Continue to first session
+            {t("onboarding.continue")}
           </button>
         </div>
       )}

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useTranslation } from "react-i18next";
+import "../../i18n";
 import type { Speaker, TranscriptEntry } from "../../types";
 import { findTranscriptMatches, highlightParts } from "./transcriptSearch";
 
@@ -15,6 +17,7 @@ const GHOST_BUTTON =
   "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal focus:ring-2 focus:ring-brand-teal-light disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-brand-mid-gray";
 
 export default function TranscriptPanel({ transcripts, speakers, collapsed = false, onToggleCollapse }: TranscriptPanelProps) {
+  const { t } = useTranslation();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -125,7 +128,7 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
         ? speaker.display_name
         : speaker.name;
     }
-    return entry.id ? "Unknown" : "Live";
+    return entry.id ? t("activeCall.unknownSpeaker") : t("activeCall.liveSpeaker");
   }
 
   function speakerColor(entry: TranscriptEntry, speaker: Speaker | null): string {
@@ -153,7 +156,7 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
           onClick={onToggleCollapse}
           aria-expanded={false}
           aria-controls={PANEL_ID}
-          title="Show live transcription"
+          title={t("activeCall.showTranscription")}
           className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal focus:ring-2 focus:ring-brand-teal-light"
         >
           <svg className="h-4 w-4 -rotate-90 md:rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden="true">
@@ -161,7 +164,7 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
           </svg>
         </button>
         <span className="font-display text-xs font-semibold uppercase tracking-wide text-brand-teal md:[writing-mode:vertical-rl]">
-          Live Transcription
+          {t("activeCall.transcription")}
         </span>
         {transcripts.length > 0 && (
           <span className="font-mono text-[11px] tabular-nums text-brand-mid-gray">
@@ -186,8 +189,8 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
                 setCurrent(0);
               }}
               onKeyDown={handleSearchKeyDown}
-              placeholder="Search transcript"
-              aria-label="Search live transcript"
+              placeholder={t("activeCall.searchTranscript")}
+              aria-label={t("activeCall.searchLiveTranscript")}
               className="min-w-0 flex-1 rounded-md border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray focus:border-brand-teal focus:outline-none"
             />
             <span aria-live="polite" className="flex-shrink-0 font-mono text-[11px] tabular-nums text-brand-mid-gray">
@@ -197,8 +200,8 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
               type="button"
               onClick={() => gotoMatch(-1)}
               disabled={matches.length === 0}
-              title="Previous match (Shift+Enter)"
-              aria-label="Previous match"
+              title={t("activeCall.previousMatch")}
+              aria-label={t("activeCall.previousMatchAria")}
               className={GHOST_BUTTON}
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden="true">
@@ -209,8 +212,8 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
               type="button"
               onClick={() => gotoMatch(1)}
               disabled={matches.length === 0}
-              title="Next match (Enter)"
-              aria-label="Next match"
+              title={t("activeCall.nextMatch")}
+              aria-label={t("activeCall.nextMatchAria")}
               className={GHOST_BUTTON}
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden="true">
@@ -220,8 +223,8 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
             <button
               type="button"
               onClick={closeSearch}
-              title="Close search (Esc)"
-              aria-label="Close transcript search"
+              title={t("activeCall.closeSearch")}
+              aria-label={t("activeCall.closeSearchAria")}
               className={GHOST_BUTTON}
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden="true">
@@ -232,14 +235,14 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
         ) : (
           <>
             <h3 className="font-display text-sm font-semibold uppercase tracking-wide text-brand-teal">
-              Live Transcription
+              {t("activeCall.transcription")}
             </h3>
             <div className="-mt-1 flex flex-shrink-0 items-start gap-1">
               <button
                 type="button"
                 onClick={openSearch}
-                title="Search transcript (Ctrl+F)"
-                aria-label="Search live transcript"
+                title={t("activeCall.searchShortcut")}
+                aria-label={t("activeCall.searchLiveTranscript")}
                 className={GHOST_BUTTON}
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden="true">
@@ -253,7 +256,7 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
                   onClick={onToggleCollapse}
                   aria-expanded
                   aria-controls={PANEL_ID}
-                  title="Hide live transcription"
+                  title={t("activeCall.hideTranscription")}
                   className={GHOST_BUTTON}
                 >
                   <svg className="h-4 w-4 rotate-90 md:rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden="true">
@@ -271,12 +274,12 @@ export default function TranscriptPanel({ transcripts, speakers, collapsed = fal
         onScroll={handleScroll}
         tabIndex={0}
         role="region"
-        aria-label="Live transcription entries"
+        aria-label={t("activeCall.transcriptEntries")}
         className="min-h-0 flex-1 overflow-y-auto p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal-light"
       >
         {transcripts.length === 0 ? (
           <p className="py-8 text-center font-body text-sm text-brand-mid-gray">
-            Waiting for speech...
+            {t("activeCall.waitingForSpeech")}
           </p>
         ) : (
           <div className="space-y-3">

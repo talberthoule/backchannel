@@ -1,19 +1,20 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Question } from "../../types";
 import { typeColor, typeLabel, visibleEnrichmentNotes } from "../../utils/insightTypes";
 
-const AGENT_LABELS: Record<string, string> = {
-  question_hunter: "Question Hunter",
-  observer: "Observer",
-  opportunity_scout: "Opp. Scout",
-  action_tracker: "Action Tracker",
-  synthesizer: "Synthesizer",
-  refiner: "Refiner",
-  opportunity_specialist: "Opp. Specialist",
-  consolidated_analyst: "Analyst",
-  objection_handler: "Objection Handler",
-  general: "General",
-  live_chat: "You asked",
+const AGENT_LABEL_KEYS: Record<string, string> = {
+  question_hunter: "insights.agents.questionHunter",
+  observer: "insights.agents.observer",
+  opportunity_scout: "insights.agents.opportunityScout",
+  action_tracker: "insights.agents.actionTracker",
+  synthesizer: "insights.agents.synthesizer",
+  refiner: "insights.agents.refiner",
+  opportunity_specialist: "insights.agents.opportunitySpecialist",
+  consolidated_analyst: "insights.agents.consolidatedAnalyst",
+  objection_handler: "insights.agents.objectionHandler",
+  general: "insights.agents.general",
+  live_chat: "insights.agents.liveChat",
 };
 
 interface QuestionCardProps {
@@ -26,6 +27,7 @@ interface QuestionCardProps {
 }
 
 export default function QuestionCard({ question, showEnhanced = false, onStar, onDismiss, onVote, onMakeDirective }: QuestionCardProps) {
+  const { t } = useTranslation();
   const [dismissing, setDismissing] = useState(false);
   const [showEnrichment, setShowEnrichment] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -42,7 +44,7 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
   const showTypeBadge = itemType !== "question" || Boolean(question.lens_label && question.lens_label.trim());
   const agentLabel =
     question.agent_source && question.agent_source !== "general"
-      ? AGENT_LABELS[question.agent_source] || question.agent_source
+      ? t(AGENT_LABEL_KEYS[question.agent_source] || question.agent_source)
       : null;
   const enrichmentNotes = visibleEnrichmentNotes(question.enrichment_notes);
   const isRefined = (question.revision_count ?? 0) > 0 && enrichmentNotes.length > 0;
@@ -62,17 +64,17 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
         <div className="flex flex-wrap items-center gap-1.5">
           {question.is_followup && (
             <span className="inline-flex items-center rounded-full bg-[#f59e0b]/15 px-2 py-0.5 font-body text-xs font-medium text-[#f59e0b]">
-              Follow-up
+              {t("insights.followUp")}
             </span>
           )}
           {question.directive_id && (
             <span className="inline-flex items-center rounded-full bg-[#f59e0b]/15 px-2 py-0.5 font-body text-xs font-medium text-[#f59e0b]">
-              Directive
+              {t("insights.directive")}
             </span>
           )}
           {showEnhanced && question.enhanced && (
             <span className="inline-flex items-center rounded-full bg-brand-teal-light/10 px-2 py-0.5 font-body text-xs font-medium text-brand-teal-light">
-              Enhanced
+              {t("insights.enhanced")}
             </span>
           )}
           {/* Refined badge */}
@@ -80,12 +82,12 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
             <button
               onClick={() => setShowEnrichment((v) => !v)}
               className="inline-flex items-center gap-1 rounded-full bg-brand-teal-light/10 px-2 py-0.5 font-body text-xs font-medium text-brand-teal-light transition-colors hover:bg-brand-teal-light/20"
-              title="This insight was refined by the analysis engine"
+              title={t("insights.refinedTitle")}
             >
               <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
               </svg>
-              Refined{(question.revision_count ?? 0) > 1 ? ` x${question.revision_count}` : ""}
+              {t("insights.refined")}{(question.revision_count ?? 0) > 1 ? ` x${question.revision_count}` : ""}
             </button>
           )}
         </div>
@@ -139,7 +141,7 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
           </svg>
-          Details
+          {t("insights.details")}
         </button>
       )}
       {hasDetails && showDetails && (
@@ -164,7 +166,7 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
             <svg className="h-3.5 w-3.5 text-[#10b981]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
             </svg>
-            <span className="font-display text-xs font-semibold text-[#10b981]">Offering Match</span>
+            <span className="font-display text-xs font-semibold text-[#10b981]">{t("insights.offeringMatch")}</span>
           </div>
           <p className="font-body text-xs leading-relaxed text-brand-gray">{question.offering_match}</p>
         </div>
@@ -177,7 +179,7 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
             <svg className="h-3.5 w-3.5 text-brand-teal-light" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
             </svg>
-            <span className="font-display text-xs font-semibold text-brand-teal-light">Refinement Notes</span>
+            <span className="font-display text-xs font-semibold text-brand-teal-light">{t("insights.refinementNotes")}</span>
           </div>
           {enrichmentNotes.map((note, i) => (
             <p key={i} className="font-body text-xs leading-relaxed text-brand-gray">
@@ -191,7 +193,7 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
       {question.answered && (
         <div className="mt-3 flex items-start gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2">
           <span className="inline-flex flex-shrink-0 items-center rounded-full bg-green-100 px-2 py-0.5 font-body text-xs font-medium text-green-700">
-            Answered
+            {t("insights.answered")}
           </span>
           {question.answer_summary && (
             <p className="min-w-0 font-body text-sm text-green-800">
@@ -205,7 +207,7 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
       {question.answered && question.needs_followup && (
         <div className="mt-3 rounded-md border border-[#f59e0b]/30 bg-[#f59e0b]/10 px-3 py-2">
           <span className="inline-flex items-center rounded-full bg-[#f59e0b]/20 px-2 py-0.5 font-body text-xs font-medium text-[#f59e0b]">
-            Needs Follow-up
+            {t("insights.needsFollowUp")}
           </span>
           {question.followup_question && (
             <p className="mt-1 font-body text-sm text-brand-dark-gray">
@@ -221,10 +223,10 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
             <button
               type="button"
               onClick={onMakeDirective}
-              title="Turn this question into a directive for the agents"
+              title={t("insights.makeDirectiveTitle")}
               className="rounded px-2 py-1 font-body text-xs font-medium text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal"
             >
-              Make directive
+              {t("insights.makeDirective")}
             </button>
           )}
           <button
@@ -232,8 +234,8 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
             className={`rounded p-1 transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal ${
               currentVote > 0 ? "bg-brand-teal/10 text-brand-teal" : "text-brand-mid-gray"
             }`}
-            title="Upvote insight"
-            aria-label="Upvote insight"
+            title={t("insights.upvote")}
+            aria-label={t("insights.upvote")}
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" />
@@ -244,7 +246,7 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
               className={`min-w-[1.25rem] text-center font-mono text-xs font-semibold ${
                 currentVote > 0 ? "text-brand-teal" : "text-brand-mid-gray"
               }`}
-              title={`Vote: ${currentVote}`}
+              title={t("insights.vote", { value: currentVote })}
             >
               {currentVote > 0 ? `+${currentVote}` : currentVote}
             </span>
@@ -254,8 +256,8 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
             className={`rounded p-1 transition-colors hover:bg-brand-light-gray-2 hover:text-red-500 ${
               currentVote < 0 ? "bg-red-50 text-red-500" : "text-brand-mid-gray"
             }`}
-            title="Downvote insight"
-            aria-label="Downvote insight"
+            title={t("insights.downvote")}
+            aria-label={t("insights.downvote")}
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
@@ -266,7 +268,7 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
           <button
             onClick={() => onStar(!question.starred)}
             className="rounded p-1 transition-colors hover:bg-brand-light-gray-2"
-            aria-label={question.starred ? "Unstar" : "Star"}
+            aria-label={question.starred ? t("insights.unstar") : t("insights.star")}
           >
             {question.starred ? (
               <svg className="h-4 w-4 text-[#f59e0b]" fill="currentColor" viewBox="0 0 20 20">
@@ -283,7 +285,7 @@ export default function QuestionCard({ question, showEnhanced = false, onStar, o
           <button
             onClick={handleDismiss}
             className="rounded p-1 text-brand-mid-gray transition-colors hover:bg-red-50 hover:text-red-500"
-            aria-label="Dismiss"
+            aria-label={t("insights.dismiss")}
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

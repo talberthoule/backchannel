@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type {
@@ -10,6 +11,7 @@ import type {
 import * as api from "../services/api";
 import { formatPerMinuteRate, formatRate } from "../lib/modelPricing";
 import { DesktopUpdateCard } from "./DesktopUpdate";
+import i18n from "../i18n";
 
 interface AboutCardProps {
   version: string | null;
@@ -22,9 +24,9 @@ interface AboutCardProps {
 // Compact capability summary for the Models & pricing table.
 function capabilityLabel(model: ModelInfo): string {
   const caps = [
-    model.supports_text ? "text" : null,
-    model.supports_live_audio ? "live" : null,
-    model.supports_batch_audio ? "batch" : null,
+    model.supports_text ? i18n.t("about.capabilities.text") : null,
+    model.supports_live_audio ? i18n.t("about.capabilities.live") : null,
+    model.supports_batch_audio ? i18n.t("about.capabilities.batch") : null,
   ].filter(Boolean);
   return caps.length > 0 ? caps.join(", ") : "-";
 }
@@ -43,6 +45,7 @@ function isNewerVersion(a: string, b: string): boolean {
 // Admin -> About tab: current version plus the in-app release-notes history
 // served by /api/meta/release-notes (newest first, newest expanded).
 export default function AboutCard({ version, desktopUpdate, highlightSince }: AboutCardProps) {
+  const { t } = useTranslation();
   const [notes, setNotes] = useState<ReleaseNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -85,11 +88,11 @@ export default function AboutCard({ version, desktopUpdate, highlightSince }: Ab
           <div>
             <h2 className="font-display text-base font-bold text-brand-dark-gray">Backchannel</h2>
             <p className="mt-0.5 font-body text-xs text-brand-gray">
-              Real-time meeting analysis: live transcription, speaker attribution, and insight agents.
+              {t("about.subtitle")}
             </p>
           </div>
           <span className="rounded-full bg-brand-teal/10 px-3 py-1 font-mono text-sm font-semibold text-brand-teal">
-            {version ? `v${version}` : "version unavailable"}
+            {version ? `v${version}` : t("about.versionUnavailable")}
           </span>
         </div>
       </div>
@@ -98,16 +101,16 @@ export default function AboutCard({ version, desktopUpdate, highlightSince }: Ab
 
       <section>
         <div className="mb-3">
-          <h2 className="font-display text-sm font-bold uppercase tracking-wider text-brand-mid-gray">Release Notes</h2>
-          <p className="mt-0.5 font-body text-xs text-brand-mid-gray">What changed in each version, newest first.</p>
+          <h2 className="font-display text-sm font-bold uppercase tracking-wider text-brand-mid-gray">{t("about.releaseNotes")}</h2>
+          <p className="mt-0.5 font-body text-xs text-brand-mid-gray">{t("about.releaseNotesBody")}</p>
         </div>
 
         {loading && (
-          <p className="font-body text-sm text-brand-mid-gray">Loading release notes...</p>
+          <p className="font-body text-sm text-brand-mid-gray">{t("about.releaseNotesLoading")}</p>
         )}
         {failed && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-body text-xs text-amber-900">
-            Release notes could not be loaded. The rest of the app is unaffected.
+            {t("about.releaseNotesFailed")}
           </p>
         )}
 
@@ -130,12 +133,12 @@ export default function AboutCard({ version, desktopUpdate, highlightSince }: Ab
                   <span className="font-mono text-xs font-semibold text-brand-dark-gray">v{note.version}</span>
                   {isCurrent && (
                     <span className="rounded-full bg-brand-teal/10 px-2 py-0.5 font-body text-[10px] font-medium text-brand-teal">
-                      Current
+                      {t("about.current")}
                     </span>
                   )}
                   {isUnread && (
-                    <span className="rounded-full bg-brand-teal px-2 py-0.5 font-body text-[10px] font-semibold text-white" title={`Released since v${highlightSince}`}>
-                      New
+                    <span className="rounded-full bg-brand-teal px-2 py-0.5 font-body text-[10px] font-semibold text-white" title={t("about.releasedSince", { version: highlightSince })}>
+                      {t("about.new")}
                     </span>
                   )}
                   <span className="min-w-0 flex-1 truncate font-body text-sm text-brand-gray">{note.title}</span>
@@ -156,19 +159,18 @@ export default function AboutCard({ version, desktopUpdate, highlightSince }: Ab
 
       <section>
         <div className="mb-3">
-          <h2 className="font-display text-sm font-bold uppercase tracking-wider text-brand-mid-gray">Models &amp; Pricing</h2>
+          <h2 className="font-display text-sm font-bold uppercase tracking-wider text-brand-mid-gray">{t("about.modelsPricing")}</h2>
           <p className="mt-0.5 font-body text-xs text-brand-mid-gray">
-            Models available in this app with published USD rates per 1M tokens (standard text-tier
-            rates; long-context and caching surcharges not included).
+            {t("about.modelsPricingBody")}
           </p>
         </div>
 
         {pricingLoading && (
-          <p className="font-body text-sm text-brand-mid-gray">Loading model pricing...</p>
+          <p className="font-body text-sm text-brand-mid-gray">{t("about.modelPricingLoading")}</p>
         )}
         {pricingFailed && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-body text-xs text-amber-900">
-            Model pricing could not be loaded. The rest of the app is unaffected.
+            {t("about.modelPricingFailed")}
           </p>
         )}
 
@@ -178,11 +180,11 @@ export default function AboutCard({ version, desktopUpdate, highlightSince }: Ab
               <table className="min-w-full text-left font-body text-sm">
                 <thead className="text-xs uppercase tracking-wide text-brand-gray">
                   <tr className="border-b border-brand-light-gray-1/70">
-                    <th scope="col" className="px-5 py-3 font-semibold">Model</th>
-                    <th scope="col" className="px-5 py-3 font-semibold">Provider</th>
-                    <th scope="col" className="px-5 py-3 font-semibold">Capabilities</th>
-                    <th scope="col" className="px-5 py-3 text-right font-semibold">Input / 1M</th>
-                    <th scope="col" className="px-5 py-3 text-right font-semibold">Output / 1M</th>
+                    <th scope="col" className="px-5 py-3 font-semibold">{t("about.headers.model")}</th>
+                    <th scope="col" className="px-5 py-3 font-semibold">{t("about.headers.provider")}</th>
+                    <th scope="col" className="px-5 py-3 font-semibold">{t("about.headers.capabilities")}</th>
+                    <th scope="col" className="px-5 py-3 text-right font-semibold">{t("about.headers.input")}</th>
+                    <th scope="col" className="px-5 py-3 text-right font-semibold">{t("about.headers.output")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-brand-light-gray-1/70">
@@ -206,7 +208,7 @@ export default function AboutCard({ version, desktopUpdate, highlightSince }: Ab
                         <td className="px-5 py-2.5 text-xs text-brand-mid-gray">{capabilityLabel(model)}</td>
                         {isFree ? (
                           <td colSpan={2} className="px-5 py-2.5 text-right">
-                            <span className="rounded-full bg-brand-teal/10 px-2 py-0.5 text-[11px] font-semibold text-brand-teal">Free</span>
+                            <span className="rounded-full bg-brand-teal/10 px-2 py-0.5 text-[11px] font-semibold text-brand-teal">{t("about.free")}</span>
                           </td>
                         ) : perMinute !== null ? (
                           <td colSpan={2} className="px-5 py-2.5 text-right tabular-nums text-brand-gray">
@@ -225,7 +227,7 @@ export default function AboutCard({ version, desktopUpdate, highlightSince }: Ab
               </table>
             </div>
             <p className="border-t border-brand-light-gray-1/70 px-5 py-3 font-body text-xs text-brand-mid-gray">
-              Prices as of {pricing?.as_of ?? "unknown"}; check provider pricing pages for changes.
+              {t("about.pricesAsOf", { date: pricing?.as_of ?? t("about.unknown") })}
             </p>
           </div>
         )}

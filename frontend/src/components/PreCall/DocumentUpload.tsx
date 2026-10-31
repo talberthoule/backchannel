@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Document } from "../../types";
 import { useConfirm } from "../ConfirmProvider";
 import * as api from "../../services/api";
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function DocumentUpload({ sessionId, documents, onRefresh }: Props) {
+  const { t } = useTranslation();
   const { confirm, toast } = useConfirm();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -37,7 +39,7 @@ export default function DocumentUpload({ sessionId, documents, onRefresh }: Prop
         onRefresh();
       } catch (err) {
         console.error("Upload failed:", err);
-        setError(err instanceof Error ? err.message : "Upload failed.");
+        setError(err instanceof Error ? err.message : t("documents.uploadFailed"));
       } finally {
         setUploading(false);
       }
@@ -56,16 +58,16 @@ export default function DocumentUpload({ sessionId, documents, onRefresh }: Prop
 
   const handleDelete = async (docId: string) => {
     const ok = await confirm({
-      title: "Delete document",
-      message: "Delete this document? This cannot be undone.",
-      confirmLabel: "Delete",
+      title: t("documents.deleteTitle"),
+      message: t("documents.deleteMessage"),
+      confirmLabel: t("common.delete"),
       tone: "danger",
     });
     if (!ok) return;
     try {
       await api.deleteDocument(sessionId, docId);
       onRefresh();
-      toast("Document deleted");
+      toast(t("documents.deleted"));
     } catch (err) {
       console.error("Delete failed:", err);
     }
@@ -90,11 +92,10 @@ export default function DocumentUpload({ sessionId, documents, onRefresh }: Prop
             />
           </svg>
           <p className="font-display text-sm font-semibold text-brand-dark-gray mt-2">
-            Document upload is off in Privacy First mode
+            {t("documents.privacyTitle")}
           </p>
           <p className="font-body text-sm text-brand-gray mt-1 leading-relaxed">
-            Uploaded documents are sent to the Gemini Files API for analysis, which
-            Privacy First blocks. Turn off Privacy First in Admin to upload documents.
+            {t("documents.privacyBody")}
           </p>
         </div>
         {renderDocumentList()}
@@ -148,17 +149,17 @@ export default function DocumentUpload({ sessionId, documents, onRefresh }: Prop
 
           <p className="font-body text-brand-gray text-sm">
             {uploading ? (
-              <span className="text-brand-teal font-medium">Uploading...</span>
+              <span className="text-brand-teal font-medium">{t("documents.uploading")}</span>
             ) : (
               <>
-                Drag and drop files here, or{" "}
+                {t("documents.dropPrefix")}{" "}
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="text-brand-teal hover:text-brand-teal-dark font-medium
                              underline underline-offset-2"
                 >
-                  browse
+                  {t("documents.browse")}
                 </button>
               </>
             )}
@@ -210,7 +211,7 @@ export default function DocumentUpload({ sessionId, documents, onRefresh }: Prop
               <button
                 onClick={() => handleDelete(doc.id)}
                 className="shrink-0 ml-3 text-brand-mid-gray hover:text-red-500 transition-colors"
-                title="Delete document"
+                title={t("documents.deleteAction")}
               >
                 <svg
                   className="h-5 w-5"

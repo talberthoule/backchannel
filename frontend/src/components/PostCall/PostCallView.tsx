@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../../i18n";
 import type { CallSegment, Directive, Document, ModelPricingResponse, PostProcessingProgress, Question, Session, SessionSynthesis, Speaker, TokenUsageSummary, TranscriptEntry } from "../../types";
 import TranscriptReview from "./TranscriptReview";
 import CallAudioPanel from "./CallAudioPanel";
@@ -37,7 +39,7 @@ interface PostCallViewProps {
 }
 
 function formatDuration(startedAt: string | null, endedAt: string | null): string {
-  if (!startedAt || !endedAt) return "In progress";
+  if (!startedAt || !endedAt) return i18n.t("postCall.inProgress");
   const ms = new Date(endedAt).getTime() - new Date(startedAt).getTime();
   const totalSeconds = Math.floor(ms / 1000);
   const hours = Math.floor(totalSeconds / 3600);
@@ -49,13 +51,13 @@ function formatDuration(startedAt: string | null, endedAt: string | null): strin
 }
 
 function formatTime(iso: string | null): string {
-  if (!iso) return "N/A";
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  if (!iso) return i18n.t("postCall.na");
+  return new Date(iso).toLocaleTimeString(i18n.language, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 function formatDate(iso: string | null): string {
-  if (!iso) return "N/A";
-  return new Date(iso).toLocaleDateString();
+  if (!iso) return i18n.t("postCall.na");
+  return new Date(iso).toLocaleDateString(i18n.language);
 }
 
 function fileIcon(mimeType: string): string {
@@ -98,6 +100,7 @@ export default function PostCallView({
   onRetranscribed,
   postProcessing,
 }: PostCallViewProps) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   // The Insights group an Overview tile deep-links into. QuestionSummary reads
   // it at mount (it mounts on every tab switch), and it resets to "all" when
@@ -196,10 +199,12 @@ export default function PostCallView({
       try {
         await api.refreshSynthesis(session.id);
       } catch (err) {
-        setAnalyzeError(err instanceof Error ? `Analysis finished, but the briefing failed: ${err.message}` : "Analysis finished, but the briefing failed.");
+        setAnalyzeError(err instanceof Error
+          ? t("postCall.analysisBriefingFailed", { message: err.message })
+          : t("postCall.analysisBriefingFailedShort"));
       }
     } catch (err) {
-      setAnalyzeError(err instanceof Error ? err.message : "Transcript analysis failed.");
+      setAnalyzeError(err instanceof Error ? err.message : t("postCall.analysisFailed"));
     } finally {
       await Promise.allSettled([onRefreshQuestions(), onRefreshSession(), onRefreshSynthesis()]);
       setAnalyzing(false);
@@ -215,15 +220,15 @@ export default function PostCallView({
   const userDocuments = documents;
 
   const tabs: PostCallTabDef<Tab>[] = [
-    { key: "overview", label: "Overview" },
-    { key: "briefing", label: "Briefing" },
-    { key: "insights", label: "Insights", count: questions.length },
-    { key: "transcript", label: "Transcript" },
-    { key: "chat", label: "Chat" },
-    { key: "speakers", label: "Speakers", count: speakers.length },
-    { key: "documents", label: "Documents", count: documents.length },
-    { key: "directives", label: "Directives", count: directives.length },
-    { key: "tokens", label: "Tokens" },
+    { key: "overview", label: t("postCall.tabs.overview") },
+    { key: "briefing", label: t("postCall.tabs.briefing") },
+    { key: "insights", label: t("postCall.tabs.insights"), count: questions.length },
+    { key: "transcript", label: t("postCall.tabs.transcript") },
+    { key: "chat", label: t("postCall.tabs.chat") },
+    { key: "speakers", label: t("postCall.tabs.speakers"), count: speakers.length },
+    { key: "documents", label: t("postCall.tabs.documents"), count: documents.length },
+    { key: "directives", label: t("postCall.tabs.directives"), count: directives.length },
+    { key: "tokens", label: t("postCall.tabs.tokens") },
   ];
 
   // Calculate total duration across all segments
@@ -250,7 +255,7 @@ export default function PostCallView({
       {postProcessing?.state === "completed" && postProcessing.confirmed && (
         <div role="status" className="rounded-lg border border-brand-teal/30 bg-brand-teal/10 px-4 py-3">
           <p className="font-body text-sm font-semibold text-brand-dark-gray">
-            {postProcessing.message || "Post-processing complete"}
+            {postProcessing.message || t("postCall.postProcessingComplete")}
           </p>
           {progressSummary && (
             <p className="mt-1 font-body text-xs text-brand-gray">{progressSummary}</p>
@@ -261,7 +266,7 @@ export default function PostCallView({
       {showSavedDrain && savedDrain && (
         <div role="status" className="rounded-lg border border-brand-teal/30 bg-brand-teal/10 px-4 py-3">
           <p className="font-body text-sm font-semibold text-brand-dark-gray">
-            {savedDrain.message || "Post-processing complete"}
+            {savedDrain.message || t("postCall.postProcessingComplete")}
           </p>
           {savedDrainSummary && (
             <p className="mt-1 font-body text-xs text-brand-gray">{savedDrainSummary}</p>
@@ -272,10 +277,10 @@ export default function PostCallView({
       {speakerActionsLocked && (
         <div className="rounded-lg border border-brand-amber/30 bg-brand-amber/10 px-4 py-3">
           <p className="font-body text-sm font-semibold text-brand-dark-gray">
-            Post-processing is not confirmed complete.
+            {t("postCall.processingUnconfirmed")}
           </p>
           <p className="mt-1 font-body text-xs text-brand-gray">
-            Speaker mapping, speaker renames, merges, and insight enhancement are paused until completion is confirmed.
+            {t("postCall.processingUnconfirmedBody")}
           </p>
         </div>
       )}
@@ -304,7 +309,7 @@ export default function PostCallView({
                         ? "bg-brand-teal/10 text-brand-teal"
                         : "bg-brand-light-gray-2 text-brand-gray"
                     }`}>
-                      {seg.segment_number === 1 ? "Call" : `Resume ${seg.segment_number - 1}`}
+                      {seg.segment_number === 1 ? t("postCall.call") : t("postCall.resumeNumber", { number: seg.segment_number - 1 })}
                     </span>
                     <span className="text-brand-gray">
                       {formatTime(seg.started_at)} — {formatTime(seg.ended_at)}
@@ -318,15 +323,15 @@ export default function PostCallView({
                 // Fallback to session-level times if no segments exist
                 <div className="flex flex-wrap gap-6 text-sm text-brand-gray">
                   <div>
-                    <span className="font-medium text-brand-mid-gray">Started:</span>{" "}
+                    <span className="font-medium text-brand-mid-gray">{t("postCall.started")}</span>{" "}
                     {formatTime(session.started_at)}
                   </div>
                   <div>
-                    <span className="font-medium text-brand-mid-gray">Ended:</span>{" "}
+                    <span className="font-medium text-brand-mid-gray">{t("postCall.ended")}</span>{" "}
                     {formatTime(session.ended_at)}
                   </div>
                   <div>
-                    <span className="font-medium text-brand-mid-gray">Duration:</span>{" "}
+                    <span className="font-medium text-brand-mid-gray">{t("postCall.duration")}</span>{" "}
                     {formatDuration(session.started_at, session.ended_at)}
                   </div>
                 </div>
@@ -336,17 +341,17 @@ export default function PostCallView({
             {/* Summary stats row */}
             <div className="mt-3 flex gap-6 text-sm text-brand-gray">
               <div>
-                <span className="font-medium text-brand-mid-gray">Date:</span>{" "}
+                <span className="font-medium text-brand-mid-gray">{t("postCall.date")}</span>{" "}
                 {formatDate(session.started_at)}
               </div>
               {segments.length > 1 && (
                 <div>
-                  <span className="font-medium text-brand-mid-gray">Total Time:</span>{" "}
-                  {totalDurationStr} across {segments.length} calls
+                  <span className="font-medium text-brand-mid-gray">{t("postCall.totalTime")}</span>{" "}
+                  {t("postCall.acrossCalls", { duration: totalDurationStr, count: segments.length })}
                 </div>
               )}
               <div>
-                <span className="font-medium text-brand-mid-gray">Insights:</span>{" "}
+                <span className="font-medium text-brand-mid-gray">{t("postCall.insights")}</span>{" "}
                 {questions.length}
               </div>
             </div>
@@ -357,17 +362,17 @@ export default function PostCallView({
               onClick={onResumeCall}
               className="rounded-lg bg-brand-teal px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-dark shadow-sm"
             >
-              Resume Call
+              {t("postCall.resumeCall")}
             </button>
             {shieldedCount > 0 && (
               <span
                 className="inline-flex items-center gap-1.5 rounded-full border border-brand-teal/30 bg-brand-teal/10 px-2.5 py-1 font-body text-xs font-medium text-brand-teal"
-                title="Names, contact details and identifiers in this session are stored as tokens; the real values are shown only here."
+                title={t("postCall.shieldTitle")}
               >
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z" />
                 </svg>
-                {shieldedCount} shielded
+                {t("postCall.shielded", { count: shieldedCount })}
               </span>
             )}
             <ExportMenu sessionId={session.id} shielded={shieldedCount > 0} />
@@ -375,7 +380,7 @@ export default function PostCallView({
               onClick={onDeleteSession}
               className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 hover:border-red-300"
             >
-              Delete Session
+              {t("postCall.deleteSession")}
             </button>
           </div>
         </div>
@@ -419,7 +424,7 @@ export default function PostCallView({
               await onRefreshSynthesis();
             } catch (err) {
               setBriefingError(
-                err instanceof Error ? err.message : "Briefing generation failed."
+                err instanceof Error ? err.message : t("postCall.briefingFailed")
               );
             } finally {
               setRefreshingBriefing(false);
@@ -454,22 +459,22 @@ export default function PostCallView({
           onRefreshSynthesis={onRefreshSynthesis}
           onOpenAdminAgents={onOpenAdminAgents}
           disabled={speakerActionsLocked}
-          disabledReason="Post-processing must complete before speaker mappings or insight enhancement can be changed."
+          disabledReason={t("postCall.speakerLockedReason")}
         />
       )}
 
       {activeTab === "documents" && (
         <div className="rounded-xl bg-surface p-6 shadow-sm">
           <h2 className="font-display text-lg font-semibold text-brand-dark-gray mb-4">
-            Shared Files
+            {t("postCall.sharedFiles")}
           </h2>
           {documents.length === 0 ? (
-            <p className="text-brand-mid-gray text-sm">No files were shared for this call.</p>
+            <p className="text-brand-mid-gray text-sm">{t("postCall.noFiles")}</p>
           ) : (
             <div className="space-y-6">
               <div>
                 <h3 className="text-sm font-semibold text-brand-gray uppercase tracking-wide mb-3">
-                  Uploaded by User (Pre-Call)
+                  {t("postCall.uploadedByUser")}
                 </h3>
                 <div className="space-y-2">
                   {userDocuments.map((doc) => (
@@ -483,12 +488,12 @@ export default function PostCallView({
                           {doc.filename}
                         </p>
                         <p className="text-xs text-brand-mid-gray mt-0.5">
-                          {formatFileSize(doc.mime_type)} &middot; Uploaded {new Date(doc.uploaded_at).toLocaleString()}
+                          {formatFileSize(doc.mime_type)} &middot; {t("postCall.uploaded", { date: new Date(doc.uploaded_at).toLocaleString(i18n.language) })}
                         </p>
                       </div>
                       {doc.gemini_file_uri && (
                         <span className="shrink-0 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">
-                          Indexed by AI
+                          {t("postCall.indexedByAi")}
                         </span>
                       )}
                     </div>
@@ -497,10 +502,10 @@ export default function PostCallView({
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-brand-gray uppercase tracking-wide mb-3">
-                  Generated by AI Assistant
+                  {t("postCall.generatedByAi")}
                 </h3>
                 <p className="text-brand-mid-gray text-sm italic">
-                  No AI-generated artifacts for this session.
+                  {t("postCall.noAiArtifacts")}
                 </p>
               </div>
             </div>
@@ -511,10 +516,10 @@ export default function PostCallView({
       {activeTab === "directives" && (
         <div className="rounded-xl bg-surface p-6 shadow-sm">
           <h2 className="font-display text-lg font-semibold text-brand-dark-gray mb-4">
-            Framing Context & Directives
+            {t("postCall.framingDirectives")}
           </h2>
           {directives.length === 0 ? (
-            <p className="text-brand-mid-gray text-sm">No directives were set for this call.</p>
+            <p className="text-brand-mid-gray text-sm">{t("postCall.noDirectives")}</p>
           ) : (
             <div className="space-y-3">
               {directives.map((d) => (
@@ -535,11 +540,11 @@ export default function PostCallView({
                           : "bg-brand-light-gray-1 text-brand-mid-gray"
                       }`}
                     >
-                      {d.active ? "Active" : "Inactive"}
+                      {d.active ? t("postCall.active") : t("postCall.inactive")}
                     </span>
                   </div>
                   <p className="mt-2 text-xs text-brand-mid-gray">
-                    Added {new Date(d.created_at).toLocaleString()}
+                    {t("postCall.added", { date: new Date(d.created_at).toLocaleString(i18n.language) })}
                   </p>
                 </div>
               ))}

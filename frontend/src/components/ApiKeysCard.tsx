@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useConfirm } from "./ConfirmProvider";
 import * as api from "../services/api";
 import type { CredentialInfo } from "../services/api";
@@ -33,6 +34,7 @@ export function describeKeyError(err: unknown, fallback: string): string {
 }
 
 export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
+  const { t } = useTranslation();
   const { confirm, toast } = useConfirm();
   const [credentials, setCredentials] = useState<CredentialInfo[]>([]);
   const [inputs, setInputs] = useState<Record<string, string>>({});
@@ -60,11 +62,11 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
     try {
       const saved = await api.saveCredential(provider, key);
       setInputs((prev) => ({ ...prev, [provider]: "" }));
-      setResult(provider, saved.connected, saved.message ?? "Saved");
+      setResult(provider, saved.connected, saved.message ?? t("apiKeys.saved"));
       await load();
       onChanged?.();
     } catch (err) {
-      setResult(provider, false, describeKeyError(err, "Save failed"));
+      setResult(provider, false, describeKeyError(err, t("apiKeys.saveFailed")));
     } finally {
       setBusy(null);
     }
@@ -78,7 +80,7 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
       await load();
       onChanged?.();
     } catch (err) {
-      setResult(provider, false, describeKeyError(err, "Test failed"));
+      setResult(provider, false, describeKeyError(err, t("apiKeys.testFailed")));
     } finally {
       setBusy(null);
     }
@@ -86,21 +88,21 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
 
   const handleRemove = async (provider: string) => {
     const ok = await confirm({
-      title: "Remove API key",
-      message: `Remove the stored ${provider} key? Live transcription and analysis that depend on it will stop working until you add a new key.`,
-      confirmLabel: "Remove key",
+      title: t("apiKeys.removeTitle"),
+      message: t("apiKeys.removeMessage", { provider }),
+      confirmLabel: t("apiKeys.removeKey"),
       tone: "danger",
     });
     if (!ok) return;
     setBusy(provider);
     try {
       await api.deleteCredential(provider);
-      setResult(provider, true, "Removed");
-      toast(`${provider} key removed`);
+      setResult(provider, true, t("apiKeys.removed"));
+      toast(t("apiKeys.keyRemoved", { provider }));
       await load();
       onChanged?.();
     } catch (err) {
-      setResult(provider, false, describeKeyError(err, "Remove failed"));
+      setResult(provider, false, describeKeyError(err, t("apiKeys.removeFailed")));
     } finally {
       setBusy(null);
     }
@@ -108,10 +110,9 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
 
   return (
     <div className="rounded-xl bg-surface p-5 shadow-sm">
-      <h3 className="font-display text-base font-bold text-brand-dark-gray">Cloud Provider Keys</h3>
+      <h3 className="font-display text-base font-bold text-brand-dark-gray">{t("apiKeys.title")}</h3>
       <p className="mt-1 mb-4 font-body text-xs text-brand-gray leading-relaxed">
-        Workspace keys are encrypted at rest and used by all agents. Environment variables remain a fallback.
-        Self-hosted servers are configured below and usually need no key at all.
+        {t("apiKeys.body")}
       </p>
       <div className="space-y-4">
         {credentials.map((cred) => {
@@ -126,24 +127,24 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
                 {cred.configured || cred.env_fallback ? (
                   <>
                     <span className="inline-flex rounded-full bg-brand-teal px-2 py-0.5 text-[10px] font-medium text-white">
-                      {cred.masked || "Key set"}
+                      {cred.masked || t("apiKeys.keySet")}
                     </span>
                     {cred.env_fallback && (
                       <span className="inline-flex rounded-full bg-brand-light-gray-1 px-2 py-0.5 text-[10px] font-medium text-brand-dark-gray">
-                        Env var
+                        {t("apiKeys.envVar")}
                       </span>
                     )}
                     <span
                       className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
                       style={{ backgroundColor: cred.connected ? "#72d54a" : "#ff9e16" }}
-                      title={cred.connected ? "This key passed a connection test" : "Run Test to verify this key; unverified failing keys disable their provider's models"}
+                      title={cred.connected ? t("apiKeys.connectedTitle") : t("apiKeys.unverifiedTitle")}
                     >
-                      {cred.connected ? "Connected" : "Not verified"}
+                      {cred.connected ? t("apiKeys.connected") : t("apiKeys.notVerified")}
                     </span>
                   </>
                 ) : (
                   <span className="inline-flex rounded-full bg-brand-light-gray-1 px-2 py-0.5 text-[10px] font-medium text-brand-dark-gray">
-                    Not configured
+                    {t("apiKeys.notConfigured")}
                   </span>
                 )}
                 {PROVIDER_KEY_PAGES[cred.provider] && (
@@ -153,7 +154,7 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
                     rel="noreferrer"
                     className="font-body text-[10px] font-medium text-brand-teal hover:underline"
                   >
-                    Get a key
+                    {t("apiKeys.getKey")}
                   </a>
                 )}
               </div>
@@ -162,8 +163,8 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
                   type="password"
                   autoComplete="new-password"
                   spellCheck={false}
-                  aria-label={`${PROVIDER_LABELS[cred.provider] || cred.provider} API key`}
-                  placeholder={cred.configured ? "Replace key..." : "Paste API key..."}
+                  aria-label={t("apiKeys.apiKey", { provider: PROVIDER_LABELS[cred.provider] || cred.provider })}
+                  placeholder={cred.configured ? t("apiKeys.replaceKey") : t("apiKeys.pasteKey")}
                   value={inputs[cred.provider] || ""}
                   onChange={(e) => setInputs((prev) => ({ ...prev, [cred.provider]: e.target.value }))}
                   className="w-full max-w-md rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 font-mono text-sm text-brand-dark-gray focus:border-brand-teal"
@@ -173,14 +174,14 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
                   disabled={isBusy || !(inputs[cred.provider] || "").trim()}
                   className="rounded bg-brand-teal px-3 py-1.5 font-body text-xs font-medium text-white transition-opacity disabled:opacity-40"
                 >
-                  Save
+                  {t("apiKeys.save")}
                 </button>
                 <button
                   onClick={() => handleTest(cred.provider)}
                   disabled={isBusy || (!cred.configured && !cred.env_fallback)}
                   className="rounded border border-brand-light-gray-1 px-3 py-1.5 font-body text-xs font-medium text-brand-dark-gray transition-opacity disabled:opacity-40"
                 >
-                  Test
+                  {t("apiKeys.test")}
                 </button>
                 {cred.configured && (
                   <button
@@ -188,7 +189,7 @@ export default function ApiKeysCard({ onChanged }: ApiKeysCardProps) {
                     disabled={isBusy}
                     className="rounded px-2 py-1.5 font-body text-xs text-brand-mid-gray hover:text-red-600 transition-colors disabled:opacity-40"
                   >
-                    Remove
+                    {t("apiKeys.remove")}
                   </button>
                 )}
               </div>

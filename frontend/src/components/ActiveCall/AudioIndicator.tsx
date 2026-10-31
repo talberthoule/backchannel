@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { AudioLevelSource } from "../../hooks/useAudioCapture";
+import i18n from "../../i18n";
 
 interface AudioIndicatorProps {
   isCapturing: boolean;
@@ -124,7 +125,7 @@ export default function AudioIndicator({ isCapturing, level, label, showStatusTe
       {/* Status text */}
       {showStatusText && (
         <span className="font-body text-sm text-brand-gray">
-          {isCapturing ? "Listening..." : "Mic off"}
+          {isCapturing ? i18n.t("activeCall.listening") : i18n.t("activeCall.micOff")}
         </span>
       )}
     </div>

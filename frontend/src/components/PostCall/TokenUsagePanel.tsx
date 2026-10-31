@@ -1,6 +1,8 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import type { ModelPricingResponse, TokenUsageSummary } from "../../types";
 import { estimateCostUsd, estimateSessionCostUsd, formatAudioDuration, formatEstimatedCost } from "../../lib/modelPricing";
+import i18n from "../../i18n";
 
 interface TokenUsagePanelProps {
   tokenUsage: TokenUsageSummary | null;
@@ -14,12 +16,13 @@ interface TokenUsagePanelProps {
 // lives in PostCallView because the Overview's cost tile shares it; this
 // panel only renders what it is handed.
 export default function TokenUsagePanel({ tokenUsage, loading, error, pricing, onRefresh }: TokenUsagePanelProps) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-xl bg-surface p-6 shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="font-display text-lg font-semibold text-brand-dark-gray">Token usage</h2>
-          <p className="mt-1 text-sm text-brand-mid-gray">LLM activity recorded for this session.</p>
+          <h2 className="font-display text-lg font-semibold text-brand-dark-gray">{t("tokenUsage.title")}</h2>
+          <p className="mt-1 text-sm text-brand-mid-gray">{t("tokenUsage.subtitle")}</p>
         </div>
         {!loading && (
           <button
@@ -27,70 +30,70 @@ export default function TokenUsagePanel({ tokenUsage, loading, error, pricing, o
             onClick={onRefresh}
             className="rounded-md border border-brand-light-gray-1 px-3 py-1.5 text-sm font-medium text-brand-teal hover:bg-brand-light-gray-2"
           >
-            Refresh
+            {t("tokenUsage.refresh")}
           </button>
         )}
       </div>
 
       {loading ? (
-        <p className="mt-6 text-sm text-brand-mid-gray" role="status">Loading token usage...</p>
+        <p className="mt-6 text-sm text-brand-mid-gray" role="status">{t("tokenUsage.loading")}</p>
       ) : error ? (
         <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4" role="alert">
-          <p className="text-sm text-red-700">Token usage could not be loaded.</p>
+          <p className="text-sm text-red-700">{t("tokenUsage.loadFailed")}</p>
         </div>
       ) : tokenUsage ? (
         <div className="mt-6 space-y-6">
           <div className="rounded-lg border border-brand-teal/20 bg-brand-teal/5 p-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-brand-gray">Estimated cost</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-brand-gray">{t("tokenUsage.estimatedCost")}</p>
             <p className="mt-1 font-display text-3xl font-semibold tabular-nums text-brand-dark-gray">
               {formatEstimatedCost(
                 pricing ? estimateSessionCostUsd(tokenUsage.by_model, pricing.models) : null,
               )}
             </p>
             <p className="mt-2 text-sm text-brand-mid-gray">
-              {tokenUsage.total_tokens.toLocaleString()} tokens
+              {tokenUsage.total_tokens.toLocaleString()} {t("tokenUsage.tokens")}
               {" ("}
-              {tokenUsage.input_tokens.toLocaleString()} input / {tokenUsage.output_tokens.toLocaleString()} output
+              {tokenUsage.input_tokens.toLocaleString()} {t("tokenUsage.input")} {tokenUsage.output_tokens.toLocaleString()} {t("tokenUsage.output")}
               {tokenUsage.thinking_tokens > 0 && (
-                <> / {tokenUsage.thinking_tokens.toLocaleString()} thinking</>
+                <> / {tokenUsage.thinking_tokens.toLocaleString()} {t("tokenUsage.thinking")}</>
               )}
               {")"}
               {tokenUsage.audio_seconds > 0 && (
-                <> plus {formatAudioDuration(tokenUsage.audio_seconds)} of audio</>
+                <> {t("tokenUsage.plus", { duration: formatAudioDuration(tokenUsage.audio_seconds) })}</>
               )}
             </p>
             {tokenUsage.thinking_tokens > 0 && (
               <p className="mt-1 text-xs text-brand-mid-gray">
-                Thinking tokens are billed at output rates.
+                {t("tokenUsage.thinkingRates")}
               </p>
             )}
             {((tokenUsage.audio_input_tokens ?? 0) > 0 || (tokenUsage.audio_output_tokens ?? 0) > 0) && (
               <p className="mt-1 text-xs text-brand-mid-gray">
-                {(tokenUsage.audio_input_tokens ?? 0).toLocaleString()} of the input tokens
+                {t("tokenUsage.audioInput", { value: (tokenUsage.audio_input_tokens ?? 0).toLocaleString() })}
                 {(tokenUsage.audio_output_tokens ?? 0) > 0 && (
-                  <> and {(tokenUsage.audio_output_tokens ?? 0).toLocaleString()} of the output tokens</>
+                  <> {t("tokenUsage.and")} {t("tokenUsage.audioOutput", { value: (tokenUsage.audio_output_tokens ?? 0).toLocaleString() })}</>
                 )}
-                {" "}were audio, priced at the audio rate where the provider publishes one.
+                {" "}{t("tokenUsage.audioRate")}
               </p>
             )}
             {(tokenUsage.cached_input_tokens ?? 0) > 0 && (
               <p className="mt-1 text-xs text-brand-mid-gray">
-                {(tokenUsage.cached_input_tokens ?? 0).toLocaleString()} of the input tokens were served from the provider's prompt cache, priced at the cached rate.
+                {t("tokenUsage.cachedRate", { value: (tokenUsage.cached_input_tokens ?? 0).toLocaleString() })}
               </p>
             )}
             {tokenUsage.audio_seconds > 0 && (
               <p className="mt-1 text-xs text-brand-mid-gray">
-                The live gateway is billed per minute of audio, not per token.
+                {t("tokenUsage.durationRate")}
               </p>
             )}
           </div>
 
           {tokenUsage.total_tokens === 0 && tokenUsage.audio_seconds === 0 ? (
-            <p className="text-sm text-brand-mid-gray">No usage was recorded for this session.</p>
+            <p className="text-sm text-brand-mid-gray">{t("tokenUsage.empty")}</p>
           ) : (
             <>
-              <TokenBreakdownTable title="By source" rows={tokenUsage.by_source} showSource pricing={pricing} showRateNote={false} />
-              <TokenBreakdownTable title="By model" rows={tokenUsage.by_model} pricing={pricing} />
+              <TokenBreakdownTable title={t("tokenUsage.bySource")} rows={tokenUsage.by_source} showSource pricing={pricing} showRateNote={false} />
+              <TokenBreakdownTable title={t("tokenUsage.byModel")} rows={tokenUsage.by_model} pricing={pricing} />
             </>
           )}
         </div>
@@ -114,6 +117,7 @@ function TokenBreakdownTable({
   // Both tables price their rows, but the rate caveat only needs saying once.
   showRateNote?: boolean;
 }) {
+  const { t } = useTranslation();
   const sessionCost = pricing ? estimateSessionCostUsd(rows, pricing.models) : null;
   // The API orders by tokens, which ranks a duration-billed row (zero tokens,
   // real money) last. Cost is the only axis the two billing units share, and
@@ -136,7 +140,12 @@ function TokenBreakdownTable({
     const input = row.audio_input_tokens ?? 0;
     const output = row.audio_output_tokens ?? 0;
     if (input === 0 && output === 0) return "-";
-    return output > 0 ? `${input.toLocaleString()} in / ${output.toLocaleString()} out` : input.toLocaleString();
+    return output > 0
+      ? t("tokenUsage.inOut", {
+          input: input.toLocaleString(i18n.language),
+          output: output.toLocaleString(i18n.language),
+        })
+      : t("tokenUsage.inputShort", { value: input.toLocaleString(i18n.language) });
   };
   return (
     <section>
@@ -145,16 +154,16 @@ function TokenBreakdownTable({
         <table className="min-w-full text-left text-sm">
           <thead className="bg-brand-light-gray-2 text-xs uppercase tracking-wide text-brand-gray">
             <tr>
-              {showSource && <th scope="col" className="px-4 py-3 font-semibold">Source</th>}
-              <th scope="col" className="px-4 py-3 font-semibold">Model</th>
-              <th scope="col" className="px-4 py-3 text-right font-semibold">Input</th>
-              <th scope="col" className="px-4 py-3 text-right font-semibold">Output</th>
-              {showThinking && <th scope="col" className="px-4 py-3 text-right font-semibold">Thinking</th>}
-              {showCached && <th scope="col" className="px-4 py-3 text-right font-semibold" title="Input tokens served from the provider's prompt cache">Cached in</th>}
-              {showAudioTokens && <th scope="col" className="px-4 py-3 text-right font-semibold" title="Tokens the provider counted as audio">Audio tokens</th>}
-              {showAudio && <th scope="col" className="px-4 py-3 text-right font-semibold">Audio</th>}
-              <th scope="col" className="px-4 py-3 text-right font-semibold">Total</th>
-              {pricing && <th scope="col" className="px-4 py-3 text-right font-semibold">Est. cost</th>}
+              {showSource && <th scope="col" className="px-4 py-3 font-semibold">{t("tokenUsage.headers.source")}</th>}
+              <th scope="col" className="px-4 py-3 font-semibold">{t("tokenUsage.headers.model")}</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">{t("tokenUsage.headers.input")}</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">{t("tokenUsage.headers.output")}</th>
+              {showThinking && <th scope="col" className="px-4 py-3 text-right font-semibold">{t("tokenUsage.headers.thinking")}</th>}
+              {showCached && <th scope="col" className="px-4 py-3 text-right font-semibold" title={t("tokenUsage.cachedTitle")}>{t("tokenUsage.headers.cached")}</th>}
+              {showAudioTokens && <th scope="col" className="px-4 py-3 text-right font-semibold" title={t("tokenUsage.audioTitle")}>{t("tokenUsage.headers.audioTokens")}</th>}
+              {showAudio && <th scope="col" className="px-4 py-3 text-right font-semibold">{t("tokenUsage.headers.audio")}</th>}
+              <th scope="col" className="px-4 py-3 text-right font-semibold">{t("tokenUsage.headers.total")}</th>
+              {pricing && <th scope="col" className="px-4 py-3 text-right font-semibold">{t("tokenUsage.headers.cost")}</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-brand-light-gray-1">
@@ -189,7 +198,7 @@ function TokenBreakdownTable({
             <tfoot className="border-t border-brand-light-gray-1 bg-brand-light-gray-2/60">
               <tr>
                 <th scope="row" colSpan={(showSource ? 5 : 4) + (showThinking ? 1 : 0) + (showCached ? 1 : 0) + (showAudioTokens ? 1 : 0) + (showAudio ? 1 : 0)} className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-brand-gray">
-                  Session estimate
+                  {t("tokenUsage.sessionEstimate")}
                 </th>
                 <td className="px-4 py-3 text-right font-semibold tabular-nums text-brand-dark-gray">
                   {formatEstimatedCost(sessionCost)}
@@ -201,7 +210,7 @@ function TokenBreakdownTable({
       </div>
       {pricing && showRateNote && (
         <p className="mt-2 text-xs text-brand-mid-gray">
-          Est. cost uses each provider's standard paid-tier rates as of {pricing.as_of}: cached and audio tokens at their published cached and audio rates where the provider lists one (otherwise the plain text rate), thinking at the output rate, and the per-minute rate for models billed by audio duration. No long-context surcharges or cache-storage fees. Models without published pricing show - and are excluded from the total.
+          {t("tokenUsage.rateNote", { date: pricing.as_of })}
         </p>
       )}
     </section>

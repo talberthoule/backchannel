@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../../i18n";
 import type {
   AgentActivityRecord,
   AgentActivitySnapshot,
@@ -31,14 +33,14 @@ function countdown(at: string | null, now: number): string {
   const value = Date.parse(at);
   if (!Number.isFinite(value)) return "-";
   const seconds = Math.ceil((value - now) / 1000);
-  return seconds > 0 ? duration(seconds) : "due now";
+  return seconds > 0 ? duration(seconds) : i18n.t("agentActivity.dueNow");
 }
 
 function relativeTime(at: string | null, now: number): string {
-  if (!at) return "Never";
+  if (!at) return i18n.t("agentActivity.never");
   const value = Date.parse(at);
-  if (!Number.isFinite(value)) return "Never";
-  return `${duration(Math.max(0, Math.floor((now - value) / 1000)))} ago`;
+  if (!Number.isFinite(value)) return i18n.t("agentActivity.never");
+  return i18n.t("agentActivity.ago", { time: duration(Math.max(0, Math.floor((now - value) / 1000))) });
 }
 
 export function activityEmptyMessage(
@@ -70,23 +72,25 @@ export function activityEmptyMessage(
 
   const next = countdown(agent.next_due_at, now);
   if (!hasInsights && agent.counts.runs === 0) {
-    return (
-      `Agents are listening. ${agent.name} checks every `
-      + `${duration(agent.interval_seconds)} - first insights expected in about ${next}.`
-    );
+    return i18n.t("agentActivity.listeningFirst", {
+      agent: agent.name,
+      interval: duration(agent.interval_seconds),
+      next,
+    });
   }
-  return (
-    `Agents are listening. ${agent.name} checks every `
-    + `${duration(agent.interval_seconds)} - next check in ${next}.`
-  );
+  return i18n.t("agentActivity.listeningNext", {
+    agent: agent.name,
+    interval: duration(agent.interval_seconds),
+    next,
+  });
 }
 
 function nextLabel(agent: AgentActivityRecord, now: number): string {
-  if (isRunningLate(agent, now)) return "running late";
-  if (agent.trigger === "event") return "event-driven";
+  if (isRunningLate(agent, now)) return i18n.t("agentActivity.runningLate");
+  if (agent.trigger === "event") return i18n.t("agentActivity.eventDriven");
   if (agent.trigger === "stream") return agent.state;
-  if (agent.trigger === "post_call") return "at call end";
-  return `next ${countdown(agent.next_due_at, now)}`;
+  if (agent.trigger === "post_call") return i18n.t("agentActivity.atCallEnd");
+  return i18n.t("agentActivity.next", { time: countdown(agent.next_due_at, now) });
 }
 
 function StatChip({
@@ -158,6 +162,7 @@ export default function AgentActivityPanel({
 }: {
   snapshot: AgentActivitySnapshot | null;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(Date.now());
 
@@ -187,11 +192,11 @@ export default function AgentActivityPanel({
         className="flex w-full items-center gap-2 overflow-x-auto px-4 py-2 text-left md:px-6"
       >
         <span className="flex-shrink-0 font-body text-[10px] font-semibold uppercase tracking-wide text-brand-mid-gray">
-          Agent activity
+          {t("agentActivity.title")}
         </span>
         {!snapshot ? (
           <span className="flex-shrink-0 rounded-full bg-brand-light-gray-2 px-2 py-1 font-body text-xs text-brand-mid-gray">
-            Connecting...
+            {t("agentActivity.connecting")}
           </span>
         ) : (
           <>
@@ -202,25 +207,25 @@ export default function AgentActivityPanel({
                 }`}
               />
               <span className="font-mono font-semibold tabular-nums">{stats.active}</span>
-              agents
+              {t("agentActivity.agents")}
             </span>
-            {stats.lenses != null && <StatChip value={stats.lenses} label="lenses" />}
-            <StatChip value={stats.runs} label="runs" />
-            <StatChip value={stats.productive} label="with insights" />
-            <StatChip value={stats.needSetup} label="need setup" tone="warn" />
-            <StatChip value={stats.blocked} label="blocked" tone="warn" />
-            <StatChip value={stats.late} label="late" tone="warn" />
-            <StatChip value={stats.failed} label="failed" tone="bad" />
+            {stats.lenses != null && <StatChip value={stats.lenses} label={t("agentActivity.lenses")} />}
+            <StatChip value={stats.runs} label={t("agentActivity.runs")} />
+            <StatChip value={stats.productive} label={t("agentActivity.withInsights")} />
+            <StatChip value={stats.needSetup} label={t("agentActivity.needSetup")} tone="warn" />
+            <StatChip value={stats.blocked} label={t("agentActivity.blocked")} tone="warn" />
+            <StatChip value={stats.late} label={t("agentActivity.late")} tone="warn" />
+            <StatChip value={stats.failed} label={t("agentActivity.failed")} tone="bad" />
           </>
         )}
         {privacyBlocked > 0 && (
           <span className="flex-shrink-0 rounded-full bg-amber-100 px-2 py-1 font-body text-xs font-medium text-amber-800">
-            {privacyBlocked} agent{privacyBlocked === 1 ? "" : "s"} off: Privacy First
+            {t("agentActivity.privacyOff", { count: privacyBlocked })}
           </span>
         )}
         {shieldBlocked > 0 && (
           <span className="flex-shrink-0 rounded-full bg-amber-100 px-2 py-1 font-body text-xs font-medium text-amber-800">
-            Live captions off: PII Shield
+            {t("agentActivity.captionsOff")}
           </span>
         )}
         <span className="ml-auto flex-shrink-0 text-brand-mid-gray" aria-hidden="true">
@@ -233,13 +238,13 @@ export default function AgentActivityPanel({
           <table className="w-full min-w-[900px] text-left font-body text-xs">
             <thead className="text-[10px] uppercase tracking-wide text-brand-mid-gray">
               <tr>
-                <th className="pb-2 pr-3">Agent</th>
-                <th className="pb-2 pr-3">State</th>
-                <th className="pb-2 pr-3">Why</th>
-                <th className="pb-2 pr-3">Last run</th>
-                <th className="pb-2 pr-3">Next</th>
-                <th className="pb-2 pr-3">Last outcome</th>
-                <th className="pb-2">Last failure</th>
+                <th className="pb-2 pr-3">{t("agentActivity.headers.agent")}</th>
+                <th className="pb-2 pr-3">{t("agentActivity.headers.state")}</th>
+                <th className="pb-2 pr-3">{t("agentActivity.headers.why")}</th>
+                <th className="pb-2 pr-3">{t("agentActivity.headers.lastRun")}</th>
+                <th className="pb-2 pr-3">{t("agentActivity.headers.next")}</th>
+                <th className="pb-2 pr-3">{t("agentActivity.headers.lastOutcome")}</th>
+                <th className="pb-2">{t("agentActivity.headers.lastFailure")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-brand-light-gray-1 text-brand-gray">
@@ -270,9 +275,9 @@ export default function AgentActivityPanel({
             </tbody>
           </table>
           <p className="mt-3 border-t border-brand-light-gray-1 pt-3 font-body text-xs text-brand-mid-gray">
-            Gateway: {snapshot.call.gateway.state}
-            {" | "}Transcription: {snapshot.call.transcription.jobs} jobs, {snapshot.call.transcription.failed} failed
-            {" | "}Speaker processing: {snapshot.call.diarization.queued} queued, {snapshot.call.diarization.shed} skipped
+            {t("agentActivity.gateway")} {snapshot.call.gateway.state}
+            {" | "}{t("agentActivity.transcription")} {snapshot.call.transcription.jobs} {t("agentActivity.jobs")} {snapshot.call.transcription.failed} {t("agentActivity.failedCount")}
+            {" | "}{t("agentActivity.speakerProcessing")} {snapshot.call.diarization.queued} {t("agentActivity.queued")} {snapshot.call.diarization.shed} {t("agentActivity.skipped")}
           </p>
         </div>
       )}

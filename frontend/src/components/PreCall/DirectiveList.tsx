@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Directive } from "../../types";
 import { useConfirm } from "../ConfirmProvider";
 import * as api from "../../services/api";
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function DirectiveList({ sessionId, directives, onRefresh }: Props) {
+  const { t } = useTranslation();
   const { confirm, toast } = useConfirm();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
@@ -25,16 +27,16 @@ export default function DirectiveList({ sessionId, directives, onRefresh }: Prop
 
   const handleDelete = async (id: string) => {
     const ok = await confirm({
-      title: "Delete directive",
-      message: "Delete this directive?",
-      confirmLabel: "Delete",
+      title: t("directives.deleteTitle"),
+      message: t("directives.deleteMessage"),
+      confirmLabel: t("common.delete"),
       tone: "danger",
     });
     if (!ok) return;
     try {
       await api.deleteDirective(sessionId, id);
       onRefresh();
-      toast("Directive deleted");
+      toast(t("directives.deleted"));
     } catch (err) {
       console.error("Failed to delete directive:", err);
     }
@@ -66,7 +68,7 @@ export default function DirectiveList({ sessionId, directives, onRefresh }: Prop
   if (directives.length === 0) {
     return (
       <p className="font-body text-sm text-brand-mid-gray py-4 text-center">
-        No directives yet. Add one above to guide the AI during your call.
+        {t("directives.empty")}
       </p>
     );
   }
@@ -90,7 +92,7 @@ export default function DirectiveList({ sessionId, directives, onRefresh }: Prop
               <button
                 onClick={() => handleToggle(d)}
                 className="mt-0.5 shrink-0"
-                title={d.active ? "Deactivate" : "Activate"}
+                title={d.active ? t("directives.deactivate") : t("directives.activate")}
               >
                 <div
                   className={`relative h-5 w-9 rounded-full transition-colors ${
@@ -127,14 +129,14 @@ export default function DirectiveList({ sessionId, directives, onRefresh }: Prop
                       className="text-xs font-display font-semibold text-brand-teal
                                  hover:text-brand-teal-dark"
                     >
-                      Save
+                      {t("common.save")}
                     </button>
                     <button
                       onClick={cancelEdit}
                       className="text-xs font-display font-semibold text-brand-mid-gray
                                  hover:text-brand-dark-gray"
                     >
-                      Cancel
+                      {t("common.cancel")}
                     </button>
                   </div>
                 ) : (
@@ -149,7 +151,7 @@ export default function DirectiveList({ sessionId, directives, onRefresh }: Prop
                   <button
                     onClick={() => startEdit(d)}
                     className="p-1 rounded text-brand-mid-gray hover:text-brand-teal transition-colors"
-                    title="Edit"
+                    title={t("common.edit")}
                   >
                     <svg
                       className="h-4 w-4"
@@ -170,7 +172,7 @@ export default function DirectiveList({ sessionId, directives, onRefresh }: Prop
                   <button
                     onClick={() => handleDelete(d.id)}
                     className="p-1 rounded text-brand-mid-gray hover:text-red-500 transition-colors"
-                    title="Delete"
+                    title={t("common.delete")}
                   >
                     <svg
                       className="h-4 w-4"

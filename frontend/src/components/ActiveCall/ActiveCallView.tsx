@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { SILENT_AUDIO_LEVEL, type AudioLevelSource } from "../../hooks/useAudioCapture";
 import type { AgentActivitySnapshot, AudioSendStats, ModelInfo, PostProcessingProgress as PostProcessingProgressState, Question, Session, SessionSynthesis, Speaker, StopDrainMode, TranscriptEntry } from "../../types";
 import AgentActivityPanel, { activityEmptyMessage } from "./AgentActivityPanel";
@@ -115,6 +116,7 @@ export default function ActiveCallView({
   synthesis,
   activity,
 }: ActiveCallViewProps) {
+  const { t } = useTranslation();
   const [debugOpen, setDebugOpen] = useState(false);
   const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
   const [endMenuOpen, setEndMenuOpen] = useState(false);
@@ -137,15 +139,15 @@ export default function ActiveCallView({
   const captureStatus = ending
     ? null
     : isStarting
-      ? "Starting audio..."
+      ? t("activeCall.startingAudio")
       : isCapturing && status === "connected"
-        ? "Listening"
+        ? t("activeCall.listeningStatus")
         : status === "connecting"
-          ? "Connecting..."
+          ? t("activeCall.connecting")
           : status === "error"
-            ? "Connection failed"
+            ? t("activeCall.connectionFailed")
             : status === "disconnected"
-              ? "Recording paused"
+              ? t("activeCall.recordingPaused")
               : status;
 
   // Normalize questions: WS-sourced questions may lack starred/dismissed/created_at
@@ -192,21 +194,21 @@ export default function ActiveCallView({
       {/* Top bar */}
       <header className="flex items-center justify-between gap-4 border-b border-brand-light-gray-1 bg-surface px-4 py-3 md:px-6">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-          <AudioIndicator isCapturing={isCapturing} level={audioLevel} label="Microphone input level" />
+          <AudioIndicator isCapturing={isCapturing} level={audioLevel} label={t("activeCall.microphoneLevel")} />
           {systemAudioActive && (
             <span className="flex items-center gap-1">
-              <span className="font-body text-[10px] text-brand-mid-gray">Meeting</span>
+              <span className="font-body text-[10px] text-brand-mid-gray">{t("activeCall.meeting")}</span>
               <AudioIndicator
                 isCapturing={isCapturing}
                 level={systemAudioLevel ?? SILENT_AUDIO_LEVEL}
-                label="Meeting audio input level"
+                label={t("activeCall.meetingAudioLevel")}
                 showStatusText={false}
               />
             </span>
           )}
           {/* Only when it says something the meters do not: the mic meter
               already reads "Listening..." on a healthy call. */}
-          {captureStatus && captureStatus !== "Listening" && (
+          {captureStatus && captureStatus !== t("activeCall.listeningStatus") && (
             <span className="font-body text-xs text-brand-mid-gray">{captureStatus}</span>
           )}
           {captureError && (
@@ -222,8 +224,8 @@ export default function ActiveCallView({
               type="button"
               onClick={() => setDebugOpen((open) => !open)}
               aria-expanded={debugOpen}
-              aria-label="Audio diagnostics"
-              title="Audio diagnostics"
+              aria-label={t("activeCall.diagnostics")}
+              title={t("activeCall.diagnostics")}
               className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors focus:ring-2 focus:ring-brand-teal-light ${
                 debugOpen
                   ? "bg-brand-teal/10 text-brand-teal"
@@ -237,12 +239,12 @@ export default function ActiveCallView({
             {debugOpen && (
               <div className="absolute right-0 top-full z-20 mt-1 w-80 rounded-lg border border-brand-light-gray-1 bg-surface px-3 py-2 shadow-lg">
                 <p className="font-mono text-[9px] uppercase tracking-wider text-brand-mid-gray">
-                  Diagnostics
+                  {t("activeCall.details")}
                 </p>
                 <p className="mt-1 font-body text-xs text-brand-gray">
-                  audio sent: {audioSeconds}s / {audioStats.chunksSent} chunks
-                  {audioStats.chunksDropped > 0 ? `, dropped ${audioStats.chunksDropped}` : ""}
-                  {lastAudioAge !== null ? `, last ${lastAudioAge}s ago` : ""}
+                  {t("activeCall.audioSent")} {audioSeconds}s / {audioStats.chunksSent} {t("activeCall.chunks")}
+                  {audioStats.chunksDropped > 0 ? t("activeCall.droppedChunks", { value: audioStats.chunksDropped }) : ""}
+                  {lastAudioAge !== null ? t("activeCall.lastAudio", { value: lastAudioAge }) : ""}
                 </p>
                 {backendAudioStatus && (
                   <p className="mt-1 break-words font-body text-xs text-brand-mid-gray">
@@ -258,7 +260,7 @@ export default function ActiveCallView({
               disabled={postProcessingActive || isStarting}
               className="rounded-lg border border-brand-teal px-3 py-2 font-body text-sm font-semibold text-brand-teal transition-colors hover:bg-brand-teal/10 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isStarting ? "Starting..." : "Resume recording"}
+              {isStarting ? t("preCall.starting") : t("activeCall.resumeRecording")}
             </button>
           )}
           {/* Session timer */}
@@ -268,7 +270,7 @@ export default function ActiveCallView({
             </span>
             {backendDisconnected && (
               <span className="font-body text-[10px] font-semibold uppercase tracking-wide text-red-600">
-                not recording
+                {t("activeCall.notRecording")}
               </span>
             )}
           </div>
@@ -294,14 +296,14 @@ export default function ActiveCallView({
                   d="M15.75 3.75L18 6m0 0l2.25 2.25M18 6l2.25-2.25M18 6l-2.25 2.25m-10.5 6v3.75a.75.75 0 01-.75.75H3a.75.75 0 01-.75-.75V15a9.75 9.75 0 019.75-9.75h2.25"
                 />
               </svg>
-              {postProcessingActive ? "Ending..." : "End Call"}
+              {postProcessingActive ? t("activeCall.ending") : t("activeCall.endCall")}
             </button>
             <button
               onClick={() => setEndMenuOpen((open) => !open)}
               disabled={postProcessingActive}
               aria-haspopup="menu"
               aria-expanded={endMenuOpen}
-              aria-label="More end call options"
+              aria-label={t("activeCall.endOptions")}
               className={`flex items-center rounded-r-lg border-l px-2 py-2 text-white transition-colors ${
                 postProcessingActive
                   ? "cursor-wait border-brand-light-gray-1 bg-brand-mid-gray"
@@ -326,10 +328,10 @@ export default function ActiveCallView({
                   className="block w-full px-4 py-2.5 text-left transition-colors hover:bg-brand-light-gray-2"
                 >
                   <span className="block font-body text-sm font-semibold text-brand-dark-gray">
-                    End without briefing
+                    {t("activeCall.endWithoutBriefing")}
                   </span>
                   <span className="mt-0.5 block font-body text-xs text-brand-mid-gray">
-                    Saves the transcript and reconciles insights; skips the call briefing and offering matching.
+                    {t("activeCall.endWithoutBriefingHint")}
                   </span>
                 </button>
               </div>
@@ -343,19 +345,19 @@ export default function ActiveCallView({
       <SynthesisSignals session={session} synthesis={synthesis} />
       {ending ? (
         <div className="border-b border-brand-teal/30 bg-brand-teal/10 px-4 py-3 font-body text-sm font-medium text-brand-dark-gray md:px-6">
-          Wrapping up this call. Finishing post-processing and loading the review...
+          {t("activeCall.wrappingUp")}
         </div>
       ) : backendDisconnected ? (
         <div role="alert" className="border-b border-red-200 bg-red-50 px-4 py-3 font-body text-sm font-medium text-red-700 md:px-6">
-          <span className="font-semibold">Recording paused.</span>{" "}
+          <span className="font-semibold">{t("activeCall.paused")}</span>{" "}
           {status === "error"
-            ? "Backchannel could not connect. Select Resume recording to try again."
-            : "Backchannel lost its connection. Select Resume recording to reconnect."}
+            ? t("activeCall.errorResume")
+            : t("activeCall.lostResume")}
         </div>
       ) : activity?.call.degraded ? (
         <div role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-3 font-body text-sm font-medium text-amber-900 md:px-6">
           <span className="font-semibold">
-            {isCapturing ? "Recording continues." : "Recording is paused."}
+            {isCapturing ? t("activeCall.recordingContinues") : t("activeCall.recordingIsPaused")}
           </span>{" "}
           {activity.call.degraded_reasons.join(" ")}
         </div>
@@ -367,14 +369,14 @@ export default function ActiveCallView({
         <div className="flex flex-1 flex-col overflow-hidden pt-3">
           <div className="px-4 pb-2">
             <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-brand-teal">
-              Live Insights
+              {t("activeCall.insights")}
             </h2>
           </div>
           {(pendingAsk || askError) && (
             <div className="px-4 pb-2">
               <div className="rounded-lg border border-brand-light-gray-1 border-l-4 border-l-brand-gray bg-brand-light-gray-2 px-3 py-2">
                 <p className="font-mono text-[9px] uppercase tracking-wider text-brand-gray">
-                  You asked
+                  {t("activeCall.youAsked")}
                 </p>
                 <p className="mt-0.5 font-body text-sm font-semibold text-brand-dark-gray">
                   {pendingAsk}
@@ -383,7 +385,7 @@ export default function ActiveCallView({
                   <p className="mt-1 font-body text-xs text-red-600">{askError}</p>
                 ) : (
                   <p className="mt-1 font-mono text-[10px] uppercase tracking-wider text-brand-gray">
-                    Reading the call...
+                    {t("activeCall.readingCall")}
                   </p>
                 )}
               </div>

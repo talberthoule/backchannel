@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { SessionAgent } from "../../types";
 import * as api from "../../services/api";
 
@@ -14,6 +15,7 @@ interface AgentSelectorProps {
 }
 
 export default function AgentSelector({ sessionId }: AgentSelectorProps) {
+  const { t } = useTranslation();
   const [agents, setAgents] = useState<SessionAgent[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -59,7 +61,7 @@ export default function AgentSelector({ sessionId }: AgentSelectorProps) {
   };
 
   if (loading) {
-    return <p className="text-xs text-brand-mid-gray">Loading agents...</p>;
+    return <p className="text-xs text-brand-mid-gray">{t("agentSelector.loading")}</p>;
   }
 
   const hasOverrides = agents.some((a) => a.is_override);
@@ -68,11 +70,11 @@ export default function AgentSelector({ sessionId }: AgentSelectorProps) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <p className="font-body text-xs text-brand-mid-gray">
-          Choose which agents participate in this call
+          {t("agentSelector.prompt")}
         </p>
         {hasOverrides && (
           <button onClick={handleResetAll} className="font-body text-[10px] text-brand-mid-gray hover:text-brand-teal transition-colors">
-            Reset to defaults
+            {t("agentSelector.reset")}
           </button>
         )}
       </div>
@@ -92,7 +94,7 @@ export default function AgentSelector({ sessionId }: AgentSelectorProps) {
             <div>
               <span className="font-body text-sm font-medium text-brand-dark-gray">{agent.name}</span>
               {agent.is_override && (
-                <span className="ml-1.5 text-[9px] text-brand-mid-gray">(custom)</span>
+                <span className="ml-1.5 text-[9px] text-brand-mid-gray">{t("agentSelector.custom")}</span>
               )}
               <p className="font-body text-[11px] text-brand-mid-gray leading-snug mt-0.5">{agent.description}</p>
             </div>

@@ -1,17 +1,18 @@
 import type { PostProcessingProgress as ProgressState } from "../../types";
 import { formatPostProcessingSummary } from "../../lib/postProcessingSummary";
+import { useTranslation } from "react-i18next";
 
 interface PostProcessingProgressProps {
   progress: ProgressState;
 }
 
-const STEP_LABELS: Record<string, string> = {
-  speaker_assignment: "Speaker assignments",
-  final_insights: "Final insight pass",
-  insight_reconciliation: "Insight reconciliation",
-  opportunity_matching: "Offering matching",
-  call_briefing: "Call briefing",
-  saving_session: "Save session",
+const STEP_LABEL_KEYS: Record<string, string> = {
+  speaker_assignment: "postProcessing.steps.speakerAssignment",
+  final_insights: "postProcessing.steps.finalInsights",
+  insight_reconciliation: "postProcessing.steps.insightReconciliation",
+  opportunity_matching: "postProcessing.steps.opportunityMatching",
+  call_briefing: "postProcessing.steps.callBriefing",
+  saving_session: "postProcessing.steps.saveSession",
 };
 
 // Fallback for older backends that do not announce the pipeline steps.
@@ -47,6 +48,7 @@ function stepState(stepIndex: number, currentStep: number, active: boolean): "do
 }
 
 export default function PostProcessingProgress({ progress }: PostProcessingProgressProps) {
+  const { t } = useTranslation();
   const percent = clampProgress(progress.progress);
   const currentStep = Math.max(0, Math.min(progress.totalSteps, progress.currentStep));
   const summary = formatPostProcessingSummary(progress.details);
@@ -60,7 +62,7 @@ export default function PostProcessingProgress({ progress }: PostProcessingProgr
             <div className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-full bg-brand-amber animate-pulse" />
               <h2 className="font-display text-sm font-semibold uppercase text-brand-dark-gray">
-                Post-processing
+                {t("postProcessing.title")}
               </h2>
             </div>
             <p className="mt-1 font-body text-sm text-brand-gray">{progress.message}</p>
@@ -103,7 +105,9 @@ export default function PostProcessingProgress({ progress }: PostProcessingProgr
                         : "bg-brand-mid-gray"
                   }`}
                 />
-                <span className="min-w-0 truncate font-body text-xs font-medium">{STEP_LABELS[stepId] ?? stepId}</span>
+                <span className="min-w-0 truncate font-body text-xs font-medium">
+                  {STEP_LABEL_KEYS[stepId] ? t(STEP_LABEL_KEYS[stepId]) : stepId}
+                </span>
               </div>
             );
           })}

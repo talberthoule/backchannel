@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Offering } from "../types";
 import { useConfirm } from "./ConfirmProvider";
 import * as api from "../services/api";
@@ -57,6 +58,7 @@ function EditableCell({
   clamp?: boolean;
   renderValue?: (value: string) => React.ReactNode;
 }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const ref = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
@@ -86,7 +88,7 @@ function EditableCell({
           clamp ? "line-clamp-3" : "block"
         } ${!value ? "italic text-brand-mid-gray" : ""}`}
         onClick={() => setEditing(true)}
-        title={clamp && value ? value : "Click to edit"}
+        title={clamp && value ? value : t("offerings.clickEdit")}
       >
         {renderValue ? renderValue(value) : value || placeholder || "—"}
       </span>
@@ -142,6 +144,7 @@ function TagChips({
   knownTags: string[];
   onCreateTag: (tag: string) => void;
 }) {
+  const { t } = useTranslation();
   const [adding, setAdding] = useState(false);
   const [newTag, setNewTag] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -202,7 +205,7 @@ function TagChips({
               setNewTag("");
             }
           }}
-          placeholder="New tag..."
+          placeholder={t("offerings.newTag")}
           className="w-24 rounded-full border border-brand-teal-light bg-surface px-2 py-0.5 text-[10px] text-brand-dark-gray"
         />
       ) : (
@@ -210,9 +213,9 @@ function TagChips({
           type="button"
           onClick={() => setAdding(true)}
           className="rounded-full border border-dashed border-brand-light-gray-1 px-2 py-0.5 text-[10px] text-brand-mid-gray transition-colors hover:border-brand-teal hover:text-brand-teal"
-          title="Create a new tag"
+          title={t("offerings.createTag")}
         >
-          + Tag
+          {t("offerings.tag")}
         </button>
       )}
     </div>
@@ -229,6 +232,7 @@ function AddOfferingRow({
   knownTags: string[];
   onCreateTag: (tag: string) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [vendor, setVendor] = useState("");
   const [productName, setProductName] = useState("");
@@ -260,7 +264,7 @@ function AddOfferingRow({
         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
         </svg>
-        Add Offering
+        {t("offerings.addOffering")}
       </button>
     );
   }
@@ -269,44 +273,44 @@ function AddOfferingRow({
     <div className="rounded-lg border border-brand-teal-light/30 bg-brand-teal-light/5 p-4 space-y-3">
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs font-medium text-brand-gray mb-1">Vendor *</label>
-          <input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="e.g. Fortinet" className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal" />
+          <label className="block text-xs font-medium text-brand-gray mb-1">{t("offerings.vendor")}</label>
+          <input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder={t("offerings.vendorPlaceholder")} className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-brand-gray mb-1">Product/Service *</label>
-          <input value={productName} onChange={(e) => setProductName(e.target.value)} placeholder="e.g. FortiGate NGFW" className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal" />
+          <label className="block text-xs font-medium text-brand-gray mb-1">{t("offerings.product")}</label>
+          <input value={productName} onChange={(e) => setProductName(e.target.value)} placeholder={t("offerings.productPlaceholder")} className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-brand-gray mb-1">Category</label>
-          <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Security" className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal" />
+          <label className="block text-xs font-medium text-brand-gray mb-1">{t("offerings.category")}</label>
+          <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder={t("offerings.categoryPlaceholder")} className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal" />
         </div>
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs font-medium text-brand-gray mb-1">Sub-Category</label>
-          <input value={subcategory} onChange={(e) => setSubcategory(e.target.value)} placeholder="e.g. Network Security" className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal" />
+          <label className="block text-xs font-medium text-brand-gray mb-1">{t("offerings.subcategory")}</label>
+          <input value={subcategory} onChange={(e) => setSubcategory(e.target.value)} placeholder={t("offerings.subcategoryPlaceholder")} className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-brand-gray mb-1">Note</label>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Sold with deployment services" className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal" />
+          <label className="block text-xs font-medium text-brand-gray mb-1">{t("offerings.note")}</label>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("offerings.notePlaceholder")} className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal" />
         </div>
         <div className="flex items-end gap-2">
-          <button onClick={handleAdd} disabled={!vendor || !productName} className="rounded-lg bg-brand-teal px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brand-teal-dark disabled:opacity-40">Add</button>
-          <button onClick={() => { reset(); setOpen(false); }} className="rounded-lg border border-brand-light-gray-1 px-4 py-1.5 text-sm text-brand-gray transition-colors hover:bg-brand-light-gray-2">Cancel</button>
+          <button onClick={handleAdd} disabled={!vendor || !productName} className="rounded-lg bg-brand-teal px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brand-teal-dark disabled:opacity-40">{t("common.add")}</button>
+          <button onClick={() => { reset(); setOpen(false); }} className="rounded-lg border border-brand-light-gray-1 px-4 py-1.5 text-sm text-brand-gray transition-colors hover:bg-brand-light-gray-2">{t("common.cancel")}</button>
         </div>
       </div>
       <div>
-        <label className="block text-xs font-medium text-brand-gray mb-1">Tag(s)</label>
+        <label className="block text-xs font-medium text-brand-gray mb-1">{t("offerings.tags")}</label>
         <TagChips value={tags} onChange={setTags} knownTags={knownTags} onCreateTag={onCreateTag} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-brand-gray mb-1">Description</label>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What it does..." rows={2} className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal" />
+          <label className="block text-xs font-medium text-brand-gray mb-1">{t("offerings.description")}</label>
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("offerings.descriptionPlaceholder")} rows={2} className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-brand-gray mb-1">Use Cases</label>
-          <textarea value={useCases} onChange={(e) => setUseCases(e.target.value)} placeholder="Pain points it solves..." rows={2} className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal" />
+          <label className="block text-xs font-medium text-brand-gray mb-1">{t("offerings.useCases")}</label>
+          <textarea value={useCases} onChange={(e) => setUseCases(e.target.value)} placeholder={t("offerings.useCasesPlaceholder")} rows={2} className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal" />
         </div>
       </div>
     </div>
@@ -318,6 +322,7 @@ interface OfferingsManagerProps {
 }
 
 export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
+  const { t } = useTranslation();
   const { confirm, toast } = useConfirm();
   const [offerings, setOfferings] = useState<Offering[]>([]);
   const [vendors, setVendors] = useState<string[]>([]);
@@ -390,16 +395,16 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
 
   const handleDelete = async (id: string) => {
     const ok = await confirm({
-      title: "Delete offering",
-      message: "Delete this offering from the catalog? This cannot be undone.",
-      confirmLabel: "Delete",
+      title: t("offerings.deleteTitle"),
+      message: t("offerings.deleteMessage"),
+      confirmLabel: t("common.delete"),
       tone: "danger",
     });
     if (!ok) return;
     try {
       await api.deleteOffering(id);
       setOfferings((prev) => prev.filter((o) => o.id !== id));
-      toast("Offering deleted");
+      toast(t("offerings.deleted"));
     } catch (err) {
       console.error("Delete failed", err);
     }
@@ -425,10 +430,10 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
     setImportResult(null);
     try {
       const result = await api.importOfferings(file);
-      setImportResult(`Imported ${result.created} offerings (${result.skipped} skipped)`);
+      setImportResult(t("offerings.imported", { created: result.created, skipped: result.skipped }));
       await load();
     } catch (err) {
-      setImportResult("Import failed. Check file format.");
+      setImportResult(t("offerings.importFailed"));
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -440,9 +445,9 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
       const replace = offerings.length > 0;
       const result = await api.seedOfferings(replace);
       if (result.created) {
-        setImportResult(`${replace ? "Replaced with" : "Seeded"} ${result.created} sample offerings`);
+        setImportResult(t(replace ? "offerings.replacedSeeded" : "offerings.seeded", { count: result.created }));
       } else {
-        setImportResult(result.message || "Database already seeded");
+        setImportResult(result.message || t("offerings.alreadySeeded"));
       }
       await load();
     } catch (err) {
@@ -458,16 +463,16 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
           <button
             onClick={onBack}
             className="rounded p-1 text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
-            title="Back to sessions"
+            title={t("offerings.back")}
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
             </svg>
           </button>
           <div>
-            <h1 className="font-display text-lg font-bold text-brand-dark-gray">Offerings Catalog</h1>
+            <h1 className="font-display text-lg font-bold text-brand-dark-gray">{t("offerings.title")}</h1>
             <p className="font-body text-xs text-brand-mid-gray">
-              Manage the products and services the Opportunity Specialist maps to
+              {t("offerings.subtitle")}
             </p>
           </div>
         </div>
@@ -476,10 +481,10 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
             onClick={handleSeed}
             className="rounded-lg border border-brand-teal-light/30 px-3 py-1.5 text-sm font-medium text-brand-teal transition-colors hover:bg-brand-teal-light/10"
             title={offerings.length > 0
-              ? "Replace all offerings with the latest sample catalog"
-              : "Populate with a sample catalog of common vendor products and in-house services"}
+              ? t("offerings.replaceTitle")
+              : t("offerings.sampleTitle")}
           >
-            {offerings.length > 0 ? "Reset to Sample Data" : "Load Sample Data"}
+            {offerings.length > 0 ? t("offerings.resetSample") : t("offerings.loadSample")}
           </button>
           <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleImport} className="hidden" />
           <button
@@ -487,10 +492,10 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
             disabled={importing}
             className="rounded-lg border border-brand-light-gray-1 px-3 py-1.5 text-sm font-medium text-brand-gray transition-colors hover:bg-brand-light-gray-2 disabled:opacity-50"
           >
-            {importing ? "Importing..." : "Import CSV/Excel"}
+            {importing ? t("offerings.importing") : t("offerings.import")}
           </button>
           <span className="font-body text-xs text-brand-mid-gray">
-            {filtered.length} of {offerings.length} offerings
+            {t("offerings.count", { shown: filtered.length, total: offerings.length })}
           </span>
         </div>
       </header>
@@ -510,35 +515,35 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
       {/* Filters */}
       <div className="flex items-center gap-3 border-b border-brand-light-gray-1 bg-surface px-6 py-2">
         <div className="flex items-center gap-1.5">
-          <span className="font-body text-xs font-medium text-brand-mid-gray">Vendor:</span>
+          <span className="font-body text-xs font-medium text-brand-mid-gray">{t("offerings.filterVendor")}</span>
           <select
             value={filterVendor}
             onChange={(e) => setFilterVendor(e.target.value)}
             className="rounded border border-brand-light-gray-1 bg-surface px-2 py-1 text-xs text-brand-dark-gray focus:border-brand-teal"
           >
-            <option value="">All</option>
+            <option value="">{t("offerings.all")}</option>
             {vendors.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="font-body text-xs font-medium text-brand-mid-gray">Category:</span>
+          <span className="font-body text-xs font-medium text-brand-mid-gray">{t("offerings.filterCategory")}</span>
           <select
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
             className="rounded border border-brand-light-gray-1 bg-surface px-2 py-1 text-xs text-brand-dark-gray focus:border-brand-teal"
           >
-            <option value="">All</option>
+            <option value="">{t("offerings.all")}</option>
             {categories.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="font-body text-xs font-medium text-brand-mid-gray">Tag:</span>
+          <span className="font-body text-xs font-medium text-brand-mid-gray">{t("offerings.filterTag")}</span>
           <select
             value={filterTag}
             onChange={(e) => setFilterTag(e.target.value)}
             className="rounded border border-brand-light-gray-1 bg-surface px-2 py-1 text-xs text-brand-dark-gray focus:border-brand-teal"
           >
-            <option value="">All</option>
+            <option value="">{t("offerings.all")}</option>
             {tags.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
@@ -546,7 +551,7 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search offerings..."
+            placeholder={t("offerings.search")}
             className="w-full max-w-xs rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1 text-xs text-brand-dark-gray focus:border-brand-teal"
           />
         </div>
@@ -555,7 +560,7 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
             onClick={() => { setFilterVendor(""); setFilterCategory(""); setFilterTag(""); setSearch(""); }}
             className="text-xs text-brand-mid-gray hover:text-brand-teal"
           >
-            Clear filters
+            {t("offerings.clearFilters")}
           </button>
         )}
       </div>
@@ -564,14 +569,13 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
       <div className="flex-1 overflow-auto p-4">
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <span className="font-body text-sm text-brand-mid-gray">Loading offerings...</span>
+            <span className="font-body text-sm text-brand-mid-gray">{t("offerings.loading")}</span>
           </div>
         ) : offerings.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <p className="font-body text-sm text-brand-mid-gray mb-3">No offerings in the catalog yet.</p>
+            <p className="font-body text-sm text-brand-mid-gray mb-3">{t("offerings.empty")}</p>
             <p className="font-body text-xs text-brand-mid-gray mb-4">
-              Click "Load Sample Data" to populate with a sample catalog,
-              or import your own via CSV/Excel.
+              {t("offerings.emptyBody")}
             </p>
           </div>
         ) : (
@@ -582,15 +586,15 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
               <table className="w-full min-w-[640px] text-left text-xs">
                 <thead>
                   <tr className="border-b border-brand-light-gray-1 bg-brand-light-gray-2/50">
-                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">Vendor</th>
-                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">Product/Service</th>
-                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">Category</th>
-                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">Sub-Category</th>
-                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">Description</th>
-                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">Use Cases</th>
-                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">Note</th>
-                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">Tags</th>
-                    <th className="px-3 py-2 font-display font-semibold text-brand-gray w-16">Active</th>
+                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">{t("offerings.headers.vendor")}</th>
+                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">{t("offerings.headers.product")}</th>
+                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">{t("offerings.headers.category")}</th>
+                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">{t("offerings.headers.subcategory")}</th>
+                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">{t("offerings.headers.description")}</th>
+                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">{t("offerings.headers.useCases")}</th>
+                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">{t("offerings.headers.note")}</th>
+                    <th className="px-3 py-2 font-display font-semibold text-brand-gray">{t("offerings.headers.tags")}</th>
+                    <th className="px-3 py-2 font-display font-semibold text-brand-gray w-16">{t("offerings.headers.active")}</th>
                     <th className="px-3 py-2 w-10"></th>
                   </tr>
                 </thead>
@@ -607,7 +611,7 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
                         <EditableCell
                           value={o.category}
                           onSave={(v) => handleUpdate(o.id, "category", v)}
-                          placeholder="Add category..."
+                          placeholder={t("offerings.addCategory")}
                           renderValue={(v) =>
                             v ? (
                               <span
@@ -617,22 +621,22 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
                                 {v}
                               </span>
                             ) : (
-                              "Add category..."
+                              t("offerings.addCategory")
                             )
                           }
                         />
                       </td>
                       <td className="px-3 py-2 align-top">
-                        <EditableCell value={o.subcategory || ""} onSave={(v) => handleUpdate(o.id, "subcategory", v)} placeholder="Add sub-category..." />
+                        <EditableCell value={o.subcategory || ""} onSave={(v) => handleUpdate(o.id, "subcategory", v)} placeholder={t("offerings.addSubcategory")} />
                       </td>
                       <td className="px-3 py-2 align-top max-w-[200px]">
-                        <EditableCell value={o.description} onSave={(v) => handleUpdate(o.id, "description", v)} multiline clamp placeholder="Add description..." />
+                        <EditableCell value={o.description} onSave={(v) => handleUpdate(o.id, "description", v)} multiline clamp placeholder={t("offerings.addDescription")} />
                       </td>
                       <td className="px-3 py-2 align-top max-w-[180px]">
-                        <EditableCell value={o.use_cases} onSave={(v) => handleUpdate(o.id, "use_cases", v)} multiline clamp placeholder="Add use cases..." />
+                        <EditableCell value={o.use_cases} onSave={(v) => handleUpdate(o.id, "use_cases", v)} multiline clamp placeholder={t("offerings.addUseCases")} />
                       </td>
                       <td className="px-3 py-2 align-top max-w-[160px]">
-                        <EditableCell value={o.note} onSave={(v) => handleUpdate(o.id, "note", v)} multiline clamp placeholder="Add note..." />
+                        <EditableCell value={o.note} onSave={(v) => handleUpdate(o.id, "note", v)} multiline clamp placeholder={t("offerings.addNote")} />
                       </td>
                       <td className="px-3 py-2 align-top">
                         <TagChips
@@ -646,7 +650,7 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
                         <button
                           onClick={() => handleUpdate(o.id, "active", !o.active)}
                           className={`h-5 w-9 rounded-full transition-colors ${o.active ? "bg-brand-teal" : "bg-brand-light-gray-1"}`}
-                          title={o.active ? "Active — click to deactivate" : "Inactive — click to activate"}
+                          title={o.active ? t("offerings.activeTitle") : t("offerings.inactiveTitle")}
                         >
                           <span className={`block h-4 w-4 rounded-full bg-slate-50 shadow transition-transform ${o.active ? "translate-x-4" : "translate-x-0.5"}`} />
                         </button>
@@ -655,7 +659,7 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
                         <button
                           onClick={() => handleDelete(o.id)}
                           className="rounded p-1 text-brand-mid-gray transition-colors hover:bg-red-50 hover:text-red-500"
-                          title="Delete offering"
+                          title={t("offerings.delete")}
                         >
                           <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
@@ -670,7 +674,7 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
 
             {filtered.length === 0 && offerings.length > 0 && (
               <div className="py-8 text-center">
-                <p className="font-body text-sm text-brand-mid-gray">No offerings match your filters.</p>
+                <p className="font-body text-sm text-brand-mid-gray">{t("offerings.noMatch")}</p>
               </div>
             )}
           </div>
@@ -680,7 +684,7 @@ export default function OfferingsManager({ onBack }: OfferingsManagerProps) {
       {/* Import format hint */}
       <div className="border-t border-brand-light-gray-1 bg-surface px-6 py-2">
         <p className="font-body text-[10px] text-brand-mid-gray">
-          CSV/Excel import columns: vendor, product_name, category, subcategory, description, use_cases, note, tags. Legacy column names (discipline, delivery_model, practice) are accepted as aliases.
+          {t("offerings.formatHint")}
         </p>
       </div>
     </div>

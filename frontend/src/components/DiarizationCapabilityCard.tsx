@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { DiarizationBenchmarkResult, DiarizationDiagnostics } from "../types";
 import * as api from "../services/api";
 import { useConfirm } from "./ConfirmProvider";
@@ -17,6 +18,7 @@ const MAX_VOICE_RECORDING_SECONDS = 10;
 type RecordingMode = "benchmark" | "voice";
 
 export default function DiarizationCapabilityCard() {
+  const { t } = useTranslation();
   const [diarization, setDiarization] = useState<DiarizationDiagnostics | null>(null);
   const [benchmark, setBenchmark] = useState<DiarizationBenchmarkResult | null>(null);
   const [benchmarkFile, setBenchmarkFile] = useState<File | null>(null);
@@ -50,7 +52,7 @@ export default function DiarizationCapabilityCard() {
       setDiagnosticError(null);
     } catch (err) {
       console.error("Failed to load diarization diagnostics", err);
-      setDiagnosticError("Unable to load diagnostics. The backend may still be starting.");
+      setDiagnosticError(t("diarization.diagnosticsFailed"));
     } finally {
       setLoadingDiagnostics(false);
     }
@@ -110,7 +112,7 @@ export default function DiarizationCapabilityCard() {
       await load();
     } catch (err) {
       console.error("Benchmark failed", err);
-      setDiagnosticError(err instanceof Error ? err.message : "Benchmark failed.");
+      setDiagnosticError(err instanceof Error ? err.message : t("diarization.benchmarkFailed"));
     } finally {
       setBenchmarking(false);
     }
@@ -130,7 +132,7 @@ export default function DiarizationCapabilityCard() {
       setVoiceEnrolled(result.enrolled);
     } catch (err) {
       console.error("Voice enrollment failed", err);
-      setDiagnosticError(err instanceof Error ? err.message : "Voice enrollment failed.");
+      setDiagnosticError(err instanceof Error ? err.message : t("diarization.voiceFailed"));
     } finally {
       setVoiceSaving(false);
     }
@@ -138,9 +140,9 @@ export default function DiarizationCapabilityCard() {
 
   const removeVoiceProfile = async () => {
     const ok = await confirm({
-      title: "Delete voice profile",
-      message: "Delete your saved voice profile?",
-      confirmLabel: "Delete",
+      title: t("diarization.deleteTitle"),
+      message: t("diarization.deleteMessage"),
+      confirmLabel: t("common.delete"),
       tone: "danger",
     });
     if (!ok) return;
@@ -151,7 +153,7 @@ export default function DiarizationCapabilityCard() {
       setVoiceEnrolled(false);
     } catch (err) {
       console.error("Voice profile deletion failed", err);
-      setDiagnosticError(err instanceof Error ? err.message : "Unable to delete voice profile.");
+      setDiagnosticError(err instanceof Error ? err.message : t("diarization.deleteFailed"));
     } finally {
       setVoiceSaving(false);
     }
@@ -159,7 +161,7 @@ export default function DiarizationCapabilityCard() {
 
   const startMicRecording = async (mode: RecordingMode) => {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setDiagnosticError("Browser microphone recording is not available.");
+      setDiagnosticError(t("diarization.browserUnsupported"));
       return;
     }
 
@@ -218,7 +220,7 @@ export default function DiarizationCapabilityCard() {
     } catch (err) {
       if (generation !== recordingGenerationRef.current) return;
       console.error("Microphone recording failed", err);
-      setDiagnosticError(err instanceof Error ? err.message : "Unable to start microphone recording.");
+      setDiagnosticError(err instanceof Error ? err.message : t("diarization.micFailed"));
       stopMediaTracks();
       clearRecordingTimer();
       setRecordingMode(null);
@@ -241,7 +243,7 @@ export default function DiarizationCapabilityCard() {
       setBenchmark(null);
     } catch (err) {
       console.error("Diarization selection failed", err);
-      setDiagnosticError(err instanceof Error ? err.message : "Unable to update diarization mode.");
+      setDiagnosticError(err instanceof Error ? err.message : t("diarization.modeFailed"));
     } finally {
       setSavingSelection(false);
     }
@@ -256,7 +258,7 @@ export default function DiarizationCapabilityCard() {
       setDiarization(updated);
     } catch (err) {
       console.error("Speaker matching threshold update failed", err);
-      setDiagnosticError(err instanceof Error ? err.message : "Unable to update speaker matching sensitivity.");
+      setDiagnosticError(err instanceof Error ? err.message : t("diarization.thresholdFailed"));
     } finally {
       setSavingThreshold(false);
     }
@@ -270,22 +272,22 @@ export default function DiarizationCapabilityCard() {
   const recommendation = benchmark?.recommended_live_diarizer ?? (enhancedUnlocked ? "sortformer" : diarization?.recommended_live_diarizer) ?? "lightweight";
   const deviceLabel = diarization
     ? `${diarization.device.toUpperCase()}${diarization.gpu_name ? ` - ${diarization.gpu_name}` : ""}`
-    : "Unknown";
+    : t("diarization.unknown");
   const gpuLabel = !diarization
-    ? "Unknown"
+    ? t("diarization.unknown")
     : diarization.gpu_backend === "rocm"
-      ? "ROCm (AMD)"
+      ? t("diarization.rocm")
       : diarization.gpu_backend === "cuda"
-        ? "CUDA (NVIDIA)"
-        : "None (CPU)";
+        ? t("diarization.cuda")
+        : t("diarization.gpuNone");
 
   return (
     <div className="rounded-xl bg-surface p-5 shadow-sm">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h3 className="font-display text-base font-bold text-brand-dark-gray">Diarization Capability</h3>
+          <h3 className="font-display text-base font-bold text-brand-dark-gray">{t("diarization.title")}</h3>
           <p className="mt-1 font-body text-xs leading-relaxed text-brand-gray">
-            Validate whether this machine can run NeMo Sortformer fast enough for live speaker attribution.
+            {t("diarization.body")}
           </p>
         </div>
         <button
@@ -293,16 +295,16 @@ export default function DiarizationCapabilityCard() {
           disabled={loadingDiagnostics}
           className="rounded border border-brand-light-gray-1 px-3 py-1.5 font-body text-xs text-brand-dark-gray transition-colors hover:border-brand-teal hover:text-brand-teal"
         >
-          {loadingDiagnostics ? "Checking..." : "Refresh"}
+          {loadingDiagnostics ? t("diarization.checking") : t("diarization.refresh")}
         </button>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-brand-light-gray-1 py-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <div>
-            <p className="font-body text-[10px] uppercase text-brand-mid-gray">Live diarizer</p>
+            <p className="font-body text-[10px] uppercase text-brand-mid-gray">{t("diarization.liveDiarizer")}</p>
             <p className="font-body text-xs text-brand-gray">
-              Active for new live calls and audio imports: <span className="font-semibold capitalize text-brand-dark-gray">{effectiveMode}</span>
+              {t("diarization.activeFor", { mode: effectiveMode })}
             </p>
           </div>
           <InfoPopover open={infoOpen} onOpenChange={setInfoOpen} />
@@ -310,39 +312,39 @@ export default function DiarizationCapabilityCard() {
 
         <div className="inline-flex rounded-lg border border-brand-light-gray-1 bg-brand-light-gray-2/50 p-1">
           <DiarizerModeButton
-            label="Fallback"
+            label={t("diarization.fallback")}
             active={selectedMode === "lightweight"}
             disabled={savingSelection}
             onClick={() => void selectDiarizer("lightweight")}
           />
           <DiarizerModeButton
-            label="Enhanced"
+            label={t("diarization.enhanced")}
             active={selectedMode === "sortformer"}
             disabled={!enhancedUnlocked || savingSelection}
-            title={enhancedUnlocked ? "Use Sortformer" : "Run a passing benchmark to unlock enhanced mode"}
+            title={enhancedUnlocked ? t("diarization.useSortformer") : t("diarization.benchmarkUnlock")}
             onClick={() => void selectDiarizer("sortformer")}
           />
         </div>
       </div>
 
       <div className="mb-4 grid gap-3 md:grid-cols-4">
-        <Metric label="Recommendation" value={recommendation} capitalize />
-        <Metric label="Device" value={deviceLabel} title={deviceLabel} />
-        <Metric label="GPU accel" value={gpuLabel} />
+        <Metric label={t("diarization.metrics.recommendation")} value={recommendation} capitalize />
+        <Metric label={t("diarization.metrics.device")} value={deviceLabel} title={deviceLabel} />
+        <Metric label={t("diarization.metrics.gpu")} value={gpuLabel} />
         <Metric
-          label="RTF"
+          label={t("diarization.metrics.rtf")}
           value={
             benchmark?.real_time_factor != null
               ? benchmark.real_time_factor.toFixed(2)
               : diarization?.benchmark_real_time_factor != null
                 ? diarization.benchmark_real_time_factor.toFixed(2)
-                : "Not run"
+                : t("diarization.metrics.notRun")
           }
         />
       </div>
       {diarization?.benchmark_measured_at && (
         <p className="mb-4 font-body text-[11px] text-brand-mid-gray">
-          Measured {new Date(diarization.benchmark_measured_at).toLocaleString()}
+          {t("diarization.measured", { date: new Date(diarization.benchmark_measured_at).toLocaleString() })}
           {diarization.benchmark_validity === "aged" ? ` - ${diarization.benchmark_validity_reason}` : ""}
         </p>
       )}
@@ -355,9 +357,9 @@ export default function DiarizationCapabilityCard() {
       <div className="mb-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="font-body text-[10px] uppercase text-brand-mid-gray">Speaker matching</p>
+            <p className="font-body text-[10px] uppercase text-brand-mid-gray">{t("diarization.speakerMatching")}</p>
             <p className="font-body text-xs text-brand-gray">
-              Match threshold: <span className="font-semibold text-brand-dark-gray">{thresholdDraft.toFixed(2)}</span>
+              {t("diarization.matchThreshold", { value: thresholdDraft.toFixed(2) })}
             </p>
           </div>
           <button
@@ -366,11 +368,11 @@ export default function DiarizationCapabilityCard() {
             disabled={!thresholdChanged || savingThreshold || loadingDiagnostics}
             className="rounded bg-brand-teal px-3 py-1.5 font-body text-xs font-medium text-white transition-colors hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:bg-brand-light-gray-1"
           >
-            {savingThreshold ? "Saving..." : "Apply"}
+            {savingThreshold ? t("diarization.saving") : t("diarization.apply")}
           </button>
         </div>
         <div className="flex items-center gap-3">
-          <span className="font-body text-[10px] text-brand-mid-gray">Merge more</span>
+          <span className="font-body text-[10px] text-brand-mid-gray">{t("diarization.mergeMore")}</span>
           <input
             type="range"
             min={0.5}
@@ -380,7 +382,7 @@ export default function DiarizationCapabilityCard() {
             onChange={(e) => setThresholdDraft(Number(e.target.value))}
             className="min-w-0 flex-1 accent-brand-teal"
           />
-          <span className="font-body text-[10px] text-brand-mid-gray">Split more</span>
+          <span className="font-body text-[10px] text-brand-mid-gray">{t("diarization.splitMore")}</span>
           <input
             type="number"
             min={0.5}
@@ -401,11 +403,11 @@ export default function DiarizationCapabilityCard() {
       <div className="mb-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="font-body text-[10px] uppercase text-brand-mid-gray">My voice profile</p>
+            <p className="font-body text-[10px] uppercase text-brand-mid-gray">{t("diarization.voiceProfile")}</p>
             <p className="mt-1 font-body text-xs text-brand-gray">
               {voiceEnrolled
-                ? "Your encrypted voice signature is ready for mic-only speaker matching."
-                : "Record 4-10 seconds of your voice. Calibration audio is discarded; only its encrypted voice signature is kept."}
+                ? t("diarization.voiceReady")
+                : t("diarization.voiceBody")}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -422,12 +424,12 @@ export default function DiarizationCapabilityCard() {
               className="rounded border border-brand-teal px-3 py-1.5 font-body text-xs font-medium text-brand-teal transition-colors hover:bg-brand-teal hover:text-white disabled:cursor-not-allowed disabled:border-brand-light-gray-1 disabled:text-brand-mid-gray"
             >
               {recordingMode === "voice"
-                ? `Stop (${recordingSeconds}s)`
+                ? t("diarization.stop", { seconds: recordingSeconds })
                 : voiceSaving
-                  ? "Saving..."
+                  ? t("diarization.saving")
                   : voiceEnrolled
-                    ? "Replace Voice Profile"
-                    : "Record Voice Profile"}
+                    ? t("diarization.replaceVoice")
+                    : t("diarization.recordVoice")}
             </button>
             {voiceEnrolled && (
               <button
@@ -436,7 +438,7 @@ export default function DiarizationCapabilityCard() {
                 disabled={voiceSaving || recordingMode !== null}
                 className="rounded border border-brand-light-gray-1 px-3 py-1.5 font-body text-xs text-brand-gray transition-colors hover:border-red-300 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Delete
+                {t("common.delete")}
               </button>
             )}
           </div>
@@ -446,11 +448,11 @@ export default function DiarizationCapabilityCard() {
       <div className="mb-4 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-2">
         <p className="font-body text-xs text-brand-gray">
           {loadingDiagnostics
-            ? "Checking diarization capability..."
-            : benchmark?.reason ?? diarization?.selection_reason ?? diarization?.reason ?? "Diagnostics have not been loaded."}
+            ? t("diarization.checkingCapability")
+            : benchmark?.reason ?? diarization?.selection_reason ?? diarization?.reason ?? t("diarization.notLoaded")}
         </p>
         {diarization?.gpu_memory_gb != null && (
-          <p className="mt-1 font-body text-[10px] text-brand-mid-gray">GPU memory: {diarization.gpu_memory_gb} GB</p>
+          <p className="mt-1 font-body text-[10px] text-brand-mid-gray">{t("diarization.gpuMemory", { value: diarization.gpu_memory_gb })}</p>
         )}
         <p className="mt-1 font-mono text-[10px] text-brand-mid-gray">{diarization?.model_id}</p>
       </div>
@@ -467,7 +469,7 @@ export default function DiarizationCapabilityCard() {
           disabled={!benchmarkFile || benchmarking || recordingMode !== null}
           className="rounded bg-brand-teal px-3 py-1.5 font-body text-xs font-medium text-white transition-colors hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:bg-brand-light-gray-1"
         >
-          {benchmarking ? "Benchmarking..." : "Run Benchmark"}
+          {benchmarking ? t("diarization.benchmarking") : t("diarization.runBenchmark")}
         </button>
         <button
           onClick={recordingMode === "benchmark"
@@ -481,23 +483,26 @@ export default function DiarizationCapabilityCard() {
           className="rounded border border-brand-teal px-3 py-1.5 font-body text-xs font-medium text-brand-teal transition-colors hover:bg-brand-teal hover:text-white disabled:cursor-not-allowed disabled:border-brand-light-gray-1 disabled:text-brand-mid-gray"
         >
           {recordingMode === "benchmark"
-            ? `Stop Recording (${recordingSeconds}s)`
-            : "Record Mic Benchmark"}
+            ? t("diarization.stopRecording", { seconds: recordingSeconds })
+            : t("diarization.recordBenchmark")}
         </button>
         {benchmark ? (
           <span className="font-body text-xs text-brand-mid-gray">
-            {benchmark.audio_seconds.toFixed(1)}s benchmarked in {benchmark.processing_seconds.toFixed(1)}s processing
+            {t("diarization.benchmarkResult", {
+              audio: benchmark.audio_seconds.toFixed(1),
+              processing: benchmark.processing_seconds.toFixed(1),
+            })}
           </span>
         ) : benchmarkFile && (
           <span className="font-body text-[10px] text-brand-mid-gray">
-            Needs at least {MIN_BENCHMARK_SECONDS}s of audio; only the first {MAX_RECORDING_SECONDS}s is benchmarked.
+            {t("diarization.benchmarkNeeds", { minimum: MIN_BENCHMARK_SECONDS, maximum: MAX_RECORDING_SECONDS })}
           </span>
         )}
       </div>
 
       {diagnosticError && (
         <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 font-body text-xs text-red-700">
-          {diagnosticError} {loadingDiagnostics ? "Retrying..." : ""}
+          {diagnosticError} {loadingDiagnostics ? t("diarization.retrying") : ""}
         </p>
       )}
     </div>
@@ -535,6 +540,7 @@ function DiarizerModeButton({
 }
 
 function InfoPopover({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { t } = useTranslation();
   return (
     <div
       className="relative"
@@ -543,7 +549,7 @@ function InfoPopover({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
     >
       <button
         type="button"
-        aria-label="Compare diarization modes"
+        aria-label={t("diarization.compareAria")}
         aria-expanded={open}
         onClick={() => onOpenChange(!open)}
         className="grid h-6 w-6 place-items-center rounded-full border border-brand-light-gray-1 bg-surface font-display text-[11px] font-bold text-brand-teal shadow-sm transition-colors hover:border-brand-teal"
@@ -554,10 +560,10 @@ function InfoPopover({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
         <div className="absolute left-0 top-8 z-20 w-[min(22rem,calc(100vw-3rem))] rounded-lg border border-brand-light-gray-1 bg-surface p-4 shadow-xl shadow-brand-dark-gray/10">
           <div className="space-y-3 font-body text-xs leading-relaxed text-brand-gray">
             <p>
-              <span className="font-semibold text-brand-dark-gray">Fallback</span> uses the local VAD and speaker-embedding path. It streams quickly, runs on CPU, and is the safer default when hardware or model availability changes.
+              {t("diarization.fallbackBody")}
             </p>
             <p>
-              <span className="font-semibold text-brand-dark-gray">Enhanced</span> uses NeMo Sortformer after this machine passes the benchmark. It can separate speaker turns more accurately in multi-speaker calls, but it is heavier and processes audio in short batches.
+              {t("diarization.enhancedBody")}
             </p>
           </div>
         </div>

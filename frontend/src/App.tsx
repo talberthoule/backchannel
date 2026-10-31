@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "./i18n";
 import Layout from "./components/Layout";
 import AppOverlays from "./components/AppOverlays";
 import ManagementView, { type AdminTab } from "./components/ManagementView";
@@ -38,7 +40,7 @@ function startPostProcessing(): PostProcessingProgress {
     active: true,
     state: "running",
     stage: "stopping_audio",
-    message: "Stopping audio capture...",
+    message: i18n.t("processing.stopping"),
     currentStep: 0,
     totalSteps: 5,
     progress: 5,
@@ -67,7 +69,7 @@ function progressFromStatus(prev: PostProcessingProgress, data: WSStatusData): P
 
 function completePostProcessing(
   prev: PostProcessingProgress,
-  message = "Post-processing complete",
+  message = i18n.t("processing.complete"),
   details?: Record<string, unknown>,
 ): PostProcessingProgress {
   return {
@@ -92,9 +94,7 @@ function backgroundPostProcessing(prev: PostProcessingProgress): PostProcessingP
     ...prev,
     active: false,
     state: "background",
-    message:
-      "Still finishing post-processing in the background. You can leave this page; "
-      + "the call will appear complete once it finishes.",
+    message: i18n.t("processing.background"),
     progress: Math.max(prev.progress, 90),
     completedAt: null,
     confirmed: false,
@@ -111,7 +111,7 @@ function unconfirmedPostProcessing(prev: PostProcessingProgress): PostProcessing
     ...prev,
     active: false,
     state: "timeout",
-    message: "Post-processing completion was not confirmed. Retry ending the call or refresh before editing speakers or enhancing insights.",
+    message: i18n.t("processing.unconfirmed"),
     progress: Math.max(prev.progress, 90),
     completedAt: null,
     confirmed: false,
@@ -177,6 +177,7 @@ function delay(ms: number) {
 }
 
 export default function App() {
+  const { t } = useTranslation();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [groups, setGroups] = useState<SessionGroup[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -355,7 +356,7 @@ export default function App() {
             ...prev,
             active: false,
             state: "error",
-            message: msg.data.message || "Post-processing failed.",
+            message: msg.data.message || t("processing.failed"),
             completedAt: null,
             confirmed: false,
           }));
@@ -381,8 +382,7 @@ export default function App() {
               );
               if (problem) {
                 setStartError(
-                  `${refusalMessage} (The session could not be reset automatically: ` +
-                    `${problem} — reload the app if it still shows an active call.)`,
+                  t("app.refusalRecovery", { message: refusalMessage, problem }),
                 );
               }
               await refreshSession().catch((err) =>
@@ -618,15 +618,15 @@ export default function App() {
     if (!activeSessionId) return;
     if (activeSessionId === liveSessionIdRef.current) {
       await notice({
-        title: "Call in progress",
-        message: "End the active call before deleting this session.",
+        title: t("app.callInProgress"),
+        message: t("app.endBeforeDelete"),
       });
       return;
     }
     const ok = await confirm({
-      title: "Delete session",
-      message: "Delete this session and all its data? This cannot be undone.",
-      confirmLabel: "Delete",
+      title: t("app.deleteSession"),
+      message: t("app.deleteSessionMessage"),
+      confirmLabel: t("common.delete"),
       tone: "danger",
     });
     if (!ok) return;
@@ -639,8 +639,8 @@ export default function App() {
   const handleDeleteSessionById = useCallback(async (sessionId: string) => {
     if (sessionId === liveSessionIdRef.current) {
       await notice({
-        title: "Call in progress",
-        message: "End the active call before deleting this session.",
+        title: t("app.callInProgress"),
+        message: t("app.endBeforeDelete"),
       });
       return;
     }
@@ -684,7 +684,7 @@ export default function App() {
       });
     } catch (err) {
       if (generation !== audioStartGenerationRef.current) return;
-      const message = errorMessage(err, "Microphone capture failed.");
+      const message = errorMessage(err, t("app.microphoneFailed"));
       setCaptureError(message);
       console.error("Failed to start audio capture", err);
     } finally {
@@ -699,8 +699,8 @@ export default function App() {
     const sessionId = activeSessionId;
     if (liveSessionIdRef.current && liveSessionIdRef.current !== sessionId) {
       return notice({
-        title: "Call in progress",
-        message: "End the current active call before starting another session.",
+        title: t("app.callInProgress"),
+        message: t("app.endBeforeStart"),
       });
     }
 
@@ -759,7 +759,7 @@ export default function App() {
         await Promise.all([refreshSession(), refreshSessions()]);
       } catch (err) {
         if (!isCurrent()) return;
-        const message = errorMessage(err, "Call setup failed.");
+        const message = errorMessage(err, t("app.callSetupFailed"));
         setCaptureError(message);
         console.error("Failed to start call", err);
       } finally {
@@ -802,10 +802,10 @@ export default function App() {
         const synthesis = await api.refreshSynthesis(activeSessionId);
         setRuntimeSynthesis(synthesis);
       } catch (err) {
-        setProcessingError(errorMessage(err, "Transcript analysis completed, but briefing generation failed."));
+        setProcessingError(errorMessage(err, t("app.analysisBriefingFailed")));
       }
     } catch (err) {
-      setProcessingError(errorMessage(err, "Transcript analysis failed."));
+      setProcessingError(errorMessage(err, t("app.analysisFailed")));
     } finally {
       await Promise.allSettled([
         refreshSession(),
@@ -834,7 +834,7 @@ export default function App() {
           setPostProcessing((prev) =>
             completePostProcessing(
               prev,
-              "Post-processing complete",
+              t("processing.complete"),
               parseSavedDrainSummary(latest.drain_summary) ?? prev.details,
             ),
           );
@@ -961,7 +961,7 @@ export default function App() {
       const asking = Boolean(pendingAsk) && !askError;
       if (!session || asking) return;
       if (!askModelId) {
-        setAskError("Choose a model in the Live Ask model picker before submitting.");
+        setAskError(t("app.chooseAskModel"));
         return;
       }
       const sessionId = session.id;
@@ -978,7 +978,7 @@ export default function App() {
         // eating every later question (ALP-178).
         if (runtimeSessionIdRef.current !== sessionId) {
           setPendingAsk(null);
-          setAskError("Saved to the call it was asked on, not the one shown here.");
+          setAskError(t("app.savedToOtherCall"));
           return;
         }
         setLiveQuestions((prev) => [created, ...prev]);
@@ -987,12 +987,12 @@ export default function App() {
       } catch (err) {
         if (runtimeSessionIdRef.current !== sessionId) {
           setPendingAsk(null);
-          setAskError("Saved to the call it was asked on, not the one shown here.");
+          setAskError(t("app.savedToOtherCall"));
           return;
         }
         // Keep the question visible next to the error: it must not vanish
         // silently, only a fresh ask (handleAsk) clears it.
-        setAskError(errorMessage(err, "Ask failed"));
+        setAskError(errorMessage(err, t("app.askFailed")));
       }
     },
     [session, askModelId, pendingAsk, askError]

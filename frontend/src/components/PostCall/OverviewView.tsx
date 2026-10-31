@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { ArrowRight } from "lucide-react";
 import type {
   CallSegment,
@@ -24,6 +25,7 @@ import {
   type OverviewItem,
   type OverviewSection,
 } from "./overviewMetrics";
+import i18n from "../../i18n";
 
 // The Overview is the landing worksheet: one headline, one row of numbers,
 // then the four lists set like the Briefing (small-caps headings on hairline
@@ -69,8 +71,8 @@ function percent(share: number): string {
   return `${Math.round(share * 100)}%`;
 }
 
-function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
-  return `${count} ${count === 1 ? singular : pluralForm}`;
+function plural(count: number, key: string): string {
+  return i18n.t(key, { count });
 }
 
 // A quiet text link with an arrow and a 24px hit area: enough affordance to
@@ -135,17 +137,18 @@ interface ListSpec {
 }
 
 function ListSection({ spec, onNavigate }: { spec: ListSpec; onNavigate: (target: OverviewTarget) => void }) {
+  const { t } = useTranslation();
   const { section } = spec;
   const toInsights = () => onNavigate({ tab: "insights", filter: section.insights.filter });
   const footer: ReactNode[] = [];
   if (section.source === "briefing") {
     if (section.total > section.items.length) {
-      footer.push(<Link key="all" label={`All ${section.total} in the briefing`} onClick={() => onNavigate({ tab: "briefing" })} />);
+      footer.push(<Link key="all" label={t("overview.allInBriefing", { value: section.total })} onClick={() => onNavigate({ tab: "briefing" })} />);
     }
     if (section.insights.matching > 0) {
       footer.push(<Link key="live" label={spec.inInsights(section.insights.matching, section.insights.shown)} onClick={toInsights} />);
     } else {
-      footer.push(<span key="none">None captured live.</span>);
+      footer.push(<span key="none">{t("overview.noneLive")}</span>);
     }
   } else if (section.insights.matching > 0) {
     footer.push(<Link key="live" label={spec.inInsights(section.insights.matching, section.insights.shown)} onClick={toInsights} />);
@@ -210,7 +213,7 @@ function sectionTile(spec: ListSpec, primary: boolean, onNavigate: (target: Over
       key={spec.key}
       label={spec.label}
       value={section.total}
-      sub={section.source === "briefing" ? "From the briefing" : "From Insights"}
+      sub={section.source === "briefing" ? i18n.t("overview.fromBriefing") : i18n.t("overview.fromInsights")}
       primary={primary}
       onClick={() =>
         onNavigate(section.source === "briefing" ? { tab: "briefing" } : { tab: "insights", filter: section.insights.filter })
@@ -230,20 +233,25 @@ function CostTile({
   pricing: ModelPricingResponse | null;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   if (loading) {
     return (
       <StatTile
-        label="Est. spend"
-        value={<span className="inline-block h-6 w-14 animate-pulse rounded bg-brand-light-gray-2 motion-reduce:animate-none" role="img" aria-label="Loading" />}
-        sub="Loading usage"
+        label={t("overview.estimatedSpend")}
+        value={<span className="inline-block h-6 w-14 animate-pulse rounded bg-brand-light-gray-2 motion-reduce:animate-none" role="img" aria-label={t("common.loading")} />}
+        sub={t("overview.loadingUsage")}
         onClick={onClick}
       />
     );
   }
   const recorded = Boolean(tokenUsage && (tokenUsage.total_tokens > 0 || tokenUsage.audio_seconds > 0));
   const cost = tokenUsage && pricing && recorded ? estimateSessionCostUsd(tokenUsage.by_model, pricing.models) : null;
-  const sub = !tokenUsage ? "Usage unavailable" : !recorded ? "No usage recorded" : `${tokenUsage.total_tokens.toLocaleString()} tokens`;
-  return <StatTile label="Est. spend" value={formatEstimatedCost(cost)} sub={sub} onClick={onClick} />;
+  const sub = !tokenUsage
+    ? t("overview.usageUnavailable")
+    : !recorded
+      ? t("overview.noUsage")
+      : t("overview.tokenCount", { value: tokenUsage.total_tokens.toLocaleString(i18n.language) });
+  return <StatTile label={t("overview.estimatedSpend")} value={formatEstimatedCost(cost)} sub={sub} onClick={onClick} />;
 }
 
 function ParticipationPanel({
@@ -255,20 +263,23 @@ function ParticipationPanel({
   speakers: Speaker[];
   onNavigate: (target: OverviewTarget) => void;
 }) {
+  const { t } = useTranslation();
   const rows = participation(transcripts, speakers);
   const shown = rows.slice(0, 8);
   const hidden = rows.length - shown.length;
   const headingId = "overview-participation";
   return (
     <section aria-labelledby={headingId} className="rounded-xl bg-surface p-5 shadow-sm">
-      <SectionHeading id={headingId} label="Participation" count={rows.length} />
+      <SectionHeading id={headingId} label={t("overview.participation")} count={rows.length} />
       {rows.length === 0 ? (
-        <p className="mt-3 font-body text-sm text-brand-mid-gray">No transcript text to measure.</p>
+        <p className="mt-3 font-body text-sm text-brand-mid-gray">{t("overview.noTranscript")}</p>
       ) : (
         <>
           <div
             role="img"
-            aria-label={`Talk share by words: ${rows.map((row) => `${row.name} ${percent(row.share)}`).join(", ")}`}
+            aria-label={t("overview.talkShare", {
+              rows: rows.map((row) => t("overview.talkShareItem", { name: row.name, percent: percent(row.share) })).join(", "),
+            })}
             className="mt-4 flex h-3 w-full gap-0.5 overflow-hidden rounded-full bg-brand-light-gray-2"
           >
             {rows.map((row) => (
@@ -276,17 +287,17 @@ function ParticipationPanel({
                 key={row.speakerId ?? "unattributed"}
                 className="h-full min-w-[2px]"
                 style={{ width: `${row.share * 100}%`, backgroundColor: row.color }}
-                title={`${row.name}: ${percent(row.share)}`}
+                title={t("overview.speakerShare", { name: row.name, percent: percent(row.share) })}
               />
             ))}
           </div>
           <table className="mt-3 w-full font-body text-xs">
             <thead>
               <tr className="text-brand-mid-gray">
-                <th scope="col" className="pb-1.5 text-left font-medium">Speaker</th>
-                <th scope="col" className="pb-1.5 text-right font-medium">Share</th>
-                <th scope="col" className="pb-1.5 text-right font-medium">Words</th>
-                <th scope="col" className="pb-1.5 text-right font-medium">Turns</th>
+                <th scope="col" className="pb-1.5 text-left font-medium">{t("overview.headers.speaker")}</th>
+                <th scope="col" className="pb-1.5 text-right font-medium">{t("overview.headers.share")}</th>
+                <th scope="col" className="pb-1.5 text-right font-medium">{t("overview.headers.words")}</th>
+                <th scope="col" className="pb-1.5 text-right font-medium">{t("overview.headers.turns")}</th>
               </tr>
             </thead>
             <tbody className={DIVIDED_LIST_CLASS}>
@@ -306,8 +317,8 @@ function ParticipationPanel({
             </tbody>
           </table>
           <p className="mt-3 flex flex-wrap items-center gap-x-4 font-body text-xs text-brand-mid-gray">
-            {hidden > 0 && <span>{hidden} more not shown.</span>}
-            <Link label="Speakers" onClick={() => onNavigate({ tab: "speakers" })} />
+            {hidden > 0 && <span>{t("overview.moreNotShown", { value: hidden })}</span>}
+            <Link label={t("overview.speakers")} onClick={() => onNavigate({ tab: "speakers" })} />
           </p>
         </>
       )}
@@ -332,6 +343,7 @@ function RhythmPanel({
   transcripts: TranscriptEntry[];
   onNavigate: (target: OverviewTarget) => void;
 }) {
+  const { t } = useTranslation();
   const rhythm = callRhythm(questions, session, segments, transcripts);
   if (!rhythm) return null;
   const { buckets, breaks, busiest, peak, total, bucketMs } = rhythm;
@@ -341,22 +353,32 @@ function RhythmPanel({
   const endMinutes = minutesAt(buckets.length);
   const midMinutes = minutesAt(Math.floor(buckets.length / 2));
   const headingId = "overview-rhythm";
-  const summary = `${total} insights over ${endMinutes} minutes of call time; busiest ${minutesAt(busiest)} to ${minutesAt(busiest + 1)} minutes with ${peak}.`;
+  const summary = t("overview.rhythmSummary", {
+    insights: plural(total, "overview.insightCount"),
+    minutes: endMinutes,
+    start: minutesAt(busiest),
+    end: minutesAt(busiest + 1),
+    peak: plural(peak, "overview.insightCount"),
+  });
   return (
     <section aria-labelledby={headingId} className="rounded-xl bg-surface p-5 shadow-sm">
-      <SectionHeading id={headingId} label="Call rhythm" count={total} />
+      <SectionHeading id={headingId} label={t("overview.callRhythm")} count={total} />
       <svg
         viewBox={`0 0 ${width} ${CHART_H}`}
         preserveAspectRatio="none"
         className="mt-4 h-16 w-full text-brand-teal"
         role="img"
-        aria-label={`Insights per five minutes of call time. ${summary}`}
+        aria-label={t("overview.rhythmAria", { summary })}
       >
         {buckets.map((bucket, index) => {
           const h = peak > 0 ? Math.max(bucket.count > 0 ? 1 : 0, (bucket.count / peak) * CHART_H) : 0;
           return (
             <g key={bucket.startMs}>
-              <title>{`${minutesAt(index)}-${minutesAt(index + 1)} min: ${plural(bucket.count, "insight")}`}</title>
+              <title>{t("overview.bucketTitle", {
+                start: minutesAt(index),
+                end: minutesAt(index + 1),
+                label: plural(bucket.count, "overview.insightCount"),
+              })}</title>
               <rect
                 x={index * unit}
                 y={CHART_H - h}
@@ -394,11 +416,15 @@ function RhythmPanel({
         <span>{endMinutes}m</span>
       </div>
       <p className="mt-2 font-body text-xs text-brand-gray">
-        Busiest window {minutesAt(busiest)}-{minutesAt(busiest + 1)} min with {plural(peak, "insight")}.
-        {rhythm.segments > 1 && ` Call time across ${rhythm.segments} segments; dashed seams mark resumes.`}
+        {t("overview.busiest", {
+          start: minutesAt(busiest),
+          end: minutesAt(busiest + 1),
+          peak: plural(peak, "overview.insightCount"),
+        })}
+        {rhythm.segments > 1 && ` ${t("overview.resumeSeams", { value: rhythm.segments })}`}
       </p>
       <p className="mt-2 flex font-body text-xs text-brand-mid-gray">
-        <Link label="Transcript" onClick={() => onNavigate({ tab: "transcript" })} />
+        <Link label={t("overview.transcript")} onClick={() => onNavigate({ tab: "transcript" })} />
       </p>
     </section>
   );
@@ -410,31 +436,31 @@ function buildSpecs(questions: Question[], synthesis: SessionSynthesis | null): 
   return [
     {
       key: "commitments",
-      label: "Commitments",
+      label: i18n.t("overview.sections.commitments"),
       section: commitments(questions, synthesis),
-      empty: "No action items or plan steps were captured.",
-      inInsights: (matching) => `${plural(matching, "action item")} in Insights`,
+      empty: i18n.t("overview.empty.commitments"),
+      inInsights: (matching) => i18n.t("overview.insights.actionItems", { count: matching }),
     },
     {
       key: "open",
-      label: "Open loops",
+      label: i18n.t("overview.sections.openLoops"),
       section: openLoops(questions, synthesis),
-      empty: "Every captured question was answered.",
-      inInsights: (matching, shown) => `${matching} open of ${plural(shown, "question")} in Insights`,
+      empty: i18n.t("overview.empty.openLoops"),
+      inInsights: (matching, shown) => i18n.t("overview.insights.openQuestions", { matching, shown, count: shown }),
     },
     {
       key: "opportunities",
-      label: "Opportunities",
+      label: i18n.t("overview.sections.opportunities"),
       section: opportunities(questions, synthesis),
-      empty: "No opportunities surfaced in this conversation.",
-      inInsights: (matching) => `${plural(matching, "opportunity", "opportunities")} in Insights`,
+      empty: i18n.t("overview.empty.opportunities"),
+      inInsights: (matching) => i18n.t("overview.insights.opportunities", { count: matching }),
     },
     {
       key: "risks",
-      label: "Risks",
+      label: i18n.t("overview.sections.risks"),
       section: risks(questions, synthesis),
-      empty: "No risks or blockers were flagged.",
-      inInsights: (matching, shown) => `${matching} of ${plural(shown, "current strategic signal")} in Insights`,
+      empty: i18n.t("overview.empty.risks"),
+      inInsights: (matching, shown) => i18n.t("overview.insights.signals", { matching, shown, count: shown }),
     },
   ];
 }
@@ -452,8 +478,9 @@ function HeadlineSection({
   hasBriefing: boolean;
   onNavigate: (target: OverviewTarget) => void;
 }) {
-  const meta = [meetingTypeLabel(session.meeting_type), speakers.length ? plural(speakers.length, "speaker") : ""].filter(Boolean);
-  const readBriefing = <Link label="Read the briefing" onClick={() => onNavigate({ tab: "briefing" })} />;
+  const { t } = useTranslation();
+  const meta = [meetingTypeLabel(session.meeting_type), speakers.length ? plural(speakers.length, "overview.speakerCount") : ""].filter(Boolean);
+  const readBriefing = <Link label={t("overview.readBriefing")} onClick={() => onNavigate({ tab: "briefing" })} />;
   return (
     <section aria-labelledby="overview-headline" className="rounded-xl bg-surface p-6 shadow-sm">
       {meta.length > 0 && (
@@ -473,16 +500,16 @@ function HeadlineSection({
       <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-body text-xs text-brand-mid-gray">
         {lead.source === "briefing" ? (
           <>
-            <span>Top outcome from the briefing.</span>
+            <span>{t("overview.topOutcome")}</span>
             {readBriefing}
           </>
         ) : hasBriefing ? (
           <>
-            <span>The briefing recorded no top outcome.</span>
+            <span>{t("overview.noTopOutcome")}</span>
             {readBriefing}
           </>
         ) : (
-          <span>Counts from the captured record; no briefing has been generated.</span>
+          <span>{t("overview.derivedContext")}</span>
         )}
       </p>
     </section>
@@ -498,13 +525,14 @@ function UnanalyzedCard({
   onAnalyze?: () => Promise<void>;
   analyzing: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <section aria-labelledby="overview-unanalyzed" className="rounded-xl border border-dashed border-brand-light-gray-1 bg-surface p-6">
-      <h3 id="overview-unanalyzed" className="font-display text-sm font-semibold text-brand-dark-gray">Nothing has been analyzed yet</h3>
+      <h3 id="overview-unanalyzed" className="font-display text-sm font-semibold text-brand-dark-gray">{t("overview.unanalyzedTitle")}</h3>
       {hasTranscript ? (
         <>
           <p className="mt-1 max-w-prose font-body text-sm text-brand-gray">
-            The transcript is saved but no insights or briefing exist. Analyze it now to fill this page, or generate a briefing from the Briefing tab.
+            {t("overview.unanalyzedBody")}
           </p>
           {onAnalyze && (
             <button
@@ -513,13 +541,13 @@ function UnanalyzedCard({
               disabled={analyzing}
               className="mt-3 rounded-lg bg-brand-teal px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-dark disabled:cursor-wait disabled:bg-brand-mid-gray"
             >
-              {analyzing ? "Analyzing..." : "Analyze transcript"}
+              {analyzing ? t("overview.analyzing") : t("overview.analyze")}
             </button>
           )}
         </>
       ) : (
         <p className="mt-1 max-w-prose font-body text-sm text-brand-gray">
-          No transcript was recorded either. Resume the call to capture audio, or import a transcript from a new session.
+          {t("overview.noTranscriptBody")}
         </p>
       )}
     </section>

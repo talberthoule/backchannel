@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { ModelInfo } from "../../types";
 import { groupModels, optionLabel, optionState, recommendationFor, runsLocally } from "../../lib/modelOptions";
 
@@ -18,6 +19,7 @@ interface ModelChipProps {
  * with every other picker in the app about what Privacy First allows.
  */
 export default function ModelChip({ models, value, localOnly, onChange, role }: ModelChipProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -51,7 +53,7 @@ export default function ModelChip({ models, value, localOnly, onChange, role }: 
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title="Model that answers your questions"
+        title={t("activeCall.modelAnswers")}
         className={`flex items-center gap-1.5 rounded border px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
           open
             ? "border-brand-light-gray-1 bg-surface text-brand-gray"
@@ -64,10 +66,10 @@ export default function ModelChip({ models, value, localOnly, onChange, role }: 
           }`}
           aria-hidden="true"
         />
-        {selected?.name || "Select model"}
+        {selected?.name || t("activeCall.selectModel")}
         {selected && recommendationFor(selected, role) && (
           <span className="rounded bg-brand-teal/10 px-1 font-body text-[9px] font-semibold text-brand-teal">
-            Recommended
+            {t("activeCall.recommended")}
           </span>
         )}
         <span aria-hidden="true">&#9662;</span>
@@ -93,7 +95,7 @@ export default function ModelChip({ models, value, localOnly, onChange, role }: 
                 : "text-brand-dark-gray hover:bg-brand-light-gray-2"
             }`}
           >
-            Not selected
+            {t("activeCall.notSelected")}
           </button>
           {groupModels(models).map((group) => (
             <div key={group.provider}>
@@ -136,12 +138,12 @@ export default function ModelChip({ models, value, localOnly, onChange, role }: 
                     <span className="min-w-0 truncate">{model.name}</span>
                     {recommendationFor(model, role) && (
                       <span className="ml-auto flex-shrink-0 rounded bg-brand-teal/10 px-1 font-mono text-[9px] uppercase text-brand-teal">
-                        Recommended
+                        {t("activeCall.recommended")}
                       </span>
                     )}
                     {locked && (
                       <span className="flex-shrink-0 font-mono text-[9px] uppercase text-brand-mid-gray">
-                        {suffix.includes("api key") ? "no key" : "cloud"}
+                        {suffix.includes("api key") ? t("activeCall.noKey") : t("activeCall.cloud")}
                       </span>
                     )}
                   </button>

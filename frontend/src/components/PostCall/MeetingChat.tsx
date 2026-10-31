@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { RotateCcw, Send } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -41,6 +42,7 @@ function loadHistory(sessionId: string): ChatMsg[] {
 }
 
 export default function MeetingChat({ session }: MeetingChatProps) {
+  const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMsg[]>(() => loadHistory(session.id));
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -121,7 +123,7 @@ export default function MeetingChat({ session }: MeetingChatProps) {
       const res = await api.chat(modelId, [...selectedIds], nextMessages);
       setMessages(trimHistory([...nextMessages, { role: "assistant", content: res.reply }]));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Chat failed");
+      setError(err instanceof Error ? err.message : t("meetingChat.failed"));
       setMessages(messages); // roll back the optimistic user message
       setInput(question);
     } finally {
@@ -154,7 +156,7 @@ export default function MeetingChat({ session }: MeetingChatProps) {
       {/* Scope picker */}
       <div className="border-b border-brand-light-gray-1 p-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-body text-xs font-medium text-brand-gray">Meetings:</span>
+          <span className="font-body text-xs font-medium text-brand-gray">{t("meetingChat.meetings")}</span>
           {sessionCheckbox(session)}
           {groupSessions.map((s) => sessionCheckbox(s))}
           {selectedExtra.map((s) => sessionCheckbox(s, true))}
@@ -164,7 +166,7 @@ export default function MeetingChat({ session }: MeetingChatProps) {
             onChange={(e) => setSearch(e.target.value)}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
-            placeholder="Add other sessions..."
+            placeholder={t("meetingChat.addSessions")}
             aria-describedby="chat-scope-search-hint"
             className="w-44 rounded border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-dark-gray focus:border-brand-teal"
           />
@@ -172,7 +174,7 @@ export default function MeetingChat({ session }: MeetingChatProps) {
             id="chat-scope-search-hint"
             className={`font-body text-xs text-brand-mid-gray ${searchFocused ? "" : "sr-only"}`}
           >
-            {SEARCH_HINT}
+            {t(SEARCH_HINT)}
           </span>
           <select
             value={modelId}
@@ -192,10 +194,10 @@ export default function MeetingChat({ session }: MeetingChatProps) {
             onClick={handleReset}
             disabled={busy || messages.length === 0}
             className="inline-flex items-center gap-1.5 rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1 font-body text-xs font-medium text-brand-gray transition-colors hover:border-brand-teal hover:text-brand-teal disabled:cursor-not-allowed disabled:opacity-40"
-            title="Reset chat history"
+            title={t("meetingChat.resetTitle")}
           >
             <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-            Reset chat
+            {t("meetingChat.reset")}
           </button>
         </div>
         {searchResults.length > 0 && (
@@ -217,7 +219,7 @@ export default function MeetingChat({ session }: MeetingChatProps) {
       <div ref={threadRef} className="flex-1 space-y-3 overflow-auto p-4">
         {messages.length === 0 && (
           <p className="py-10 text-center font-body text-sm text-brand-mid-gray">
-            Ask across the selected meetings&apos; briefing, saved insights, and transcript.
+            {t("meetingChat.empty")}
           </p>
         )}
         {messages.map((m, i) => (
@@ -239,7 +241,7 @@ export default function MeetingChat({ session }: MeetingChatProps) {
             </div>
           </div>
         ))}
-        {busy && <p className="font-body text-xs text-brand-mid-gray">Thinking...</p>}
+        {busy && <p className="font-body text-xs text-brand-mid-gray">{t("meetingChat.thinking")}</p>}
         {error && <p className="font-body text-xs text-red-600">{error}</p>}
       </div>
 
@@ -250,7 +252,7 @@ export default function MeetingChat({ session }: MeetingChatProps) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
-          placeholder="Ask about these meetings..."
+          placeholder={t("meetingChat.placeholder")}
           disabled={busy}
           className="flex-1 rounded-lg border border-brand-light-gray-1 bg-surface px-3 py-2 font-body text-sm text-brand-dark-gray focus:border-brand-teal"
         />
@@ -261,7 +263,7 @@ export default function MeetingChat({ session }: MeetingChatProps) {
           className="inline-flex items-center gap-2 rounded-lg bg-brand-teal px-4 py-2 font-body text-sm font-medium text-white transition-colors hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Send className="h-4 w-4" aria-hidden="true" />
-          Send
+          {t("meetingChat.send")}
         </button>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useTranslation } from "react-i18next";
 
 export interface PostCallTabDef<T extends string> {
   key: T;
@@ -25,6 +26,7 @@ interface PostCallTabsProps<T extends string> {
 // arrows move between tabs and select as they go, Home and End jump to the
 // ends, and only the selected tab sits in the Tab order.
 export default function PostCallTabs<T extends string>({ tabs, activeTab, onSelect }: PostCallTabsProps<T>) {
+  const { t } = useTranslation();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -41,7 +43,7 @@ export default function PostCallTabs<T extends string>({ tabs, activeTab, onSele
   };
 
   return (
-    <div role="tablist" aria-label="Post-call review" className="flex flex-wrap gap-1 rounded-lg bg-brand-light-gray-2 p-1">
+    <div role="tablist" aria-label={t("postCall.review")} className="flex flex-wrap gap-1 rounded-lg bg-brand-light-gray-2 p-1">
       {tabs.map((tab, index) => {
         const selected = activeTab === tab.key;
         return (

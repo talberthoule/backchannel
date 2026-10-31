@@ -1,4 +1,6 @@
 import type { ModelDownload } from "../types";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 
 /**
  * What the app is fetching, said out loud.
@@ -26,29 +28,34 @@ export function bytes(value = 0): string {
 
 /** One line describing where a download has got to. */
 export function downloadProgressText(download: ModelDownload): string {
-  if (download.state === "queued") return "Waiting to start";
-  if (download.state === "installed") return "Installed";
-  if (download.state === "error") return download.error || "Download failed";
+  if (download.state === "queued") return i18n.t("modelDownloads.waiting");
+  if (download.state === "installed") return i18n.t("modelDownloads.installed");
+  if (download.state === "error") return download.error || i18n.t("modelDownloads.downloadFailed");
   if (download.total > 0) {
-    return `${bytes(download.downloaded)} of ${bytes(download.total)}`;
+    return i18n.t("modelDownloads.downloadedOf", {
+      downloaded: bytes(download.downloaded),
+      total: bytes(download.total),
+    });
   }
   // No total: onnx-asr does not report one, so say what has arrived.
-  return download.downloaded > 0 ? `${bytes(download.downloaded)} so far` : "Starting";
+  return download.downloaded > 0
+    ? i18n.t("modelDownloads.soFar", { size: bytes(download.downloaded) })
+    : i18n.t("modelDownloads.starting");
 }
 
 export function downloadHeadline(download: ModelDownload): string {
   const what = download.purpose ? `${download.label} (${download.purpose})` : download.label;
   switch (download.state) {
     case "queued":
-      return `Queued: ${what}`;
+      return i18n.t("modelDownloads.queued", { what });
     case "downloading":
       return download.percent === null
-        ? `Downloading ${what}`
-        : `Downloading ${what} - ${download.percent}%`;
+        ? i18n.t("modelDownloads.downloading", { what })
+        : i18n.t("modelDownloads.downloadingPercent", { what, percent: download.percent });
     case "installed":
-      return `Installed ${what}`;
+      return i18n.t("modelDownloads.installedTitle", { what });
     default:
-      return `Could not download ${what}`;
+      return i18n.t("modelDownloads.failedTitle", { what });
   }
 }
 
@@ -64,6 +71,7 @@ export function ModelDownloadRow({
   onDismiss?: (key: string) => void;
   busy?: boolean;
 }) {
+  const { t } = useTranslation();
   const failed = download.state === "error";
   const running = download.state === "queued" || download.state === "downloading";
   return (
@@ -75,12 +83,12 @@ export function ModelDownloadRow({
         <div className="flex shrink-0 items-center gap-2">
           {failed && onRetry && (
             <button type="button" className={smallButton} disabled={busy} onClick={() => onRetry(download.key)}>
-              Retry
+              {t("modelDownloads.retry")}
             </button>
           )}
           {!running && onDismiss && (
             <button type="button" className={smallButton} disabled={busy} onClick={() => onDismiss(download.key)}>
-              Dismiss
+              {t("modelDownloads.dismiss")}
             </button>
           )}
         </div>
@@ -119,6 +127,7 @@ export function ModelDownloadsBanner({
   onRetry: (key: string) => void;
   onDismiss: (key: string) => void;
 }) {
+  const { t } = useTranslation();
   const shown = [...active, ...failed];
   if (shown.length === 0) return null;
 
@@ -126,18 +135,18 @@ export function ModelDownloadsBanner({
     <div className="rounded-xl bg-surface px-4 py-3 shadow-lg ring-1 ring-brand-light-gray-1">
       <div className="flex items-center justify-between gap-3">
         <p className="font-body text-sm font-semibold text-brand-dark-gray">
-          {active.length > 0 ? "Downloading models" : "A model could not be downloaded"}
+          {active.length > 0 ? t("modelDownloads.downloadingModels") : t("modelDownloads.failedModel")}
         </p>
         {onOpenSettings && (
           <button type="button" className={smallButton} onClick={onOpenSettings}>
-            Settings
+            {t("modelDownloads.settings")}
           </button>
         )}
       </div>
       <p className="mt-1 font-body text-xs text-brand-mid-gray">
         {active.length > 0
-          ? "Backchannel is fetching model weights it needs. You can keep working; features that need them switch on when they arrive."
-          : "The feature that needs it keeps working without it, with reduced coverage."}
+          ? t("modelDownloads.activeBody")
+          : t("modelDownloads.failedBody")}
       </p>
       {shown.map((download) => (
         <ModelDownloadRow

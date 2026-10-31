@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { SignalHistoryItem } from "../types";
 import * as api from "../services/api";
 import StrategicSignalCard, { signalKey } from "./StrategicSignalCard";
@@ -24,6 +25,7 @@ function SignalHistoryList({ items }: { items: SignalHistoryItem[] }) {
 }
 
 export default function SignalHistory({ sessionId, count, heading }: SignalHistoryProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<SignalHistoryItem[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -40,7 +42,7 @@ export default function SignalHistory({ sessionId, count, heading }: SignalHisto
       const synthesis = await api.getSynthesis(sessionId, "live", true);
       setItems(synthesis?.signal_history || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Signal history could not be loaded.");
+      setError(err instanceof Error ? err.message : t("signals.historyLoadFailed"));
     } finally {
       setLoading(false);
     }
@@ -62,7 +64,7 @@ export default function SignalHistory({ sessionId, count, heading }: SignalHisto
           <div>
             <h3 className="font-display text-sm font-semibold text-brand-dark-gray">{heading}</h3>
             <p className="mt-0.5 font-body text-xs text-brand-mid-gray">
-              Durable signals observed across the conversation.
+              {t("signals.historyDescription")}
             </p>
           </div>
         )}
@@ -73,22 +75,22 @@ export default function SignalHistory({ sessionId, count, heading }: SignalHisto
           aria-controls={panelId}
           className="rounded-md border border-brand-teal/30 bg-surface px-3 py-1.5 font-body text-xs font-semibold text-brand-teal hover:bg-brand-teal/5"
         >
-          {open ? "Hide history" : `History (${visibleCount})`}
+          {open ? t("signals.hideHistory") : t("signals.historyCount", { value: visibleCount })}
         </button>
       </div>
       {open && (
         <div id={panelId}>
-          {loading && <p className="mt-3 font-body text-xs text-brand-mid-gray">Loading signal history...</p>}
+          {loading && <p className="mt-3 font-body text-xs text-brand-mid-gray">{t("signals.historyLoading")}</p>}
           {error && (
             <div className="mt-3 flex items-center gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2">
               <p className="font-body text-xs text-red-700">{error}</p>
               <button type="button" onClick={() => void load()} className="font-body text-xs font-semibold text-red-700 underline">
-                Retry
+                {t("common.retry")}
               </button>
             </div>
           )}
           {!loading && !error && items?.length === 0 && (
-            <p className="mt-3 font-body text-xs text-brand-mid-gray">No saved signal history yet.</p>
+            <p className="mt-3 font-body text-xs text-brand-mid-gray">{t("signals.historyEmpty")}</p>
           )}
           {!loading && !error && items && items.length > 0 && <SignalHistoryList items={items} />}
         </div>

@@ -63,7 +63,8 @@ new Function("require", "module", "exports", bundle.outputFiles[0].text)(
 const rendered = compiled.exports;
 
 test("live_chat has an operator-facing agent label", () => {
-  assert.match(src, /live_chat:\s*"You asked"/);
+  assert.match(src, /live_chat:\s*"insights\.agents\.liveChat"/);
+  assert.match(rendered.live, /You asked/);
 });
 
 test("make directive is offered only on asked cards", () => {

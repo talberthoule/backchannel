@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import type { AgentConfig, EnhanceInsightsResult, ModelInfo, Session, Speaker } from "../types";
 import * as api from "../services/api";
 import { useConfirm } from "./ConfirmProvider";
+import i18n from "../i18n";
 
 export function enhancementOutcome(result: EnhanceInsightsResult): {
   tone: "success" | "warning";
@@ -15,12 +17,12 @@ export function enhancementOutcome(result: EnhanceInsightsResult): {
   ) {
     return {
       tone: "success",
-      message: `Revalidated the Briefing and all Insights; ${result.enhanced_insights} insight${result.enhanced_insights === 1 ? "" : "s"} changed.`,
+      message: i18n.t("speakerMapper.outcomeSuccess", { count: result.enhanced_insights }),
     };
   }
   return {
     tone: "warning",
-    message: result.error || "Revalidation did not complete. Retry Enhance Insights.",
+    message: result.error || i18n.t("speakerMapper.outcomeFailed"),
   };
 }
 
@@ -28,7 +30,10 @@ export function enhancementProgressLabel(
   result: Pick<EnhanceInsightsResult, "status" | "completed_batches" | "total_batches">,
 ): string {
   return result.status === "running"
-    ? `Revalidating ${result.completed_batches}/${result.total_batches} batches...`
+    ? i18n.t("speakerMapper.progress", {
+        done: result.completed_batches,
+        total: result.total_batches,
+      })
     : "";
 }
 
@@ -43,7 +48,7 @@ export function modelBindingLabel(
   models: Array<Pick<ModelInfo, "id" | "name">>,
 ): string {
   const modelId = agents.find((agent) => agent.slug === "synthesizer")?.model_id || "";
-  if (!modelId) return "Not selected";
+  if (!modelId) return i18n.t("speakerMapper.notSelected");
   const name = models.find((model) => model.id === modelId)?.name;
   return name ? `${name} (${modelId})` : modelId;
 }
@@ -84,9 +89,10 @@ function EnhancementModelStatus({
   latest: EnhanceInsightsResult | null;
   onOpenAdminAgents: () => void;
 }) {
+  const { t } = useTranslation();
   const label = loaded
     ? modelBindingLabel([{ slug: "synthesizer", model_id: modelId }], models)
-    : "Loading...";
+    : t("speakerMapper.loading");
   const run = enhancementRunModels(latest);
   const displayModel = (id: string) => {
     const name = models.find((model) => model.id === id)?.name;
@@ -96,28 +102,32 @@ function EnhancementModelStatus({
   return (
     <>
       <p className="mt-2 font-body text-xs text-brand-gray">
-        Insight enhancement uses Synthesizer: <span className="font-semibold text-brand-dark-gray">{label}</span>{" "}
+        {t("speakerMapper.usesSynthesizer")} <span className="font-semibold text-brand-dark-gray">{label}</span>{" "}
         <button type="button" onClick={onOpenAdminAgents} className="font-semibold text-brand-teal underline underline-offset-2">
-          Open Admin - Agents
+          {t("speakerMapper.openAdmin")}
         </button>
       </p>
       <p className="mt-1 font-body text-xs text-brand-mid-gray">
-        Briefing regeneration uses the Meeting Lens, Discovery Lens, and Arbiter models configured in Admin.
+        {t("speakerMapper.briefingModels")}
       </p>
       {loaded && !modelId && (
         <p className="mt-1 font-body text-xs font-medium text-brand-amber" role="alert">
-          {loadError || "Select a Synthesizer model in Admin - Agents before enhancing."}
+          {loadError || t("speakerMapper.selectSynthesizer")}
         </p>
       )}
       {latest && run.recorded && (
         <p className="mt-1 font-body text-xs text-brand-mid-gray">
-          Latest insight run used {run.actual.map(displayModel).join(", ")}
-          {run.usedFallback ? ` (fallback from ${run.requested.map(displayModel).join(", ")})` : ""}.
+          {t("speakerMapper.latestRun", {
+            models: run.actual.map(displayModel).join(", "),
+            fallback: run.usedFallback
+              ? t("speakerMapper.fallback", { models: run.requested.map(displayModel).join(", ") })
+              : "",
+          })}
         </p>
       )}
       {latest && !run.recorded && latest.batches.some((batch) => batch.kind === "insights") && (
         <p className="mt-1 font-body text-xs text-brand-mid-gray">
-          No successful insight model was recorded for the latest run.
+          {t("speakerMapper.noRecordedModel")}
         </p>
       )}
     </>
@@ -147,6 +157,7 @@ export default function SpeakerNameMapper({
   disabled = false,
   disabledReason,
 }: SpeakerNameMapperProps) {
+  const { t } = useTranslation();
   const [enhancing, setEnhancing] = useState(false);
   const [enhancementMessage, setEnhancementMessage] = useState("");
   const [enhancementWarning, setEnhancementWarning] = useState("");
@@ -172,7 +183,7 @@ export default function SpeakerNameMapper({
           agentsResult.value.find((agent) => agent.slug === "synthesizer")?.model_id || "",
         );
       } else {
-        setModelLoadError("Could not load the Synthesizer model binding.");
+        setModelLoadError(t("speakerMapper.modelBindingFailed"));
       }
       setAgentsLoaded(true);
       if (latestResult.status === "fulfilled") setLastResult(latestResult.value);
@@ -216,7 +227,7 @@ export default function SpeakerNameMapper({
       }
     } catch (error) {
       setEnhancementMessage("");
-      setEnhancementError(error instanceof Error ? error.message : "Enhancement failed. Try again.");
+      setEnhancementError(error instanceof Error ? error.message : t("speakerMapper.enhanceFailed"));
     } finally {
       setEnhancing(false);
     }
@@ -225,9 +236,9 @@ export default function SpeakerNameMapper({
   const handleEnhance = async () => {
     if (disabled || !session.speaker_context_dirty || !synthesizerModelId) return;
     const ok = await confirm({
-      title: "Enhance Insights",
-      message: "Enhance Insights will revalidate the Briefing and every Insight using the corrected speaker names and internal/external roles.",
-      confirmLabel: "Continue",
+      title: t("speakerMapper.confirmTitle"),
+      message: t("speakerMapper.confirmMessage"),
+      confirmLabel: t("speakerMapper.continue"),
       tone: "default",
     });
     if (!ok) return;
@@ -251,14 +262,13 @@ export default function SpeakerNameMapper({
       <div className="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row">
         <div className="min-w-0">
           <h3 className="font-display text-sm font-semibold text-brand-dark-gray">
-            Speaker Name Mapping
+            {t("speakerMapper.title")}
           </h3>
           <p className="font-body text-xs text-brand-mid-gray mt-0.5">
-            Map auto-detected speakers to real names. Toggle each mapping on or off individually.
+            {t("speakerMapper.body")}
           </p>
           <p className="mt-1 font-body text-xs text-brand-gray">
-            Correct speaker names and roles first. Enhance Insights uses these associations to
-            reframe the Briefing and every Insight from the correct internal or external perspective.
+            {t("speakerMapper.instructions")}
           </p>
           <EnhancementModelStatus
             loaded={agentsLoaded}
@@ -270,11 +280,11 @@ export default function SpeakerNameMapper({
           />
           {session.speaker_context_dirty ? (
             <p className="mt-1 font-body text-xs font-medium text-brand-amber">
-              Speaker context changed since the last enhancement run.
+              {t("speakerMapper.changed")}
             </p>
           ) : session.speaker_context_enhanced_at ? (
             <p className="mt-1 font-body text-xs text-brand-mid-gray">
-              Last enhanced {new Date(session.speaker_context_enhanced_at).toLocaleString()}
+              {t("speakerMapper.lastEnhanced", { date: new Date(session.speaker_context_enhanced_at).toLocaleString() })}
             </p>
           ) : null}
           {disabled && disabledReason && (
@@ -293,7 +303,7 @@ export default function SpeakerNameMapper({
               : "cursor-not-allowed bg-brand-light-gray-2 text-brand-mid-gray"
           }`}
         >
-          {enhancing ? "Enhancing..." : "Enhance Insights"}
+          {enhancing ? t("speakerMapper.enhancing") : t("speakerMapper.enhance")}
         </button>
       </div>
 
@@ -313,7 +323,7 @@ export default function SpeakerNameMapper({
               onClick={handleRetry}
               className="shrink-0 rounded border border-brand-amber px-2 py-1 font-body text-xs font-semibold text-brand-amber transition-colors hover:bg-brand-amber/20"
             >
-              Retry failed batches
+              {t("speakerMapper.retryBatches")}
             </button>
           )}
         </div>
@@ -355,6 +365,7 @@ function SpeakerRow({
   disabled: boolean;
   onRefresh: () => void;
 }) {
+  const { t } = useTranslation();
   const [displayName, setDisplayName] = useState(speaker.display_name || "");
   const [mergeTargetId, setMergeTargetId] = useState("");
   const [merging, setMerging] = useState(false);
@@ -413,9 +424,9 @@ function SpeakerRow({
     const sourceLabel = displayLabel(speaker);
     const targetLabel = displayLabel(target);
     const ok = await confirm({
-      title: "Merge speakers",
-      message: `Merge ${sourceLabel} into ${targetLabel}? Transcript and insight attribution will move to ${targetLabel}.`,
-      confirmLabel: "Merge",
+      title: t("speakerMapper.mergeTitle"),
+      message: t("speakerMapper.mergeMessage", { source: sourceLabel, target: targetLabel }),
+      confirmLabel: t("speakerMapper.merge"),
       tone: "danger",
     });
     if (!ok) return;
@@ -446,7 +457,7 @@ function SpeakerRow({
         </span>
         {speaker.is_user && (
           <span className="rounded-full bg-brand-teal/10 px-1.5 py-0.5 text-[10px] font-medium text-brand-teal shrink-0">
-            You
+            {t("speakerMapper.you")}
           </span>
         )}
         <span
@@ -456,7 +467,7 @@ function SpeakerRow({
               : "bg-brand-light-gray-2 text-brand-gray"
           }`}
         >
-          {speaker.speaker_type === "team" ? "Team" : "External party"}
+          {speaker.speaker_type === "team" ? t("speakerMapper.team") : t("speakerMapper.external")}
         </span>
       </div>
 
@@ -481,8 +492,8 @@ function SpeakerRow({
                 setEditing(false);
               }
             }}
-            aria-label={`Mapped name for ${speaker.name}`}
-            placeholder="Enter real name..."
+            aria-label={t("speakerMapper.mappedName", { name: speaker.name })}
+            placeholder={t("speakerMapper.realName")}
             className="w-full rounded border border-brand-teal-light bg-surface px-2 py-1 text-sm text-brand-dark-gray ring-1 ring-brand-teal-light/30"
           />
         ) : (
@@ -492,7 +503,7 @@ function SpeakerRow({
               if (!disabled) setEditing(true);
             }}
             disabled={disabled}
-            aria-label={`Edit mapped name for ${speaker.name}`}
+            aria-label={t("speakerMapper.editMapped", { name: speaker.name })}
             className={`block w-full break-words rounded px-2 py-1 text-left text-sm transition-colors ${
               disabled ? "cursor-not-allowed" : "cursor-pointer hover:bg-brand-light-gray-2"
             } ${
@@ -502,9 +513,9 @@ function SpeakerRow({
                   : "text-brand-mid-gray line-through"
                 : "italic text-brand-mid-gray"
             }`}
-            title={hasMapping ? speaker.display_name : "Click to map a real name"}
+            title={hasMapping ? speaker.display_name : t("speakerMapper.clickMap")}
           >
-            {hasMapping ? speaker.display_name : "Click to map a real name..."}
+            {hasMapping ? speaker.display_name : t("speakerMapper.clickMapShort")}
           </button>
         )}
       </div>
@@ -520,12 +531,12 @@ function SpeakerRow({
         value={speaker.speaker_type}
         onChange={(e) => handleSpeakerTypeChange(e.target.value as "team" | "external")}
         disabled={disabled}
-        aria-label={`Classification for ${speaker.name}`}
+        aria-label={t("speakerMapper.classification", { name: speaker.name })}
         className="shrink-0 rounded border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-gray focus:border-brand-teal-light disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
-        title="Speaker type used by analysis agents"
+        title={t("speakerMapper.speakerTypeTitle")}
       >
-        <option value="team">Team</option>
-        <option value="external">External party</option>
+        <option value="team">{t("speakerMapper.team")}</option>
+        <option value="external">{t("speakerMapper.external")}</option>
       </select>
 
       {mergeTargets.length > 0 && (
@@ -534,11 +545,11 @@ function SpeakerRow({
             value={mergeTargetId}
             onChange={(e) => setMergeTargetId(e.target.value)}
             disabled={disabled}
-            aria-label={`Merge target for ${speaker.name}`}
+            aria-label={t("speakerMapper.mergeTarget", { name: speaker.name })}
             className="min-w-0 max-w-48 rounded border border-brand-light-gray-1 bg-surface px-2 py-1 font-body text-xs text-brand-gray focus:border-brand-teal-light disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
-            title="Merge this detected speaker into another speaker"
+            title={t("speakerMapper.mergeTargetTitle")}
           >
-            <option value="">Merge into...</option>
+            <option value="">{t("speakerMapper.mergeInto")}</option>
             {mergeTargets.map((target) => (
               <option key={target.id} value={target.id}>
                 {displayLabel(target)}
@@ -555,7 +566,7 @@ function SpeakerRow({
                 : "cursor-not-allowed border-brand-light-gray-1 text-brand-mid-gray opacity-50"
             }`}
           >
-            {merging ? "Merging" : "Merge"}
+            {merging ? t("speakerMapper.merging") : t("speakerMapper.merge")}
           </button>
         </div>
       )}
@@ -565,17 +576,20 @@ function SpeakerRow({
         type="button"
         onClick={handleToggle}
         disabled={disabled || !hasMapping}
-        aria-label={`${speaker.display_name_enabled ? "Disable" : "Enable"} mapped name for ${speaker.name}`}
+        aria-label={t("speakerMapper.toggleName", {
+          action: speaker.display_name_enabled ? t("speakerMapper.disable") : t("speakerMapper.enable"),
+          name: speaker.name,
+        })}
         aria-pressed={speaker.display_name_enabled}
         className={`h-5 w-9 rounded-full transition-colors shrink-0 ${
           hasMapping && speaker.display_name_enabled ? "bg-brand-teal" : "bg-brand-light-gray-1"
         } ${disabled || !hasMapping ? "opacity-30 cursor-not-allowed" : ""}`}
         title={
           !hasMapping
-            ? "Set a display name first"
+            ? t("speakerMapper.setNameFirst")
             : speaker.display_name_enabled
-              ? "Enabled — using mapped name in UI and exports"
-              : "Disabled — using original speaker label"
+              ? t("speakerMapper.enabledTitle")
+              : t("speakerMapper.disabledTitle")
         }
       >
         <span

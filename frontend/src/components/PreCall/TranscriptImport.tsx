@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import * as api from "../../services/api";
 import type { TranscriptionJob } from "../../types";
 import TranscriptionJobProgress from "../TranscriptionJobProgress";
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function TranscriptImport({ sessionId, onImported }: Props) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [job, setJob] = useState<TranscriptionJob | null>(null);
@@ -23,7 +25,7 @@ export default function TranscriptImport({ sessionId, onImported }: Props) {
     setStatus("");
     try {
       const result = await api.importTranscript(sessionId, file);
-      setStatus(`Imported ${result.imported} segments from ${result.filename}`);
+      setStatus(t("transcriptImport.importedSegments", { count: result.imported, filename: result.filename }));
       onImported?.();
     } catch (err: any) {
       setStatus(`Error: ${err.message}`);
@@ -37,7 +39,7 @@ export default function TranscriptImport({ sessionId, onImported }: Props) {
     const file = e.target.files?.[0];
     if (!file) return;
     setLoading(true);
-    setStatus("Uploading audio…");
+    setStatus(t("transcriptImport.uploadingAudio"));
     try {
       const queued = await api.importAudio(sessionId, file);
       setJob(queued);
@@ -45,15 +47,15 @@ export default function TranscriptImport({ sessionId, onImported }: Props) {
       setStatus("");
       const result = await api.waitForTranscriptionJob(sessionId, queued, setJob);
       if (result.status === "completed") {
-        setStatus(`Imported ${result.entries} transcript entries from ${result.filename}.`);
+        setStatus(t("transcriptImport.importedEntries", { count: result.entries, filename: result.filename }));
         onImported?.();
       } else if (result.status === "canceled") {
-        setStatus("Audio import canceled. No partial transcript was saved.");
+        setStatus(t("transcriptImport.canceled"));
       } else {
-        setStatus(`Error: ${result.error || "Audio import failed."}`);
+        setStatus(`Error: ${result.error || t("transcriptImport.audioFailed")}`);
       }
     } catch (err: unknown) {
-      setStatus(`Error: ${err instanceof Error ? err.message : "Audio import failed."}`);
+      setStatus(`Error: ${err instanceof Error ? err.message : t("transcriptImport.audioFailed")}`);
     } finally {
       setLoading(false);
       if (audioRef.current) audioRef.current.value = "";
@@ -64,7 +66,7 @@ export default function TranscriptImport({ sessionId, onImported }: Props) {
     try {
       setJob(await api.cancelTranscriptionJob(sessionId, "audio_import"));
     } catch (err) {
-      setStatus(`Error: ${err instanceof Error ? err.message : "Could not cancel audio import."}`);
+      setStatus(`Error: ${err instanceof Error ? err.message : t("transcriptImport.cancelFailed")}`);
     }
   };
 
@@ -79,7 +81,7 @@ export default function TranscriptImport({ sessionId, onImported }: Props) {
           className="min-h-11 rounded-lg border-2 border-dashed border-brand-light-gray-1 p-4 text-center transition-colors hover:border-brand-teal hover:bg-brand-teal/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-50"
         >
           <p className="font-display text-sm font-semibold text-brand-dark-gray">
-            Import Transcript
+            {t("transcriptImport.importTranscript")}
           </p>
           <p className="mt-1 font-body text-xs text-brand-mid-gray">
             .txt, .md, .docx
@@ -101,7 +103,7 @@ export default function TranscriptImport({ sessionId, onImported }: Props) {
           className="min-h-11 rounded-lg border-2 border-dashed border-brand-light-gray-1 p-4 text-center transition-colors hover:border-brand-amber hover:bg-orange-50/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-50"
         >
           <p className="font-display text-sm font-semibold text-brand-dark-gray">
-            Import Audio
+            {t("transcriptImport.importAudio")}
           </p>
           <p className="mt-1 font-body text-xs text-brand-mid-gray">
             .m4a, .mp3, .wav
@@ -132,7 +134,7 @@ export default function TranscriptImport({ sessionId, onImported }: Props) {
           {loading && !status.startsWith("Error") ? (
             <span className="flex items-center gap-2">
               <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-brand-teal border-t-transparent" />
-              {status || "Processing..."}
+              {status || t("transcriptImport.processing")}
             </span>
           ) : (
             status

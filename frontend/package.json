@@ -9,8 +9,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "test": "node --test src/services/api.test.mjs src/hooks/useAudioCapture.test.mjs src/hooks/useWebSocket.test.mjs src/lib/askModelSelection.test.mjs src/lib/callRefusal.test.mjs src/lib/modelOptions.test.mjs src/lib/modelPricing.test.mjs src/lib/postProcessingSummary.test.mjs src/lib/providerOnboarding.test.mjs src/lib/transcriptionLanguage.test.mjs src/utils/insightTypes.test.mjs src/components/SignalHistoryView.test.mjs src/components/SpeakerNameMapper.test.mjs src/components/Layout.test.mjs src/components/DesktopUpdate.test.mjs src/components/SetupGuidance.test.mjs src/components/TranscriptionJobProgress.test.mjs src/components/PostCall/PostCallView.test.mjs src/components/PostCall/BriefingView.test.mjs src/components/PostCall/overviewMetrics.test.mjs src/components/ActiveCall/AgentActivityPanel.test.mjs src/components/ActiveCall/ActiveCallView.test.mjs src/components/ActiveCall/TranscriptPanel.test.mjs src/components/ActiveCall/AudioIndicator.test.mjs src/components/ActiveCall/ModelChip.test.mjs src/components/ActiveCall/DirectiveBar.test.mjs src/components/ActiveCall/QuestionCard.test.mjs",
+    "test": "npm run i18n:check && node --test src/services/api.test.mjs src/hooks/useAudioCapture.test.mjs src/hooks/useWebSocket.test.mjs src/i18n/language.test.mjs src/i18n/index.test.mjs src/lib/askModelSelection.test.mjs src/lib/callRefusal.test.mjs src/lib/modelOptions.test.mjs src/lib/modelPricing.test.mjs src/lib/postProcessingSummary.test.mjs src/lib/providerOnboarding.test.mjs src/lib/transcriptionLanguage.test.mjs src/utils/insightTypes.test.mjs src/components/LanguageSelector.test.mjs src/components/SignalHistoryView.test.mjs src/components/SpeakerNameMapper.test.mjs src/components/Layout.test.mjs src/components/DesktopUpdate.test.mjs src/components/SetupGuidance.test.mjs src/components/TranscriptionJobProgress.test.mjs src/components/PostCall/PostCallView.test.mjs src/components/PostCall/BriefingView.test.mjs src/components/PostCall/overviewMetrics.test.mjs src/components/ActiveCall/AgentActivityPanel.test.mjs src/components/ActiveCall/ActiveCallView.test.mjs src/components/ActiveCall/TranscriptPanel.test.mjs src/components/ActiveCall/AudioIndicator.test.mjs src/components/ActiveCall/ModelChip.test.mjs src/components/ActiveCall/DirectiveBar.test.mjs src/components/ActiveCall/QuestionCard.test.mjs",
     "test:pwa": "node scripts/verify-pwa-assets.mjs",
+    "i18n:check": "node scripts/validate-i18n.mjs",
+    "i18n:check:complete": "node scripts/validate-i18n.mjs --complete",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -18,9 +20,11 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/inter": "^5.2.8",
+    "i18next": "^26.5.12",
     "lucide-react": "^1.24.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-i18next": "^17.1.9",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1"
   },

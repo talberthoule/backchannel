@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 // The post-call Export menu: click to open; Escape or a click elsewhere
 // closes it, and so does focus leaving it, so keyboard and touch users can
@@ -8,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 // details back into a file that leaves this machine is a deliberate choice,
 // made per export with the checkbox at the foot of the menu.
 export default function ExportMenu({ sessionId, shielded = false }: { sessionId: string; shielded?: boolean }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [reveal, setReveal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -52,12 +54,12 @@ export default function ExportMenu({ sessionId, shielded = false }: { sessionId:
         aria-controls="post-call-export-menu"
         className="bc-accent-text rounded-lg border border-brand-light-gray-1 px-4 py-2 text-sm font-medium transition-colors hover:bg-brand-light-gray-2"
       >
-        Export
+        {t("export.button")}
       </button>
       <div
         id="post-call-export-menu"
         role="menu"
-        aria-label="Export formats"
+        aria-label={t("export.formats")}
         className={`absolute right-0 top-full z-10 mt-1 w-56 rounded-lg border border-brand-light-gray-1 bg-surface shadow-lg transition-opacity ${
           open ? "visible opacity-100" : "invisible opacity-0"
         }`}
@@ -69,7 +71,7 @@ export default function ExportMenu({ sessionId, shielded = false }: { sessionId:
           href={`/api/sessions/${sessionId}/artifacts/summary-export${query}`}
           className={`rounded-t-lg ${itemClass}`}
         >
-          Full Summary (HTML)
+          {t("export.fullSummary")}
         </a>
         <a
           role="menuitem"
@@ -78,7 +80,7 @@ export default function ExportMenu({ sessionId, shielded = false }: { sessionId:
           href={`/api/sessions/${sessionId}/artifacts/questions-export${query}`}
           className={itemClass}
         >
-          Insights (Excel)
+          {t("export.insightsExcel")}
         </a>
         <a
           role="menuitem"
@@ -87,7 +89,7 @@ export default function ExportMenu({ sessionId, shielded = false }: { sessionId:
           href={`/api/sessions/${sessionId}/artifacts/transcript-export${query}`}
           className={`${shielded ? "" : "rounded-b-lg "}${itemClass}`}
         >
-          Transcript (TXT)
+          {t("export.transcriptTxt")}
         </a>
         {shielded && (
           <label className="flex cursor-pointer items-start gap-2 rounded-b-lg border-t border-brand-light-gray-1 bg-brand-light-gray-2/60 px-4 py-2.5">
@@ -99,9 +101,9 @@ export default function ExportMenu({ sessionId, shielded = false }: { sessionId:
               className="mt-0.5 h-4 w-4 rounded border-brand-light-gray-1 text-brand-teal"
             />
             <span className="font-body text-xs leading-snug text-brand-dark-gray">
-              Include personal data
+              {t("export.includePersonal")}
               <span className="block text-[11px] text-brand-mid-gray">
-                Off: files carry tokens like [PERSON_1]. On: real names and details, recorded in the reveal log.
+                {t("export.includePersonalHint")}
               </span>
             </span>
           </label>
