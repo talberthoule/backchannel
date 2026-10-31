@@ -43,6 +43,7 @@ and access events live in D1, not the local application's PostgreSQL database.
 | [Configuration](configuration.md) | Settings, environment variables, encrypted credentials, the model registry |
 | [Deployment](deployment.md) | Docker Compose plus the ordered D1, R2, Worker, Turnstile, and release-access production gate |
 | [Releasing](releasing.md) | Authoritative private-R2 publication, migration, verification, and recovery procedure |
+| [Translation handoff](i18n/translation-handoff.md) | UI catalog contract and the 13 locale files supplied externally |
 
 ## Reading order
 

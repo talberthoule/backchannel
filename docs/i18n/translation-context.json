@@ -1,0 +1,37 @@
+{
+  "sourceLocale": "en",
+  "sourceCatalog": "frontend/src/locales/en/translation.json",
+  "targetLocales": ["de", "fr", "es", "it", "pt-BR", "zh-CN", "ja", "ko", "nl", "ru", "pl", "tr", "ca"],
+  "notes": {
+    "placeholders": "Preserve every {{placeholder}} exactly.",
+    "pluralKeys": "Preserve plural suffixes and supply a translation for each supplied plural form.",
+    "productNames": "Backchannel, Gemini, OpenAI, Ollama, LM Studio, vLLM, LiteLLM, Parakeet, Whisper, and model identifiers are product names or code identifiers.",
+    "structuredTokens": "Preserve URLs, file extensions, CSS-like identifiers, [PERSON_1]-style tokens, and literal keys such as {lens_sections}.",
+    "excludedContent": "Do not translate transcripts, user content, imported documents, AI output, prompts, logs, API payloads, WebSocket payloads, or untranslated backend messages."
+  },
+  "context": {
+    "navigation.language": "Accessible label for the header language selector.",
+    "sessions.state.live": "Short session-state label meaning a call is currently active.",
+    "preCall.sections.directives": "Standing instructions that guide analysis during a call.",
+    "activeCall.youAsked": "Label over a question the operator submitted during the call.",
+    "activeCall.endWithoutBriefing": "End-call option that saves the transcript but skips the generated briefing.",
+    "insights.types.strategicFilter": "Short strategic insight filter-chip label.",
+    "insights.types.questions": "Plural filter-chip label for insight rows of type question.",
+    "briefing.whyMatters": "Disclosure control that reveals an item's rationale.",
+    "briefing.arbiterNotes": "Heading preceding reconciliation notes from the briefing arbiter.",
+    "overview.sections.openLoops": "Meeting questions that remain unanswered or require follow-up.",
+    "overview.unattributed": "Speaker label for transcript text with no known speaker.",
+    "postProcessing.steps.callBriefing": "Post-call pipeline step that generates the meeting briefing.",
+    "postCall.shielded_other": "Count of personal-data values protected by the PII Shield in this session.",
+    "admin.lens.helper": "Explains how analyst-lens prompt sections are inserted into an agent prompt.",
+    "admin.agent.runningAt": "Explains an effective per-model analysis interval set by the local fit test.",
+    "pii.coverage.refinement": "Coverage status for the transcript-refinement stage.",
+    "pii.tokensOnly": "Status meaning a logged model prompt contains only privacy tokens.",
+    "modelOptions.cloudOff": "Reason a cloud model cannot be selected while a privacy switch is on.",
+    "diarization.matchThreshold": "Similarity threshold used when assigning voices to speakers.",
+    "knowledge.recordCount_other": "Number of structured records in one knowledge source.",
+    "offerings.headers.product": "Product or service column in the offerings catalog.",
+    "tokenUsage.headers.cached": "Input tokens served from a provider prompt cache.",
+    "tokenUsage.headers.audioTokens": "Token counts the provider classified as audio input or output."
+  }
+}
