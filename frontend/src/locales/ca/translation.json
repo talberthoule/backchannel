@@ -105,7 +105,7 @@
   },
   "meetingTypes": {
     "general": {
-      "label": "General / deduït",
+      "label": "General / dedueix",
       "hint": "Deixa que els agents dedueixin el format de la reunió a partir de la transcripció i el context.",
       "placeholder": "Exemple: Debat intern sobre el panorama dels algoritmes criptogràfics i sobre en quins punts l'equip de vendes de ciberseguretat necessita una capacitació més clara."
     },
@@ -201,7 +201,7 @@
       "documentsPersist": "Els documents es conserven amb la sessió i es poden eliminar en qualsevol moment",
       "import": "Importa una transcripció o un enregistrament",
       "importSummary": "Analitza una reunió passada en lloc d'una trucada en directe",
-      "importTooltip": "En lloc d'una trucada en directe, importa una transcripció o un enregistrament d'àudio existents per analitzar-los. Els agents d'IA els processaran com si fos una trucada finalitzada.",
+      "importTooltip": "En lloc d'una trucada en directe, importa una transcripció o un enregistrament d'àudio existents per analitzar-los. Els agents d'IA els processaran com si fossin una trucada finalitzada.",
       "importTranscriptTypes": "Fitxers de transcripció: .txt, .md, .docx - s'analitzen i es divideixen en segments per parlant",
       "importAudioTypes": "Fitxers d'àudio: .m4a, .mp3, .wav, .ogg, .flac - es transcriuen primer",
       "importAction": "Després d'importar, el botó d'acció passa a dir «Processa la transcripció»",
@@ -286,7 +286,7 @@
   },
   "dialog": {
     "notice": "Avís",
-    "areYouSure": "Segur que vols continuar?",
+    "areYouSure": "Estàs segur que vols continuar?",
     "confirm": "Confirma",
     "ok": "D'acord"
   },
@@ -447,7 +447,7 @@
     "runningLate": "amb retard",
     "eventDriven": "basat en esdeveniments",
     "atCallEnd": "en acabar la trucada",
-    "next": "properament: {{time}}",
+    "next": "següent: {{time}}",
     "ago": "fa {{time}}",
     "gateway": "Passarel·la:",
     "transcription": "Transcripció:",
@@ -616,7 +616,7 @@
   "overview": {
     "fromBriefing": "De l'informe",
     "fromInsights": "De les idees clau",
-    "allInBriefing": "Total a l'informe: {{value}}",
+    "allInBriefing": "Tots els {{value}} a l'informe",
     "noneLive": "Cap capturat en directe.",
     "estimatedSpend": "Despesa est.",
     "loadingUsage": "S'està carregant l'ús",
@@ -645,7 +645,7 @@
     "rhythmAria": "Idees clau cada cinc minuts de trucada. {{summary}}",
     "bucketTitle": "{{start}}-{{end}} min: {{label}}",
     "busiest": "Període amb més activitat: {{start}}-{{end}} min, amb {{peak}}.",
-    "resumeSeams": "Temps de trucada en {{value}} segments; les línies de punts marquen les represes.",
+    "resumeSeams": "Temps de trucada en {{value}} segments; les línies discontínues marquen les represes.",
     "transcript": "Transcripció",
     "sections": {
       "commitments": "Compromisos",
@@ -727,7 +727,7 @@
     "releasedSince": "Publicat des de la v{{version}}",
     "new": "Nou",
     "modelsPricing": "Models i preus",
-    "modelsPricingBody": "Models disponibles en aquesta aplicació amb tarifes publicades en USD per cada milió de tokens (tarifes estàndard de text; no inclouen els recàrrecs per context llarg ni per memòria cau).",
+    "modelsPricingBody": "Models disponibles en aquesta aplicació amb tarifes publicades en USD per cada 1 milió de tokens (tarifes estàndard de text; no inclouen els recàrrecs per context llarg ni per memòria cau).",
     "modelPricingLoading": "S'estan carregant els preus dels models...",
     "modelPricingFailed": "No s'han pogut carregar els preus dels models. La resta de l'aplicació no es veu afectada.",
     "headers": {
@@ -742,7 +742,7 @@
     "unknown": "desconegut",
     "capabilities": {
       "text": "text",
-      "live": "directe",
+      "live": "en directe",
       "batch": "per lots"
     }
   },
@@ -910,7 +910,7 @@
     "loadHeadroom": "Marge de càrrega assumit",
     "loadDescription": "Reserva per a l'enregistrament, la diarització i altres aplicacions: {{value}}x la latència mesurada",
     "superseded": "Substituït",
-    "shortLong": "Curta {{short}} s - Llarga {{long}} s per crida",
+    "shortLong": "Curt {{short}} s - Llarg {{long}} s per trucada",
     "benchmarkFailed": "Ha fallat la prova de rendiment.",
     "usableFor": "Utilitzable per a:",
     "applying": "S'està aplicant...",
@@ -923,13 +923,13 @@
       "live": "Subtítols en directe (exp.)",
       "agent": "Agent",
       "window": "Finestra",
-      "callTime": "Temps de crida",
+      "callTime": "Temps de trucada",
       "cycleBudget": "Pressupost de cicle",
       "verdict": "Veredicte",
       "recommended": "Recomanat"
     },
     "verdicts": {
-      "keepsUp": "Aguanta",
+      "keepsUp": "Manté el ritme",
       "tight": "Just",
       "tooSlow": "Massa lent",
       "fine": "Correcte",
@@ -991,7 +991,7 @@
     "replaceVoice": "Substitueix el perfil de veu",
     "recordVoice": "Enregistra el perfil de veu",
     "checkingCapability": "S'està comprovant la capacitat de diarització...",
-    "notLoaded": "El diagnòstic no s'ha carregat.",
+    "notLoaded": "Els diagnòstics no s'han carregat.",
     "gpuMemory": "Memòria de la GPU: {{value}} GB",
     "benchmarking": "S'està fent la prova de rendiment...",
     "runBenchmark": "Executa la prova de rendiment",
@@ -1074,7 +1074,7 @@
     "outboundBody": "Amb el registre activat, cada indicació s'escriu al directori de dades exactament tal com surt cap a un model, de manera que puguis confirmar que els models només veuen tokens. Mentre PII Shield està activat, una indicació que encara contingui un valor de la caixa forta es rebutja abans d'enviar-la i apareix aquí marcada com a bloquejada.",
     "recordPrompts": "Registra les indicacions sortints",
     "chars": "{{value}} caràcters",
-    "blocked": "bloquejat: {{categories}}",
+    "blocked": "bloquejada: {{categories}}",
     "tokensOnly": "només tokens",
     "noTokens": "sense tokens",
     "truncated": "[truncat]",
@@ -1539,7 +1539,7 @@
     "model": "Model de transcripció",
     "retranscribe": "Torna a transcriure",
     "confirmTitle": "Torna a transcriure l'àudio de la trucada",
-    "confirmMessage": "La transcripció existent es manté fins que acabi la substituta.",
+    "confirmMessage": "La transcripció existent es manté fins que acabi la substitució.",
     "completed_one": "S'ha tornat a transcriure {{count}} entrada.",
     "completed_other": "S'han tornat a transcriure {{count}} entrades.",
     "completed_few": "S'han tornat a transcriure {{count}} entrades.",
