@@ -4,10 +4,11 @@ import type {
   DesktopUpdateController,
   DesktopUpdateStatus,
 } from "../types";
+import i18n from "../i18n";
 function errorText(error: unknown): string {
   return error instanceof Error
     ? error.message.slice(0, 240)
-    : "The update action could not be completed.";
+    : i18n.t("desktopUpdate.defaultError");
 }
 
 function pollingInterval(state: DesktopUpdateStatus["state"], pollMs: number): number {
@@ -15,7 +16,7 @@ function pollingInterval(state: DesktopUpdateStatus["state"], pollMs: number): n
 }
 
 export function finishUpdateWindow(): void {
-  document.title = "Backchannel - Installing update";
+  document.title = `${i18n.t("app.brand")} - ${i18n.t("desktopUpdate.installingTitle")}`;
   window.setTimeout(() => window.close(), 50);
 }
 

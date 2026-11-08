@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type {
   AgentConfig,
   AnalystLens,
@@ -20,11 +21,11 @@ import PrivacyModeCard from "./PrivacyModeCard";
 import ProviderOnboardingCard from "./ProviderOnboardingCard";
 import AboutCard from "./AboutCard";
 
-const TYPE_BADGES: Record<string, { label: string; color: string }> = {
-  audio: { label: "Audio", color: "#0d9488" },
-  text: { label: "Text", color: "#7c3aed" },
-  meta: { label: "Meta", color: "#f59e0b" },
-  db: { label: "DB", color: "#10b981" },
+const TYPE_BADGES: Record<string, { labelKey: string; color: string }> = {
+  audio: { labelKey: "admin.typeBadges.audio", color: "#0d9488" },
+  text: { labelKey: "admin.typeBadges.text", color: "#7c3aed" },
+  meta: { labelKey: "admin.typeBadges.meta", color: "#f59e0b" },
+  db: { labelKey: "admin.typeBadges.db", color: "#10b981" },
 };
 
 // Backend default cadence per agent. Text agents run on a fixed cycle; the
@@ -43,32 +44,32 @@ const INTERVAL_DEFAULTS: Record<string, number> = {
 // Agent (meta) and Opportunity Specialist (db) react to live insights, while
 // Strategic Signals cycles over the live context and the briefing trio runs
 // only after a session or on demand. Slug order within a section is display order.
-const AGENT_SECTIONS: { slugs: string[]; title: string; blurb: string }[] = [
+const AGENT_SECTIONS: { slugs: string[]; titleKey: string; blurbKey: string }[] = [
   {
     slugs: ["audio_gateway"],
-    title: "Listening",
-    blurb: "Streams call audio to a silent live listener for instant interim transcription.",
+    titleKey: "admin.agentSections.listening",
+    blurbKey: "admin.agentSections.listeningBody",
   },
   {
     slugs: ["consolidated_analyst", "objection_handler", "synthesizer", "opportunity_specialist", "strategic_signals", "transcript_refiner"],
-    title: "Live Analysis",
-    blurb: "Work the call as it happens: analysts surface and refine insights, specialists match them, and Strategic Signals keeps the live action cards current.",
+    titleKey: "admin.agentSections.live",
+    blurbKey: "admin.agentSections.liveBody",
   },
   {
     slugs: ["brief_meeting_lens", "brief_discovery_lens", "brief_arbiter"],
-    title: "Post-Call Briefing",
-    blurb: "Run after normal End Call or on demand: two independent lenses draft the briefing and the arbiter reconciles them into the final summary.",
+    titleKey: "admin.agentSections.postCall",
+    blurbKey: "admin.agentSections.postCallBody",
   },
 ];
 
 export type AdminTab = "agents" | "transcription" | "privacy" | "keys" | "about";
 
-const TABS: { id: AdminTab; label: string; hint: string }[] = [
-  { id: "agents", label: "Agents", hint: "Models, prompts, and behavior for each analysis agent" },
-  { id: "transcription", label: "Transcription & Audio", hint: "Speaker diarization and batch transcription settings" },
-  { id: "privacy", label: "Privacy", hint: "Keep personal data out of every model, local or cloud" },
-  { id: "keys", label: "Connections", hint: "Connect AI providers and self-hosted model servers" },
-  { id: "about", label: "About", hint: "Application version and release notes" },
+const TABS: { id: AdminTab; labelKey: string; hintKey: string }[] = [
+  { id: "agents", labelKey: "admin.tabs.agents", hintKey: "admin.tabs.agentsHint" },
+  { id: "transcription", labelKey: "admin.tabs.transcription", hintKey: "admin.tabs.transcriptionHint" },
+  { id: "privacy", labelKey: "admin.tabs.privacy", hintKey: "admin.tabs.privacyHint" },
+  { id: "keys", labelKey: "admin.tabs.keys", hintKey: "admin.tabs.keysHint" },
+  { id: "about", labelKey: "admin.tabs.about", hintKey: "admin.tabs.aboutHint" },
 ];
 
 interface AdminPanelProps {
@@ -114,11 +115,11 @@ function TogglePill({ label, selected, onToggle }: { label: string; selected: bo
 // Built-in insight types with special pipeline behavior; lenses can also
 // surface findings as a custom type, which flows through the live view,
 // post-call summary, and exports as its own first-class group.
-const BUILTIN_LENS_TYPES: { value: string; label: string }[] = [
-  { value: "question", label: "Question (tracks answers)" },
-  { value: "observation", label: "Observation" },
-  { value: "opportunity", label: "Opportunity (matches offerings)" },
-  { value: "action_item", label: "Action Item" },
+const BUILTIN_LENS_TYPES: { value: string; labelKey: string; shortKey: string }[] = [
+  { value: "question", labelKey: "admin.lens.types.question", shortKey: "admin.lens.types.questionShort" },
+  { value: "observation", labelKey: "admin.lens.types.observation", shortKey: "admin.lens.types.observation" },
+  { value: "opportunity", labelKey: "admin.lens.types.opportunity", shortKey: "admin.lens.types.opportunityShort" },
+  { value: "action_item", labelKey: "admin.lens.types.actionItem", shortKey: "admin.lens.types.actionItem" },
 ];
 const BUILTIN_LENS_TYPE_VALUES = new Set(BUILTIN_LENS_TYPES.map((o) => o.value));
 const CUSTOM_TYPE_SENTINEL = "__custom__";
@@ -162,6 +163,7 @@ function LensEditor({
   onUpdate: (slug: string, field: string, value: string | boolean | number | null) => void;
   onDraftChange: (slug: string, field: "prompt" | "interval_seconds" | "lenses", value: string | number) => void;
 }) {
+  const { t } = useTranslation();
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const { confirm } = useConfirm();
   const lenses = parseLenses(agent.lenses);
@@ -176,15 +178,15 @@ function LensEditor({
     let n = lenses.length + 1;
     while (lenses.some((l) => l.key === `lens-${n}`)) n += 1;
     const key = `lens-${n}`;
-    save([...lenses, { key, label: "New Lens", item_type: "observation", enabled: true, prompt: "" }]);
+    save([...lenses, { key, label: t("admin.lens.newLens"), item_type: "observation", enabled: true, prompt: "" }]);
     setExpandedKey(key);
   };
 
   const deleteLens = async (lens: AnalystLens) => {
     const ok = await confirm({
-      title: "Delete lens",
-      message: `Delete the "${lens.label}" lens and its prompt section?`,
-      confirmLabel: "Delete",
+      title: t("admin.lens.deleteTitle"),
+      message: t("admin.lens.deleteMessage", { name: lens.label }),
+      confirmLabel: t("common.delete"),
       tone: "danger",
     });
     if (!ok) return;
@@ -195,13 +197,13 @@ function LensEditor({
   return (
     <div className="border-t border-brand-light-gray-1/70 px-5 py-4">
       <div className="mb-2 flex items-center justify-between">
-        <label className="block font-body text-xs font-medium text-brand-gray">Analysis Lenses</label>
+        <label className="block font-body text-xs font-medium text-brand-gray">{t("admin.lens.analysis")}</label>
         <button
           type="button"
           onClick={addLens}
           className="rounded-full border border-brand-light-gray-1 px-2.5 py-1 font-body text-[11px] font-medium text-brand-gray transition-colors hover:border-brand-teal hover:text-brand-teal"
         >
-          + Add Lens
+          {t("admin.lens.add")}
         </button>
       </div>
 
@@ -210,7 +212,7 @@ function LensEditor({
           const expanded = expandedKey === lens.key;
           const isBuiltinType = BUILTIN_LENS_TYPE_VALUES.has(lens.item_type);
           const typeBadge = isBuiltinType
-            ? BUILTIN_LENS_TYPES.find((o) => o.value === lens.item_type)!.label.replace(/ \(.*\)$/, "")
+            ? t(BUILTIN_LENS_TYPES.find((o) => o.value === lens.item_type)!.shortKey)
             : humanizeTypeSlug(lens.item_type);
           const emptyPrompt = !lens.prompt.trim();
           return (
@@ -220,7 +222,7 @@ function LensEditor({
                   type="button"
                   role="switch"
                   aria-checked={lens.enabled}
-                  title={lens.enabled ? "Lens is included in the prompt" : "Lens is excluded from the prompt"}
+                  title={lens.enabled ? t("admin.lens.included") : t("admin.lens.excluded")}
                   onClick={() => save(patched(lens.key, { enabled: !lens.enabled }))}
                   className={`h-4 w-7 shrink-0 rounded-full transition-colors ${lens.enabled ? "bg-brand-teal" : "bg-brand-light-gray-1"}`}
                 >
@@ -239,8 +241,8 @@ function LensEditor({
                     {typeBadge}
                   </span>
                   {emptyPrompt && (
-                    <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 font-body text-[10px] text-amber-800" title="Lenses without a prompt section are skipped">
-                      No prompt
+                    <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 font-body text-[10px] text-amber-800" title={t("admin.lens.noPromptTitle")}>
+                      {t("admin.lens.noPrompt")}
                     </span>
                   )}
                   <svg className={`ml-auto h-3 w-3 shrink-0 text-brand-mid-gray transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -250,7 +252,7 @@ function LensEditor({
                 <button
                   type="button"
                   onClick={() => deleteLens(lens)}
-                  title="Delete lens"
+                  title={t("admin.lens.deleteAction")}
                   className="shrink-0 rounded p-1 text-brand-mid-gray transition-colors hover:bg-red-50 hover:text-red-600"
                 >
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -263,17 +265,17 @@ function LensEditor({
                 <div className="space-y-3 border-t border-brand-light-gray-1/70 px-3 py-3">
                   <div className="grid gap-3 md:grid-cols-2">
                     <div>
-                      <label className="mb-1 block font-body text-[10px] font-medium text-brand-gray">Lens Name</label>
+                      <label className="mb-1 block font-body text-[10px] font-medium text-brand-gray">{t("admin.lens.name")}</label>
                       <input
                         type="text"
                         value={lens.label}
                         onChange={(e) => draft(patched(lens.key, { label: e.target.value }))}
-                        onBlur={(e) => save(patched(lens.key, { label: e.target.value.trim() || "Untitled Lens" }))}
+                        onBlur={(e) => save(patched(lens.key, { label: e.target.value.trim() || t("admin.lens.untitled") }))}
                         className="w-full rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1.5 font-body text-xs text-brand-dark-gray focus:border-brand-teal"
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block font-body text-[10px] font-medium text-brand-gray">Findings Surface As</label>
+                      <label className="mb-1 block font-body text-[10px] font-medium text-brand-gray">{t("admin.lens.surfaceAs")}</label>
                       <select
                         value={isBuiltinType ? lens.item_type : CUSTOM_TYPE_SENTINEL}
                         onChange={(e) => {
@@ -285,9 +287,9 @@ function LensEditor({
                         className="w-full rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1.5 font-body text-xs text-brand-dark-gray focus:border-brand-teal"
                       >
                         {BUILTIN_LENS_TYPES.map((o) => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
+                          <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
                         ))}
-                        <option value={CUSTOM_TYPE_SENTINEL}>Custom type...</option>
+                        <option value={CUSTOM_TYPE_SENTINEL}>{t("admin.lens.custom")}</option>
                       </select>
                       {!isBuiltinType && (
                         <input
@@ -295,25 +297,25 @@ function LensEditor({
                           value={lens.item_type}
                           onChange={(e) => draft(patched(lens.key, { item_type: e.target.value }))}
                           onBlur={(e) => save(patched(lens.key, { item_type: slugifyTypeName(e.target.value) }))}
-                          placeholder="custom_type_name"
+                          placeholder={t("admin.lens.placeholderSlug")}
                           className="mt-1.5 w-full rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1.5 font-mono text-xs text-brand-dark-gray focus:border-brand-teal"
                         />
                       )}
                       <p className="mt-1 font-body text-[10px] text-brand-mid-gray">
                         {isBuiltinType
-                          ? "Built-in types plug into extra behaviors: Questions get answer tracking; Opportunities are picked up by the Opportunity Specialist agent for knowledge-source matching."
-                          : "Custom types get their own filter chip, summary section, and export label. Lowercase letters, digits, and underscores. Not matched by the Opportunity Specialist."}
+                          ? t("admin.lens.builtinHelp")
+                          : t("admin.lens.customHelp")}
                       </p>
                     </div>
                   </div>
                   <div>
-                    <label className="mb-1 block font-body text-[10px] font-medium text-brand-gray">Lens Prompt Section</label>
+                    <label className="mb-1 block font-body text-[10px] font-medium text-brand-gray">{t("admin.lens.promptSection")}</label>
                     <textarea
                       value={lens.prompt}
                       onChange={(e) => draft(patched(lens.key, { prompt: e.target.value }))}
                       onBlur={(e) => save(patched(lens.key, { prompt: e.target.value }))}
                       rows={8}
-                      placeholder="Describe what this lens should look for and how it should think..."
+                      placeholder={t("admin.lens.promptPlaceholder")}
                       className="w-full resize-y rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-2 font-mono text-xs leading-relaxed text-brand-dark-gray focus:border-brand-teal"
                     />
                   </div>
@@ -324,17 +326,17 @@ function LensEditor({
         })}
         {lenses.length === 0 && (
           <p className="rounded-lg border border-dashed border-brand-light-gray-1 px-3 py-4 text-center font-body text-xs text-brand-mid-gray">
-            No lenses configured — the analyst will not produce insights. Add a lens to get started.
+            {t("admin.lens.empty")}
           </p>
         )}
       </div>
 
       <p className="mt-2 font-body text-[10px] text-brand-mid-gray">
-        Each enabled lens adds its own numbered section to the system prompt (via the {"{lens_sections}"} placeholder) and tags its findings with the selected insight type. Toggling a lens off removes its section from the next call.
+        {t("admin.lens.helper", { placeholder: "{lens_sections}" })}
       </p>
       {missingPlaceholder && (
         <p className="mt-1 font-body text-[10px] text-amber-700">
-          The system prompt below has no {"{lens_sections}"} placeholder, so lens sections are not inserted. Reset the prompt to default or add the placeholder where the lenses belong.
+          {t("admin.lens.missingPlaceholder", { placeholder: "{lens_sections}" })}
         </p>
       )}
     </div>
@@ -363,6 +365,7 @@ function AgentCard({
   onResetPrompt: (slug: string) => void;
   onDraftChange: (slug: string, field: "prompt" | "interval_seconds" | "lenses", value: string | number) => void;
 }) {
+  const { t } = useTranslation();
   const [promptOpen, setPromptOpen] = useState(false);
   const badge = TYPE_BADGES[agent.agent_type] || TYPE_BADGES.text;
   const intervalDefault = agent.agent_type === "text" ? INTERVAL_DEFAULTS[agent.slug] ?? 15 : INTERVAL_DEFAULTS[agent.slug];
@@ -401,55 +404,39 @@ function AgentCard({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-display text-base font-bold text-brand-dark-gray">{agent.name}</h3>
             <span className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium text-white" style={{ backgroundColor: badge.color }}>
-              {badge.label}
+              {t(badge.labelKey)}
             </span>
             <span className="font-mono text-[10px] text-brand-mid-gray">{agent.slug}</span>
             {!agent.enabled && (
               <span className="inline-flex rounded-full bg-brand-light-gray-1/80 px-2 py-0.5 text-[10px] font-medium text-brand-gray">
-                Disabled
+                {t("admin.agent.disabled")}
               </span>
             )}
             {agent.enabled && !agent.model_id && (
               <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-                Needs model
+                {t("admin.agent.needsModel")}
               </span>
             )}
             {agent.enabled && blockedByPrivacy && (
               <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-                Inactive: Privacy First
+                {t("admin.agent.privacyInactive")}
               </span>
             )}
           </div>
           <p className="mt-1 font-body text-xs leading-relaxed text-brand-gray">{agent.description}</p>
           {agent.agent_type === "audio" && (
             <p className="mt-2 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/60 px-2.5 py-1.5 font-body text-[11px] leading-relaxed text-brand-gray">
-              This is the live audio bridge, so only live-audio models are listed. Self-hosted
-              (OpenAI-compatible chat) models are text-only and do not appear here &mdash; they power the
-              text analysis agents. For fully offline transcription, pick a local ONNX model in
-              Transcription &amp; Audio.
+              {t("admin.agent.audioBridge")}
             </p>
           )}
           {agent.slug === "opportunity_specialist" && (
             <p className="mt-2 rounded border border-brand-light-gray-1 bg-brand-light-gray-2/60 px-2.5 py-1.5 font-body text-[11px] leading-relaxed text-brand-gray">
-              Runs downstream of the Consolidated Analyst: it does not find opportunities itself. When a lens surfaces a finding as an Opportunity, this agent matches it against the knowledge sources below and adds the match to the existing card. Only active for Client Sales and Customer Delivery meeting types.
+              {t("admin.agent.opportunitySpecialist")}
             </p>
           )}
           {blockedByPrivacy && (
             <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 font-body text-[11px] leading-relaxed text-amber-900">
-              {hasLocalAlternative ? (
-                <>
-                  Privacy First mode is on and this agent is set to a model that would send
-                  data off your network, so it will not run. Pick a self-hosted model below
-                  to switch it back on &mdash; those run on this machine or your LAN.
-                </>
-              ) : (
-                <>
-                  Privacy First mode is on and no self-hosted model is available for this
-                  agent, so it will not run. Add an OpenAI-compatible server on this machine
-                  or your LAN in the Connections tab, or turn off Privacy First. Its settings
-                  are kept either way.
-                </>
-              )}
+              {hasLocalAlternative ? t("admin.agent.privacyPick") : t("admin.agent.privacyNoLocal")}
             </p>
           )}
         </div>
@@ -458,7 +445,7 @@ function AgentCard({
           className={`h-6 w-11 shrink-0 rounded-full transition-colors ${agent.enabled ? "bg-brand-teal" : "bg-brand-light-gray-1"}`}
           role="switch"
           aria-checked={agent.enabled}
-          title={agent.enabled ? "Enabled" : "Disabled"}
+          title={agent.enabled ? t("admin.agent.enabled") : t("admin.agent.disabled")}
         >
           <span className={`block h-5 w-5 rounded-full bg-surface shadow transition-transform ${agent.enabled ? "translate-x-5" : "translate-x-0.5"}`} />
         </button>
@@ -467,13 +454,13 @@ function AgentCard({
       {/* Settings grid: model + cadence side by side */}
       <div className="grid gap-4 px-5 py-4 md:grid-cols-2">
         <div>
-          <label className="mb-1 block font-body text-xs font-medium text-brand-gray">Model</label>
+          <label className="mb-1 block font-body text-xs font-medium text-brand-gray">{t("admin.agent.model")}</label>
           <select
             value={agent.model_id}
             onChange={(e) => onUpdate(agent.slug, "model_id", e.target.value)}
             className="w-full rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 text-sm text-brand-dark-gray focus:border-brand-teal"
           >
-            <option value="">Not selected</option>
+            <option value="">{t("admin.agent.notSelected")}</option>
             {groupModels(modelOptions).map((group) => (
               <optgroup key={group.provider} label={group.provider}>
                 {group.models.map((m) => {
@@ -489,7 +476,7 @@ function AgentCard({
           </select>
           {hasLockedModels && (
             <p className="mt-1 font-body text-[10px] text-brand-mid-gray">
-              Grayed-out models need an API key for their provider (see the Connections tab)
+              {t("admin.agent.keyLocked")}
             </p>
           )}
         </div>
@@ -497,7 +484,7 @@ function AgentCard({
         {intervalDefault !== undefined && (
           <div>
             <label className="mb-1 block font-body text-xs font-medium text-brand-gray">
-              {intervalDriven ? "Cycle Interval" : "Cooldown Between Runs"}
+              {intervalDriven ? t("admin.agent.cycleInterval") : t("admin.agent.cooldown")}
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -515,20 +502,19 @@ function AgentCard({
                 }}
                 className="w-20 rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1.5 text-center font-mono text-sm text-brand-dark-gray focus:border-brand-teal"
               />
-              <span className="font-body text-xs text-brand-mid-gray">seconds</span>
+              <span className="font-body text-xs text-brand-mid-gray">{t("admin.agent.seconds")}</span>
             </div>
             <p className="mt-1 font-body text-[10px] text-brand-mid-gray">
               {intervalDriven
-                ? "How often this agent analyzes new transcript (5-300s)"
-                : "Minimum time between runs; triggered by new insights (5-300s)"}
+                ? t("admin.agent.cycleHelp")
+                : t("admin.agent.cooldownHelp")}
             </p>
             {modelInterval !== null && (
               <p className="mt-1.5 rounded border border-brand-teal/30 bg-brand-teal/5 px-2 py-1.5 font-body text-[10px] leading-relaxed text-brand-dark-gray">
-                <span className="font-medium">Running at {modelInterval}s</span> on the
-                selected model. The local-model fit test set this budget for{" "}
-                {selectedModel?.name ?? agent.model_id}; it overrides the value above
-                whenever this agent uses that model. Re-run the fit test in
-                Transcription &amp; Audio to change it.
+                {t("admin.agent.runningAt", {
+                  seconds: modelInterval,
+                  model: selectedModel?.name ?? agent.model_id,
+                })}
               </p>
             )}
           </div>
@@ -539,14 +525,14 @@ function AgentCard({
       {agent.agent_type === "db" && (
         <div className="border-t border-brand-light-gray-1/70 px-5 py-4">
           <div className="mb-1.5 flex items-baseline justify-between">
-            <label className="block font-body text-xs font-medium text-brand-gray">Knowledge Sources</label>
+            <label className="block font-body text-xs font-medium text-brand-gray">{t("admin.agent.knowledge")}</label>
             {agent.knowledge_source_ids.split(",").some((s) => s.trim()) && (
               <button
                 type="button"
                 onClick={() => onUpdate(agent.slug, "knowledge_source_ids", "")}
                 className="font-body text-[10px] text-brand-mid-gray transition-colors hover:text-brand-teal"
               >
-                Clear selection
+                {t("admin.agent.clearSelection")}
               </button>
             )}
           </div>
@@ -570,7 +556,7 @@ function AgentCard({
               })}
           </div>
           <p className="mt-1 font-body text-[10px] text-brand-mid-gray">
-            The knowledge bases this agent matches opportunities against (manage in Knowledge Sources). With none selected it falls back to the built-in Offerings catalog.
+            {t("admin.agent.knowledgeHelp")}
           </p>
         </div>
       )}
@@ -592,9 +578,9 @@ function AgentCard({
             <svg className={`h-3 w-3 text-brand-mid-gray transition-transform ${promptOpen ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
-            System Prompt
+            {t("admin.agent.systemPrompt")}
           </span>
-          <span className="font-body text-[10px] text-brand-mid-gray">{promptOpen ? "Hide" : "View / edit"}</span>
+          <span className="font-body text-[10px] text-brand-mid-gray">{promptOpen ? t("admin.agent.hide") : t("admin.agent.viewEdit")}</span>
         </button>
         {promptOpen && (
           <div className="px-5 pb-5">
@@ -603,7 +589,7 @@ function AgentCard({
                 onClick={() => onResetPrompt(agent.slug)}
                 className="font-body text-[10px] text-brand-mid-gray transition-colors hover:text-brand-teal"
               >
-                Reset to default
+                {t("admin.agent.reset")}
               </button>
             </div>
             <textarea
@@ -621,6 +607,7 @@ function AgentCard({
 }
 
 export default function AdminPanel({ onBack, desktopUpdate, activeTab, onTabChange, highlightSince, onboarding, onOnboardingContinue }: AdminPanelProps) {
+  const { t } = useTranslation();
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>([]);
@@ -724,33 +711,33 @@ export default function AdminPanel({ onBack, desktopUpdate, activeTab, onTabChan
   };
 
   const enabledCount = agents.filter((a) => a.enabled).length;
-  const activeTabInfo = TABS.find((t) => t.id === activeTab) || TABS[0];
+  const activeTabInfo = TABS.find((tab) => tab.id === activeTab) || TABS[0];
   const audioLocked = piiShield?.settings.enabled ?? false;
 
   return (
     <div className="flex h-full min-w-0 flex-col overflow-x-hidden bg-brand-light-gray-2">
       <header className="border-b border-brand-light-gray-1 bg-surface px-4 pt-3 sm:px-6">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="rounded p-1 text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray" title="Back">
+          <button onClick={onBack} className="rounded p-1 text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray" title={t("admin.back")}>
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
             </svg>
           </button>
           <div>
             <div className="flex items-baseline gap-2">
-              <h1 className="font-display text-lg font-bold text-brand-dark-gray">Administration</h1>
+              <h1 className="font-display text-lg font-bold text-brand-dark-gray">{t("admin.title")}</h1>
               {version && (
-                <span className="rounded-full bg-brand-light-gray-2 px-2 py-0.5 font-mono text-[11px] font-medium text-brand-gray" title="Application version">
+                <span className="rounded-full bg-brand-light-gray-2 px-2 py-0.5 font-mono text-[11px] font-medium text-brand-gray" title={t("admin.versionTitle")}>
                   v{version}
                 </span>
               )}
             </div>
-            <p className="font-body text-xs text-brand-mid-gray">{activeTabInfo.hint}</p>
+            <p className="font-body text-xs text-brand-mid-gray">{t(activeTabInfo.hintKey)}</p>
           </div>
         </div>
 
         {/* Tab bar */}
-        <nav className="mt-3 flex flex-wrap gap-1" aria-label="Administration sections">
+        <nav className="mt-3 flex flex-wrap gap-1" aria-label={t("admin.sectionsAria")}>
           {TABS.map((tab) => {
             const active = tab.id === activeTab;
             return (
@@ -765,9 +752,9 @@ export default function AdminPanel({ onBack, desktopUpdate, activeTab, onTabChan
                     : "border-transparent text-brand-gray hover:border-brand-light-gray-1 hover:text-brand-dark-gray"
                 }`}
               >
-                {tab.label}
+                {t(tab.labelKey)}
                 {tab.id === "about" && highlightSince && (
-                  <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-brand-teal align-middle" title="New release notes" />
+                  <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-brand-teal align-middle" title={t("admin.newReleaseNotes")} />
                 )}
                 {tab.id === "agents" && !loading && (
                   <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${active ? "bg-brand-teal/10 text-brand-teal" : "bg-brand-light-gray-2 text-brand-mid-gray"}`}>
@@ -783,7 +770,7 @@ export default function AdminPanel({ onBack, desktopUpdate, activeTab, onTabChan
       <div className="flex-1 overflow-auto p-4 sm:p-6">
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <span className="font-body text-sm text-brand-mid-gray">Loading configuration...</span>
+            <span className="font-body text-sm text-brand-mid-gray">{t("admin.loading")}</span>
           </div>
         ) : (
           <div className="mx-auto max-w-4xl">
@@ -811,16 +798,16 @@ export default function AdminPanel({ onBack, desktopUpdate, activeTab, onTabChan
                       .filter((a): a is AgentConfig => !!a),
                   })),
                   // Safety net so agents added later never silently disappear
-                  { title: "Other", blurb: "Agents not yet assigned to a section.", agents: leftover },
+                  { titleKey: "admin.agentSections.other", blurbKey: "admin.agentSections.otherBody", agents: leftover },
                 ];
                 return sections.filter((s) => s.agents.length > 0);
               })().map((section) => {
                 const sectionAgents = section.agents;
                 return (
-                  <section key={section.title}>
+                  <section key={section.titleKey}>
                     <div className="mb-3">
-                      <h2 className="font-display text-sm font-bold uppercase tracking-wider text-brand-mid-gray">{section.title}</h2>
-                      <p className="mt-0.5 font-body text-xs text-brand-mid-gray">{section.blurb}</p>
+                      <h2 className="font-display text-sm font-bold uppercase tracking-wider text-brand-mid-gray">{t(section.titleKey)}</h2>
+                      <p className="mt-0.5 font-body text-xs text-brand-mid-gray">{t(section.blurbKey)}</p>
                     </div>
                     <div className="space-y-4">
                       {sectionAgents.map((agent) => (
@@ -831,7 +818,7 @@ export default function AdminPanel({ onBack, desktopUpdate, activeTab, onTabChan
                           knowledgeSources={knowledgeSources}
                           isSaving={saving === agent.slug}
                           localOnly={(privacy?.local_only ?? false) || (agent.agent_type === "audio" && audioLocked)}
-                          lockLabel={privacy?.local_only ? "Privacy First" : "the PII Shield"}
+                          lockLabel={privacy?.local_only ? t("privacy.title") : t("pii.shieldName")}
                           onUpdate={handleUpdate}
                           onResetPrompt={handleResetPrompt}
                           onDraftChange={handleDraftChange}
@@ -847,7 +834,7 @@ export default function AdminPanel({ onBack, desktopUpdate, activeTab, onTabChan
               <BatchTranscriptionCard
                 models={models}
                 localOnly={(privacy?.local_only ?? false) || audioLocked}
-                lockLabel={privacy?.local_only ? "Privacy First" : "the PII Shield"}
+                lockLabel={privacy?.local_only ? t("privacy.title") : t("pii.shieldName")}
                 onLiveModelChanged={refreshAgents}
                 gatewayModelId={agents.find((a) => a.slug === "audio_gateway")?.model_id}
               />

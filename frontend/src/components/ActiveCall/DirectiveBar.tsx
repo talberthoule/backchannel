@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import "../../i18n";
 import type { ModelInfo } from "../../types";
 import ModelChip from "./ModelChip";
 
@@ -39,6 +41,7 @@ export default function DirectiveBar({
   disabled = false,
   askDisabled = false,
 }: DirectiveBarProps) {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>(() => {
     // ponytail: default-first so "chat" reads as the fallback in one glance;
     // functionally identical to a loadMode() helper (defaults to chat, only
@@ -75,7 +78,7 @@ export default function DirectiveBar({
       if (askDisabled) return;
       if (asking) return;
       if (!modelId) {
-        setModelError("Choose a model to ask this call. Recommended marks a good starting point.");
+        setModelError(t("activeCall.chooseModel"));
         return;
       }
       setModelError("");
@@ -107,8 +110,8 @@ export default function DirectiveBar({
     <div className="border-t border-brand-light-gray-1 bg-surface/95 backdrop-blur-sm">
       <form onSubmit={handleSubmit} className="flex items-center gap-2 px-4 py-2">
         <div className="flex flex-shrink-0 overflow-hidden rounded-lg border border-brand-light-gray-1">
-          {modeButton("chat", "Chat")}
-          {modeButton("directive", "Directive")}
+          {modeButton("chat", t("activeCall.chat"))}
+          {modeButton("directive", t("activeCall.directive"))}
         </div>
 
         <div
@@ -124,20 +127,20 @@ export default function DirectiveBar({
             onChange={(e) => setText(e.target.value)}
             placeholder={
               disabled
-                ? "Post-processing is running..."
+                ? t("activeCall.postProcessingRunning")
                 : chatMode && askDisabled
-                  ? "Resume audio to ask..."
+                  ? t("activeCall.resumeToAsk")
                   : chatMode
-                    ? "Ask this call anything..."
-                    : "e.g. Ask about their cloud migration timeline..."
+                    ? t("activeCall.askPlaceholder")
+                    : t("activeCall.directivePlaceholder")
             }
             disabled={disabled || (chatMode && askDisabled)}
-            aria-label={chatMode ? "Ask this call a question" : "Add a directive"}
+            aria-label={chatMode ? t("activeCall.askAria") : t("activeCall.addDirectiveAria")}
             className="min-w-0 flex-1 bg-transparent font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray focus:outline-none"
           />
           {asking && (
             <span className="flex-shrink-0 font-mono text-[10px] uppercase tracking-wider text-brand-mid-gray">
-              Reading the call...
+              {t("activeCall.readingCall")}
             </span>
           )}
           {text.trim() && !asking && (

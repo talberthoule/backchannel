@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import * as api from "../../services/api";
 
 interface Props {
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export default function DirectiveInput({ sessionId, onAdded }: Props) {
+  const { t } = useTranslation();
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -39,7 +41,7 @@ export default function DirectiveInput({ sessionId, onAdded }: Props) {
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="e.g., watch for unclear concepts, key decisions, open questions, risks, and follow-up actions"
+        placeholder={t("directives.placeholder")}
         rows={2}
         className="flex-1 rounded-lg border border-brand-light-gray-1 bg-surface px-4 py-3
                    font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray
@@ -54,7 +56,7 @@ export default function DirectiveInput({ sessionId, onAdded }: Props) {
                    disabled:opacity-40 disabled:cursor-not-allowed
                    focus:ring-2 focus:ring-brand-teal-light focus:ring-offset-2"
       >
-        {submitting ? "Adding..." : "Add Directive"}
+        {submitting ? t("preCall.simpleAdding") : t("directives.add")}
       </button>
     </div>
   );

@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "@fontsource-variable/inter";
+import "./i18n";
 import App from "./App";
 import { ConfirmProvider } from "./components/ConfirmProvider";
 import "./index.css";

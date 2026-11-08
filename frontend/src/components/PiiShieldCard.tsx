@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { PiiCategory, PiiEgressEntry, PiiPreview, PiiShieldSettings, PiiShieldStatus } from "../types";
 import * as api from "../services/api";
 import { ModelDownloadRow } from "./ModelDownloads";
@@ -10,13 +11,17 @@ import { ModelDownloadRow } from "./ModelDownloads";
 const SAMPLE =
   "Hi, this is Sarah Connor from Cyberdyne. Email me at sarah.connor@cyberdyne.com or call 555-867-5309 about the Q3 renewal.";
 
-const CATEGORY_HINTS: Partial<Record<PiiCategory, string>> = {
-  PERSON: "Speaker names always; other names via the on-device model and introductions.",
-  ORG: "Company names via the on-device model and your protected terms.",
-  LOCATION: "Off by default: place names are usually analysis, not identity.",
+const CATEGORY_HINT_KEYS: Partial<Record<PiiCategory, string>> = {
+  PERSON: "pii.categoryHints.person",
+  ORG: "pii.categoryHints.org",
+  LOCATION: "pii.categoryHints.location",
 };
 
-const TERM_LABELS: Partial<Record<PiiCategory, string>> = { ORG: "org", PERSON: "person", LOCATION: "place" };
+const TERM_LABEL_KEYS: Partial<Record<PiiCategory, string>> = {
+  ORG: "pii.termLabels.org",
+  PERSON: "pii.termLabels.person",
+  LOCATION: "pii.termLabels.place",
+};
 
 type Update = Partial<PiiShieldSettings>;
 
@@ -25,6 +30,7 @@ const smallButtonClass =
   "rounded-md border border-brand-light-gray-1 px-2.5 py-1 font-body text-xs font-medium text-brand-dark-gray transition-colors hover:bg-brand-light-gray-2 disabled:opacity-60";
 
 function CoverageRow({ label, covered, detail }: { label: string; covered: boolean; detail: string }) {
+  const { t } = useTranslation();
   return (
     <li className="flex items-start gap-2.5 py-1.5">
       <span
@@ -35,7 +41,7 @@ function CoverageRow({ label, covered, detail }: { label: string; covered: boole
         <p className="font-body text-xs font-semibold text-brand-dark-gray">
           {label}
           <span className={`ml-2 font-normal ${covered ? "text-brand-teal" : "text-amber-700 dark:text-amber-300"}`}>
-            {covered ? "protected" : "not covered"}
+            {covered ? t("pii.protected") : t("pii.notCovered")}
           </span>
         </p>
         <p className="font-body text-[11px] leading-relaxed text-brand-mid-gray">{detail}</p>
@@ -45,55 +51,62 @@ function CoverageRow({ label, covered, detail }: { label: string; covered: boole
 }
 
 function CoverageList({ status }: { status: PiiShieldStatus }) {
+  const { t } = useTranslation();
   const { coverage, settings } = status;
   const gateway = coverage.live_gateway;
   const refinement = coverage.refinement;
   const gatewayDetail = gateway.paused
-    ? `${gateway.model_id} is configured but skipped while the shield is on: a cloud gateway would hear the names the shield withholds. Live captions stay off unless the Audio Bridge uses the on-device captioner.`
+    ? t("pii.coverage.gatewayPaused", { model: gateway.model_id })
     : !gateway.covered
-      ? `Live audio streams to ${gateway.model_id} for interim captions. Switch it to the on-device captioner or disable it in Agents.`
+      ? t("pii.coverage.gatewayCloud", { model: gateway.model_id })
       : gateway.model_id
-        ? `The gateway is on-device (${gateway.model_id}).`
-        : "The audio gateway is off or has no model selected, so no live audio leaves this machine.";
+        ? t("pii.coverage.gatewayLocal", { model: gateway.model_id })
+        : t("pii.coverage.gatewayOff");
   return (
     <ul className="mt-4 divide-y divide-brand-light-gray-2 rounded-lg border border-brand-light-gray-1 px-3">
       <CoverageRow
-        label="Transcripts, insights, briefings, chat and documents"
+        label={t("pii.coverage.text")}
         covered={coverage.text}
         detail={settings.enabled
-          ? "Every line is tokenized as it is written, so each model prompt is built from clean text. Cloud text models receive tokens only."
-          : "Turn the shield on to tokenize new text. Sessions recorded earlier keep what they hold until you protect them."}
+          ? t("pii.coverage.textOn")
+          : t("pii.coverage.textOff")}
       />
       <CoverageRow
-        label="Transcription audio"
+        label={t("pii.coverage.audio")}
         covered={coverage.transcription.covered}
         detail={coverage.transcription.covered
           ? coverage.enforced
-            ? `Audio cannot be tokenized, so while the shield is on transcription is held to a local model (${coverage.transcription.model_id}); cloud transcribers are locked in Transcription & Audio.`
-            : `Transcription runs on this machine (${coverage.transcription.model_id}), so no audio leaves it.`
-          : `Call audio goes to ${coverage.transcription.model_id} to be transcribed, and spoken names travel with it. Turn the shield on to hold transcription to a local model.`}
+            ? t("pii.coverage.audioEnforced", { model: coverage.transcription.model_id })
+            : t("pii.coverage.audioLocal", { model: coverage.transcription.model_id })
+          : t("pii.coverage.audioCloud", { model: coverage.transcription.model_id })}
       />
-      <CoverageRow label="Live captions (audio gateway)" covered={gateway.covered} detail={gatewayDetail} />
+      <CoverageRow label={t("pii.coverage.captions")} covered={gateway.covered} detail={gatewayDetail} />
       {/* The badge answers a privacy question; whether the stage runs is a
           detail below it. Reading the agent's on/off switch as coverage put a
           red "not covered" on a state that leaks nothing (ALP-366). */}
       <CoverageRow
-        label="Transcript refinement"
+        label={t("pii.coverage.refinement")}
         covered={refinement.covered}
         detail={refinement.covered
-          ? `The refiner only ever reads tokenized text, so it stays covered on any model, local or cloud, and a rewrite is kept only if it carries exactly the original tokens. ${refinement.enabled
-              ? `Running now on ${refinement.model_id}, every ${refinement.interval_seconds}s and at call end.`
-              : "Currently off; enable the Transcript Refiner in Agents to polish punctuation, casing and mishearings."}`
-          : "Turn the shield on to tokenize new text; until then the refiner reads whatever the transcript holds."}
+          ? t("pii.coverage.refinementOn", {
+              status: refinement.enabled
+                ? t("pii.coverage.refinementRunning", {
+                    model: refinement.model_id,
+                    seconds: refinement.interval_seconds,
+                  })
+                : t("pii.coverage.refinementOff"),
+            })
+          : t("pii.coverage.refinementDisabled")}
       />
     </ul>
   );
 }
 
 function CategoryPicker({ status, saving, onToggle }: { status: PiiShieldStatus; saving: boolean; onToggle: (id: PiiCategory) => void }) {
+  const { t } = useTranslation();
   return (
     <section>
-      <h4 className="font-body text-xs font-semibold uppercase tracking-wide text-brand-mid-gray">Looks for</h4>
+      <h4 className="font-body text-xs font-semibold uppercase tracking-wide text-brand-mid-gray">{t("pii.looksFor")}</h4>
       <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
         {status.categories.map((category) => (
           <label key={category.id} className="flex cursor-pointer items-start gap-2 rounded-md px-1.5 py-1 hover:bg-brand-light-gray-2">
@@ -106,8 +119,8 @@ function CategoryPicker({ status, saving, onToggle }: { status: PiiShieldStatus;
             />
             <span className="font-body text-xs text-brand-dark-gray">
               {category.label}
-              {CATEGORY_HINTS[category.id] && (
-                <span className="block text-[11px] text-brand-mid-gray">{CATEGORY_HINTS[category.id]}</span>
+              {CATEGORY_HINT_KEYS[category.id] && (
+                <span className="block text-[11px] text-brand-mid-gray">{t(CATEGORY_HINT_KEYS[category.id]!)}</span>
               )}
             </span>
           </label>
@@ -118,15 +131,16 @@ function CategoryPicker({ status, saving, onToggle }: { status: PiiShieldStatus;
 }
 
 function NerSection({ status, saving, onApply, onReload }: { status: PiiShieldStatus; saving: boolean; onApply: (u: Update) => void; onReload: () => Promise<void> }) {
+  const { t } = useTranslation();
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { ner, settings } = status;
   const label: Record<PiiShieldStatus["ner"]["state"], string> = {
-    off: "Off",
-    ready: "Ready",
-    not_downloaded: settings.enabled ? "Not downloaded" : "Downloads when enabled",
-    downloading: "Downloading",
-    unavailable: "Unavailable",
+    off: t("pii.nerState.off"),
+    ready: t("pii.nerState.ready"),
+    not_downloaded: settings.enabled ? t("pii.nerState.notDownloaded") : t("pii.nerState.downloadsWhenEnabled"),
+    downloading: t("pii.nerState.downloading"),
+    unavailable: t("pii.nerState.unavailable"),
   };
   const badge = ner.state === "ready"
     ? "bg-brand-teal/10 text-brand-teal"
@@ -143,7 +157,7 @@ function NerSection({ status, saving, onApply, onReload }: { status: PiiShieldSt
       await api.installPiiNer();
       await onReload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "The on-device model could not be installed.");
+      setError(err instanceof Error ? err.message : t("pii.nerInstallFailed"));
     } finally {
       setStarting(false);
     }
@@ -154,13 +168,11 @@ function NerSection({ status, saving, onApply, onReload }: { status: PiiShieldSt
   return (
     <section>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-body text-xs font-semibold uppercase tracking-wide text-brand-mid-gray">On-device name recognition</h4>
+        <h4 className="font-body text-xs font-semibold uppercase tracking-wide text-brand-mid-gray">{t("pii.nerTitle")}</h4>
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge}`}>{label[ner.state]}</span>
       </div>
       <p className="mt-1 font-body text-[11px] leading-relaxed text-brand-mid-gray">
-        A small named-entity model ({ner.model}, about 110 MB) finds people, companies and places in free
-        text. It downloads once and then runs offline on the CPU. Without it the shield still catches
-        speaker names, protected terms, introductions, names it has seen before, and every structured identifier.
+        {t("pii.nerBody", { model: ner.model })}
       </p>
       {(error || (ner.state === "unavailable" && ner.error && !ner.download)) && (
         <p className="mt-1 font-mono text-[11px] text-red-700">{error || ner.error}</p>
@@ -177,11 +189,11 @@ function NerSection({ status, saving, onApply, onReload }: { status: PiiShieldSt
             disabled={saving}
             className={checkboxClass}
           />
-          Use the on-device model
+          {t("pii.useNer")}
         </label>
         {settings.ner && ner.state !== "ready" && !running && (
           <button type="button" onClick={() => void install()} disabled={starting} className={smallButtonClass}>
-            {starting ? "Starting..." : ner.state === "unavailable" ? "Retry download" : "Download now"}
+            {starting ? t("pii.starting") : ner.state === "unavailable" ? t("pii.retryDownload") : t("pii.downloadNow")}
           </button>
         )}
       </div>
@@ -190,6 +202,7 @@ function NerSection({ status, saving, onApply, onReload }: { status: PiiShieldSt
 }
 
 function TermsSection({ settings, saving, onApply }: { settings: PiiShieldSettings; saving: boolean; onApply: (u: Update) => void }) {
+  const { t } = useTranslation();
   const [value, setValue] = useState("");
   const [category, setCategory] = useState<PiiCategory>("ORG");
 
@@ -205,17 +218,16 @@ function TermsSection({ settings, saving, onApply }: { settings: PiiShieldSettin
 
   return (
     <section>
-      <h4 className="font-body text-xs font-semibold uppercase tracking-wide text-brand-mid-gray">Protected terms</h4>
+      <h4 className="font-body text-xs font-semibold uppercase tracking-wide text-brand-mid-gray">{t("pii.termsTitle")}</h4>
       <p className="mt-1 font-body text-[11px] leading-relaxed text-brand-mid-gray">
-        Names the model might miss and that must never leave this machine: client companies, project code
-        names, a person who is never introduced. Matched as whole words in every session.
+        {t("pii.termsBody")}
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
-          placeholder="Acme Corporation"
+          placeholder={t("pii.termPlaceholder")}
           maxLength={200}
           className="min-w-[12rem] flex-1 rounded-md border border-brand-light-gray-1 bg-surface px-3 py-1.5 font-body text-xs text-brand-dark-gray placeholder:text-brand-mid-gray focus:border-brand-teal focus:ring-1 focus:ring-brand-teal-light"
         />
@@ -223,11 +235,11 @@ function TermsSection({ settings, saving, onApply }: { settings: PiiShieldSettin
           value={category}
           onChange={(e) => setCategory(e.target.value as PiiCategory)}
           className="rounded-md border border-brand-light-gray-1 bg-surface px-2 py-1.5 font-body text-xs text-brand-dark-gray"
-          aria-label="Term category"
+          aria-label={t("pii.termCategory")}
         >
-          <option value="ORG">Organization</option>
-          <option value="PERSON">Person</option>
-          <option value="LOCATION">Place</option>
+          <option value="ORG">{t("pii.organization")}</option>
+          <option value="PERSON">{t("pii.person")}</option>
+          <option value="LOCATION">{t("pii.place")}</option>
         </select>
         <button
           type="button"
@@ -235,7 +247,7 @@ function TermsSection({ settings, saving, onApply }: { settings: PiiShieldSettin
           disabled={saving || !value.trim()}
           className="rounded-md bg-brand-teal px-3 py-1.5 font-body text-xs font-semibold text-white transition-colors hover:bg-brand-teal-dark disabled:opacity-50"
         >
-          Add
+          {t("common.add")}
         </button>
       </div>
       {settings.protected_terms.length > 0 && (
@@ -243,11 +255,13 @@ function TermsSection({ settings, saving, onApply }: { settings: PiiShieldSettin
           {settings.protected_terms.map((term) => (
             <li key={term.value} className="inline-flex items-center gap-1 rounded-full border border-brand-light-gray-1 bg-brand-light-gray-2 py-0.5 pl-2.5 pr-1 font-body text-xs text-brand-dark-gray">
               {term.value}
-              <span className="text-[10px] uppercase text-brand-mid-gray">{TERM_LABELS[term.category] ?? term.category.toLowerCase()}</span>
+              <span className="text-[10px] uppercase text-brand-mid-gray">
+                {TERM_LABEL_KEYS[term.category] ? t(TERM_LABEL_KEYS[term.category]!) : term.category.toLowerCase()}
+              </span>
               <button
                 type="button"
                 onClick={() => remove(term.value)}
-                aria-label={`Remove ${term.value}`}
+                aria-label={t("pii.removeTerm", { term: term.value })}
                 className="rounded-full p-0.5 text-brand-mid-gray hover:bg-brand-light-gray-1 hover:text-brand-dark-gray"
               >
                 <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -263,6 +277,7 @@ function TermsSection({ settings, saving, onApply }: { settings: PiiShieldSettin
 }
 
 function PreviewSection() {
+  const { t } = useTranslation();
   const [sample, setSample] = useState(SAMPLE);
   const [preview, setPreview] = useState<PiiPreview | null>(null);
   const [busy, setBusy] = useState(false);
@@ -275,7 +290,7 @@ function PreviewSection() {
     try {
       setPreview(await api.previewPiiShield(sample));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Preview failed.");
+      setError(err instanceof Error ? err.message : t("pii.previewFailed"));
     } finally {
       setBusy(false);
     }
@@ -283,7 +298,7 @@ function PreviewSection() {
 
   return (
     <section>
-      <h4 className="font-body text-xs font-semibold uppercase tracking-wide text-brand-mid-gray">Try a sentence</h4>
+      <h4 className="font-body text-xs font-semibold uppercase tracking-wide text-brand-mid-gray">{t("pii.trySentence")}</h4>
       <textarea
         value={sample}
         onChange={(e) => setSample(e.target.value)}
@@ -292,16 +307,16 @@ function PreviewSection() {
       />
       <div className="mt-2 flex items-center gap-3">
         <button type="button" onClick={() => void run()} disabled={busy || !sample.trim()} className={`px-3 py-1.5 ${smallButtonClass}`}>
-          {busy ? "Scanning..." : "Show what a model would see"}
+          {busy ? t("pii.scanning") : t("pii.showPreview")}
         </button>
-        <span className="font-body text-[11px] text-brand-mid-gray">Nothing is stored; the preview numbers tokens from 1.</span>
+        <span className="font-body text-[11px] text-brand-mid-gray">{t("pii.previewHint")}</span>
       </div>
       {error && <p className="mt-2 font-body text-xs text-red-700">{error}</p>}
       {preview && (
         <div className="mt-3 rounded-md border border-brand-light-gray-1 bg-brand-light-gray-2/60 p-3">
           <p className="font-mono text-xs leading-relaxed text-brand-dark-gray">{preview.protected}</p>
           {preview.findings.length === 0 ? (
-            <p className="mt-2 font-body text-[11px] text-brand-mid-gray">Nothing in that text matched the enabled categories.</p>
+            <p className="mt-2 font-body text-[11px] text-brand-mid-gray">{t("pii.noMatches")}</p>
           ) : (
             <ul className="mt-2 flex flex-wrap gap-1.5">
               {preview.findings.map((f, i) => (
@@ -321,6 +336,7 @@ function PreviewSection() {
 // What actually left for the models: the prompt log, newest first. Tokens
 // show as tokens here (the route is not session-scoped), which is the point.
 function EgressSection({ settings, saving, onApply }: { settings: PiiShieldSettings; saving: boolean; onApply: (u: Update) => void }) {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<PiiEgressEntry[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -345,16 +361,14 @@ function EgressSection({ settings, saving, onApply }: { settings: PiiShieldSetti
   return (
     <section>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-body text-xs font-semibold uppercase tracking-wide text-brand-mid-gray">Outbound prompts</h4>
+        <h4 className="font-body text-xs font-semibold uppercase tracking-wide text-brand-mid-gray">{t("pii.outbound")}</h4>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => void load()} disabled={busy} className={smallButtonClass}>{busy ? "Loading..." : "Refresh"}</button>
-          <button type="button" onClick={() => void clear()} disabled={busy || entries.length === 0} className={smallButtonClass}>Clear log</button>
+          <button type="button" onClick={() => void load()} disabled={busy} className={smallButtonClass}>{busy ? t("pii.loading") : t("pii.refresh")}</button>
+          <button type="button" onClick={() => void clear()} disabled={busy || entries.length === 0} className={smallButtonClass}>{t("pii.clearLog")}</button>
         </div>
       </div>
       <p className="mt-1 font-body text-[11px] leading-relaxed text-brand-mid-gray">
-        With the log on, every prompt is written to the data directory exactly as it leaves for a model,
-        so you can confirm the models only ever see tokens. While the shield is on, a prompt that still
-        carries a vault value is refused before it is sent and appears here marked blocked.
+        {t("pii.outboundBody")}
       </p>
       <label className="mt-2 flex items-center gap-2 font-body text-xs text-brand-dark-gray">
         <input
@@ -364,7 +378,7 @@ function EgressSection({ settings, saving, onApply }: { settings: PiiShieldSetti
           disabled={saving}
           className={checkboxClass}
         />
-        Record outbound prompts
+        {t("pii.recordPrompts")}
       </label>
       {entries.length > 0 && (
         <ul className="mt-3 divide-y divide-brand-light-gray-2 rounded-md border border-brand-light-gray-1">
@@ -377,17 +391,17 @@ function EgressSection({ settings, saving, onApply }: { settings: PiiShieldSetti
                   <span className="font-mono text-[11px] text-brand-mid-gray">{new Date(entry.at).toLocaleTimeString()}</span>
                   <span className="font-body text-xs font-semibold text-brand-dark-gray">{entry.source || "text"}</span>
                   <span className="font-mono text-[11px] text-brand-mid-gray">{entry.model_id}</span>
-                  <span className="font-body text-[11px] text-brand-mid-gray">{entry.chars.toLocaleString()} chars</span>
+                  <span className="font-body text-[11px] text-brand-mid-gray">{t("pii.chars", { value: entry.chars.toLocaleString() })}</span>
                   {entry.blocked ? (
-                    <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">blocked: {entry.leaks.map((l) => l.category).join(", ")}</span>
+                    <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">{t("pii.blocked", { categories: entry.leaks.map((l) => l.category).join(", ") })}</span>
                   ) : entry.tokens_present ? (
-                    <span className="rounded-full bg-brand-teal/10 px-2 py-0.5 text-[10px] font-semibold text-brand-teal">tokens only</span>
+                    <span className="rounded-full bg-brand-teal/10 px-2 py-0.5 text-[10px] font-semibold text-brand-teal">{t("pii.tokensOnly")}</span>
                   ) : (
-                    <span className="rounded-full bg-brand-light-gray-2 px-2 py-0.5 text-[10px] font-semibold text-brand-mid-gray">no tokens</span>
+                    <span className="rounded-full bg-brand-light-gray-2 px-2 py-0.5 text-[10px] font-semibold text-brand-mid-gray">{t("pii.noTokens")}</span>
                   )}
                 </button>
                 {expanded && (
-                  <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded bg-brand-light-gray-2/60 p-2 font-mono text-[11px] leading-relaxed text-brand-dark-gray">{entry.prompt}{entry.truncated ? "\n[truncated]" : ""}</pre>
+                  <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded bg-brand-light-gray-2/60 p-2 font-mono text-[11px] leading-relaxed text-brand-dark-gray">{entry.prompt}{entry.truncated ? `\n${t("pii.truncated")}` : ""}</pre>
                 )}
               </li>
             );
@@ -398,11 +412,8 @@ function EgressSection({ settings, saving, onApply }: { settings: PiiShieldSetti
   );
 }
 
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
-}
-
 export default function PiiShieldCard({ onChanged }: { onChanged?: (status: PiiShieldStatus) => void }) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<PiiShieldStatus | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -415,7 +426,7 @@ export default function PiiShieldCard({ onChanged }: { onChanged?: (status: PiiS
       onChanged?.(next);
     } catch (err) {
       console.error("Failed to load PII Shield status", err);
-      setError(err instanceof Error ? err.message : "Unable to load the PII Shield.");
+      setError(err instanceof Error ? err.message : t("pii.loadFailed"));
     }
   };
 
@@ -437,7 +448,7 @@ export default function PiiShieldCard({ onChanged }: { onChanged?: (status: PiiS
       setStatus(next);
       onChanged?.(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update the PII Shield.");
+      setError(err instanceof Error ? err.message : t("pii.updateFailed"));
     } finally {
       setSaving(false);
     }
@@ -455,20 +466,17 @@ export default function PiiShieldCard({ onChanged }: { onChanged?: (status: PiiS
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="font-display text-base font-bold text-brand-dark-gray">PII Shield</h3>
+            <h3 className="font-display text-base font-bold text-brand-dark-gray">{t("pii.title")}</h3>
             <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
               enabled
                 ? "border-teal-600 bg-teal-700 text-white dark:border-teal-500 dark:bg-teal-900 dark:text-teal-100"
                 : "border-slate-500 bg-slate-700 text-slate-50"
             }`}>
-              {enabled ? "Personal data tokenized" : "Personal data stored as spoken"}
+              {enabled ? t("pii.onBadge") : t("pii.offBadge")}
             </span>
           </div>
           <p className="mt-1 font-body text-xs leading-relaxed text-brand-gray">
-            Replaces names, contact details and identifiers with tokens such as
-            <span className="font-mono"> [PERSON_1]</span> before anything is stored or shown to a
-            model, local or cloud. The real values sit in an encrypted vault on this machine and
-            are put back only on the screen in front of you and in exports you ask for.
+            {t("pii.body")}
           </p>
         </div>
         <button
@@ -477,7 +485,7 @@ export default function PiiShieldCard({ onChanged }: { onChanged?: (status: PiiS
           disabled={!status || saving}
           role="switch"
           aria-checked={enabled}
-          aria-label={enabled ? "Turn off the PII Shield" : "Turn on the PII Shield"}
+          aria-label={enabled ? t("pii.turnOff") : t("pii.turnOn")}
           className={`h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed ${enabled ? "bg-brand-teal" : "bg-brand-light-gray-1"}`}
         >
           <span className={`block h-5 w-5 rounded-full bg-surface shadow transition-transform ${enabled ? "translate-x-5" : "translate-x-0.5"}`} />
@@ -492,8 +500,11 @@ export default function PiiShieldCard({ onChanged }: { onChanged?: (status: PiiS
 
       {status && enabled && (
         <p className="mt-3 font-body text-[11px] text-brand-mid-gray">
-          Vault: {plural(status.vault.entries, "protected value")} across all sessions.
-          Revealed to this screen in the last 24 hours: {plural(status.reveals_24h.tokens, "token")} over {plural(status.reveals_24h.requests, "request")}.
+          {t("pii.vault", {
+            values: t("pii.protectedValue", { count: status.vault.entries }),
+            tokens: t("pii.token", { count: status.reveals_24h.tokens }),
+            requests: t("pii.request", { count: status.reveals_24h.requests }),
+          })}
         </p>
       )}
 
@@ -506,7 +517,7 @@ export default function PiiShieldCard({ onChanged }: { onChanged?: (status: PiiS
         <svg className={`h-3 w-3 transition-transform ${showDetails ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
-        {showDetails ? "Hide" : "Show"} what it looks for and try a sentence
+        {showDetails ? t("pii.hide") : t("pii.show")} {t("pii.detailsToggle")}
       </button>
 
       {showDetails && status && (

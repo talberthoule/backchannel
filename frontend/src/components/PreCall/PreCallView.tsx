@@ -1,11 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import type { Directive, Document, Session, Speaker } from "../../types";
 import * as api from "../../services/api";
 import DocumentUpload from "./DocumentUpload";
 import DirectiveInput from "./DirectiveInput";
 import DirectiveList from "./DirectiveList";
 import AgentSelector from "./AgentSelector";
-import MeetingContextSetup, { MEETING_TYPES } from "./MeetingContextSetup";
+import MeetingContextSetup, { meetingTypeCopy } from "./MeetingContextSetup";
 import SpeakerSetup from "./SpeakerSetup";
 import TranscriptImport from "./TranscriptImport";
 import EditableSessionName from "../EditableSessionName";
@@ -52,6 +53,7 @@ function SetupSection({
   optional?: boolean;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(defaultOpen);
   const id = `precall-${title.toLowerCase().replace(/[^a-z]+/g, "-")}`;
   return (
@@ -73,7 +75,7 @@ function SetupSection({
           <span className="min-w-0">
             <span className="font-display text-sm font-semibold text-brand-dark-gray">
               {title}
-              {optional && <span className="ml-1.5 font-body text-[11px] font-normal text-brand-mid-gray">optional</span>}
+              {optional && <span className="ml-1.5 font-body text-[11px] font-normal text-brand-mid-gray">{t("preCall.optional")}</span>}
             </span>
             <span className="block truncate font-body text-xs text-brand-mid-gray">{summary}</span>
           </span>
@@ -85,10 +87,6 @@ function SetupSection({
       </div>
     </section>
   );
-}
-
-function pluralize(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 export default function PreCallView({
@@ -113,6 +111,7 @@ export default function PreCallView({
   onRenameSession,
   onUpdateSessionContext,
 }: Props) {
+  const { t } = useTranslation();
   const [hasImport, setHasImport] = useState(false);
   const [voiceEnrolled, setVoiceEnrolled] = useState<boolean | null>(null);
   const [showConsent, setShowConsent] = useState(false);
@@ -133,13 +132,13 @@ export default function PreCallView({
     void onRefreshTranscripts();
   };
 
-  const typeLabel = MEETING_TYPES.find((t) => t.value === session.meeting_type)?.label ?? "General";
+  const typeLabel = meetingTypeCopy(session.meeting_type, t).label;
   const activeDirectives = directives.filter((d) => d.active).length;
   const readiness = [
     typeLabel,
-    documents.length ? pluralize(documents.length, "document") : null,
-    activeDirectives ? pluralize(activeDirectives, "directive") : null,
-    speakers.length ? pluralize(speakers.length, "participant") : "participants auto-detected",
+    documents.length ? t("preCall.count.documents", { count: documents.length }) : null,
+    activeDirectives ? t("preCall.count.directives", { count: activeDirectives }) : null,
+    speakers.length ? t("preCall.count.participants", { count: speakers.length }) : t("preCall.autoDetectedParticipants"),
   ].filter(Boolean).join(" · ");
 
   const soleUserNeedsVoice = speakers.filter((s) => s.is_user).length === 1 && voiceEnrolled === false;
@@ -166,7 +165,7 @@ export default function PreCallView({
               disabled={processingTranscript}
               className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-brand-amber px-5 py-2.5 font-display text-sm font-semibold text-white shadow-md transition-colors hover:bg-amber-600 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-amber focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {processingTranscript ? "Processing..." : "Process Transcript"}
+              {processingTranscript ? t("preCall.processing") : t("preCall.processTranscript")}
             </button>
           ) : (
             <button
@@ -176,7 +175,7 @@ export default function PreCallView({
               className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-brand-teal px-5 py-2.5 font-display text-sm font-semibold text-white shadow-md transition-colors hover:bg-brand-teal-dark hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-teal-light focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <span className={`inline-block h-2 w-2 rounded-full ${isStarting ? "animate-pulse bg-white/70" : "bg-white"}`} aria-hidden="true" />
-              {isStarting ? "Starting..." : "Start Call"}
+              {isStarting ? t("preCall.starting") : t("preCall.startCall")}
             </button>
           )}
         </div>
@@ -194,11 +193,9 @@ export default function PreCallView({
           <div className="rounded-xl border border-brand-light-gray-1 bg-surface p-4 shadow-sm">
             <label className="flex cursor-pointer items-start justify-between gap-4">
               <span className="min-w-0">
-                <span className="font-display text-sm font-semibold text-brand-dark-gray">Capture the meeting's audio too</span>
+                <span className="font-display text-sm font-semibold text-brand-dark-gray">{t("preCall.captureMeetingAudio")}</span>
                 <span className="mt-0.5 block font-body text-xs leading-relaxed text-brand-mid-gray">
-                  Your microphone is always recorded. This adds a second track from the meeting tab,
-                  window or screen you pick when the call starts, so remote voices are told apart
-                  from yours.
+                  {t("preCall.captureMeetingAudioBody")}
                 </span>
               </span>
               <span className="relative mt-0.5 inline-flex shrink-0">
@@ -215,13 +212,12 @@ export default function PreCallView({
             </label>
             {captureSystemAudio === false && (
               <p className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 font-body text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
-                Mic-only call: remote participants are transcribed only if your microphone can hear
-                them, so with headphones the far end will be missed.
+                {t("preCall.micOnlyWarning")}
                 {soleUserNeedsVoice && (
                   <>
-                    {" "}Voice calibration also makes identifying you more reliable.{" "}
+                    {" "}{t("preCall.voiceCalibrationHint")}{" "}
                     <button type="button" onClick={onOpenVoiceSettings} className="font-semibold underline">
-                      Open Transcription &amp; Audio
+                      {t("preCall.openTranscriptionAudio")}
                     </button>
                   </>
                 )}
@@ -229,37 +225,34 @@ export default function PreCallView({
             )}
             <p className="mt-3 flex flex-wrap items-center gap-x-2 font-body text-xs text-brand-gray">
               <span className="text-brand-amber" aria-hidden="true">&#9888;</span>
-              <span>This call is recorded and transcribed. Make sure everyone on it has been told and does not object.</span>
+              <span>{t("preCall.recordingNotice")}</span>
               <button
                 type="button"
                 onClick={() => setShowConsent((v) => !v)}
                 aria-expanded={showConsent}
                 className="font-semibold text-brand-teal hover:underline"
               >
-                {showConsent ? "Less" : "More"}
+                {showConsent ? t("preCall.less") : t("preCall.more")}
               </button>
             </p>
             {showConsent && (
               <p className="mt-2 font-body text-xs leading-relaxed text-brand-mid-gray">
-                Backchannel transcribes live audio to generate questions and insights. Before
-                starting, ensure all participants have been informed and have given consent (or do
-                not object) to the recording and transcription of the conversation. You are
-                responsible for compliance with applicable laws and company policies.
+                {t("preCall.consentDetails")}
               </p>
             )}
           </div>
         )}
 
         <SetupSection
-          title="Context"
-          summary={session.meeting_context ? session.meeting_context : "Tell the agents what kind of conversation this is"}
+          title={t("preCall.sections.context")}
+          summary={session.meeting_context ? session.meeting_context : t("preCall.sections.contextSummary")}
           defaultOpen
           tooltip={{
-            content: "Tell the agents what kind of conversation this is so they do not force every session into a client-sales frame.",
+            content: t("preCall.sections.contextTooltip"),
             details: [
-              "Internal enablement: focus on concepts, misconceptions, learner questions, and follow-up material",
-              "Vendor or partner: focus on roadmap, program updates, commitments, and partner motions",
-              "Client or delivery: focus on objectives, risks, decisions, opportunities, and next actions",
+              t("preCall.sections.contextInternal"),
+              t("preCall.sections.contextVendor"),
+              t("preCall.sections.contextClient"),
             ],
           }}
         >
@@ -267,17 +260,17 @@ export default function PreCallView({
         </SetupSection>
 
         <SetupSection
-          title="Documents"
+          title={t("preCall.sections.documents")}
           optional
-          summary={documents.length ? documents.map((d) => d.filename).join(", ") : "Reference material the agents can draw on"}
+          summary={documents.length ? documents.map((d) => d.filename).join(", ") : t("preCall.sections.documentsSummary")}
           defaultOpen={documents.length > 0}
           tooltip={{
-            content: "Upload reference materials before the call. The AI agents will use these documents as context when generating questions and insights.",
+            content: t("preCall.sections.documentsTooltip"),
             details: [
-              "Uploaded files are sent to Gemini for analysis alongside the live transcript",
-              "With Privacy First or the PII Shield on, text files are read on this machine instead",
-              "Supports PDFs, Word docs, spreadsheets, and text files",
-              "Documents persist with the session and can be removed at any time",
+              t("preCall.sections.documentsGemini"),
+              t("preCall.sections.documentsPrivacy"),
+              t("preCall.sections.documentsTypes"),
+              t("preCall.sections.documentsPersist"),
             ],
           }}
         >
@@ -285,16 +278,16 @@ export default function PreCallView({
         </SetupSection>
 
         <SetupSection
-          title="Import a transcript or recording"
+          title={t("preCall.sections.import")}
           optional
-          summary={hasImportedTranscript ? `${transcriptCount || "Imported"} lines ready to process` : "Analyze a past meeting instead of a live call"}
+          summary={hasImportedTranscript ? t("preCall.count.lines", { count: transcriptCount }) : t("preCall.sections.importSummary")}
           defaultOpen={hasImportedTranscript}
           tooltip={{
-            content: "Instead of a live call, import an existing transcript or audio recording to analyze. The AI agents will process it as if it were a completed call.",
+            content: t("preCall.sections.importTooltip"),
             details: [
-              "Transcript files: .txt, .md, .docx - parsed into speaker segments",
-              "Audio files: .m4a, .mp3, .wav, .ogg, .flac - transcribed first",
-              "After importing, the action button changes to \"Process Transcript\"",
+              t("preCall.sections.importTranscriptTypes"),
+              t("preCall.sections.importAudioTypes"),
+              t("preCall.sections.importAction"),
             ],
           }}
         >
@@ -302,17 +295,17 @@ export default function PreCallView({
         </SetupSection>
 
         <SetupSection
-          title="Coaching directives"
+          title={t("preCall.sections.directives")}
           optional
-          summary={activeDirectives ? `${pluralize(activeDirectives, "active directive")}` : "What to watch for during this call"}
+          summary={activeDirectives ? t("preCall.count.activeDirective", { count: activeDirectives }) : t("preCall.sections.directivesSummary")}
           defaultOpen={directives.length > 0}
           tooltip={{
-            content: "Give the AI specific instructions about what to watch for during the call. Directives shape the questions and insights generated by all agents.",
+            content: t("preCall.sections.directivesTooltip"),
             details: [
-              "Example: \"Capture concepts the sales team struggles with and follow-up questions for the engineer\"",
-              "Directives can be toggled on/off without deleting them",
-              "Active directives are included in every agent's analysis cycle",
-              "You can also add directives mid-call via the active call view",
+              t("preCall.sections.directivesExample"),
+              t("preCall.sections.directivesToggle"),
+              t("preCall.sections.directivesActive"),
+              t("preCall.sections.directivesMidCall"),
             ],
           }}
         >
@@ -323,17 +316,17 @@ export default function PreCallView({
         </SetupSection>
 
         <SetupSection
-          title="Participants"
+          title={t("preCall.sections.participants")}
           optional
-          summary={speakers.length ? speakers.map((s) => s.name).join(", ") : "Auto-detected during the call; name them here to label voices"}
+          summary={speakers.length ? speakers.map((s) => s.name).join(", ") : t("preCall.sections.participantsSummary")}
           defaultOpen={speakers.length > 0}
           tooltip={{
-            content: "Pre-register call participants so the AI can attribute transcript segments to specific speakers by voice. If skipped, speakers are auto-detected and labeled generically.",
+            content: t("preCall.sections.participantsTooltip"),
             details: [
-              "Assign names, roles, and colors to each participant",
-              "Mark one speaker as \"me\" to distinguish your voice",
-              "Pre-registered speakers improve diarization accuracy",
-              "You can still rename auto-detected speakers during or after the call",
+              t("preCall.sections.participantsNames"),
+              t("preCall.sections.participantsMe"),
+              t("preCall.sections.participantsAccuracy"),
+              t("preCall.sections.participantsRename"),
             ],
           }}
         >
@@ -341,18 +334,18 @@ export default function PreCallView({
         </SetupSection>
 
         <SetupSection
-          title="Agents for this session"
+          title={t("preCall.sections.agents")}
           optional
-          summary="Uses the Admin defaults unless you change them here"
+          summary={t("preCall.sections.agentsSummary")}
           defaultOpen={false}
           tooltip={{
-            content: "Enable or disable specific AI agents for this session. Each agent runs independently during the call, analyzing the transcript through a different lens.",
+            content: t("preCall.sections.agentsTooltip"),
             details: [
-              "Consolidated Analyst: questions, observations, opportunities, and action items (periodic, configurable interval)",
-              "Principal Agent: quality control, cross-agent synthesis, and strategic pattern detection (event-driven)",
-              "Opportunity Specialist: maps relevant client/customer opportunities to the offerings catalog",
-              "Audio Bridge: silent listener that enables real-time transcription preview",
-              "Changes here override the global Agent Admin defaults for this session only",
+              t("preCall.sections.agentsAnalyst"),
+              t("preCall.sections.agentsPrincipal"),
+              t("preCall.sections.agentsOpportunity"),
+              t("preCall.sections.agentsAudio"),
+              t("preCall.sections.agentsOverride"),
             ],
           }}
         >

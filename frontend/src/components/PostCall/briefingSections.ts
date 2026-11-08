@@ -1,4 +1,5 @@
 import type { Session, SessionSynthesis, SynthesisSectionItem } from "../../types";
+import i18n from "../../i18n/index.ts";
 
 // The briefing's layout rules as plain data, with no React in the way: which
 // section names a meeting type uses, which items are readable, which sections
@@ -11,39 +12,39 @@ export function sectionLabels(session: Pick<Session, "meeting_type">) {
   switch (session.meeting_type) {
     case "internal_enablement":
       return {
-        objectives: "Learning objectives",
-        opportunities: "Enablement opportunities",
-        questions: "Open learning questions",
+        objectives: i18n.t("briefing.sections.learningObjectives"),
+        opportunities: i18n.t("briefing.sections.enablementOpportunities"),
+        questions: i18n.t("briefing.sections.openLearningQuestions"),
       };
     case "internal_checkin":
       return {
-        objectives: "Objectives and needs",
-        opportunities: "Support opportunities",
-        questions: "Open questions",
+        objectives: i18n.t("briefing.sections.objectivesNeeds"),
+        opportunities: i18n.t("briefing.sections.supportOpportunities"),
+        questions: i18n.t("briefing.sections.openQuestions"),
       };
     case "vendor_partner":
       return {
-        objectives: "Vendor and program objectives",
-        opportunities: "Partner opportunities",
-        questions: "Open vendor and program questions",
+        objectives: i18n.t("briefing.sections.vendorObjectives"),
+        opportunities: i18n.t("briefing.sections.partnerOpportunities"),
+        questions: i18n.t("briefing.sections.vendorQuestions"),
       };
     case "customer_delivery":
       return {
-        objectives: "Project objectives",
-        opportunities: "Delivery opportunities",
-        questions: "Open delivery questions",
+        objectives: i18n.t("briefing.sections.projectObjectives"),
+        opportunities: i18n.t("briefing.sections.deliveryOpportunities"),
+        questions: i18n.t("briefing.sections.deliveryQuestions"),
       };
     case "client_sales":
       return {
-        objectives: "Client objectives",
-        opportunities: "Top opportunities",
-        questions: "Unresolved discovery questions",
+        objectives: i18n.t("briefing.sections.clientObjectives"),
+        opportunities: i18n.t("briefing.sections.topOpportunities"),
+        questions: i18n.t("briefing.sections.discoveryQuestions"),
       };
     default:
       return {
-        objectives: "Objectives",
-        opportunities: "Top opportunities",
-        questions: "Open questions",
+        objectives: i18n.t("briefing.sections.objectives"),
+        opportunities: i18n.t("briefing.sections.topOpportunities"),
+        questions: i18n.t("briefing.sections.openQuestions"),
       };
   }
 }
@@ -57,8 +58,8 @@ export function presentItems(items: SynthesisSectionItem[] | null | undefined): 
 // "a", "a and b", "a, b, and c".
 export function formatList(items: string[]): string {
   if (items.length <= 1) return items.join("");
-  if (items.length === 2) return `${items[0]} and ${items[1]}`;
-  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+  if (items.length === 2) return `${items[0]} ${i18n.t("common.and")} ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, ${i18n.t("common.and")} ${items[items.length - 1]}`;
 }
 
 export interface SectionSpec {
@@ -100,13 +101,13 @@ export function buildBriefingLayout(
     items: presentItems(items),
   });
 
-  const outcomes = spec("outcomes", "Top outcomes", synthesis.top_outcomes);
-  const actions = spec("actions", "Action plan", synthesis.action_plan);
-  const risks = spec("risks", "Risks and blockers", synthesis.risks_blockers);
+  const outcomes = spec("outcomes", i18n.t("briefing.sections.topOutcomes"), synthesis.top_outcomes);
+  const actions = spec("actions", i18n.t("briefing.sections.actionPlan"), synthesis.action_plan);
+  const risks = spec("risks", i18n.t("briefing.sections.risks"), synthesis.risks_blockers);
   const objectives = spec("objectives", labels.objectives, synthesis.client_objectives);
   const opportunities = spec("opportunities", labels.opportunities, synthesis.top_opportunities);
   const questions = spec("questions", labels.questions, synthesis.unresolved_discovery_questions);
-  const signals = spec("signals", "Strategic signals", synthesis.strategic_signals);
+  const signals = spec("signals", i18n.t("briefing.sections.strategicSignals"), synthesis.strategic_signals);
 
   const blocks: SectionBlock[] = [];
   if (outcomes.items.length > 0) blocks.push({ kind: "lead", section: outcomes });
@@ -123,8 +124,8 @@ export function buildBriefingLayout(
     missing.length === 0
       ? null
       : missing.length === core.length
-        ? "Nothing was captured in this briefing yet."
-        : `Not captured in this briefing: ${formatList(missing)}.`;
+        ? i18n.t("briefing.nothingCaptured")
+        : i18n.t("briefing.missing", { items: formatList(missing) });
 
   return { blocks, missingNote };
 }

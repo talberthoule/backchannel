@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Speaker } from "../../types";
 import { useConfirm } from "../ConfirmProvider";
 import * as api from "../../services/api";
@@ -19,6 +20,7 @@ const PRESET_COLORS = [
 ];
 
 export default function SpeakerSetup({ sessionId, speakers, onRefresh }: Props) {
+  const { t } = useTranslation();
   const { confirm, toast } = useConfirm();
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
@@ -59,16 +61,16 @@ export default function SpeakerSetup({ sessionId, speakers, onRefresh }: Props) 
 
   const handleDelete = async (id: string) => {
     const ok = await confirm({
-      title: "Remove participant",
-      message: "Remove this participant from the session?",
-      confirmLabel: "Remove",
+      title: t("speakers.removeTitle"),
+      message: t("speakers.removeMessage"),
+      confirmLabel: t("common.remove"),
       tone: "danger",
     });
     if (!ok) return;
     try {
       await api.deleteSpeaker(sessionId, id);
       onRefresh();
-      toast("Participant removed");
+      toast(t("speakers.removed"));
     } catch (err) {
       console.error("Failed to delete speaker", err);
     }
@@ -118,7 +120,7 @@ export default function SpeakerSetup({ sessionId, speakers, onRefresh }: Props) 
               )}
               {speaker.is_user && (
                 <span className="rounded-full bg-brand-teal/10 px-1.5 py-0.5 text-[10px] font-medium text-brand-teal">
-                  You
+                  {t("speakers.you")}
                 </span>
               )}
               <span
@@ -128,12 +130,12 @@ export default function SpeakerSetup({ sessionId, speakers, onRefresh }: Props) 
                     : "bg-brand-light-gray-2 text-brand-gray"
                 }`}
               >
-                {speaker.speaker_type === "team" ? "Team" : "External party"}
+                {speaker.speaker_type === "team" ? t("speakers.team") : t("speakers.external")}
               </span>
               <button
                 onClick={() => handleDelete(speaker.id)}
                 className="ml-1 text-brand-mid-gray hover:text-red-500 transition-colors"
-                title="Remove participant"
+                title={t("speakers.removeTitle")}
               >
                 <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -152,14 +154,14 @@ export default function SpeakerSetup({ sessionId, speakers, onRefresh }: Props) 
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Name"
+              placeholder={t("speakers.name")}
               className="flex-1 rounded-md border border-brand-light-gray-1 px-3 py-2 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray focus:border-brand-teal-light focus:ring-1 focus:ring-brand-teal-light"
             />
             <input
               type="text"
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              placeholder="e.g., Engineer, Seller, Vendor SE"
+              placeholder={t("speakers.rolePlaceholder")}
               className="flex-1 rounded-md border border-brand-light-gray-1 px-3 py-2 font-body text-sm text-brand-dark-gray placeholder:text-brand-mid-gray focus:border-brand-teal-light focus:ring-1 focus:ring-brand-teal-light"
             />
           </div>
@@ -176,7 +178,7 @@ export default function SpeakerSetup({ sessionId, speakers, onRefresh }: Props) 
                   : "bg-brand-light-gray-2 text-brand-gray hover:bg-brand-light-gray-1"
               }`}
             >
-              Team member
+              {t("speakers.teamMember")}
             </button>
             <button
               type="button"
@@ -190,12 +192,12 @@ export default function SpeakerSetup({ sessionId, speakers, onRefresh }: Props) 
                   : "bg-brand-light-gray-2 text-brand-gray hover:bg-brand-light-gray-1"
               }`}
             >
-              External party
+              {t("speakers.external")}
             </button>
           </div>
 
           <div className="flex items-center gap-4">
-            <span className="font-body text-xs text-brand-gray">Color:</span>
+            <span className="font-body text-xs text-brand-gray">{t("speakers.color")}</span>
             <div className="flex gap-2">
               {PRESET_COLORS.map((c) => (
                 <button
@@ -221,7 +223,7 @@ export default function SpeakerSetup({ sessionId, speakers, onRefresh }: Props) 
                 }}
                 className="h-3.5 w-3.5 rounded border-brand-light-gray-1 text-brand-teal focus:ring-brand-teal-light"
               />
-              <span className="font-body text-xs text-brand-gray">This is me</span>
+              <span className="font-body text-xs text-brand-gray">{t("speakers.thisIsMe")}</span>
             </label>
           </div>
 
@@ -231,13 +233,13 @@ export default function SpeakerSetup({ sessionId, speakers, onRefresh }: Props) 
               disabled={!name.trim() || saving}
               className="rounded-md bg-brand-teal px-4 py-1.5 font-body text-sm font-medium text-white transition-colors hover:bg-brand-teal-dark disabled:opacity-50"
             >
-              {saving ? "Adding..." : "Add"}
+              {saving ? t("preCall.simpleAdding") : t("common.add")}
             </button>
             <button
               onClick={resetForm}
               className="rounded-md border border-brand-light-gray-1 px-4 py-1.5 font-body text-sm text-brand-gray transition-colors hover:bg-brand-light-gray-2"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
           </div>
         </div>
@@ -249,7 +251,7 @@ export default function SpeakerSetup({ sessionId, speakers, onRefresh }: Props) 
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
-          Add Participant
+          {t("speakers.addParticipant")}
         </button>
       )}
     </div>

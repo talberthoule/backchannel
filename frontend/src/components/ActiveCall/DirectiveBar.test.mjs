@@ -84,7 +84,7 @@ test("a second submit is ignored while an ask is already in flight", () => {
 });
 
 test("submitting without a model keeps the draft and shows setup guidance", () => {
-  assert.match(src, /Choose a model to ask this call/);
+  assert.match(src, /activeCall\.chooseModel/);
   const guard = src.indexOf("if (!modelId)");
   const clear = src.indexOf('setText("")');
   assert.ok(guard >= 0 && clear > guard, "the no-model return must precede draft clearing");

@@ -73,6 +73,14 @@ export const jsxDEV = jsx;
 export const Fragment = Symbol("Fragment");
 `);
 
+// The probe intentionally exposes only the React hooks used by the meter.
+// i18next's React binding can render from the same real instance without
+// pulling in the rest of React's component API.
+const i18nextStubPath = join(outputDir, "react-i18next-stub.mjs");
+await writeFile(i18nextStubPath, `
+export const initReactI18next = { type: "3rdParty", init() {} };
+`);
+
 const framesPath = join(outputDir, "frames.cjs");
 await build({
   stdin: {
@@ -88,7 +96,7 @@ await build({
   format: "cjs",
   platform: "node",
   outfile: framesPath,
-  alias: { react: probePath, "react/jsx-runtime": probePath },
+  alias: { react: probePath, "react/jsx-runtime": probePath, "react-i18next": i18nextStubPath },
 });
 
 const load = createRequire(import.meta.url);
@@ -250,7 +258,7 @@ test("each meter is named by its own prop", () => {
   assert.doesNotMatch(componentSource, /aria-label="/, "the name is never hardcoded");
 
   // Two meters can be on screen at once; identical names are indistinguishable.
-  const labels = [...viewSource.matchAll(/\slabel="([^"]+)"/g)].map((m) => m[1]);
+  const labels = [...viewSource.matchAll(/\slabel=\{t\("([^"]+)"\)\}/g)].map((m) => m[1]);
   assert.equal(labels.length, 2, "both AudioIndicator call sites pass a name");
   assert.equal(new Set(labels).size, 2, "the two meters must not share a name");
 });

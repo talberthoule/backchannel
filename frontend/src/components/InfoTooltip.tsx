@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   /** Primary explanation shown in the popover body */
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function InfoTooltip({ content, details, placement = "right" }: Props) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -98,7 +100,7 @@ export default function InfoTooltip({ content, details, placement = "right" }: P
         onMouseEnter={show}
         onMouseLeave={hide}
         className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-brand-light-gray-1 text-brand-mid-gray hover:border-brand-teal hover:text-brand-teal hover:bg-brand-teal/5 transition-all duration-150 focus:ring-2 focus:ring-brand-teal-light/40"
-        aria-label="More info"
+        aria-label={t("navigation.moreInfo")}
       >
         <svg className="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 20 20">
           <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM8.94 6.94a.75.75 0 1 1-1.061-1.061 .75.75 0 0 1 1.06 1.06ZM10 8.75a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5a.75.75 0 0 1 .75-.75Z" clipRule="evenodd" />

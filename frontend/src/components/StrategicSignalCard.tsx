@@ -1,15 +1,18 @@
 import type { SignalHistoryItem } from "../types";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 
-const SECTION_LABELS: Record<string, string> = {
-  strategic_signals: "Signal",
-  risks_blockers: "Risk / Blocker",
-  unresolved_discovery_questions: "Discovery Question",
-  top_opportunities: "Opportunity",
-  action_plan: "Action",
+const SECTION_LABEL_KEYS: Record<string, string> = {
+  strategic_signals: "signals.section.signal",
+  risks_blockers: "signals.section.riskBlocker",
+  unresolved_discovery_questions: "signals.section.discoveryQuestion",
+  top_opportunities: "signals.section.opportunity",
+  action_plan: "signals.section.action",
 };
 
 export function signalSectionLabel(section: string): string {
-  return SECTION_LABELS[section] || (section || "signal").replace(/_/g, " ");
+  const key = SECTION_LABEL_KEYS[section];
+  return key ? i18n.t(key) : (section || "signal").replace(/_/g, " ");
 }
 
 export function signalKey(item: SignalHistoryItem, index = 0): string {
@@ -20,7 +23,7 @@ function historyTime(value: string): string {
   const time = new Date(value);
   return Number.isFinite(time.getTime())
     ? time.toLocaleString([], { dateStyle: "short", timeStyle: "short" })
-    : "Unknown";
+    : i18n.t("signals.unknown");
 }
 
 /**
@@ -28,7 +31,8 @@ function historyTime(value: string): string {
  * live call view's Strategic insight filter so both read the same way.
  */
 export default function StrategicSignalCard({ item }: { item: SignalHistoryItem }) {
-  const title = item.title?.trim() || item.summary?.trim() || "Untitled signal";
+  const { t } = useTranslation();
+  const title = item.title?.trim() || item.summary?.trim() || t("signals.untitled");
   const summary = item.summary?.trim() || "";
   const distinctSummary = Boolean(item.title?.trim() && summary);
 
@@ -39,7 +43,7 @@ export default function StrategicSignalCard({ item }: { item: SignalHistoryItem 
           {signalSectionLabel(item.section)}
         </span>
         <span className="font-body text-[11px] font-medium text-brand-mid-gray">
-          {item.count === 1 ? "Seen once" : `Seen ${item.count} times`}
+          {item.count === 1 ? t("signals.seenOnce") : t("signals.seenTimes", { count: item.count })}
         </span>
       </div>
       <h4 className="mt-2 font-body text-sm font-semibold text-brand-dark-gray">{title}</h4>
@@ -50,7 +54,7 @@ export default function StrategicSignalCard({ item }: { item: SignalHistoryItem 
         <p className="mt-2 font-body text-xs leading-relaxed text-brand-mid-gray">{item.rationale}</p>
       )}
       <p className="mt-2 font-body text-[11px] text-brand-mid-gray">
-        First {historyTime(item.first_seen)} - Last {historyTime(item.last_seen)}
+        {t("signals.firstLast", { first: historyTime(item.first_seen), last: historyTime(item.last_seen) })}
       </p>
     </article>
   );

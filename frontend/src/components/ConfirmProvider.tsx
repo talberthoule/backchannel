@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import i18n from "../i18n";
 
 // One small primitive for the app's destructive-action guard: an accessible
 // confirm dialog (Promise-based), a single-button notice variant sharing the
@@ -62,7 +63,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
       new Promise<void>((resolve) =>
         setDialog({
           tone: "default",
-          confirmLabel: acknowledgeLabel ?? "OK",
+          confirmLabel: acknowledgeLabel ?? i18n.t("dialog.ok"),
           ...opts,
           kind: "notice",
           resolve: () => resolve(),
@@ -114,7 +115,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             onClick={(e) => e.stopPropagation()}
           >
             <h2 id="confirm-title" className="font-display text-base font-semibold text-brand-dark-gray">
-              {dialog.title ?? (dialog.kind === "notice" ? "Notice" : "Are you sure?")}
+              {dialog.title ?? (dialog.kind === "notice" ? i18n.t("dialog.notice") : i18n.t("dialog.areYouSure"))}
             </h2>
             <p className="mt-1.5 font-body text-sm text-brand-gray">{dialog.message}</p>
             <div className="mt-5 flex justify-end gap-2">
@@ -123,7 +124,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
                   onClick={() => settle(false)}
                   className="rounded-lg px-3 py-1.5 font-body text-sm font-medium text-brand-gray transition-colors hover:bg-brand-light-gray-2"
                 >
-                  {dialog.cancelLabel ?? "Cancel"}
+                  {dialog.cancelLabel ?? i18n.t("common.cancel")}
                 </button>
               )}
               <button
@@ -133,7 +134,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
                   danger ? "bg-red-600 hover:bg-red-700" : "bg-brand-teal hover:bg-brand-teal-dark"
                 }`}
               >
-                {dialog.confirmLabel ?? "Confirm"}
+                {dialog.confirmLabel ?? i18n.t("dialog.confirm")}
               </button>
             </div>
           </div>

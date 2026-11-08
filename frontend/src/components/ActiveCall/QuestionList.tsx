@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Question } from "../../types";
 import QuestionCard from "./QuestionCard";
 import { sortQuestionsForLiveDisplay } from "./questionOrdering";
-import { BUILTIN_TYPE_META, BUILTIN_TYPE_ORDER, presentTypes, recentSignalHistoryIds, typeGroupLabel } from "../../utils/insightTypes";
+import { BUILTIN_TYPE_META, BUILTIN_TYPE_ORDER, presentTypes, recentSignalHistoryIds, typeFilterLabel, typeGroupLabel } from "../../utils/insightTypes";
 
 // "all", an item_type slug (built-in or custom lens type), or a status key
 type Filter = string;
@@ -20,6 +21,7 @@ interface QuestionListProps {
 }
 
 export default function QuestionList({ questions, showEnhanced = false, emptyMessage, onStar, onDismiss, onVote, onMakeDirective }: QuestionListProps) {
+  const { t } = useTranslation();
   const [activeFilters, setActiveFilters] = useState<Set<Filter>>(new Set(["all"]));
 
   // The Strategic chip is the whole strategic picture: every current signal -
@@ -52,13 +54,16 @@ export default function QuestionList({ questions, showEnhanced = false, emptyMes
     const present = presentTypes(questions);
     const customs = present.filter((t) => !BUILTIN_TYPE_META[t]);
     return [
-      ...BUILTIN_TYPE_ORDER.map((t) => ({ key: t, label: BUILTIN_TYPE_META[t].plural })),
+      ...BUILTIN_TYPE_ORDER.map((itemType) => ({
+        key: itemType,
+        label: typeFilterLabel(itemType),
+      })),
       ...customs.map((t) => ({
         key: t,
         label: typeGroupLabel(t, questions.filter((q) => (q.item_type || "question") === t)),
       })),
     ];
-  }, [questions]);
+  }, [questions, t]);
 
   const filtered = useMemo(() => {
     const sorted = sortQuestionsForLiveDisplay(questions);
@@ -100,12 +105,12 @@ export default function QuestionList({ questions, showEnhanced = false, emptyMes
   }, [questions, strategicExtras, activeFilters, showEnhanced]);
 
   const filters: { key: Filter; label: string }[] = [
-    { key: "all", label: "All" },
+    { key: "all", label: t("insights.filters.all") },
     ...typeFilterDefs,
-    { key: "starred", label: "Starred" },
-    { key: "answered", label: "Answered" },
-    { key: "prioritized", label: "Prioritized" },
-    ...(showEnhanced ? [{ key: "enhanced", label: "Enhanced" }] : []),
+    { key: "starred", label: t("insights.filters.starred") },
+    { key: "answered", label: t("insights.filters.answered") },
+    { key: "prioritized", label: t("insights.filters.prioritized") },
+    ...(showEnhanced ? [{ key: "enhanced", label: t("insights.filters.enhanced") }] : []),
   ];
 
   // Per-chip counts over the live (non-dismissed) items, so every tab shows
@@ -175,8 +180,8 @@ export default function QuestionList({ questions, showEnhanced = false, emptyMes
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <p className="font-body text-sm text-brand-mid-gray">
               {activeFilters.has("all")
-                ? emptyMessage || "No active items. Waiting for conversation..."
-                : "No items match the selected filters."}
+                ? emptyMessage || t("activeCall.noActiveItems")
+                : t("activeCall.noFilterMatches")}
             </p>
           </div>
         ) : (

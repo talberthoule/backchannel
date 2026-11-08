@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { CallSegment, ModelInfo, Session, TranscriptionJob } from "../../types";
 import * as api from "../../services/api";
 import { groupModels, optionLabel } from "../../lib/modelOptions";
@@ -12,6 +13,7 @@ interface CallAudioPanelProps {
 }
 
 export default function CallAudioPanel({ session, segments, onRetranscribed }: CallAudioPanelProps) {
+  const { t } = useTranslation();
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelId, setModelId] = useState("");
   const [job, setJob] = useState<TranscriptionJob | null>(null);
@@ -34,9 +36,9 @@ export default function CallAudioPanel({ session, segments, onRetranscribed }: C
   const handleRetranscribe = async () => {
     if (!modelId) return;
     const ok = await confirm({
-      title: "Re-transcribe call audio",
-      message: "The existing transcript stays in place until the replacement finishes.",
-      confirmLabel: "Re-transcribe",
+      title: t("callAudio.confirmTitle"),
+      message: t("callAudio.confirmMessage"),
+      confirmLabel: t("callAudio.retranscribe"),
       tone: "danger",
     });
     if (!ok) return;
@@ -46,15 +48,15 @@ export default function CallAudioPanel({ session, segments, onRetranscribed }: C
       setJob(queued);
       const result = await api.waitForTranscriptionJob(session.id, queued, setJob);
       if (result.status === "completed") {
-        setMessage(`Re-transcribed ${result.entries} entries.`);
+        setMessage(t("callAudio.completed", { count: result.entries }));
         await onRetranscribed();
       } else if (result.status === "canceled") {
-        setMessage("Re-transcription canceled. The existing transcript was kept.");
+        setMessage(t("callAudio.canceled"));
       } else {
-        setMessage(result.error || "Re-transcription failed.");
+        setMessage(result.error || t("callAudio.failed"));
       }
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Re-transcription failed");
+      setMessage(err instanceof Error ? err.message : t("callAudio.failed"));
     }
   };
 
@@ -62,7 +64,7 @@ export default function CallAudioPanel({ session, segments, onRetranscribed }: C
     try {
       setJob(await api.cancelTranscriptionJob(session.id, "retranscription"));
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Could not cancel re-transcription.");
+      setMessage(err instanceof Error ? err.message : t("callAudio.cancelFailed"));
     }
   };
 
@@ -72,14 +74,14 @@ export default function CallAudioPanel({ session, segments, onRetranscribed }: C
         <div className="flex flex-wrap items-center gap-4">
           {audioSegments.map((seg) => (
             <div key={seg.id} className="flex items-center gap-2">
-              <span className="font-body text-xs text-brand-mid-gray">Call {seg.segment_number}</span>
+              <span className="font-body text-xs text-brand-mid-gray">{t("callAudio.callNumber", { number: seg.segment_number })}</span>
               <audio controls preload="none" src={api.segmentAudioUrl(session.id, seg.segment_number)} className="h-8" />
             </div>
           ))}
         </div>
         <div className="flex items-center gap-2">
           <select
-            aria-label="Transcription model"
+            aria-label={t("callAudio.model")}
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
             disabled={busy}
@@ -99,7 +101,7 @@ export default function CallAudioPanel({ session, segments, onRetranscribed }: C
             disabled={busy || !modelId}
             className="min-h-11 rounded bg-brand-teal px-3 font-body text-xs font-medium text-white transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal focus-visible:ring-offset-2 disabled:opacity-40"
           >
-            Re-transcribe
+            {t("callAudio.retranscribe")}
           </button>
         </div>
       </div>

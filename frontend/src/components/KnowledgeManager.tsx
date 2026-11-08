@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { KnowledgeRecord, KnowledgeSource } from "../types";
 import { useConfirm } from "./ConfirmProvider";
 import * as api from "../services/api";
 
-const TYPE_BADGES: Record<string, { label: string; color: string }> = {
-  offerings: { label: "Built-in", color: "#10b981" },
-  collection: { label: "Collection", color: "#7c3aed" },
-  files: { label: "Files", color: "#0d9488" },
+const TYPE_BADGES: Record<string, { labelKey: string; color: string }> = {
+  offerings: { labelKey: "knowledge.badges.builtIn", color: "#10b981" },
+  collection: { labelKey: "knowledge.badges.collection", color: "#7c3aed" },
+  files: { labelKey: "knowledge.badges.files", color: "#0d9488" },
 };
 
 // Inline editable cell (same pattern as OfferingsManager)
@@ -21,6 +22,7 @@ function EditableCell({
   multiline?: boolean;
   placeholder?: string;
 }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const ref = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
@@ -50,7 +52,7 @@ function EditableCell({
           !value ? "italic text-brand-mid-gray" : ""
         }`}
         onClick={() => setEditing(true)}
-        title="Click to edit"
+        title={t("knowledge.clickEdit")}
       >
         {value || placeholder || "—"}
       </span>
@@ -96,6 +98,7 @@ function EditableCell({
 
 // New source form
 function AddSourceForm({ onAdd, onCancel }: { onAdd: (name: string, sourceType: string) => void; onCancel: () => void }) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [sourceType, setSourceType] = useState("collection");
 
@@ -109,7 +112,7 @@ function AddSourceForm({ onAdd, onCancel }: { onAdd: (name: string, sourceType: 
           if (e.key === "Enter" && name.trim()) onAdd(name.trim(), sourceType);
           if (e.key === "Escape") onCancel();
         }}
-        placeholder="Source name..."
+        placeholder={t("knowledge.sourceName")}
         className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal"
       />
       <select
@@ -117,8 +120,8 @@ function AddSourceForm({ onAdd, onCancel }: { onAdd: (name: string, sourceType: 
         onChange={(e) => setSourceType(e.target.value)}
         className="w-full rounded border border-brand-light-gray-1 bg-surface px-2 py-1.5 text-sm focus:border-brand-teal"
       >
-        <option value="collection">Collection (structured records)</option>
-        <option value="files">Files (uploaded documents)</option>
+        <option value="collection">{t("knowledge.collectionType")}</option>
+        <option value="files">{t("knowledge.filesType")}</option>
       </select>
       <div className="flex gap-2">
         <button
@@ -126,13 +129,13 @@ function AddSourceForm({ onAdd, onCancel }: { onAdd: (name: string, sourceType: 
           disabled={!name.trim()}
           className="rounded-lg bg-brand-teal px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-teal-dark disabled:opacity-40"
         >
-          Create
+          {t("knowledge.create")}
         </button>
         <button
           onClick={onCancel}
           className="rounded-lg border border-brand-light-gray-1 px-3 py-1.5 text-xs text-brand-gray transition-colors hover:bg-brand-light-gray-2"
         >
-          Cancel
+          {t("common.cancel")}
         </button>
       </div>
     </div>
@@ -144,6 +147,7 @@ interface KnowledgeManagerProps {
 }
 
 export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
+  const { t } = useTranslation();
   const { confirm, toast } = useConfirm();
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -212,9 +216,9 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
 
   const handleDeleteSource = async (id: string) => {
     const ok = await confirm({
-      title: "Delete knowledge source",
-      message: "Delete this knowledge source and all its records? This cannot be undone.",
-      confirmLabel: "Delete",
+      title: t("knowledge.deleteTitle"),
+      message: t("knowledge.deleteMessage"),
+      confirmLabel: t("common.delete"),
       tone: "danger",
     });
     if (!ok) return;
@@ -222,9 +226,9 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
       await api.deleteKnowledgeSource(id);
       setSources((prev) => prev.filter((s) => s.id !== id));
       if (selectedId === id) setSelectedId(null);
-      toast("Knowledge source deleted");
+      toast(t("knowledge.sourceDeleted"));
     } catch (err) {
-      setBanner(err instanceof Error ? err.message : "Delete failed");
+      setBanner(err instanceof Error ? err.message : t("knowledge.deleteFailed"));
     }
   };
 
@@ -248,9 +252,9 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
 
   const handleDeleteRecord = async (id: string) => {
     const ok = await confirm({
-      title: "Delete record",
-      message: "Delete this knowledge record? This cannot be undone.",
-      confirmLabel: "Delete",
+      title: t("knowledge.recordDeleteTitle"),
+      message: t("knowledge.recordDeleteMessage"),
+      confirmLabel: t("common.delete"),
       tone: "danger",
     });
     if (!ok) return;
@@ -258,7 +262,7 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
       await api.deleteKnowledgeRecord(id);
       setRecords((prev) => prev.filter((r) => r.id !== id));
       refreshCounts();
-      toast("Record deleted");
+      toast(t("knowledge.recordDeleted"));
     } catch (err) {
       console.error("Delete record failed", err);
     }
@@ -285,11 +289,11 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
     setBanner(null);
     try {
       const result = await api.importKnowledgeRecords(selectedId, file);
-      setBanner(`Imported ${result.created} records (${result.skipped} skipped)`);
+      setBanner(t("knowledge.imported", { created: result.created, skipped: result.skipped }));
       await loadRecords(selectedId);
       refreshCounts();
     } catch {
-      setBanner("Import failed. Expected CSV/Excel with title and body columns.");
+      setBanner(t("knowledge.importFailed"));
     } finally {
       setBusy(false);
       if (importRef.current) importRef.current.value = "";
@@ -303,11 +307,11 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
     setBanner(null);
     try {
       const result = await api.uploadKnowledgeFile(selectedId, file);
-      setBanner(`Added "${result.title}" (${result.chars.toLocaleString()} characters)`);
+      setBanner(t("knowledge.uploaded", { title: result.title, chars: result.chars.toLocaleString() }));
       await loadRecords(selectedId);
       refreshCounts();
     } catch {
-      setBanner("Upload failed. Supported formats: .txt, .md, .docx, .pdf, .pptx, .xlsx, .csv, .html");
+      setBanner(t("knowledge.uploadFailed"));
     } finally {
       setBusy(false);
       if (uploadRef.current) uploadRef.current.value = "";
@@ -324,16 +328,16 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
           <button
             onClick={onBack}
             className="rounded p-1 text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
-            title="Back to sessions"
+            title={t("knowledge.back")}
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
             </svg>
           </button>
           <div>
-            <h1 className="font-display text-lg font-bold text-brand-dark-gray">Knowledge Sources</h1>
+            <h1 className="font-display text-lg font-bold text-brand-dark-gray">{t("knowledge.title")}</h1>
             <p className="font-body text-xs text-brand-mid-gray">
-              Manage the knowledge bases agents can match opportunities against
+              {t("knowledge.subtitle")}
             </p>
           </div>
         </div>
@@ -355,11 +359,11 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
         {/* Source list */}
         <aside className="flex w-72 flex-col border-r border-brand-light-gray-1 bg-surface p-3">
           <div className="mb-2 flex items-center justify-between px-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-brand-mid-gray">Sources</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-brand-mid-gray">{t("knowledge.sources")}</span>
             <button
               onClick={() => setCreating(true)}
               className="rounded p-1 text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal"
-              title="New knowledge source"
+              title={t("knowledge.newSource")}
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -371,9 +375,9 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
 
           <div className="flex-1 space-y-1 overflow-y-auto">
             {loading ? (
-              <p className="px-2 py-4 text-center font-body text-xs text-brand-mid-gray">Loading...</p>
+              <p className="px-2 py-4 text-center font-body text-xs text-brand-mid-gray">{t("knowledge.loading")}</p>
             ) : sources.length === 0 ? (
-              <p className="px-2 py-4 text-center font-body text-xs text-brand-mid-gray">No knowledge sources yet</p>
+              <p className="px-2 py-4 text-center font-body text-xs text-brand-mid-gray">{t("knowledge.noSources")}</p>
             ) : (
               sources.map((s) => {
                 const badge = TYPE_BADGES[s.source_type] || TYPE_BADGES.collection;
@@ -394,7 +398,7 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDeleteSource(s.id); }}
                           className="rounded p-0.5 text-brand-light-gray-1 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
-                          title="Delete source"
+                          title={t("knowledge.deleteSource")}
                         >
                           <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -404,12 +408,12 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                     </div>
                     <div className="mt-1 flex items-center gap-1.5">
                       <span className="inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-medium text-white" style={{ backgroundColor: badge.color }}>
-                        {badge.label}
+                        {t(badge.labelKey)}
                       </span>
                       <span className="text-[10px] text-brand-mid-gray">
-                        {s.source_type === "offerings" ? "Offerings catalog" : `${s.record_count} record${s.record_count === 1 ? "" : "s"}`}
+                        {s.source_type === "offerings" ? t("knowledge.offerings") : t("knowledge.recordCount", { count: s.record_count })}
                       </span>
-                      {!s.active && <span className="text-[10px] italic text-brand-mid-gray">inactive</span>}
+                      {!s.active && <span className="text-[10px] italic text-brand-mid-gray">{t("knowledge.inactive")}</span>}
                     </div>
                   </div>
                 );
@@ -422,13 +426,13 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
         <div className="flex-1 overflow-auto p-4">
           {!selected ? (
             <div className="flex items-center justify-center py-20">
-              <span className="font-body text-sm text-brand-mid-gray">Select or create a knowledge source</span>
+              <span className="font-body text-sm text-brand-mid-gray">{t("knowledge.selectSource")}</span>
             </div>
           ) : isBuiltIn ? (
             <div className="mx-auto max-w-lg rounded-xl bg-surface p-6 text-center shadow-sm">
               <h3 className="font-display text-base font-bold text-brand-dark-gray">{selected.name}</h3>
               <p className="mt-2 font-body text-sm text-brand-gray">
-                This is the built-in source backed by the offerings catalog. Manage its contents in the Offerings Catalog tool.
+                {t("knowledge.builtInBody")}
               </p>
             </div>
           ) : (
@@ -441,7 +445,7 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                     <EditableCell
                       value={selected.description}
                       onSave={(v) => handleUpdateSource(selected.id, "description", v)}
-                      placeholder="Add a description..."
+                      placeholder={t("knowledge.description")}
                     />
                   </div>
                 </div>
@@ -454,7 +458,7 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                         disabled={busy}
                         className="rounded-lg border border-brand-light-gray-1 px-3 py-1.5 text-sm font-medium text-brand-gray transition-colors hover:bg-brand-light-gray-2 disabled:opacity-50"
                       >
-                        {busy ? "Working..." : "Import CSV/Excel"}
+                        {busy ? t("knowledge.working") : t("knowledge.importCsv")}
                       </button>
                     </>
                   )}
@@ -466,14 +470,14 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                         disabled={busy}
                         className="rounded-lg border border-brand-light-gray-1 px-3 py-1.5 text-sm font-medium text-brand-gray transition-colors hover:bg-brand-light-gray-2 disabled:opacity-50"
                       >
-                        {busy ? "Working..." : "Upload File"}
+                        {busy ? t("knowledge.working") : t("knowledge.uploadFile")}
                       </button>
                     </>
                   )}
                   <button
                     onClick={() => handleUpdateSource(selected.id, "active", !selected.active)}
                     className={`h-5 w-9 rounded-full transition-colors ${selected.active ? "bg-brand-teal" : "bg-brand-light-gray-1"}`}
-                    title={selected.active ? "Active — click to deactivate" : "Inactive — click to activate"}
+                    title={selected.active ? t("knowledge.activeTitle") : t("knowledge.inactiveTitle")}
                   >
                     <span className={`block h-4 w-4 rounded-full bg-slate-50 shadow transition-transform ${selected.active ? "translate-x-4" : "translate-x-0.5"}`} />
                   </button>
@@ -487,13 +491,13 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                     autoFocus
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
-                    placeholder="Title..."
+                    placeholder={t("knowledge.titlePlaceholder")}
                     className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal"
                   />
                   <textarea
                     value={newBody}
                     onChange={(e) => setNewBody(e.target.value)}
-                    placeholder="Body..."
+                    placeholder={t("knowledge.bodyPlaceholder")}
                     rows={3}
                     className="w-full rounded border border-brand-light-gray-1 px-2 py-1.5 text-sm focus:border-brand-teal"
                   />
@@ -503,13 +507,13 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                       disabled={!newTitle.trim() || !newBody.trim()}
                       className="rounded-lg bg-brand-teal px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brand-teal-dark disabled:opacity-40"
                     >
-                      Add
+                      {t("common.add")}
                     </button>
                     <button
                       onClick={() => { setAddingRecord(false); setNewTitle(""); setNewBody(""); }}
                       className="rounded-lg border border-brand-light-gray-1 px-4 py-1.5 text-sm text-brand-gray transition-colors hover:bg-brand-light-gray-2"
                     >
-                      Cancel
+                      {t("common.cancel")}
                     </button>
                   </div>
                 </div>
@@ -521,21 +525,21 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                   </svg>
-                  Add Record
+                  {t("knowledge.addRecord")}
                 </button>
               )}
 
               {/* Records table */}
               {loadingRecords ? (
                 <div className="py-10 text-center">
-                  <span className="font-body text-sm text-brand-mid-gray">Loading records...</span>
+                  <span className="font-body text-sm text-brand-mid-gray">{t("knowledge.loadingRecords")}</span>
                 </div>
               ) : records.length === 0 ? (
                 <div className="py-10 text-center">
                   <p className="font-body text-sm text-brand-mid-gray">
                     {selected.source_type === "files"
-                      ? "No files yet. Upload a document (.txt, .md, .docx, .pdf, .pptx, .xlsx, .csv, .html) to add knowledge."
-                      : "No records yet. Add records manually or import a CSV/Excel file with title and body columns."}
+                      ? t("knowledge.emptyFiles")
+                      : t("knowledge.emptyRecords")}
                   </p>
                 </div>
               ) : (
@@ -543,9 +547,9 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                   <table className="w-full min-w-[560px] text-left text-xs">
                     <thead>
                       <tr className="border-b border-brand-light-gray-1 bg-brand-light-gray-2/50">
-                        <th className="px-3 py-2 font-display font-semibold text-brand-gray w-64">Title</th>
-                        <th className="px-3 py-2 font-display font-semibold text-brand-gray">Body</th>
-                        <th className="px-3 py-2 font-display font-semibold text-brand-gray w-16">Active</th>
+                        <th className="px-3 py-2 font-display font-semibold text-brand-gray w-64">{t("knowledge.headers.title")}</th>
+                        <th className="px-3 py-2 font-display font-semibold text-brand-gray">{t("knowledge.headers.body")}</th>
+                        <th className="px-3 py-2 font-display font-semibold text-brand-gray w-16">{t("knowledge.headers.active")}</th>
                         <th className="px-3 py-2 w-10"></th>
                       </tr>
                     </thead>
@@ -553,16 +557,16 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                       {records.map((r) => (
                         <tr key={r.id} className="border-b border-brand-light-gray-1 last:border-0 hover:bg-brand-light-gray-2/30 transition-colors">
                           <td className="px-3 py-2 align-top font-medium text-brand-dark-gray">
-                            <EditableCell value={r.title} onSave={(v) => handleUpdateRecord(r.id, "title", v)} placeholder="Add title..." />
+<EditableCell value={r.title} onSave={(v) => handleUpdateRecord(r.id, "title", v)} placeholder={t("knowledge.addTitle")} />
                           </td>
                           <td className="px-3 py-2 align-top">
-                            <EditableCell value={r.body} onSave={(v) => handleUpdateRecord(r.id, "body", v)} multiline placeholder="Add body..." />
+<EditableCell value={r.body} onSave={(v) => handleUpdateRecord(r.id, "body", v)} multiline placeholder={t("knowledge.addBody")} />
                           </td>
                           <td className="px-3 py-2 align-top text-center">
                             <button
                               onClick={() => handleUpdateRecord(r.id, "active", !r.active)}
                               className={`h-5 w-9 rounded-full transition-colors ${r.active ? "bg-brand-teal" : "bg-brand-light-gray-1"}`}
-                              title={r.active ? "Active — click to deactivate" : "Inactive — click to activate"}
+                              title={r.active ? t("knowledge.activeTitle") : t("knowledge.inactiveTitle")}
                             >
                               <span className={`block h-4 w-4 rounded-full bg-slate-50 shadow transition-transform ${r.active ? "translate-x-4" : "translate-x-0.5"}`} />
                             </button>
@@ -571,7 +575,7 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
                             <button
                               onClick={() => handleDeleteRecord(r.id)}
                               className="rounded p-1 text-brand-mid-gray transition-colors hover:bg-red-50 hover:text-red-500"
-                              title="Delete record"
+                              title={t("knowledge.deleteRecord")}
                             >
                               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
@@ -592,7 +596,7 @@ export default function KnowledgeManager({ onBack }: KnowledgeManagerProps) {
       {/* Format hint */}
       <div className="border-t border-brand-light-gray-1 bg-surface px-6 py-2">
         <p className="font-body text-[10px] text-brand-mid-gray">
-          Collection imports expect CSV/Excel with title and body columns (extra columns are kept as metadata). File sources accept .txt, .md, .docx, .pdf, .pptx, .xlsx, .csv, and .html uploads — files are converted to Markdown on upload and only the Markdown is stored. Point an agent at a source in Administration.
+          {t("knowledge.formatHint")}
         </p>
       </div>
     </div>

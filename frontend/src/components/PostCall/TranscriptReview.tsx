@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import type { Speaker, TranscriptEntry } from "../../types";
 
 interface TranscriptReviewProps {
@@ -26,6 +27,7 @@ function InlineSpeakerLabel({
   speaker: Speaker;
   onRename?: (speakerId: string, newName: string) => void;
 }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(speaker.name);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -79,7 +81,7 @@ function InlineSpeakerLabel({
           setEditing(true);
         }
       }}
-      title={onRename ? "Click to rename" : undefined}
+      title={onRename ? t("transcriptReview.clickToRename") : undefined}
     >
       {speaker.display_name && speaker.display_name_enabled ? speaker.display_name : speaker.name}
     </span>
@@ -87,10 +89,11 @@ function InlineSpeakerLabel({
 }
 
 export default function TranscriptReview({ transcripts, speakers, onRenameSpeaker }: TranscriptReviewProps) {
+  const { t } = useTranslation();
   if (transcripts.length === 0) {
     return (
       <div className="rounded-xl bg-surface p-10 text-center shadow-sm">
-        <p className="text-brand-mid-gray">No transcript entries recorded for this session.</p>
+        <p className="text-brand-mid-gray">{t("transcriptReview.empty")}</p>
       </div>
     );
   }
@@ -99,11 +102,11 @@ export default function TranscriptReview({ transcripts, speakers, onRenameSpeake
     <div className="rounded-xl bg-surface shadow-sm">
       <div className="border-b border-brand-light-gray-1 px-6 py-4">
         <h2 className="font-display text-lg font-semibold text-brand-dark-gray">
-          Full Transcript
+          {t("transcriptReview.fullTranscript")}
         </h2>
         <p className="mt-1 text-xs text-brand-mid-gray">
-          {transcripts.length} {transcripts.length === 1 ? "entry" : "entries"}
-          {onRenameSpeaker && " \u00b7 Click a speaker name to rename"}
+          {t("transcriptReview.entryCount", { count: transcripts.length })}
+          {onRenameSpeaker && ` \u00b7 ${t("transcriptReview.renameHint")}`}
         </p>
       </div>
 

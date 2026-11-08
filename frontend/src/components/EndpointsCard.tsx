@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 import { useConfirm } from "./ConfirmProvider";
 import * as api from "../services/api";
@@ -27,10 +28,13 @@ interface FormState {
 const EMPTY_FORM: FormState = { name: "", baseUrl: "", apiKey: "", keyTouched: false, models: [] };
 
 function StatusDot({ endpoint }: { endpoint: CustomEndpoint }) {
+  const { t } = useTranslation();
   const color =
     endpoint.last_status === "ok" ? "#72d54a" : endpoint.last_status === "error" ? "#e5484d" : "#c9cdd3";
   const label =
-    endpoint.last_status === "ok" ? "Reachable" : endpoint.last_status === "error" ? "Unreachable" : "Not tested";
+    endpoint.last_status === "ok"
+      ? t("endpoints.reachable")
+      : endpoint.last_status === "error" ? t("endpoints.unreachable") : t("endpoints.notTested");
   return (
     <span className="inline-flex items-center gap-1.5" title={endpoint.last_error || label}>
       <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
@@ -59,6 +63,7 @@ function EndpointForm({
   onCancel: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useTranslation();
   const { confirm } = useConfirm();
   const [form, setForm] = useState<FormState>(initial);
   const [served, setServed] = useState<string[] | null>(null);
@@ -110,7 +115,7 @@ function EndpointForm({
         set({ models: result.served_models });
       }
     } catch (err) {
-      setMessage({ ok: false, text: err instanceof Error ? err.message : "Connection failed" });
+      setMessage({ ok: false, text: err instanceof Error ? err.message : t("endpoints.connectionFailed") });
     } finally {
       setBusy(null);
     }
@@ -134,9 +139,13 @@ function EndpointForm({
             throw err;
           }
           const approved = await confirm({
-            title: "Move endpoint off-prem?",
-            message: `Change ${editing.name} from ${editing.base_url} to ${payload.base_url}? Calls using this endpoint can leave your machine or network.`,
-            confirmLabel: "Move endpoint",
+            title: t("endpoints.moveTitle"),
+            message: t("endpoints.moveMessage", {
+              name: editing.name,
+              from: editing.base_url,
+              to: payload.base_url,
+            }),
+            confirmLabel: t("endpoints.move"),
             tone: "danger",
           });
           if (!approved) return;
@@ -147,7 +156,7 @@ function EndpointForm({
       }
       onSaved();
     } catch (err) {
-      setMessage({ ok: false, text: err instanceof Error ? err.message : "Save failed" });
+      setMessage({ ok: false, text: err instanceof Error ? err.message : t("endpoints.saveFailed") });
     } finally {
       setBusy(null);
     }
@@ -161,11 +170,11 @@ function EndpointForm({
     <div className="rounded-lg border border-brand-teal/30 bg-brand-light-gray-2/40 p-4">
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <h4 className="font-display text-sm font-bold text-brand-dark-gray">
-          {editing ? `Edit ${editing.name}` : "Add an endpoint"}
+          {editing ? t("endpoints.editTitle", { name: editing.name }) : t("endpoints.addTitle")}
         </h4>
         {!editing && (
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="font-body text-[10px] text-brand-mid-gray">Presets</span>
+            <span className="font-body text-[10px] text-brand-mid-gray">{t("endpoints.presets")}</span>
             {PRESETS.map((preset) => (
               <button
                 key={preset.key}
@@ -182,19 +191,19 @@ function EndpointForm({
       <div className="grid gap-3 md:grid-cols-3">
         <div>
           <label className="mb-1 block font-body text-[10px] font-medium uppercase tracking-wide text-brand-mid-gray">
-            Name
+            {t("endpoints.name")}
           </label>
           <input
             type="text"
             value={form.name}
-            placeholder="Workstation"
+            placeholder={t("endpoints.namePlaceholder")}
             onChange={(e) => set({ name: e.target.value })}
             className="w-full rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1.5 font-body text-sm text-brand-dark-gray focus:border-brand-teal focus:outline-none"
           />
         </div>
         <div>
           <label className="mb-1 block font-body text-[10px] font-medium uppercase tracking-wide text-brand-mid-gray">
-            Base URL
+            {t("endpoints.baseUrl")}
           </label>
           <input
             type="text"
@@ -206,14 +215,14 @@ function EndpointForm({
         </div>
         <div>
           <label className="mb-1 block font-body text-[10px] font-medium uppercase tracking-wide text-brand-mid-gray">
-            API key {editing?.has_api_key ? "(stored)" : "(optional)"}
+            {t("endpoints.key")} {editing?.has_api_key ? t("endpoints.stored") : t("endpoints.optional")}
           </label>
           <input
             type="password"
             autoComplete="new-password"
             spellCheck={false}
             value={form.apiKey}
-            placeholder={editing?.has_api_key ? "Replace stored key..." : "Usually not needed"}
+            placeholder={editing?.has_api_key ? t("endpoints.replaceKey") : t("endpoints.usuallyNone")}
             onChange={(e) => set({ apiKey: e.target.value, keyTouched: true })}
             className="w-full rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1.5 font-mono text-xs text-brand-dark-gray focus:border-brand-teal focus:outline-none"
           />
@@ -226,7 +235,7 @@ function EndpointForm({
           disabled={!form.baseUrl.trim() || busy !== null}
           className="rounded border border-brand-teal px-3 py-1.5 font-body text-xs font-medium text-brand-teal transition-opacity hover:bg-brand-teal/5 disabled:opacity-40"
         >
-          {busy === "probe" ? "Connecting..." : "Connect & list models"}
+          {busy === "probe" ? t("endpoints.connecting") : t("endpoints.connect")}
         </button>
         {message && (
           <span className={`font-body text-xs ${message.ok ? "text-brand-teal" : "text-red-600"}`}>{message.text}</span>
@@ -235,16 +244,13 @@ function EndpointForm({
 
       {dockerHint && (
         <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 font-body text-[11px] leading-relaxed text-amber-900">
-          Running Backchannel in Docker? Inside the container <code className="font-mono">localhost</code> is the
-          container itself. Use <code className="font-mono">http://host.docker.internal:</code>
-          {form.baseUrl.split(":")[2] || "1234"}
-          <code className="font-mono">/v1</code> to reach a server on this machine.
+          {t("endpoints.dockerHint", { port: form.baseUrl.split(":")[2] || "1234" })}
         </p>
       )}
 
       <div className="mt-4">
         <p className="mb-1.5 font-body text-[10px] font-medium uppercase tracking-wide text-brand-mid-gray">
-          Models to expose{form.models.length ? ` (${form.models.length} selected)` : ""}
+          {t("endpoints.modelsExpose")}{form.models.length ? t("endpoints.selected", { value: form.models.length }) : ""}
         </p>
         {served !== null && served.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
@@ -277,7 +283,7 @@ function EndpointForm({
                 <button
                   key={name}
                   onClick={() => toggleModel(name)}
-                  title="Remove"
+                  title={t("common.remove")}
                   className="rounded-full bg-brand-teal px-2.5 py-1 font-mono text-[11px] text-white"
                 >
                   {name} &times;
@@ -289,7 +295,7 @@ function EndpointForm({
           <input
             type="text"
             value={manual}
-            placeholder="Or type a model name, e.g. antares-1b"
+            placeholder={t("endpoints.manualPlaceholder")}
             onChange={(e) => setManual(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -304,7 +310,7 @@ function EndpointForm({
             disabled={!manual.trim()}
             className="rounded border border-brand-light-gray-1 px-3 py-1.5 font-body text-xs text-brand-dark-gray transition-colors hover:border-brand-teal hover:text-brand-teal disabled:opacity-40"
           >
-            Add
+            {t("endpoints.add")}
           </button>
         </div>
       </div>
@@ -315,17 +321,17 @@ function EndpointForm({
           disabled={!canSave || busy !== null}
           className="rounded bg-brand-teal px-3 py-1.5 font-body text-xs font-medium text-white transition-opacity disabled:opacity-40"
         >
-          {busy === "save" ? "Saving..." : editing ? "Save changes" : "Add endpoint"}
+          {busy === "save" ? t("endpoints.saving") : editing ? t("endpoints.saveChanges") : t("endpoints.addEndpoint")}
         </button>
         <button
           onClick={onCancel}
           className="rounded px-3 py-1.5 font-body text-xs text-brand-mid-gray transition-colors hover:text-brand-dark-gray"
         >
-          Cancel
+          {t("common.cancel")}
         </button>
         {!canSave && (
           <span className="font-body text-[11px] text-brand-mid-gray">
-            A name, base URL, and at least one model are required.
+            {t("endpoints.required")}
           </span>
         )}
       </div>
@@ -339,6 +345,7 @@ interface EndpointsCardProps {
 }
 
 export default function EndpointsCard({ onChanged }: EndpointsCardProps) {
+  const { t } = useTranslation();
   const { confirm, toast } = useConfirm();
   const [endpoints, setEndpoints] = useState<CustomEndpoint[]>([]);
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
@@ -370,7 +377,7 @@ export default function EndpointsCard({ onChanged }: EndpointsCardProps) {
     } catch (err) {
       setResults((prev) => ({
         ...prev,
-        [endpoint.id]: err instanceof Error ? err.message : "Test failed",
+        [endpoint.id]: err instanceof Error ? err.message : t("endpoints.testFailed"),
       }));
     } finally {
       setBusyId(null);
@@ -389,16 +396,16 @@ export default function EndpointsCard({ onChanged }: EndpointsCardProps) {
 
   const remove = async (endpoint: CustomEndpoint) => {
     const ok = await confirm({
-      title: "Remove endpoint",
-      message: `Remove ${endpoint.name}? Agents using one of its ${endpoint.models.length} model(s) will need a different model before they can run again.`,
-      confirmLabel: "Remove endpoint",
+      title: t("endpoints.removeTitle"),
+      message: t("endpoints.removeMessage", { name: endpoint.name, value: endpoint.models.length }),
+      confirmLabel: t("endpoints.removeEndpoint"),
       tone: "danger",
     });
     if (!ok) return;
     setBusyId(endpoint.id);
     try {
       await api.deleteEndpoint(endpoint.id);
-      toast(`${endpoint.name} removed`);
+      toast(t("endpoints.removed", { name: endpoint.name }));
       await afterChange();
     } finally {
       setBusyId(null);
@@ -423,16 +430,13 @@ export default function EndpointsCard({ onChanged }: EndpointsCardProps) {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="font-display text-base font-bold text-brand-dark-gray">Self-Hosted Models</h3>
+            <h3 className="font-display text-base font-bold text-brand-dark-gray">{t("endpoints.title")}</h3>
             <span className="inline-flex rounded-full border border-slate-500 bg-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-50">
-              On-prem
+              {t("endpoints.onPrem")}
             </span>
           </div>
           <p className="mt-1 max-w-2xl font-body text-xs leading-relaxed text-brand-gray">
-            Point Backchannel at any OpenAI-compatible server on your workstation, home lab, or corporate
-            network - LM Studio, Ollama, vLLM, or LiteLLM. Each model you list here appears by name in
-            every model picker, so the analysis that used to require a cloud provider can run entirely
-            inside your perimeter.
+            {t("endpoints.body")}
           </p>
         </div>
         {editingId !== "new" && (
@@ -440,7 +444,7 @@ export default function EndpointsCard({ onChanged }: EndpointsCardProps) {
             onClick={() => setEditingId("new")}
             className="shrink-0 rounded bg-brand-teal px-3 py-1.5 font-body text-xs font-medium text-white"
           >
-            Add endpoint
+            {t("endpoints.addEndpoint")}
           </button>
         )}
       </div>
@@ -471,10 +475,10 @@ export default function EndpointsCard({ onChanged }: EndpointsCardProps) {
                   <span className="font-display text-sm font-bold text-brand-dark-gray">{endpoint.name}</span>
                   <StatusDot endpoint={endpoint} />
                   <Pill tone={endpoint.on_prem ? "teal" : "neutral"}>
-                    {endpoint.on_prem ? "On your network" : "Remote"}
+                    {endpoint.on_prem ? t("endpoints.yourNetwork") : t("endpoints.remote")}
                   </Pill>
-                  {endpoint.has_api_key && <Pill>Key set</Pill>}
-                  {!endpoint.enabled && <Pill>Disabled</Pill>}
+                  {endpoint.has_api_key && <Pill>{t("endpoints.keySet")}</Pill>}
+                  {!endpoint.enabled && <Pill>{t("endpoints.disabled")}</Pill>}
                 </div>
                 <div className="flex items-center gap-1">
                   <button
@@ -482,27 +486,27 @@ export default function EndpointsCard({ onChanged }: EndpointsCardProps) {
                     disabled={isBusy}
                     className="rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1 font-body text-[11px] text-brand-dark-gray transition-colors hover:border-brand-teal hover:text-brand-teal disabled:opacity-40"
                   >
-                    {isBusy ? "Testing..." : "Test"}
+                    {isBusy ? t("endpoints.testing") : t("endpoints.test")}
                   </button>
                   <button
                     onClick={() => setEditingId(endpoint.id)}
                     className="rounded border border-brand-light-gray-1 bg-surface px-2.5 py-1 font-body text-[11px] text-brand-dark-gray transition-colors hover:border-brand-teal hover:text-brand-teal"
                   >
-                    Edit
+                    {t("endpoints.edit")}
                   </button>
                   <button
                     onClick={() => void toggleEnabled(endpoint)}
                     disabled={isBusy}
                     className="rounded px-2.5 py-1 font-body text-[11px] text-brand-mid-gray transition-colors hover:text-brand-dark-gray disabled:opacity-40"
                   >
-                    {endpoint.enabled ? "Disable" : "Enable"}
+                    {endpoint.enabled ? t("endpoints.disable") : t("endpoints.enable")}
                   </button>
                   <button
                     onClick={() => void remove(endpoint)}
                     disabled={isBusy}
                     className="rounded px-2.5 py-1 font-body text-[11px] text-brand-mid-gray transition-colors hover:text-red-600 disabled:opacity-40"
                   >
-                    Remove
+                    {t("endpoints.remove")}
                   </button>
                 </div>
               </div>
@@ -510,7 +514,7 @@ export default function EndpointsCard({ onChanged }: EndpointsCardProps) {
                 {endpoint.base_url}
               </p>
               <p className="mt-1 font-body text-[10px] text-brand-mid-gray">
-                Identifier: <code className="font-mono">{endpoint.id}</code>
+                {t("endpoints.identifier")} <code className="font-mono">{endpoint.id}</code>
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {endpoint.models.map((model) => (
@@ -524,7 +528,7 @@ export default function EndpointsCard({ onChanged }: EndpointsCardProps) {
                 ))}
                 {!endpoint.models.length && (
                   <span className="font-body text-[11px] text-amber-700">
-                    No models listed yet - edit this endpoint and add one before it can be selected.
+                    {t("endpoints.noModels")}
                   </span>
                 )}
               </div>
@@ -552,16 +556,15 @@ export default function EndpointsCard({ onChanged }: EndpointsCardProps) {
 
         {!endpoints.length && editingId !== "new" && (
           <div className="rounded-lg border border-dashed border-brand-light-gray-1 px-4 py-6 text-center">
-            <p className="font-body text-sm text-brand-gray">No self-hosted endpoints yet.</p>
+            <p className="font-body text-sm text-brand-gray">{t("endpoints.empty")}</p>
             <p className="mx-auto mt-1 max-w-md font-body text-xs leading-relaxed text-brand-mid-gray">
-              With a capable GPU, a self-hosted model can run the analysis agents with no API key, no
-              per-token cost, and no call data leaving your network.
+              {t("endpoints.emptyBody")}
             </p>
             <button
               onClick={() => setEditingId("new")}
               className="mt-3 rounded bg-brand-teal px-3 py-1.5 font-body text-xs font-medium text-white"
             >
-              Add your first endpoint
+              {t("endpoints.addFirst")}
             </button>
           </div>
         )}

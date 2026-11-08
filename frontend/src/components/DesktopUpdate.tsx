@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useTranslation } from "react-i18next";
 import type {
   DesktopUpdateController,
   DesktopUpdateStatus,
@@ -32,6 +33,7 @@ function DesktopUpdateTransferBody({
   update: DesktopUpdateController;
   version: string;
 }) {
+  const { t } = useTranslation();
   const { status } = update;
   switch (status.state) {
     case "needs_authorization":
@@ -39,12 +41,12 @@ function DesktopUpdateTransferBody({
         <div className="space-y-3">
           <div>
             <p className="font-body text-sm font-semibold text-brand-dark-gray">
-              Download interrupted
+              {t("desktopUpdate.downloadInterrupted")}
             </p>
             <p className="mt-1 font-mono text-xs text-brand-mid-gray">{progressText(status)}</p>
           </div>
           <button type="button" onClick={() => void update.download()} className={primaryButton}>
-            Resume download
+            {t("desktopUpdate.resumeDownload")}
           </button>
         </div>
       );
@@ -53,7 +55,7 @@ function DesktopUpdateTransferBody({
         <div className="space-y-3">
           <div className="flex items-baseline justify-between gap-3">
             <p className="font-body text-sm font-semibold text-brand-dark-gray">
-              Downloading {version}
+              {t("desktopUpdate.downloading", { version })}
             </p>
             <span className="font-mono text-xs text-brand-mid-gray">{progressText(status)}</span>
           </div>
@@ -63,7 +65,7 @@ function DesktopUpdateTransferBody({
             max={status.size || 1}
           />
           <button type="button" onClick={() => void update.cancel()} className={secondaryButton}>
-            Cancel
+            {t("desktopUpdate.cancel")}
           </button>
         </div>
       );
@@ -73,14 +75,14 @@ function DesktopUpdateTransferBody({
         <div className="space-y-3">
           <div>
             <p className="font-body text-sm font-semibold text-brand-dark-gray">
-              {version} is ready to install
+              {t("desktopUpdate.ready", { version })}
             </p>
             <p className="mt-1 font-body text-xs text-brand-mid-gray">
-              Backchannel will close this window, install the update, and reopen automatically.
+              {t("desktopUpdate.readyBody")}
             </p>
             {blocked && (
               <p className="mt-2 rounded-lg bg-brand-light-gray-2 px-3 py-2 font-body text-xs text-brand-dark-gray">
-                Finish {blocked} before installing.
+                {t("desktopUpdate.finishBefore", { task: blocked })}
               </p>
             )}
           </div>
@@ -90,7 +92,7 @@ function DesktopUpdateTransferBody({
             onClick={() => void update.apply()}
             className={primaryButton}
           >
-            Restart and install
+            {t("desktopUpdate.restartInstall")}
           </button>
         </div>
       );
@@ -98,18 +100,18 @@ function DesktopUpdateTransferBody({
     case "applying":
       return (
         <p className="font-body text-sm text-brand-gray">
-          Closing this window to install {version}...
+          {t("desktopUpdate.closingInstall", { version })}
         </p>
       );
     case "error": {
-      const error = (status.error || "The update action could not be completed.").slice(0, 240);
+      const error = (status.error || t("desktopUpdate.defaultError")).slice(0, 240);
       return (
         <div className="space-y-3">
           <p role="alert" className="rounded-lg bg-brand-light-gray-2 px-3 py-2 font-body text-sm text-brand-dark-gray">
             {error}
           </p>
           <button type="button" onClick={() => void update.check()} className={secondaryButton}>
-            Retry
+            {t("desktopUpdate.retry")}
           </button>
         </div>
       );
@@ -120,25 +122,26 @@ function DesktopUpdateTransferBody({
 }
 
 function DesktopUpdateBody({ update }: { update: DesktopUpdateController }) {
+  const { t } = useTranslation();
   const { status } = update;
-  const version = status.available_version || "the latest version";
+  const version = status.available_version || t("desktopUpdate.latest");
 
   switch (status.state) {
     case "idle":
       return (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="font-body text-sm text-brand-gray">Backchannel is up to date.</p>
+          <p className="font-body text-sm text-brand-gray">{t("desktopUpdate.upToDate")}</p>
           <button type="button" onClick={() => void update.check()} className={secondaryButton}>
-            Check for updates
+            {t("desktopUpdate.check")}
           </button>
         </div>
       );
     case "checking":
       return (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="font-body text-sm text-brand-gray">Checking for updates...</p>
+          <p className="font-body text-sm text-brand-gray">{t("desktopUpdate.checking")}</p>
           <button type="button" disabled className={secondaryButton}>
-            Checking for updates
+            {t("desktopUpdate.checkingButton")}
           </button>
         </div>
       );
@@ -147,17 +150,17 @@ function DesktopUpdateBody({ update }: { update: DesktopUpdateController }) {
         <div className="space-y-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p className="font-body text-sm font-semibold text-brand-dark-gray">
-              {version} is available
+              {t("desktopUpdate.available", { version })}
             </p>
             <span className="font-mono text-xs text-brand-mid-gray">{bytes(status.size)}</span>
           </div>
           <button type="button" onClick={() => void update.download()} className={primaryButton}>
-            Download update
+            {t("desktopUpdate.downloadUpdate")}
           </button>
           {status.available_notes && (
             <details className="rounded-lg bg-brand-light-gray-2/60 px-4 py-3">
               <summary className="cursor-pointer font-body text-sm font-semibold text-brand-dark-gray">
-                Review what&apos;s included
+                {t("desktopUpdate.reviewIncluded")}
               </summary>
               <div className="chat-markdown mt-3 border-t border-brand-light-gray-1/70 pt-3 font-body text-sm text-brand-dark-gray">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{status.available_notes}</ReactMarkdown>
@@ -172,6 +175,7 @@ function DesktopUpdateBody({ update }: { update: DesktopUpdateController }) {
 }
 
 export function DesktopUpdateCard({ update }: { update: DesktopUpdateController }) {
+  const { t } = useTranslation();
   const { status } = update;
   if (!status.enabled) return null;
 
@@ -180,15 +184,15 @@ export function DesktopUpdateCard({ update }: { update: DesktopUpdateController 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="desktop-update-title" className="font-display text-base font-semibold text-brand-dark-gray">
-            Desktop updates
+            {t("desktopUpdate.title")}
           </h2>
           <p className="mt-1 font-body text-xs text-brand-mid-gray">
-            Verified before installation, with automatic rollback if the new version cannot start.
+            {t("desktopUpdate.body")}
           </p>
         </div>
         {status.current_version && (
           <span className="rounded-full bg-brand-light-gray-2 px-2.5 py-1 font-mono text-xs font-medium text-brand-gray">
-            Current {status.current_version}
+            {t("desktopUpdate.current", { version: status.current_version })}
           </span>
         )}
       </div>
@@ -206,16 +210,17 @@ export function DesktopUpdateBanner({
   status: DesktopUpdateStatus;
   onOpen: () => void;
 }) {
+  const { t } = useTranslation();
   if (!["available", "downloading", "ready"].includes(status.state)) return null;
-  const version = status.available_version || "Update";
+  const version = status.available_version || t("desktopUpdate.update");
   const percent = status.size
     ? Math.min(100, Math.round(((status.downloaded || 0) / status.size) * 100))
     : 0;
   const message = status.state === "available"
-    ? `${version} is available`
+    ? t("desktopUpdate.available", { version })
     : status.state === "ready"
-      ? `${version} is ready to install`
-      : `Downloading ${version} - ${percent}%`;
+      ? t("desktopUpdate.ready", { version })
+      : t("desktopUpdate.downloadingPercent", { version, percent });
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl bg-surface px-4 py-3 shadow-lg ring-1 ring-brand-light-gray-1">
@@ -225,7 +230,7 @@ export function DesktopUpdateBanner({
         onClick={onOpen}
         className="min-h-11 shrink-0 rounded-lg bg-brand-teal px-3 py-2 font-body text-xs font-semibold text-white transition-colors motion-reduce:transition-none hover:bg-brand-teal-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal-light focus-visible:ring-offset-2"
       >
-        View update
+        {t("desktopUpdate.viewUpdate")}
       </button>
     </div>
   );

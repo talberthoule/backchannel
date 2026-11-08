@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../../i18n";
 import type { Session, SessionSynthesis, SynthesisSectionItem } from "../../types";
 
 interface SynthesisSignalsProps {
@@ -22,11 +24,11 @@ export const LIVE_SIGNAL_CARD_LIMIT = 3;
 // included - is also an ordinary insight row in the list below (ALP-308; the
 // original suppression of panel rows was reversed by user request).
 const SIGNAL_SECTIONS = [
-  { section: "strategic_signals", key: "signal", label: "Signal" },
-  { section: "risks_blockers", key: "risk", label: "Risk" },
-  { section: "unresolved_discovery_questions", key: "next-question", label: "Next Question" },
-  { section: "top_opportunities", key: "opportunity", label: "Opportunity" },
-  { section: "action_plan", key: "action-cue", label: "Action Cue" },
+  { section: "strategic_signals", key: "signal", label: "signals.labels.signal" },
+  { section: "risks_blockers", key: "risk", label: "signals.labels.risk" },
+  { section: "unresolved_discovery_questions", key: "next-question", label: "signals.labels.nextQuestion" },
+  { section: "top_opportunities", key: "opportunity", label: "signals.labels.opportunity" },
+  { section: "action_plan", key: "action-cue", label: "signals.labels.actionCue" },
 ] as const;
 
 // An unranked item sorts after every ranked one rather than ahead of rank 1.
@@ -39,15 +41,15 @@ function itemText(item: SynthesisSectionItem): string {
 function opportunityLabel(meetingType?: Session["meeting_type"]): string {
   switch (meetingType) {
     case "internal_enablement":
-      return "Enablement";
+      return "signals.labels.enablement";
     case "vendor_partner":
-      return "Partner";
+      return "signals.labels.partner";
     case "customer_delivery":
-      return "Delivery";
+      return "signals.labels.delivery";
     case "internal_checkin":
-      return "Support";
+      return "signals.labels.support";
     default:
-      return "Opportunity";
+      return "signals.labels.opportunity";
   }
 }
 
@@ -76,7 +78,7 @@ export function getRankedSignalCards(
       ranked.push({
         card: {
           key: itemIndex === 0 ? key : `${key}-${itemIndex}`,
-          label: section === "top_opportunities" ? opportunityLabel(session?.meeting_type) : label,
+          label: i18n.t(section === "top_opportunities" ? opportunityLabel(session?.meeting_type) : label),
           item,
         },
         sort: [priority > 0 ? priority : UNRANKED, sectionIndex, itemIndex],
@@ -115,6 +117,7 @@ function SignalItem({
   isSelected: boolean;
   onSelect: () => void;
 }) {
+  const { t } = useTranslation();
   const { label, item } = card;
   const title = itemText(item);
   const summary = item.summary?.trim() || "";
@@ -164,7 +167,7 @@ function SignalItem({
           )}
           {(owner || status) && (
             <p className="font-body text-[11px] text-brand-mid-gray">
-              {[owner ? `Owner: ${owner}` : "", status ? `Status: ${status}` : ""].filter(Boolean).join(" | ")}
+              {[owner ? t("signals.owner", { owner }) : "", status ? t("signals.status", { status }) : ""].filter(Boolean).join(" | ")}
             </p>
           )}
         </div>
@@ -174,6 +177,7 @@ function SignalItem({
 }
 
 export default function SynthesisSignals({ session, synthesis }: SynthesisSignalsProps) {
+  const { t } = useTranslation();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const cards = useMemo(
     () => getRankedSignalCards(synthesis, session).slice(0, LIVE_SIGNAL_CARD_LIMIT),
@@ -196,11 +200,13 @@ export default function SynthesisSignals({ session, synthesis }: SynthesisSignal
     <div className="border-b border-brand-light-gray-1 bg-brand-light-gray-2 px-4 py-3">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="font-display text-xs font-semibold uppercase tracking-wide text-brand-teal">
-          Live Strategic Signals
+          {t("signals.strategic")}
         </h2>
         {updated && (
           <span className="font-body text-[10px] text-brand-mid-gray">
-            Updated {new Date(updated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {t("signals.updated", {
+              time: new Date(updated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            })}
           </span>
         )}
       </div>
@@ -215,7 +221,7 @@ export default function SynthesisSignals({ session, synthesis }: SynthesisSignal
         ))}
       </div>
       {synthesis?.status === "partial" && (
-        <p className="mt-2 font-body text-xs text-brand-amber">Briefing is based on partial model output.</p>
+        <p className="mt-2 font-body text-xs text-brand-amber">{t("signals.partial")}</p>
       )}
     </div>
   );

@@ -2,6 +2,8 @@
 // (welcome checklist step 1 and the contextual API Keys setup card). Kept
 // free of service imports so node --test can exercise it directly.
 
+import i18n from "../i18n/index.ts";
+
 export interface ReadinessTranscription {
   ready: boolean;
   model_id: string;
@@ -60,22 +62,22 @@ export interface SetupReadiness {
   reason: string;
 }
 
-// A workspace is ready only when the currently selected transcription and
-// agent configuration can actually run -- not merely when some provider key
-// exists.
-export function setupReadiness(input: {
+export interface SetupReadinessInput {
   localOnly: boolean;
   transcription: ReadinessTranscription | null;
   agentModels: ReadinessAgentModel[];
-}): SetupReadiness {
+}
+
+// A workspace is ready only when the currently selected transcription and
+// agent configuration can actually run -- not merely when some provider key
+// exists.
+export function setupReadiness(input: SetupReadinessInput): SetupReadiness {
   const t = input.transcription;
-  if (!t) return { ready: false, reason: "Checking transcription setup..." };
+  if (!t) return { ready: false, reason: i18n.t("onboarding.checking") };
   if (!t.ready) {
     const reason =
       t.reason.trim() ||
-      `The selected transcription model (${t.model_id}) needs a working ` +
-        `${t.provider} API key. Add that key below, or switch the ` +
-        `transcription model, or turn on Privacy First to use local models.`;
+      i18n.t("onboarding.transcriptionKey", { model: t.model_id, provider: t.provider });
     return { ready: false, reason };
   }
 
@@ -83,9 +85,7 @@ export function setupReadiness(input: {
   if (unselected.length > 0) {
     return {
       ready: false,
-      reason:
-        `${agentNames(unselected)} need a model. Choose one under ` +
-        "Administration -> Agents; Recommended marks a good starting point.",
+      reason: i18n.t("onboarding.needModel", { agents: agentNames(unselected) }),
     };
   }
 
@@ -95,9 +95,7 @@ export function setupReadiness(input: {
   if (unavailable.length > 0) {
     return {
       ready: false,
-      reason:
-        `${agentNames(unavailable)} use models that are no longer available. ` +
-        "Choose replacements under Administration -> Agents.",
+      reason: i18n.t("onboarding.unavailable", { agents: agentNames(unavailable) }),
     };
   }
 
@@ -107,9 +105,7 @@ export function setupReadiness(input: {
   if (privacyBlocked.length > 0) {
     return {
       ready: false,
-      reason:
-        `Privacy First blocks the selected models for ${agentNames(privacyBlocked)}. ` +
-        "Choose Local models under Administration -> Agents or turn off Privacy First.",
+      reason: i18n.t("onboarding.privacyBlocked", { agents: agentNames(privacyBlocked) }),
     };
   }
 
@@ -121,13 +117,12 @@ export function setupReadiness(input: {
       .slice(0, 3)
       .map((a) => `${a.agentName} (${a.provider})`)
       .join(", ");
-    const more = blocked.length > 3 ? ` and ${blocked.length - 3} more` : "";
+    const more = blocked.length > 3
+      ? i18n.t("onboarding.andMore", { value: blocked.length - 3 })
+      : "";
     return {
       ready: false,
-      reason:
-        `Transcription is ready, but the selected models for ${names}${more} ` +
-        `have no working API key. Add that provider's key, or pick different ` +
-        `models under Administration -> Agents.`,
+      reason: i18n.t("onboarding.missingKey", { agents: `${names}${more}` }),
     };
   }
 
@@ -136,7 +131,9 @@ export function setupReadiness(input: {
 
 function agentNames(agents: ReadinessAgentModel[]): string {
   const names = agents.slice(0, 3).map((agent) => agent.agentName).join(", ");
-  return agents.length > 3 ? `${names} and ${agents.length - 3} more` : names;
+  return agents.length > 3
+    ? `${names}${i18n.t("onboarding.andMore", { value: agents.length - 3 })}`
+    : names;
 }
 
 // Which contextual state the onboarding setup card is in. "choose" shows the

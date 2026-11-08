@@ -6,7 +6,12 @@ const read = (name) =>
   readFileSync(new URL(name, import.meta.url), "utf8");
 
 test("first-run guidance explains explicit selection without demanding Gemini", () => {
-  const copy = read("./WelcomeView.tsx") + read("./ProviderOnboardingCard.tsx");
+  const catalog = JSON.parse(read("../locales/en/translation.json"));
+  const copy = [
+    catalog.welcome.chooseModelsBody,
+    catalog.onboarding.intro,
+    catalog.onboarding.cloudBody,
+  ].join("\n");
 
   assert.doesNotMatch(copy, /free Google \(Gemini\) key covers/i);
   assert.doesNotMatch(copy, /one of these and you are done/i);

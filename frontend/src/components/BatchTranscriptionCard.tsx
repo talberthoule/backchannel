@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { ModelInfo, TranscriptionConfig } from "../types";
 import * as api from "../services/api";
 import { groupModels, optionLabel, optionState, runsLocally } from "../lib/modelOptions";
@@ -17,6 +18,7 @@ interface BatchTranscriptionCardProps {
 }
 
 export default function BatchTranscriptionCard({ models, localOnly = false, lockLabel = "Privacy First", onLiveModelChanged, gatewayModelId }: BatchTranscriptionCardProps) {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<TranscriptionConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -29,7 +31,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
       setError(null);
     } catch (err) {
       console.error("Failed to load transcription config", err);
-      setError("Unable to load transcription settings.");
+      setError(t("batchTranscription.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -72,7 +74,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
       if (data.live_preview_model_id !== undefined) onLiveModelChanged?.();
     } catch (err) {
       console.error("Failed to update transcription config", err);
-      setError(err instanceof Error ? err.message : "Unable to update transcription model.");
+      setError(err instanceof Error ? err.message : t("batchTranscription.updateFailed"));
     } finally {
       setSaving(false);
     }
@@ -84,7 +86,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
     role: "batch_transcription" | "audio_gateway",
   ) => (
     <>
-      <option value="">Not selected</option>
+      <option value="">{t("batchTranscription.notSelected")}</option>
       {groupModels(available).map((group) => (
         <optgroup key={group.provider} label={group.provider}>
           {group.models.map((model) => {
@@ -105,13 +107,13 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="font-display text-base font-bold text-brand-dark-gray">Batch Transcription</h3>
+            <h3 className="font-display text-base font-bold text-brand-dark-gray">{t("batchTranscription.title")}</h3>
             <span className="inline-flex rounded-full border border-slate-500 bg-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-50">
-              Final transcript
+              {t("batchTranscription.finalTranscript")}
             </span>
           </div>
           <p className="mt-1 font-body text-xs leading-relaxed text-brand-gray">
-            Controls the model used to create saved transcript lines from audio imports and finalized diarized live-call segments.
+            {t("batchTranscription.body")}
           </p>
         </div>
         <button
@@ -119,22 +121,22 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
           disabled={loading || saving}
           className="rounded border border-brand-light-gray-1 px-3 py-1.5 font-body text-xs text-brand-dark-gray transition-colors hover:border-brand-teal hover:text-brand-teal disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? "Checking..." : "Refresh"}
+          {loading ? t("batchTranscription.checking") : t("batchTranscription.refresh")}
         </button>
       </div>
 
       <div className="mb-4 grid gap-3 md:grid-cols-2">
         <div className="rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 p-3">
-          <p className="font-body text-[10px] uppercase text-brand-mid-gray">Batch model</p>
+          <p className="font-body text-[10px] uppercase text-brand-mid-gray">{t("batchTranscription.batchModel")}</p>
           <p className="mt-1 truncate font-display text-sm font-bold text-brand-dark-gray" title={config?.batch_model_id ?? ""}>
-            {selectedModel?.name || config?.batch_model_id || "Not selected"}
+            {selectedModel?.name || config?.batch_model_id || t("batchTranscription.notSelected")}
           </p>
           <p className="mt-1 truncate font-mono text-[10px] text-brand-mid-gray">{config?.batch_model_id}</p>
         </div>
         <div className="rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 p-3">
-          <p className="font-body text-[10px] uppercase text-brand-mid-gray">Live preview model</p>
+          <p className="font-body text-[10px] uppercase text-brand-mid-gray">{t("batchTranscription.livePreviewModel")}</p>
           <p className="mt-1 truncate font-display text-sm font-bold text-brand-dark-gray" title={config?.live_preview_model_id ?? ""}>
-            {livePreviewOff ? "Off (Privacy First)" : liveModel?.name || config?.live_preview_model_id || "Not selected"}
+            {livePreviewOff ? t("batchTranscription.offPrivacy") : liveModel?.name || config?.live_preview_model_id || t("batchTranscription.notSelected")}
           </p>
           <p className="mt-1 truncate font-mono text-[10px] text-brand-mid-gray">{config?.live_preview_model_id}</p>
         </div>
@@ -142,7 +144,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
 
       <div className="mb-4 grid gap-4 md:grid-cols-2">
         <div>
-          <label className="mb-1 block font-body text-xs font-medium text-brand-gray">Batch transcription model</label>
+          <label className="mb-1 block font-body text-xs font-medium text-brand-gray">{t("batchTranscription.batchLabel")}</label>
           <select
             value={config?.batch_model_id ?? ""}
             disabled={!config || saving}
@@ -153,7 +155,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
           </select>
         </div>
         <div>
-          <label className="mb-1 block font-body text-xs font-medium text-brand-gray">Live preview (interim captions) model</label>
+          <label className="mb-1 block font-body text-xs font-medium text-brand-gray">{t("batchTranscription.liveLabel")}</label>
           <select
             value={config?.live_preview_model_id ?? ""}
             disabled={!config || saving}
@@ -168,7 +170,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
       <div className="mb-4 grid gap-x-4 gap-y-1 md:grid-cols-2">
         <div>
           <label htmlFor="transcription-language" className="mb-1 block font-body text-xs font-medium text-brand-gray">
-            Meeting language
+            {t("batchTranscription.meetingLanguage")}
           </label>
           <select
             id="transcription-language"
@@ -177,7 +179,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
             onChange={(event) => void update({ language: event.target.value })}
             className="w-full rounded border border-brand-light-gray-1 bg-surface px-3 py-1.5 text-sm text-brand-dark-gray transition-colors focus:border-brand-teal disabled:cursor-not-allowed disabled:bg-brand-light-gray-2"
           >
-            {(config?.language_options ?? [{ code: "auto", name: "Detect automatically" }]).map((option) => (
+            {(config?.language_options ?? [{ code: "auto", name: t("batchTranscription.detectAutomatically") }]).map((option) => (
               <option key={option.code} value={option.code}>
                 {option.name}
               </option>
@@ -185,9 +187,7 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
           </select>
         </div>
         <p className="font-body text-[11px] leading-relaxed text-brand-mid-gray md:col-span-2">
-          Tells Whisper, Gemini and OpenAI which language to expect, for both the saved transcript and live
-          captions. They transcribe what is said without translating it. Parakeet takes no language setting:
-          v2 is English-only, and v3 detects which of its 25 European languages is spoken.
+          {t("batchTranscription.languageBody")}
         </p>
         {languageWarnings.map((warning) => (
           <p
@@ -202,23 +202,18 @@ export default function BatchTranscriptionCard({ models, localOnly = false, lock
 
       {localOnly && (
         <p className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 font-body text-xs text-amber-900">
-          {lockLabel === "Privacy First" ? "Privacy First mode" : "The PII Shield"} is on: only local ONNX models can transcribe. Cloud live-caption gateways are
-          off, but the experimental on-device captioner ({hasLocalLiveModel ? "Parakeet Live" : "when available"})
-          can be selected here, English-only or multilingual (Parakeet v3 Live) - it is CPU-heavy, so check
-          the fit test&apos;s live-caption feasibility first.
-          Your previous cloud choices are restored when the switch is turned off.
+          {t("batchTranscription.localOnly", {
+            switch: lockLabel,
+            captioner: hasLocalLiveModel
+              ? t("batchTranscription.captionerReady")
+              : t("batchTranscription.captionerLater"),
+          })}
         </p>
       )}
 
       <div className="rounded border border-brand-light-gray-1 bg-brand-light-gray-2/30 px-3 py-2">
         <p className="font-body text-xs leading-relaxed text-brand-gray">
-          Batch transcription runs after audio has been segmented by the diarizer and produces the saved
-          transcript. Live preview is separate: the Audio Bridge agent (Gemini Live or OpenAI Realtime,
-          depending on the model) only shows interim captions while a call is active. Changing the live
-          preview model here updates that agent&apos;s model, the same setting shown on the Agents tab.
-          Self-hosted (OpenAI-compatible chat) models are text-only and are not listed here; for fully
-          offline transcription choose a local ONNX model (Whisper Base, or Parakeet v2 for English and
-          Parakeet v3 for 25 European languages), and use a self-hosted chat model for the analysis agents.
+          {t("batchTranscription.details")}
         </p>
       </div>
 

@@ -4,4 +4,4 @@
 // permanently and adding noise to a resting screen. It stays in the
 // accessibility tree either way, referenced by aria-describedby, so it is
 // announced when the field takes focus.
-export const SEARCH_HINT = "Search by date works too";
+export const SEARCH_HINT = "search.hint";

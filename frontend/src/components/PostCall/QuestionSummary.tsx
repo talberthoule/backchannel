@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Question, Speaker } from "../../types";
 import { presentTypes, typeColor, typeGroupLabel, typeLabel, visibleEnrichmentNotes } from "../../utils/insightTypes";
 
@@ -20,6 +21,7 @@ function speakerLabel(speaker: Speaker): string {
 }
 
 function SummaryCard({ question, speakers, showEnhanced }: { question: Question; speakers: Speaker[]; showEnhanced: boolean }) {
+  const { t } = useTranslation();
   const itemType = question.item_type || "question";
   const cardColor = typeColor(itemType);
   const attributedSpeaker = question.speaker_id
@@ -41,7 +43,7 @@ function SummaryCard({ question, speakers, showEnhanced }: { question: Question;
       <div className="flex items-start gap-3">
         {/* Star icon */}
         {question.starred && (
-          <span className="mt-0.5 text-[#f59e0b]" title="Starred">
+          <span className="mt-0.5 text-[#f59e0b]" title={t("questionSummary.starred")}>
             <svg className="h-5 w-5 fill-current" viewBox="0 0 20 20">
               <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118l-3.37-2.448a1 1 0 00-1.176 0l-3.37 2.448c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.063 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.957z" />
             </svg>
@@ -60,31 +62,31 @@ function SummaryCard({ question, speakers, showEnhanced }: { question: Question;
             )}
             {question.is_followup && (
               <span className="inline-flex items-center rounded-full bg-[#f59e0b]/15 px-2 py-0.5 font-body text-xs font-medium text-[#f59e0b]">
-                Follow-up
+                {t("questionSummary.followUp")}
               </span>
             )}
             {question.answered && (
               <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 font-body text-xs font-medium text-green-700">
-                Answered
+                {t("questionSummary.answered")}
               </span>
             )}
             {showEnhanced && question.enhanced && (
               <span className="inline-flex items-center rounded-full bg-brand-teal-light/10 px-2 py-0.5 font-body text-xs font-medium text-brand-teal-light">
-                Enhanced
+                {t("questionSummary.enhanced")}
               </span>
             )}
             {attributedSpeaker && (
               <span
                 className="inline-flex max-w-36 items-center rounded-full px-2 py-0.5 font-body text-xs font-semibold text-white"
                 style={{ backgroundColor: attributedSpeaker.color }}
-                title={`Attributed to ${speakerLabel(attributedSpeaker)}`}
+                title={t("questionSummary.attributed", { name: speakerLabel(attributedSpeaker) })}
               >
                 <span className="truncate">{speakerLabel(attributedSpeaker)}</span>
               </span>
             )}
             {question.needs_followup && (
               <span className="inline-flex items-center rounded-full bg-[#f59e0b]/20 px-2 py-0.5 font-body text-xs font-medium text-[#f59e0b]">
-                Needs Follow-up
+                {t("questionSummary.needsFollowUp")}
               </span>
             )}
           </div>
@@ -95,14 +97,14 @@ function SummaryCard({ question, speakers, showEnhanced }: { question: Question;
           {question.source_context && (
             <div className="rounded-md bg-brand-light-gray-2 px-3 py-2">
               <p className="text-xs text-brand-mid-gray">
-                <span className="font-medium">Context:</span> {question.source_context}
+                <span className="font-medium">{t("questionSummary.context")}</span> {question.source_context}
               </p>
             </div>
           )}
 
           {enrichmentNotes.length > 0 && (
             <div className="rounded-md border border-brand-teal-light/20 bg-brand-teal-light/5 px-3 py-2">
-              <p className="font-body text-xs font-semibold text-brand-teal-light">Refinement notes</p>
+              <p className="font-body text-xs font-semibold text-brand-teal-light">{t("questionSummary.refinementNotes")}</p>
               {enrichmentNotes.map((note, index) => (
                 <p key={index} className="mt-0.5 font-body text-xs text-brand-gray">{note}</p>
               ))}
@@ -121,7 +123,7 @@ function SummaryCard({ question, speakers, showEnhanced }: { question: Question;
           {/* Follow-up question */}
           {question.needs_followup && question.followup_question && (
             <div className="rounded-md border border-[#f59e0b]/30 bg-[#f59e0b]/10 px-3 py-2">
-              <p className="font-body text-xs font-medium text-[#f59e0b]">Follow-up question:</p>
+              <p className="font-body text-xs font-medium text-[#f59e0b]">{t("questionSummary.followUpQuestion")}</p>
               <p className="mt-0.5 font-body text-sm text-brand-dark-gray">
                 {question.followup_question}
               </p>
@@ -186,6 +188,7 @@ function StatCard({
 }
 
 export default function QuestionSummary({ questions, speakers, showEnhanced = false, initialFilter = "all" }: QuestionSummaryProps) {
+  const { t } = useTranslation();
   const [showDismissed, setShowDismissed] = useState(false);
   const [filter, setFilter] = useState<FilterType>(initialFilter);
 
@@ -227,7 +230,7 @@ export default function QuestionSummary({ questions, speakers, showEnhanced = fa
       {/* Stats bar — clickable to filter */}
       <div className="flex gap-4">
         <StatCard
-          label="Total"
+          label={t("questionSummary.total")}
           count={questions.length}
           isActive={filter === "all"}
           onClick={() => setFilter("all")}
@@ -247,7 +250,7 @@ export default function QuestionSummary({ questions, speakers, showEnhanced = fa
         })}
         {showEnhanced && (
           <StatCard
-            label="Enhanced"
+            label={t("questionSummary.enhanced")}
             count={enhanced.length}
             dotColor={typeColor("question")}
             isActive={filter === "enhanced"}
@@ -279,7 +282,7 @@ export default function QuestionSummary({ questions, speakers, showEnhanced = fa
           {qNeedsFollowup.length > 0 && (
             <div className="space-y-3">
               <h4 className="font-display text-xs font-semibold uppercase tracking-wide text-[#f59e0b]">
-                Needs Follow-up
+                {t("questionSummary.needsFollowUp")}
               </h4>
               {qNeedsFollowup.map((q) => (
                 <SummaryCard key={q.id} question={q} speakers={speakers} showEnhanced={showEnhanced} />
@@ -290,7 +293,7 @@ export default function QuestionSummary({ questions, speakers, showEnhanced = fa
           {qStarred.length > 0 && (
             <div className="space-y-3">
               <h4 className="font-display text-xs font-semibold uppercase tracking-wide text-[#f59e0b]">
-                Starred
+                {t("questionSummary.starred")}
               </h4>
               {qStarred.map((q) => (
                 <SummaryCard key={q.id} question={q} speakers={speakers} showEnhanced={showEnhanced} />
@@ -301,7 +304,7 @@ export default function QuestionSummary({ questions, speakers, showEnhanced = fa
           {qAnswered.length > 0 && (
             <div className="space-y-3">
               <h4 className="font-display text-xs font-semibold uppercase tracking-wide text-green-600">
-                Answered
+                {t("questionSummary.answered")}
               </h4>
               {qAnswered.map((q) => (
                 <SummaryCard key={q.id} question={q} speakers={speakers} showEnhanced={showEnhanced} />
@@ -312,7 +315,7 @@ export default function QuestionSummary({ questions, speakers, showEnhanced = fa
           {qUnanswered.length > 0 && (
             <div className="space-y-3">
               <h4 className="font-display text-xs font-semibold uppercase tracking-wide text-brand-gray">
-                Unanswered
+                {t("questionSummary.unanswered")}
               </h4>
               {qUnanswered.map((q) => (
                 <SummaryCard key={q.id} question={q} speakers={speakers} showEnhanced={showEnhanced} />
@@ -338,7 +341,7 @@ export default function QuestionSummary({ questions, speakers, showEnhanced = fa
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
-            Dismissed ({dismissed.length})
+            {t("questionSummary.dismissed", { value: dismissed.length })}
           </button>
 
           {showDismissed && (
@@ -354,7 +357,7 @@ export default function QuestionSummary({ questions, speakers, showEnhanced = fa
       {/* Empty state */}
       {questions.length === 0 && (
         <div className="rounded-xl bg-surface p-10 text-center shadow-sm">
-          <p className="text-brand-mid-gray">No insights were generated during this session.</p>
+          <p className="text-brand-mid-gray">{t("questionSummary.empty")}</p>
         </div>
       )}
 
@@ -362,7 +365,11 @@ export default function QuestionSummary({ questions, speakers, showEnhanced = fa
       {questions.length > 0 && filteredEmpty && (
         <div className="rounded-xl bg-surface p-10 text-center shadow-sm">
           <p className="text-brand-mid-gray">
-            No {filter === "enhanced" ? "enhanced items" : typeGroupLabel(filter, byType(active, filter)).toLowerCase()} were captured during this session.
+            {t("questionSummary.noneCaptured", {
+              type: filter === "enhanced"
+                ? t("questionSummary.enhancedItems")
+                : typeGroupLabel(filter, byType(active, filter)).toLowerCase(),
+            })}
           </p>
         </div>
       )}

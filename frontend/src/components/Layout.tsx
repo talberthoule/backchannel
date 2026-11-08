@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import {
   DndContext,
   DragOverlay,
@@ -38,6 +39,8 @@ import * as api from "../services/api";
 import { useConfirm } from "./ConfirmProvider";
 import { filterSessions, normalizeQuery } from "../lib/sessionSearch";
 import { SEARCH_HINT } from "./SearchHint";
+import LanguageSelector from "./LanguageSelector";
+import i18n from "../i18n";
 
 interface LayoutProps {
   sessions: Session[];
@@ -184,11 +187,11 @@ export function orderSessions(list: Session[]): Session[] {
 export function sessionStateLabel(state: Session["state"]): string {
   switch (state) {
     case "pre_call":
-      return "Not started";
+      return i18n.t("sessions.state.notStarted");
     case "active":
-      return "Live";
+      return i18n.t("sessions.state.live");
     case "completed":
-      return "Completed";
+      return i18n.t("sessions.state.completed");
   }
 }
 
@@ -279,6 +282,7 @@ function SessionMenu({ id, anchor, session, groups, onClose, onRename, onMove, o
   onMove: (groupId: string | null) => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
   // The parent re-renders on every WebSocket message during a live call and
   // hands down a fresh onClose each time; the listeners read it through a ref
@@ -367,17 +371,17 @@ function SessionMenu({ id, anchor, session, groups, onClose, onRename, onMove, o
       ref={menuRef}
       id={id}
       role="menu"
-      aria-label={`Actions for ${session.name}`}
+      aria-label={t("sessions.menuActions", { name: session.name })}
       className="bc-scroll fixed z-50 max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg border border-brand-light-gray-1 bg-surface py-1 shadow-lg"
       style={{ top: position.top, left: position.left, width: MENU_WIDTH }}
     >
       <button type="button" role="menuitem" className={itemClass} onClick={() => activate(onRename)}>
         <Pencil className="h-3.5 w-3.5 text-brand-mid-gray" aria-hidden="true" />
-        Rename
+        {t("common.rename")}
       </button>
       <div className="my-1 border-t border-brand-light-gray-1" />
       <div role="group" aria-labelledby={`${id}-move`}>
-        <p id={`${id}-move`} className="px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-brand-mid-gray">Move to</p>
+        <p id={`${id}-move`} className="px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-brand-mid-gray">{t("sessions.moveTo")}</p>
         <button
           type="button"
           role="menuitemradio"
@@ -388,7 +392,7 @@ function SessionMenu({ id, anchor, session, groups, onClose, onRename, onMove, o
           <span className="flex h-3.5 w-3.5 items-center justify-center">
             {!session.group_id && <Check className="h-3.5 w-3.5 text-brand-teal" aria-hidden="true" />}
           </span>
-          No group
+          {t("sessions.noGroup")}
         </button>
         {groups.map((group) => (
           <button
@@ -414,7 +418,7 @@ function SessionMenu({ id, anchor, session, groups, onClose, onRename, onMove, o
         onClick={() => activate(onDelete)}
       >
         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-        Delete
+        {t("common.delete")}
       </button>
     </div>,
     document.body,
@@ -432,6 +436,7 @@ function SessionRow({ session, isActive, onClick, groups, onMoveToGroup, onRenam
   onRename: (sessionId: string, name: string) => Promise<void>;
   onDelete: (sessionId: string) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const { listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({ id: session.id });
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -454,9 +459,9 @@ function SessionRow({ session, isActive, onClick, groups, onMoveToGroup, onRenam
 
   const handleDelete = async () => {
     const ok = await confirm({
-      title: "Delete session",
-      message: "Delete this session and all its data? This cannot be undone.",
-      confirmLabel: "Delete",
+      title: t("sessions.deleteTitle"),
+      message: t("sessions.deleteMessage"),
+      confirmLabel: t("common.delete"),
       tone: "danger",
     });
     if (ok) await onDelete(session.id);
@@ -478,7 +483,7 @@ function SessionRow({ session, isActive, onClick, groups, onMoveToGroup, onRenam
             if (event.key === "Enter") (event.target as HTMLInputElement).blur();
             if (event.key === "Escape") { setDraft(session.name); setEditing(false); }
           }}
-          aria-label="Session name"
+          aria-label={t("sessions.name")}
           className="my-1 ml-2 h-6 w-full min-w-0 rounded border border-brand-teal bg-surface px-1.5 text-sm text-brand-dark-gray"
           autoFocus
         />
@@ -507,7 +512,8 @@ function SessionRow({ session, isActive, onClick, groups, onMoveToGroup, onRenam
           ref={setActivatorNodeRef}
           {...listeners}
           aria-hidden="true"
-          title="Drag to another group"
+          title={t("sessions.dragToGroup")}
+          aria-label={t("sessions.dragToGroupAria", { name: session.name })}
           className="bc-grip flex h-7 w-5 cursor-grab items-center justify-center rounded text-brand-mid-gray hover:text-brand-dark-gray active:cursor-grabbing"
         >
           <GripVertical className="h-3.5 w-3.5" />
@@ -519,8 +525,8 @@ function SessionRow({ session, isActive, onClick, groups, onMoveToGroup, onRenam
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           aria-controls={menuOpen ? menuId : undefined}
-          aria-label={`Actions for ${session.name}`}
-          title="More actions"
+          aria-label={t("sessions.menuActions", { name: session.name })}
+          title={t("common.moreActions")}
           className="bc-action flex h-7 w-7 items-center justify-center rounded text-brand-mid-gray transition-colors hover:bg-brand-light-gray-1/60 hover:text-brand-dark-gray"
         >
           <Ellipsis className="h-4 w-4" aria-hidden="true" />
@@ -556,9 +562,9 @@ export async function deleteGroupWithConfirmation(
   dependencies: GroupDeleteDependencies,
 ): Promise<void> {
   const confirmed = await dependencies.confirm({
-    title: "Delete group",
-    message: `Delete "${group.name}"? Sessions in this group will move to Sessions and will not be deleted.`,
-    confirmLabel: "Delete group",
+    title: i18n.t("groups.deleteTitle"),
+    message: i18n.t("groups.deleteMessage", { name: group.name }),
+    confirmLabel: i18n.t("groups.deleteTitle"),
     tone: "danger",
   });
   if (!confirmed) return;
@@ -568,9 +574,7 @@ export async function deleteGroupWithConfirmation(
     dependencies.refreshGroups();
     dependencies.refreshSessions();
   } catch {
-    dependencies.toast(
-      `Could not delete "${group.name}". Check your connection and try again.`,
-    );
+    dependencies.toast(i18n.t("groups.deleteFailed", { name: group.name }));
   }
 }
 
@@ -582,6 +586,7 @@ export function DroppableGroup({ group, children, isExpanded, onToggle, onDelete
   onDelete: () => void;
   sessionCount: number;
 }) {
+  const { t } = useTranslation();
   const { setNodeRef, isOver } = useDroppable({ id: `group-${group.id}` });
   const sessionsId = `bc-group-${group.id}-sessions`;
 
@@ -605,15 +610,15 @@ export function DroppableGroup({ group, children, isExpanded, onToggle, onDelete
             />
           </span>
           <span className="truncate text-sm font-semibold text-brand-dark-gray" title={group.name}>{group.name}</span>
-          <span className="ml-auto shrink-0 pl-2 text-xs tabular-nums text-brand-mid-gray" aria-label={`${sessionCount} sessions`}>
+          <span className="ml-auto shrink-0 pl-2 text-xs tabular-nums text-brand-mid-gray" aria-label={t("groups.count", { count: sessionCount })}>
             {sessionCount}
           </span>
         </button>
         <button
           type="button"
           onClick={onDelete}
-          aria-label={`Delete ${group.name} group`}
-          title="Delete group"
+          aria-label={t("groups.deleteAria", { name: group.name })}
+          title={t("groups.deleteTitle")}
           className="bc-reveal bc-action mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-brand-mid-gray transition-colors hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
         >
           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -623,7 +628,7 @@ export function DroppableGroup({ group, children, isExpanded, onToggle, onDelete
       <div id={sessionsId} hidden={!isExpanded} className="ml-[11px] border-l border-brand-light-gray-1/70 pl-1.5">
         {isExpanded && children}
         {isExpanded && sessionCount === 0 && (
-          <p className="py-1.5 pl-2 text-xs text-brand-mid-gray">{isOver ? "Drop here" : "No sessions"}</p>
+          <p className="py-1.5 pl-2 text-xs text-brand-mid-gray">{isOver ? t("groups.dropHere") : t("groups.noSessions")}</p>
         )}
       </div>
     </div>
@@ -660,6 +665,7 @@ export default function Layout({
   onRefreshSessions,
   children,
 }: LayoutProps) {
+  const { t } = useTranslation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(readStoredCollapsed);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(true);
@@ -893,8 +899,8 @@ export default function Layout({
           if (e.key === "Escape") { setCreatingGroup(false); setNewGroupName(""); }
         }}
         onBlur={() => { if (!newGroupName.trim()) setCreatingGroup(false); }}
-        placeholder="Group name"
-        aria-label="New group name"
+        placeholder={t("groups.name")}
+        aria-label={t("groups.newName")}
         className="h-8 w-full rounded-md border border-brand-teal bg-surface px-2 text-sm text-brand-dark-gray placeholder:text-brand-mid-gray"
       />
     </div>
@@ -909,7 +915,7 @@ export default function Layout({
             type="button"
             onClick={() => setMobileOpen(true)}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal md:hidden"
-            aria-label="Open menu"
+            aria-label={t("navigation.openMenu")}
             aria-expanded={mobileOpen}
             aria-controls={SIDEBAR_ID}
           >
@@ -924,21 +930,24 @@ export default function Layout({
             <rect x="43" y="20" width="7" height="30" rx="3.5" fill="#0d9488" />
             <rect x="52" y="28" width="7" height="14" rx="3.5" fill="#2dd4bf" />
           </svg>
-          <span className="font-display text-[19px] font-bold tracking-tight text-brand-dark-gray">backchannel</span>
+          <span className="hidden font-display text-[19px] font-bold tracking-tight text-brand-dark-gray min-[420px]:inline">backchannel</span>
         </div>
-        <button
-          type="button"
-          onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal"
-          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-        >
-          {theme === "dark" ? (
-            <Sun className="h-5 w-5" aria-hidden="true" />
-          ) : (
-            <Moon className="h-5 w-5" aria-hidden="true" />
-          )}
-        </button>
+        <div className="flex items-center gap-1">
+          <LanguageSelector />
+          <button
+            type="button"
+            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-teal"
+            aria-label={theme === "dark" ? t("navigation.switchToLightTheme") : t("navigation.switchToDarkTheme")}
+            title={theme === "dark" ? t("navigation.switchToLightTheme") : t("navigation.switchToDarkTheme")}
+          >
+            {theme === "dark" ? (
+              <Sun className="h-5 w-5" aria-hidden="true" />
+            ) : (
+              <Moon className="h-5 w-5" aria-hidden="true" />
+            )}
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -958,7 +967,7 @@ export default function Layout({
           className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col overflow-hidden border-r border-brand-light-gray-1 bg-surface transition-transform duration-200 ease-out motion-reduce:transition-none md:static md:z-auto md:transform-none md:transition-[width] ${
             mobileOpen ? "translate-x-0" : "-translate-x-full"
           } ${collapsed ? "md:w-16" : "md:w-72"}`}
-          aria-label="Sidebar"
+          aria-label={t("navigation.sidebar")}
         >
           {collapsed ? (
             <div key="rail" className="bc-fade-in flex h-full w-full flex-col items-center">
@@ -967,10 +976,10 @@ export default function Layout({
                   type="button"
                   onClick={() => setCollapsedExplicitly(false)}
                   className="flex h-11 w-11 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
-                  aria-label="Expand sidebar"
+                  aria-label={t("navigation.expandSidebar")}
                   aria-expanded={false}
                   aria-controls={SIDEBAR_ID}
-                  title="Expand sidebar"
+                  title={t("navigation.expandSidebar")}
                 >
                   <PanelLeftOpen className="h-[18px] w-[18px]" aria-hidden="true" />
                 </button>
@@ -978,8 +987,8 @@ export default function Layout({
                   type="button"
                   onClick={onNewSession}
                   className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand-teal text-white shadow-sm transition-colors hover:bg-brand-teal-dark"
-                  aria-label="New session"
-                  title="New session"
+                  aria-label={t("sessions.new")}
+                  title={t("sessions.new")}
                 >
                   <Plus className="h-[18px] w-[18px]" aria-hidden="true" />
                 </button>
@@ -989,7 +998,7 @@ export default function Layout({
                   exceed the 64px rail; clip rather than grow a second scrollbar. */}
               <nav
                 className="bc-scroll flex w-full flex-1 flex-col items-center gap-1 overflow-x-hidden overflow-y-auto border-t border-brand-light-gray-1 px-1 py-2"
-                aria-label="Sessions"
+                aria-label={t("sessions.title")}
               >
                 {orderSessions(sessions).map((session) => {
                   const isActive = session.id === activeSessionId;
@@ -1002,9 +1011,15 @@ export default function Layout({
                       className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-xs font-semibold transition-colors ${
                         isActive ? "bg-brand-teal text-white shadow-sm" : "bg-brand-light-gray-2 text-brand-gray hover:bg-brand-teal/10 hover:text-brand-teal"
                       }`}
-                      aria-label={`Open ${session.name}, ${sessionStateLabel(session.state).toLowerCase()}`}
+                      aria-label={t("sessions.openSession", {
+                        name: session.name,
+                        state: sessionStateLabel(session.state).toLowerCase(),
+                      })}
                       aria-current={isActive ? "page" : undefined}
-                      title={`${session.name} (${sessionStateLabel(session.state)})`}
+                      title={t("sessions.sessionTitle", {
+                        name: session.name,
+                        state: sessionStateLabel(session.state),
+                      })}
                     >
                       {initial}
                       {session.state === "active" && (
@@ -1016,9 +1031,9 @@ export default function Layout({
               </nav>
 
               <div className="flex w-full flex-col items-center gap-1 border-t border-brand-light-gray-1 p-2">
-                <ToolLink compact icon={Package} label="Offerings Catalog" active={showingOfferings} onClick={onOpenOfferings} />
-                <ToolLink compact icon={BookOpen} label="Knowledge Sources" active={showingKnowledge} onClick={onOpenKnowledge} />
-                <ToolLink compact icon={Settings} label="Administration" active={showingAdmin} onClick={onOpenAdmin} />
+                <ToolLink compact icon={Package} label={t("navigation.offeringsCatalog")} active={showingOfferings} onClick={onOpenOfferings} />
+                <ToolLink compact icon={BookOpen} label={t("navigation.knowledgeSources")} active={showingKnowledge} onClick={onOpenKnowledge} />
+                <ToolLink compact icon={Settings} label={t("navigation.administration")} active={showingAdmin} onClick={onOpenAdmin} />
               </div>
             </div>
           ) : (
@@ -1030,16 +1045,16 @@ export default function Layout({
                   className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-brand-teal px-3 font-display text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-dark"
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
-                  New session
+                  {t("sessions.new")}
                 </button>
                 <button
                   type="button"
                   onClick={() => setCollapsedExplicitly(true)}
                   className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray md:flex"
-                  aria-label="Collapse sidebar"
+                  aria-label={t("navigation.collapseSidebar")}
                   aria-expanded={true}
                   aria-controls={SIDEBAR_ID}
-                  title="Collapse sidebar"
+                  title={t("navigation.collapseSidebar")}
                 >
                   <PanelLeftClose className="h-[18px] w-[18px]" aria-hidden="true" />
                 </button>
@@ -1047,7 +1062,7 @@ export default function Layout({
                   type="button"
                   onClick={() => setMobileOpen(false)}
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-brand-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray md:hidden"
-                  aria-label="Close menu"
+                  aria-label={t("navigation.closeMenu")}
                 >
                   <X className="h-[18px] w-[18px]" aria-hidden="true" />
                 </button>
@@ -1064,8 +1079,8 @@ export default function Layout({
                       onKeyDown={(e) => { if (e.key === "Escape" && query) { e.stopPropagation(); setQuery(""); } }}
                       onFocus={() => setQueryFocused(true)}
                       onBlur={() => setQueryFocused(false)}
-                      placeholder="Find a session"
-                      aria-label="Find a session"
+                      placeholder={t("sessions.find")}
+                      aria-label={t("sessions.find")}
                       aria-describedby="sidebar-search-hint"
                       className="bc-search h-8 w-full rounded-md border border-brand-light-gray-1 bg-canvas pl-8 pr-8 text-sm text-brand-dark-gray transition-colors placeholder:text-brand-mid-gray focus:border-brand-teal"
                     />
@@ -1073,7 +1088,7 @@ export default function Layout({
                       <button
                         type="button"
                         onClick={() => setQuery("")}
-                        aria-label="Clear search"
+                        aria-label={t("sessions.clearSearch")}
                         className="bc-action absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
                       >
                         <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1084,42 +1099,42 @@ export default function Layout({
                     id="sidebar-search-hint"
                     className={`mt-1 px-0.5 font-body text-xs text-brand-mid-gray ${queryFocused ? "" : "sr-only"}`}
                   >
-                    {SEARCH_HINT}
+                    {t(SEARCH_HINT)}
                   </p>
                 </div>
               )}
 
               <DndContext sensors={sensors} onDragStart={(e) => setDraggedId(e.active.id as string)} onDragEnd={handleDragEnd}>
-                <nav className="bc-scroll flex-1 overflow-y-auto overflow-x-clip px-2 pb-3" aria-label="Sessions">
+                <nav className="bc-scroll flex-1 overflow-y-auto overflow-x-clip px-2 pb-3" aria-label={t("sessions.title")}>
                   {sessions.length === 0 ? (
                     <div className="px-2 pt-6 text-center">
-                      <p className="text-sm font-medium text-brand-dark-gray">No sessions yet</p>
-                      <p className="mt-1 text-xs text-brand-mid-gray">Start one with New session.</p>
+                      <p className="text-sm font-medium text-brand-dark-gray">{t("sessions.emptyTitle")}</p>
+                      <p className="mt-1 text-xs text-brand-mid-gray">{t("sessions.emptyBody")}</p>
                     </div>
                   ) : filtering && grouped.visibleCount === 0 ? (
                     <div className="px-2 pt-6 text-center">
-                      <p className="text-sm text-brand-dark-gray">No sessions match &ldquo;{query.trim()}&rdquo;</p>
+                      <p className="text-sm text-brand-dark-gray">{t("sessions.noMatches", { query: query.trim() })}</p>
                       <button
                         type="button"
                         onClick={() => setQuery("")}
                         className="bc-accent-text mt-2 text-xs font-medium hover:underline"
                       >
-                        Clear search
+                        {t("sessions.clearSearch")}
                       </button>
                     </div>
                   ) : (
                     <>
                       {showGroupsHeading && (
                         <div className="flex h-8 items-center justify-between pl-2 pr-1">
-                          <SectionLabel>Groups</SectionLabel>
+                          <SectionLabel>{t("groups.title")}</SectionLabel>
                           {!filtering && (
                             <div className="flex items-center">
                               {grouped.byGroup.length > 1 && (
                                 <button
                                   type="button"
                                   onClick={toggleAllGroups}
-                                  aria-label={allGroupsCollapsed ? "Expand all groups" : "Collapse all groups"}
-                                  title={allGroupsCollapsed ? "Expand all" : "Collapse all"}
+                                  aria-label={allGroupsCollapsed ? t("groups.expandAll") : t("groups.collapseAll")}
+                                  title={allGroupsCollapsed ? t("groups.expandAllShort") : t("groups.collapseAllShort")}
                                   className="bc-action flex h-7 w-7 items-center justify-center rounded text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
                                 >
                                   {allGroupsCollapsed ? (
@@ -1132,8 +1147,8 @@ export default function Layout({
                               <button
                                 type="button"
                                 onClick={() => setCreatingGroup(true)}
-                                aria-label="New group"
-                                title="New group"
+                                aria-label={t("groups.new")}
+                                title={t("groups.new")}
                                 className="bc-action flex h-7 w-7 items-center justify-center rounded text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
                               >
                                 <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1160,7 +1175,7 @@ export default function Layout({
                         <>
                           {hasGroups && (
                             <div className="mt-2 flex h-8 items-center pl-2">
-                              <SectionLabel>Sessions</SectionLabel>
+                              <SectionLabel>{t("groups.sessions")}</SectionLabel>
                             </div>
                           )}
                           <DroppableUngrouped>
@@ -1176,7 +1191,7 @@ export default function Layout({
                           className="bc-row mt-2 flex h-8 w-full items-center gap-2 rounded-md px-2 text-xs font-medium text-brand-mid-gray transition-colors hover:bg-brand-light-gray-2 hover:text-brand-dark-gray"
                         >
                           <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
-                          New group
+                          {t("groups.new")}
                         </button>
                       )}
                     </>
@@ -1197,9 +1212,9 @@ export default function Layout({
               </DndContext>
 
               <div className="border-t border-brand-light-gray-1 p-2">
-                <ToolLink icon={Package} label="Offerings Catalog" active={showingOfferings} onClick={onOpenOfferings} />
-                <ToolLink icon={BookOpen} label="Knowledge Sources" active={showingKnowledge} onClick={onOpenKnowledge} />
-                <ToolLink icon={Settings} label="Administration" active={showingAdmin} onClick={onOpenAdmin} />
+                <ToolLink icon={Package} label={t("navigation.offeringsCatalog")} active={showingOfferings} onClick={onOpenOfferings} />
+                <ToolLink icon={BookOpen} label={t("navigation.knowledgeSources")} active={showingKnowledge} onClick={onOpenKnowledge} />
+                <ToolLink icon={Settings} label={t("navigation.administration")} active={showingAdmin} onClick={onOpenAdmin} />
               </div>
             </div>
           )}

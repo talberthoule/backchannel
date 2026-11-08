@@ -13,6 +13,8 @@
 // The copy must make the pass-vs-lifetime distinction explicit so "3 new"
 // next to a session header showing 23 total insights is not confusing.
 
+import i18n from "../i18n/index.ts";
+
 function count(details: Record<string, unknown>, key: string): number {
   const value = Number(details[key] ?? 0);
   return Number.isFinite(value) && value > 0 ? value : 0;
@@ -30,19 +32,19 @@ export function formatPostProcessingSummary(details?: Record<string, unknown>): 
       : null;
 
   const parts = [
-    newInsights ? `${newInsights} new insight${newInsights === 1 ? "" : "s"}` : null,
-    updates ? `${updates} insight${updates === 1 ? "" : "s"} updated` : null,
-    matches ? `${matches} offering match${matches === 1 ? "" : "es"}` : null,
+    newInsights ? i18n.t("postProcessing.summary.newInsight", { count: newInsights }) : null,
+    updates ? i18n.t("postProcessing.summary.updatedInsight", { count: updates }) : null,
+    matches ? i18n.t("postProcessing.summary.offeringMatch", { count: matches }) : null,
   ].filter(Boolean);
 
   if (parts.length === 0 && total === null) return null;
 
   const passText =
     parts.length > 0
-      ? `Final analysis pass: ${parts.join(", ")}`
-      : "Final analysis pass: no changes";
+      ? i18n.t("postProcessing.summary.pass", { parts: parts.join(", ") })
+      : i18n.t("postProcessing.summary.noChanges");
   if (total === null) return passText;
-  return `${passText} - ${total} insight${total === 1 ? "" : "s"} total for this session`;
+  return i18n.t("postProcessing.summary.total", { pass: passText, total, count: total });
 }
 
 /**

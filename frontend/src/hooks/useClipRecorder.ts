@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import i18n from "../i18n";
 
 const RECORDING_MIME_TYPES = [
   "audio/webm;codecs=opus",
@@ -70,7 +71,7 @@ export function useClipRecorder({ maxSeconds, baseName, onClip, onError }: UseCl
 
   const start = useCallback(async () => {
     if (!supported) {
-      onError?.("Browser microphone recording is not available.");
+      onError?.(i18n.t("recorder.unsupported"));
       return;
     }
     const generation = generationRef.current + 1;
@@ -111,7 +112,7 @@ export function useClipRecorder({ maxSeconds, baseName, onClip, onError }: UseCl
       }, 1000);
     } catch (err) {
       if (generation !== generationRef.current) return;
-      onError?.(err instanceof Error ? err.message : "Unable to start microphone recording.");
+      onError?.(err instanceof Error ? err.message : i18n.t("recorder.startFailed"));
       stopTracks();
       clearTimer();
       setRecording(false);

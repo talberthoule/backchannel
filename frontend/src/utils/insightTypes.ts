@@ -1,4 +1,5 @@
 import type { Question } from "../types";
+import i18n from "../i18n/index.ts";
 
 // Built-in insight types with fixed branding. Custom lens types get a stable
 // palette color hashed from their slug and labels derived from the producing
@@ -30,8 +31,30 @@ export const BUILTIN_TYPE_META: Record<string, { label: string; plural: string; 
 // The live chips keep the short plurals above (Strategic, History; see
 // docs/agents.md); the post-call group headings get these fuller names.
 const SIGNAL_GROUP_LABELS: Record<string, string> = {
-  signal: "Strategic Signals",
-  signal_history: "Signal History",
+  signal: "insights.types.signals",
+  signal_history: "insights.types.signalHistoryPlural",
+};
+
+const TYPE_LABEL_KEYS: Record<string, [string, string]> = {
+  asked: ["insights.types.asked", "insights.types.askedPlural"],
+  question: ["insights.types.question", "insights.types.questions"],
+  objection: ["insights.types.objection", "insights.types.objections"],
+  observation: ["insights.types.observation", "insights.types.observations"],
+  opportunity: ["insights.types.opportunity", "insights.types.opportunities"],
+  action_item: ["insights.types.actionItem", "insights.types.actionItems"],
+  signal: ["insights.types.signal", "insights.types.signals"],
+  signal_history: ["insights.types.signalHistory", "insights.types.signalHistoryPlural"],
+};
+
+const FILTER_LABEL_KEYS: Record<string, string> = {
+  asked: "insights.types.askedPlural",
+  question: "insights.types.questions",
+  objection: "insights.types.objections",
+  observation: "insights.types.observations",
+  opportunity: "insights.types.opportunities",
+  action_item: "insights.types.actionItems",
+  signal: "insights.types.strategicFilter",
+  signal_history: "insights.types.historyFilter",
 };
 
 // Display order for type groupings; custom types sort after built-ins.
@@ -59,7 +82,8 @@ export function typeColor(itemType: string): string {
 // then a humanized slug for custom types.
 export function typeLabel(itemType: string, lensLabel?: string): string {
   if (lensLabel && lensLabel.trim()) return lensLabel.trim();
-  return BUILTIN_TYPE_META[itemType]?.label ?? humanizeTypeSlug(itemType);
+  const key = TYPE_LABEL_KEYS[itemType]?.[0];
+  return key ? i18n.t(key) : humanizeTypeSlug(itemType);
 }
 
 // Group/section heading for a set of same-type insights: prefer the most
@@ -68,7 +92,7 @@ export function typeLabel(itemType: string, lensLabel?: string): string {
 // each individual row, so a fixed group name is the only honest one.
 export function typeGroupLabel(itemType: string, questions: Question[]): string {
   const fixed = SIGNAL_GROUP_LABELS[itemType];
-  if (fixed) return fixed;
+  if (fixed) return i18n.t(fixed);
   const counts = new Map<string, number>();
   for (const q of questions) {
     const label = (q.lens_label || "").trim();
@@ -83,7 +107,13 @@ export function typeGroupLabel(itemType: string, questions: Question[]): string 
     }
   }
   if (best) return best;
-  return BUILTIN_TYPE_META[itemType]?.plural ?? humanizeTypeSlug(itemType);
+  const key = TYPE_LABEL_KEYS[itemType]?.[1];
+  return key ? i18n.t(key) : humanizeTypeSlug(itemType);
+}
+
+export function typeFilterLabel(itemType: string): string {
+  const key = FILTER_LABEL_KEYS[itemType];
+  return key ? i18n.t(key) : humanizeTypeSlug(itemType);
 }
 
 // The Strategic filter carries every current signal plus this many of the most

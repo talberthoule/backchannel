@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import * as api from "../services/api";
-import { setupReadiness, toReadinessAgentModels, type SetupReadiness } from "../lib/providerOnboarding";
+import {
+  setupReadiness,
+  toReadinessAgentModels,
+  type SetupReadinessInput,
+} from "../lib/providerOnboarding";
 
 interface WelcomeViewProps {
   hasSessions: boolean;
@@ -33,13 +38,14 @@ function StepCard({
   notice?: string;
   action?: { label: string; onClick: () => void };
 }) {
+  const { t } = useTranslation();
   return (
-    <div className="flex items-start gap-4 rounded-xl bg-surface p-5 text-left shadow-sm ring-1 ring-brand-light-gray-1/60">
+    <div className="flex flex-wrap items-start gap-4 rounded-xl bg-surface p-5 text-left shadow-sm ring-1 ring-brand-light-gray-1/60">
       <span
         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-display text-sm font-bold ${
           done ? "bg-brand-teal text-white" : "bg-brand-light-gray-2 text-brand-gray"
         }`}
-        aria-label={done ? `Step ${step} complete` : `Step ${step}`}
+        aria-label={done ? t("welcome.stepComplete", { step }) : t("welcome.step", { step })}
       >
         {done ? <CheckIcon /> : step}
       </span>
@@ -56,7 +62,7 @@ function StepCard({
         <button
           type="button"
           onClick={action.onClick}
-          className="shrink-0 self-center rounded-lg bg-brand-teal px-3.5 py-2 font-body text-xs font-semibold text-white transition-colors hover:bg-brand-teal/90"
+          className="w-full shrink-0 rounded-lg bg-brand-teal px-3.5 py-2 font-body text-xs font-semibold text-white transition-colors hover:bg-brand-teal/90 sm:w-auto sm:self-center"
         >
           {action.label}
         </button>
@@ -70,7 +76,8 @@ function StepCard({
 // setup state and the first session. Once sessions exist it stays a quiet
 // empty state.
 export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }: WelcomeViewProps) {
-  const [readiness, setReadiness] = useState<SetupReadiness | null>(null);
+  const { t } = useTranslation();
+  const [readinessInput, setReadinessInput] = useState<SetupReadinessInput | null>(null);
   const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,13 +90,11 @@ export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }
         api.listAgents().catch(() => []),
         api.listModels().catch(() => []),
       ]).then(([p, transcription, agents, models]) => {
-        setReadiness(
-          setupReadiness({
-            localOnly: p?.local_only === true,
-            transcription,
-            agentModels: toReadinessAgentModels(agents, models),
-          })
-        );
+        setReadinessInput({
+          localOnly: p?.local_only === true,
+          transcription,
+          agentModels: toReadinessAgentModels(agents, models),
+        });
       });
     }
     api.getAppMeta().then((m) => setVersion(m.version)).catch(() => null);
@@ -103,14 +108,15 @@ export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }
     return (
       <div className="flex h-full items-center justify-center text-brand-mid-gray">
         <div className="text-center">
-          <h2 className="mb-2 font-display text-2xl font-semibold">Welcome to Backchannel</h2>
-          <p className="font-body">Select a session from the sidebar or create a new one to get started.</p>
+          <h2 className="mb-2 font-display text-2xl font-semibold">{t("welcome.title")}</h2>
+          <p className="font-body">{t("welcome.selectSession")}</p>
           {versionFooter}
         </div>
       </div>
     );
   }
 
+  const readiness = readinessInput ? setupReadiness(readinessInput) : null;
   const setupReady = readiness?.ready === true;
   const checklistLoaded = readiness !== null;
   const setupNotice =
@@ -120,11 +126,9 @@ export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }
     <div className="flex h-full items-start justify-center overflow-auto bg-brand-light-gray-2 p-6">
       <div className="w-full max-w-2xl py-8">
         <div className="mb-8 text-center">
-          <h2 className="font-display text-3xl font-bold text-brand-dark-gray">Welcome to Backchannel</h2>
+          <h2 className="font-display text-3xl font-bold text-brand-dark-gray">{t("welcome.title")}</h2>
           <p className="mx-auto mt-3 max-w-xl font-body text-sm leading-relaxed text-brand-gray">
-            Backchannel works alongside your meetings: it transcribes the call live with speaker
-            attribution, surfaces questions, objections, and opportunities as they happen, and
-            writes a briefing you can review, export, or chat with afterwards.
+            {t("welcome.intro")}
           </p>
         </div>
 
@@ -132,28 +136,28 @@ export default function WelcomeView({ hasSessions, onNewSession, onOpenApiKeys }
           <StepCard
             step={1}
             done={checklistLoaded && setupReady}
-            title="Choose your AI models"
-            description="Built-in local transcription works without a key. Connect Google, OpenAI, or a self-hosted service if you want its models, then choose a model for each enabled agent. Recommended marks a good starting point."
+            title={t("welcome.chooseModelsTitle")}
+            description={t("welcome.chooseModelsBody")}
             notice={setupNotice}
-            action={{ label: "Open AI settings", onClick: onOpenApiKeys }}
+            action={{ label: t("welcome.openAiSettings"), onClick: onOpenApiKeys }}
           />
           <StepCard
             step={2}
             done={hasSessions}
-            title="Create your first session"
-            description="A session holds everything about one meeting: participants, documents, directives, the transcript, and every insight the agents find."
-            action={{ label: "New session", onClick: onNewSession }}
+            title={t("welcome.firstSessionTitle")}
+            description={t("welcome.firstSessionBody")}
+            action={{ label: t("sessions.new"), onClick: onNewSession }}
           />
           <StepCard
             step={3}
             done={false}
-            title="Start the call, or import one"
-            description="From the session screen, start live capture (microphone plus optional tab or system audio), or import an existing recording or transcript to run the same analysis after the fact."
+            title={t("welcome.startCallTitle")}
+            description={t("welcome.startCallBody")}
           />
         </div>
 
         <p className="mt-6 text-center font-body text-xs text-brand-mid-gray">
-          You can tune agents, models, prompts, and privacy at any time under Administration.
+          {t("welcome.footer")}
         </p>
         {versionFooter}
       </div>
